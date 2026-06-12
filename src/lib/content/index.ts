@@ -279,4 +279,48 @@ export async function getBannerItems() {
   return rows;
 }
 
+/* ---- Admin: editable block metadata (merges defaults + DB values) ---- */
+
+import { CONTENT_BLOCKS } from "./defaults/blocks";
+
+export type EditableBlock = {
+  key: string;
+  page: string;
+  section: string;
+  label: string;
+  type: string;
+  value: string;
+};
+
+export async function getEditableBlocks(page: string): Promise<EditableBlock[]> {
+  const defaults = CONTENT_BLOCKS.filter((b) => b.page === page);
+  const rows = await safe(
+    () => db!.select().from(contentBlocks).where(eq(contentBlocks.page, page)),
+    [],
+  );
+  const dbMap = new Map(rows.map((r) => [r.key, r]));
+  return defaults.map((d) => {
+    const row = dbMap.get(d.key);
+    const v = row?.value;
+    return {
+      key: d.key,
+      page: d.page,
+      section: d.section,
+      label: d.label,
+      type: d.type,
+      value: typeof v === "string" ? v : v != null ? String(v) : d.value,
+    };
+  });
+}
+
+export const EDITABLE_PAGES = [
+  { id: "global", label: "Global / Brand" },
+  { id: "home", label: "Home" },
+  { id: "about", label: "About / The Attorney" },
+  { id: "contact", label: "Contact" },
+  { id: "consultation", label: "Consultation / Intake" },
+  { id: "payment", label: "Payment" },
+  { id: "footer", label: "Footer & Disclaimers" },
+];
+
 export { inArray }; // re-export for callers that filter by slug sets

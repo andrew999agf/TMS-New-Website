@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // Typographic apostrophes in copy are intentional; allow plain quotes.
+      "react/no-unescaped-entities": "off",
+      // We sync from matchMedia/scroll in effects deliberately (SSR-safe init).
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

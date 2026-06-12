@@ -1,7 +1,8 @@
 import { Nav, type NavItem } from "@/components/site/Nav";
 import { Footer } from "@/components/site/Footer";
+import { JsonLd } from "@/components/site/JsonLd";
 import { getBlocks } from "@/lib/content";
-import { FIRM } from "@/lib/firm";
+import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
 
 const NAV_ITEMS: NavItem[] = [
   { label: "The Attorney", href: "/about" },
@@ -18,9 +19,36 @@ export default async function PublicLayout({
 }) {
   const global = await getBlocks("global");
   const home = await getBlocks("home");
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+
+  const legalServiceSchema = {
+    "@context": "https://schema.org",
+    "@type": "LegalService",
+    name: FIRM.name,
+    url: baseUrl,
+    email: FIRM.email,
+    faxNumber: FIRM.fax,
+    description:
+      "A Texas trial firm. Civil and commercial litigation, personal injury, appeals, debt defense, business, and estate matters — prepared for trial.",
+    areaServed: LITIGATION_COUNTIES.map((c) => ({ "@type": "AdministrativeArea", name: `${c} County, Texas` })),
+    address: OFFICES.map((o) => ({
+      "@type": "PostalAddress",
+      streetAddress: o.street,
+      addressLocality: o.city,
+      addressRegion: "TX",
+      postalCode: o.zip,
+      addressCountry: "US",
+    })),
+    employee: {
+      "@type": "Attorney",
+      name: FIRM.attorney.fullName,
+      jobTitle: FIRM.attorney.title,
+    },
+  };
 
   return (
     <>
+      <JsonLd data={legalServiceSchema} />
       <Nav
         firmName={global["global.firmShort"] ?? FIRM.shortName}
         items={NAV_ITEMS}

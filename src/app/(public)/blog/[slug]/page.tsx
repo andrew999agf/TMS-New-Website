@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { GlossaryBody } from "@/components/site/GlossaryTooltips";
+import { JsonLd } from "@/components/site/JsonLd";
 import {
   getPost,
   getPublishedPosts,
@@ -75,6 +76,17 @@ export default async function PostPage({
 
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BlogPosting",
+          headline: post.title,
+          description: post.excerpt,
+          author: { "@type": "Person", name: post.author },
+          datePublished: post.publishAt,
+          articleSection: category?.title,
+        }}
+      />
       <PageHero eyebrow={category?.title ?? "Insights"} title={post.title}>
         <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[var(--c-dark-ink-muted)]">
           <span>{post.author}</span>

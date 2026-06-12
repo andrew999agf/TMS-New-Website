@@ -17,7 +17,6 @@ import {
   integer,
   jsonb,
   pgEnum,
-  uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
 

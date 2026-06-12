@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
+import { JsonLd } from "@/components/site/JsonLd";
 import {
   getGlossaryTerm,
   getGlossaryTerms,
@@ -50,6 +51,15 @@ export default async function GlossaryTermPage({
 
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "DefinedTerm",
+          name: term.term,
+          description: term.definition,
+          inDefinedTermSet: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/glossary`,
+        }}
+      />
       <PageHero eyebrow="Glossary Term" title={term.term}>
         <div className="mt-6">
           <Breadcrumbs items={[{ label: "Glossary", href: "/glossary" }, { label: term.term }]} />

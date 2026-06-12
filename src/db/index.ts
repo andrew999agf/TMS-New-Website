@@ -12,7 +12,6 @@ import * as schema from "./schema";
  */
 
 declare global {
-  // eslint-disable-next-line no-var
   var __tms_pg__: ReturnType<typeof postgres> | undefined;
 }
 
