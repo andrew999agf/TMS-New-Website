@@ -34,11 +34,11 @@ export function GlossaryBody({
       const slug = el.dataset.slug;
       if (!slug) return;
       const rect = el.getBoundingClientRect();
-      setActive({
-        slug,
-        x: rect.left + rect.width / 2,
-        y: rect.bottom + window.scrollY,
-      });
+      // Viewport coordinates for position:fixed; clamp so the 320px-wide
+      // tooltip stays on screen on narrow viewports.
+      const half = 160;
+      const x = Math.min(Math.max(rect.left + rect.width / 2, half + 8), window.innerWidth - half - 8);
+      setActive({ slug, x, y: rect.bottom });
     };
     const hide = () => setActive(null);
 
@@ -84,7 +84,7 @@ export function GlossaryBody({
       {entry && active && (
         <div
           role="tooltip"
-          className="absolute z-50 w-80 max-w-[90vw] -translate-x-1/2 mt-2 rounded-sm border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-xl text-left"
+          className="fixed z-50 w-80 max-w-[90vw] -translate-x-1/2 mt-2 rounded-sm border border-[var(--c-border)] bg-[var(--c-surface)] p-4 shadow-xl text-left"
           style={{ left: active.x, top: active.y }}
         >
           <div className="font-[family-name:var(--font-ui)] text-sm font-semibold text-[var(--c-term)]">

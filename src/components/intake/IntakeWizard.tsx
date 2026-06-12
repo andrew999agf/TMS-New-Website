@@ -35,6 +35,8 @@ export function IntakeWizard({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // Honeypot: hidden field humans never see; bots that fill it are dropped server-side.
+  const [honeypot, setHoneypot] = useState("");
 
   const fuse = useMemo(
     () =>
@@ -82,6 +84,7 @@ export function IntakeWizard({
           answers,
           referrer: typeof document !== "undefined" ? document.referrer : "",
           turnstileToken: turnstileToken ?? undefined,
+          company: honeypot,
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
@@ -196,6 +199,21 @@ export function IntakeWizard({
             consentText={f.name === "consent" ? consentText : undefined}
           />
         ))}
+      </div>
+
+      {/* Honeypot — visually hidden, excluded from tab order and screen readers. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden">
+        <label>
+          Company
+          <input
+            type="text"
+            name="company"
+            tabIndex={-1}
+            autoComplete="off"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+          />
+        </label>
       </div>
 
       {currentStep.id === "consent" && turnstileSiteKey && (
