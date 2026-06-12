@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, Wand2 } from "lucide-react";
+import { ImageEditor } from "./ImageEditor";
 
 type Asset = { id: number; url: string; kind: string; alt: string | null; folder: string | null };
 
@@ -15,6 +16,7 @@ export function MediaLibrary({
   const [items, setItems] = useState<Asset[]>(assets);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFiles(files: FileList | null) {
@@ -71,7 +73,7 @@ export function MediaLibrary({
 
       <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {items.map((a) => (
-          <div key={a.id} className="rounded-lg overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)] group">
+          <div key={a.id} className="rounded-lg overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)] group relative">
             <div className="aspect-square bg-[var(--c-surface2)] flex items-center justify-center overflow-hidden">
               {a.kind === "video" ? (
                 <video src={a.url} className="h-full w-full object-cover" muted />
@@ -80,6 +82,14 @@ export function MediaLibrary({
                 <img src={a.url} alt={a.alt ?? ""} className="h-full w-full object-cover" />
               )}
             </div>
+            {a.kind !== "video" && (
+              <button
+                onClick={() => setEditing(a.url)}
+                className="absolute inset-x-0 top-0 m-2 self-start opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--c-accent)] text-[var(--c-on-accent)] text-xs px-2 py-1 rounded flex items-center gap-1 w-fit"
+              >
+                <Wand2 size={12} /> Edit
+              </button>
+            )}
             <div className="p-2 text-xs text-[var(--c-ink-muted)] truncate">{a.folder ?? "—"}</div>
           </div>
         ))}
@@ -91,9 +101,22 @@ export function MediaLibrary({
       </div>
 
       <p className="mt-6 text-xs text-[var(--c-ink-muted)]">
-        In-browser editor (crop, branded filters, background removal, headshot canvas) is on the
-        roadmap; see BUILD-LOG. Uploads are EXIF-stripped by Vercel Blob delivery.
+        Hover any image and choose <strong>Edit</strong> for crop, branded filters, background
+        removal, and the headshot canvas. Originals are preserved; edits save as new assets.
       </p>
+
+      {editing && (
+        <ImageEditor
+          src={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(url) =>
+            setItems((prev) => [
+              { id: Math.random(), url, kind: "image", alt: null, folder: "edited" },
+              ...prev,
+            ])
+          }
+        />
+      )}
     </div>
   );
 }
