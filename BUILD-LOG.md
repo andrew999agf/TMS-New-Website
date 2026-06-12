@@ -55,20 +55,40 @@ Living record of what is done, what is pending, and what needs the human.
 - [x] **SEO:** per-page metadata, dynamic `sitemap.xml`, `robots.txt`.
 - [x] DB tooling: `drizzle.config.ts`, migrate script, idempotent seed script.
 
+- [x] **Auth + middleware:** bcrypt + `jose` JWT sessions, httpOnly cookies,
+      login lockout, audit log, middleware-protected `/admin`, login page.
+- [x] **Admin CMS UI:** Dashboard (stats), Pages (content-block editor,
+      draft→publish), Appearance (live 5×5 palette switcher + custom tokens +
+      AA contrast checker + real-time preview), Intake (filter/status/CSV),
+      Blog (list + publish/hide toggle), Practice Areas / Results / Glossary
+      list views, Media library + upload, Settings. Server actions persist to DB.
+- [x] **Media upload** route (Vercel Blob), graceful without token.
+- [x] **Structured data:** LegalService/Attorney (site-wide), BlogPosting,
+      DefinedTerm.
+- [x] **Vercel Cron** publish route + `vercel.json`.
+- [x] **Drizzle migration** generated (`drizzle/0000_*.sql`).
+
 ## Pending (next increments, not blocked on human)
 
-- [ ] **Auth + middleware** (`/admin` protection, login, sessions, rate limit, audit).
-- [ ] **Admin CMS UI:** Dashboard, Pages (live preview), Practice Areas, Results,
-      Blog (+ calendar), Glossary, Media, Intake table, Appearance (palette pickers),
-      Settings. Server actions with zod + revision log.
-- [ ] **Media library + in-browser image editor** (crop/adjust/branded filters/
-      background removal/headshot canvas) + Vercel Blob upload routes.
-- [ ] **Structured data** (LegalService/Attorney, BlogPosting, DefinedTerm, FAQ).
-- [ ] **Vercel Cron** route to publish scheduled posts; `vercel.json` cron config.
-- [ ] **Analytics:** page-view capture + internal dashboard; GA4 slot; Vercel Analytics.
-- [ ] **Testimonials** public section (CRUD scaffolded in schema).
-- [ ] Accessibility + performance passes (Lighthouse 90+ verification).
-- [ ] Turnstile wiring (env-gated).
+- [ ] **In-browser image editor** (crop/adjust/branded filters "Courtroom/
+      Headshot/Authority/Archive"/background removal/headshot canvas). The Media
+      library + upload pipeline are in place; the canvas editor is the remaining
+      piece.
+- [ ] **Per-record rich editors** for practice areas, results, glossary, and a
+      full blog post editor (Tiptap) with the inline "mark as glossary term"
+      flow and content-calendar drag-to-reschedule. (List views + visibility/
+      status controls are done; copy currently edited via DB/seed + Pages.)
+- [ ] **Analytics:** page-view capture middleware + internal dashboard charts;
+      GA4 script injection from the saved setting; Vercel Analytics.
+- [ ] **Testimonials** public section (schema + admin CRUD; none at launch).
+- [ ] **Revision restore UI** (schema in place).
+- [ ] Accessibility + performance verification passes (Lighthouse 90+).
+- [ ] Turnstile wiring (env-gated) on the intake form.
+- [ ] FAQPage schema where natural.
+
+> Note: most "pending" admin editors require a live `DATABASE_URL` to exercise
+> end-to-end. The data model, server actions, and read paths are built; they
+> light up the moment the database is provisioned and seeded.
 
 ## Needs the human (collect; not blocking)
 
