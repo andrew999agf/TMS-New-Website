@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { BlogList, type AdminPost } from "@/components/admin/BlogList";
 import { db, hasDb } from "@/db";
@@ -45,6 +47,11 @@ export default async function BlogAdminPage() {
       <AdminHeader
         title="Blog / Insights"
         description={`${posts.length} posts. Toggle visibility, review scheduled content, manage firm news.`}
+        actions={
+          <Link href="/admin/blog/new" className="btn btn-accent text-sm py-2.5 px-4">
+            <Plus size={16} /> New post
+          </Link>
+        }
       />
       <div className="p-8">
         <BlogList posts={posts} dbEnabled={hasDb} />

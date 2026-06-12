@@ -88,6 +88,11 @@ export function BlogList({ posts, dbEnabled }: { posts: AdminPost[]; dbEnabled: 
                 <td className="px-4 py-3 text-[var(--c-ink-muted)]">{formatDate(p.publishAt)}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-3">
+                    {dbEnabled && p.id > 0 && (
+                      <Link href={`/admin/blog/${p.id}`} className="text-xs text-[var(--c-accent)]">
+                        Edit
+                      </Link>
+                    )}
                     {(p.status === "published" || p.status === "hidden") && (
                       <button
                         onClick={() => toggle(p)}
