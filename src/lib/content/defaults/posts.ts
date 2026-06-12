@@ -733,7 +733,292 @@ const educational: BlogPostSeed[] = eduRaw.map((e, i) => {
   };
 });
 
-export const BLOG_POSTS: BlogPostSeed[] = [...firmNews, ...educational];
+/* ===================== EDUCATIONAL — EARLY 2027 ========================== */
+/* 20 additional posts, scheduled across Jan–Mar 2027 (irregular gaps). */
 
-export const EDUCATIONAL_COUNT = educational.length;
+const eduRaw2027: EduInput[] = [
+  // Litigation strategy
+  {
+    slug: "tros-and-temporary-injunctions",
+    title: "TROs and Temporary Injunctions: Stopping Harm Fast",
+    excerpt:
+      "Sometimes you cannot wait for a trial. Texas lets a court freeze the situation while the case plays out.",
+    category: "civil-commercial-litigation",
+    related: ["civil-commercial-litigation", "plaintiffs-litigation"],
+    body: [
+      ["p", "When conduct threatens immediate, irreparable harm, a temporary restraining order can stop it within days, followed by a temporary injunction that holds through trial."],
+      ["p", "These remedies demand proof on a short fuse — a likely-to-prevail claim, real harm, and no adequate remedy in money alone. We build that record fast."],
+      ["p", `Injunctive relief is litigation at speed. We treat it like the opening of a case we are ${paLink("civil-commercial-litigation", "prepared to try")}.`],
+    ],
+  },
+  {
+    slug: "what-a-petition-must-say",
+    title: "What a Petition Must Actually Say",
+    excerpt:
+      "A lawsuit starts with a petition. What goes in it — and what is left out — shapes the entire case.",
+    category: "civil-commercial-litigation",
+    related: ["civil-commercial-litigation"],
+    relatedPosts: ["anatomy-of-a-texas-lawsuit"],
+    body: [
+      ["p", "Texas uses fair-notice pleading: the petition must give the other side fair notice of the claims and the relief sought. Vague pleadings invite special exceptions; overbroad ones give away strategy."],
+      ["p", "We draft pleadings to preserve every theory we may need and to set up the proof we intend to put on — no more, no less."],
+    ],
+  },
+  {
+    slug: "sanctions-and-bad-faith-litigation",
+    title: "Sanctions: When the Other Side Plays Dirty",
+    excerpt:
+      "Courts have tools to punish frivolous filings and discovery abuse. Knowing them changes the leverage.",
+    category: "civil-commercial-litigation",
+    related: ["civil-commercial-litigation"],
+    body: [
+      ["p", "Groundless pleadings, discovery stonewalling, and bad-faith tactics can draw sanctions — from fee awards to striking claims entirely."],
+      ["p", "We document abuse as it happens and pursue sanctions when warranted. A party that weaponizes delay should pay for it."],
+    ],
+  },
+  {
+    slug: "expert-witnesses-and-daubert",
+    title: "Expert Witnesses and the Battle of Opinions",
+    excerpt:
+      "Many cases turn on experts. So does the fight over whether the jury ever hears them.",
+    category: "civil-commercial-litigation",
+    related: ["civil-commercial-litigation", "personal-injury-wrongful-death"],
+    body: [
+      ["p", "Expert testimony must be reliable and relevant, and Texas courts act as gatekeepers. A successful challenge can exclude the opinion that holds up the other side's case."],
+      ["p", "We prepare our experts to withstand challenge and scrutinize theirs to keep junk science away from the jury."],
+    ],
+  },
+  // Appeals
+  {
+    slug: "motions-for-new-trial",
+    title: "Motions for New Trial: The Bridge to Appeal",
+    excerpt:
+      "After a verdict, the motion for new trial can fix errors — and it preserves issues you will need on appeal.",
+    category: "appellate-law",
+    related: ["appellate-law", "civil-commercial-litigation"],
+    relatedPosts: ["preserving-error-at-trial"],
+    body: [
+      ["p", "A motion for new trial asks the trial court to correct its own errors before an appeal, and it is the only way to preserve certain complaints — like factual sufficiency or jury misconduct."],
+      ["p", "The deadline is short and the stakes are high. We treat the post-verdict window as the first move of the appeal."],
+    ],
+  },
+  {
+    slug: "interlocutory-appeals-in-texas",
+    title: "Interlocutory Appeals: Appealing Before the End",
+    excerpt:
+      "Some rulings can be appealed mid-case. Knowing which ones can change the course of the litigation.",
+    category: "appellate-law",
+    related: ["appellate-law"],
+    body: [
+      ["p", "Most orders are not appealable until final judgment, but Texas allows interlocutory appeals of specific rulings — temporary injunctions, certain dismissals, and more."],
+      ["p", "Recognizing an appealable order, and the tight deadline that comes with it, can be decisive. We watch for them throughout a case."],
+    ],
+  },
+  // Personal injury
+  {
+    slug: "comparative-fault-in-texas",
+    title: "Comparative Fault: How Blame Is Divided",
+    excerpt:
+      "In Texas, being partly at fault does not always end your claim — but cross fifty-one percent and it does.",
+    category: "personal-injury-wrongful-death",
+    related: ["personal-injury-wrongful-death"],
+    body: [
+      ["p", "Texas uses modified comparative fault. Your recovery is reduced by your share of responsibility, and barred entirely if you are more than fifty percent at fault."],
+      ["p", "That makes the fight over percentages central. We build the liability case to keep fault where it belongs — on the other side."],
+    ],
+  },
+  {
+    slug: "eggshell-plaintiff-and-pre-existing-conditions",
+    title: "Pre-Existing Conditions and the Eggshell Plaintiff",
+    excerpt:
+      "Insurers love to blame your old injuries. The law says they take you as they find you.",
+    category: "personal-injury-wrongful-death",
+    related: ["personal-injury-wrongful-death"],
+    body: [
+      ["p", "Defendants often argue your harm came from a pre-existing condition. But under the eggshell-plaintiff rule, a wrongdoer is liable for the full extent of the harm caused, even to a vulnerable person."],
+      ["p", "The key is distinguishing what the crash caused from what came before. We use the medical record to draw that line clearly."],
+    ],
+  },
+  {
+    slug: "medical-liens-and-your-settlement",
+    title: "Medical Liens and What's Left of Your Settlement",
+    excerpt:
+      "A settlement number is not what you take home. Liens and subrogation claims come first — unless they are reduced.",
+    category: "personal-injury-wrongful-death",
+    related: ["personal-injury-wrongful-death"],
+    body: [
+      ["p", "Hospitals, health insurers, and government payers may assert liens or subrogation rights against your recovery. Ignoring them can be costly."],
+      ["p", "We identify, challenge, and negotiate these claims down so more of the settlement ends up where it belongs — with the client."],
+    ],
+  },
+  // Business
+  {
+    slug: "piercing-the-corporate-veil",
+    title: "Piercing the Corporate Veil in Texas",
+    excerpt:
+      "An entity usually shields its owners. Sometimes the law looks behind it to reach the people in charge.",
+    category: "business-related-matters",
+    related: ["business-related-matters", "civil-commercial-litigation"],
+    body: [
+      ["p", "Texas sets a high bar to pierce the corporate veil, generally requiring actual fraud for direct personal benefit. But the bar is not unreachable."],
+      ["p", "Whether you are protecting owners or pursuing them, the analysis turns on how the entity was actually run. We litigate both sides."],
+    ],
+  },
+  {
+    slug: "series-llcs-in-texas",
+    title: "Series LLCs: One Entity, Many Compartments",
+    excerpt:
+      "Texas allows a single LLC to hold separated 'series.' Used right, it isolates risk; used wrong, it invites trouble.",
+    category: "business-formations-transactions",
+    related: ["business-formations-transactions", "business-related-matters"],
+    body: [
+      ["p", "A series LLC can wall off the assets and liabilities of each series from the others — attractive for owners holding multiple properties or ventures."],
+      ["p", "The protection depends on strict separateness in records and operations. We set them up to actually hold up if tested."],
+    ],
+  },
+  {
+    slug: "trade-secrets-and-tutsa",
+    title: "Trade Secrets and the Texas Uniform Trade Secrets Act",
+    excerpt:
+      "Your formulas, lists, and processes can be protected — if you treat them like secrets.",
+    category: "civil-commercial-litigation",
+    related: ["civil-commercial-litigation", "business-related-matters"],
+    body: [
+      ["p", "TUTSA protects information that derives value from being secret and is subject to reasonable efforts to keep it so. Misappropriation can support injunctions and damages."],
+      ["p", "Protection starts before any dispute — with the safeguards you put in place. When a secret walks out the door, we move fast to get it back."],
+    ],
+  },
+  // Estate / probate
+  {
+    slug: "independent-vs-dependent-administration",
+    title: "Independent vs. Dependent Administration",
+    excerpt:
+      "Texas offers a streamlined way to settle an estate — and a slower, court-supervised one. The difference is real money.",
+    category: "probate",
+    related: ["probate", "estate-succession-planning"],
+    relatedPosts: ["what-to-expect-in-probate"],
+    body: [
+      ["p", "Independent administration lets an executor settle the estate with minimal court involvement — faster and cheaper. Dependent administration requires court approval at most steps."],
+      ["p", "A well-drafted will requests independent administration. Without one, the estate may be stuck in the costlier process."],
+    ],
+  },
+  {
+    slug: "lady-bird-deeds-in-texas",
+    title: "Lady Bird Deeds: Passing Property Without Probate",
+    excerpt:
+      "A Texas enhanced life-estate deed can move real property at death while keeping full control during life.",
+    category: "estate-succession-planning",
+    related: ["estate-succession-planning", "probate"],
+    body: [
+      ["p", "A Lady Bird deed lets you keep the right to sell, mortgage, or change your mind during life, while the property passes automatically at death — outside probate."],
+      ["p", "For the right family and the right property, it is a simple, powerful tool. We make sure it fits the larger plan before using it."],
+    ],
+  },
+  {
+    slug: "muniment-of-title",
+    title: "Muniment of Title: Probate's Shortcut",
+    excerpt:
+      "When the only issue is transferring title under a valid will, Texas offers a faster path.",
+    category: "probate",
+    related: ["probate"],
+    body: [
+      ["p", "If a person dies with a valid will and no unpaid debts other than those secured by real estate, the will can be probated as a muniment of title — without a full administration."],
+      ["p", "It is one of the most efficient probate procedures available. We use it whenever the estate qualifies."],
+    ],
+  },
+  // Debt / creditor
+  {
+    slug: "the-fair-debt-collection-practices-act",
+    title: "The FDCPA: Limits on Debt Collectors",
+    excerpt:
+      "Federal law restricts how collectors can treat you — and gives you a claim when they cross the line.",
+    category: "consumer-debt-defense",
+    related: ["consumer-debt-defense"],
+    relatedPosts: ["sued-by-a-debt-buyer"],
+    body: [
+      ["p", "The Fair Debt Collection Practices Act bars harassment, false statements, and unfair practices by debt collectors. Violations can entitle you to statutory damages and fees."],
+      ["p", "A collector who breaks the rules hands you leverage. We use FDCPA violations both as a shield and, where appropriate, a sword."],
+    ],
+  },
+  {
+    slug: "statute-of-limitations-on-texas-debt",
+    title: "How Long Can They Sue You on a Debt?",
+    excerpt:
+      "Texas debt claims have a deadline. After it passes, an old debt may be unenforceable in court.",
+    category: "consumer-debt-defense",
+    related: ["consumer-debt-defense"],
+    body: [
+      ["p", "Most Texas debt claims must be brought within four years of default. Suit filed after that is time-barred — a complete defense if raised."],
+      ["p", "Be careful: certain actions can restart the clock. Before you pay or promise anything on an old debt, know where the deadline stands."],
+    ],
+  },
+  {
+    slug: "post-judgment-collection-tools",
+    title: "After the Judgment: How Creditors Collect",
+    excerpt:
+      "Winning a judgment is step one. Turning it into money takes a different set of tools.",
+    category: "commercial-debt-collection-defense",
+    related: ["commercial-debt-collection-defense", "garnishments"],
+    body: [
+      ["p", "A judgment unlocks abstracts of judgment, writs of garnishment, turnover orders, and more. Each reaches different assets in different ways."],
+      ["p", "Whether collecting or defending, we know the post-judgment toolkit and how to deploy — or blunt — it."],
+    ],
+  },
+  // DTPA / criminal
+  {
+    slug: "dtpa-laundry-list-violations",
+    title: "The DTPA 'Laundry List': What Counts as Deceptive",
+    excerpt:
+      "The DTPA spells out specific deceptive acts. Knowing the list tells you whether you have a claim.",
+    category: "dtpa",
+    related: ["dtpa", "civil-commercial-litigation"],
+    relatedPosts: ["dtpa-basics-for-consumers"],
+    body: [
+      ["p", "The DTPA's so-called laundry list enumerates deceptive practices — passing off goods, misrepresenting quality or sponsorship, and many more. A claim usually starts by matching the conduct to a listed item."],
+      ["p", "We map the facts to the statute precisely, because the right citation is what makes the demand credible."],
+    ],
+  },
+  {
+    slug: "expunctions-and-nondisclosure",
+    title: "Clearing Your Record: Expunctions and Nondisclosure",
+    excerpt:
+      "A dismissed or old charge can still haunt you. Texas offers ways to seal or erase it.",
+    category: "criminal-defense",
+    related: ["criminal-defense"],
+    relatedPosts: ["how-a-criminal-case-proceeds"],
+    body: [
+      ["p", "An expunction can erase certain arrests and charges as if they never happened; an order of nondisclosure can seal records from public view. Eligibility depends on the outcome and the offense."],
+      ["p", "If you qualify, clearing your record is worth doing. We assess eligibility and handle the petition."],
+    ],
+  },
+];
+
+const EARLY_2027_DATES = [
+  "2027-01-05", "2027-01-08", "2027-01-13", "2027-01-19", "2027-01-22",
+  "2027-01-28", "2027-02-02", "2027-02-08", "2027-02-11", "2027-02-17",
+  "2027-02-23", "2027-02-26", "2027-03-04", "2027-03-09", "2027-03-12",
+  "2027-03-18", "2027-03-23", "2027-03-26", "2027-03-30", "2027-04-02",
+];
+
+const educational2027: BlogPostSeed[] = eduRaw2027.map((e, i) => ({
+  slug: e.slug,
+  title: e.title,
+  excerpt: e.excerpt,
+  body: html(e.body),
+  category: e.category,
+  author: AUTHOR,
+  isFirmNews: false,
+  status: "scheduled",
+  publishAt: new Date(`${EARLY_2027_DATES[i] ?? "2027-04-05"}T14:00:00Z`).toISOString(),
+  relatedPractices: e.related,
+  relatedPosts: e.relatedPosts,
+  seoTitle: `${e.title} | T. Maxwell Smith, PLLC`,
+  seoDescription: e.excerpt,
+  tags: [e.category],
+}));
+
+export const BLOG_POSTS: BlogPostSeed[] = [...firmNews, ...educational, ...educational2027];
+
+export const EDUCATIONAL_COUNT = educational.length + educational2027.length;
 export const FIRM_NEWS_COUNT = firmNews.length;
+export const SCHEDULED_2027_COUNT = educational2027.length;
