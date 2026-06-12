@@ -7,6 +7,7 @@ import {
   getFeaturedResults,
   getPracticeAreas,
   getTestimonials,
+  getTeam,
 } from "@/lib/content";
 import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 import {
@@ -16,13 +17,15 @@ import {
 } from "@/lib/firm";
 
 export default async function HomePage() {
-  const [home, banner, results, practices, testimonials] = await Promise.all([
+  const [home, banner, results, practices, testimonials, team] = await Promise.all([
     getBlocks("home"),
     getBannerItems(),
     getFeaturedResults(6),
     getPracticeAreas(),
     getTestimonials(),
+    getTeam(),
   ]);
+  const lead = team.find((m) => m.isLead) ?? team[0];
 
   const bannerMedia: BannerMedia[] = banner.map((b) => ({
     id: b.id,
@@ -74,6 +77,49 @@ export default async function HomePage() {
           />
         </div>
       </section>
+
+      {/* =========================== TEAM TEASER ========================= */}
+      {lead && (
+        <section className="bg-[var(--c-surface2)] py-20 lg:py-28">
+          <div className="container-page grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-16 lg:items-center">
+            <div>
+              <p className="eyebrow">Our Team</p>
+              <h2 className="h2 mt-3">Led by a trial lawyer who tries cases.</h2>
+              <p className="lead mt-4">
+                {lead.name} founded the firm and leads its litigation. A Texas team across Fort
+                Worth, Meridian, and Weatherford keeps every matter moving.
+              </p>
+              <Link
+                href="/about"
+                className="mt-6 inline-flex items-center gap-1.5 link-underline font-[family-name:var(--font-ui)]"
+              >
+                Meet the team <ArrowRight size={16} />
+              </Link>
+            </div>
+            <ul className="divide-y divide-[var(--c-border)] border-y border-[var(--c-border)]">
+              {team.slice(0, 4).map((m) => (
+                <li key={m.slug}>
+                  <Link
+                    href={`/about/${m.slug}`}
+                    className="group flex items-center justify-between gap-4 py-4"
+                  >
+                    <span>
+                      <span className="font-[family-name:var(--font-display)] text-lg group-hover:text-[var(--c-accent)] transition-colors">
+                        {m.name}
+                      </span>
+                      <span className="block text-sm text-[var(--c-ink-muted)]">{m.role}</span>
+                    </span>
+                    <ArrowRight
+                      size={16}
+                      className="text-[var(--c-ink-muted)] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all"
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ========================= RESULTS BAND ========================== */}
       <section className="bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] py-20 lg:py-28">

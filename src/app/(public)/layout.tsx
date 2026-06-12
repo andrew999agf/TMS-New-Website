@@ -54,6 +54,12 @@ export default async function PublicLayout({
       <JsonLd data={legalServiceSchema} />
       <PageViewTracker />
       <GA4 id={ga4Id} />
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:top-3 focus:left-3 focus:bg-[var(--c-accent)] focus:text-[var(--c-on-accent)] focus:px-4 focus:py-2 focus:rounded"
+      >
+        Skip to content
+      </a>
       <Nav
         firmName={global["global.firmShort"] ?? FIRM.shortName}
         logoUrl={logoUrl}
@@ -63,7 +69,7 @@ export default async function PublicLayout({
         logoLight={global["global.logoLight"] || undefined}
         logoDark={global["global.logoDark"] || undefined}
       />
-      <main className="flex-1">{children}</main>
+      <main id="main-content" className="flex-1">{children}</main>
       <Footer />
     </>
   );

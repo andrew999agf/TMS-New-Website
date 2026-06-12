@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Mail, Phone, Printer } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
+import { FaqSection } from "@/components/site/FaqSection";
 import { getBlocks } from "@/lib/content";
+import { FAQS } from "@/lib/content/defaults/faqs";
 import { FIRM, OFFICES } from "@/lib/firm";
 import { telHref } from "@/lib/utils";
 
@@ -77,6 +79,8 @@ export default async function ContactPage() {
           </span>
         </div>
       </div>
+
+      <FaqSection faqs={FAQS} />
     </>
   );
 }

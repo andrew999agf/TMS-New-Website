@@ -81,12 +81,20 @@ Living record of what is done, what is pending, and what needs the human.
 - [x] **Testimonials** public home section + admin CRUD.
 - [x] **Turnstile** spam protection on intake (env-gated, server-verified).
 
+- [x] **Our Team:** team_members table + seed (Max as lead + staff), public
+      Our Team page + per-member profiles, admin CRUD, sitemap entries.
+- [x] **Branded OG images:** dynamic `next/og` social cards (site default +
+      per-post + per-practice-area).
+- [x] **FAQ + FAQPage schema** on Contact.
+- [x] **Home team teaser** and accessibility **skip-to-content** link.
+
 ## Pending (polish, not blocked on human)
 
 - [ ] Content-calendar drag-to-reschedule (scheduling itself works; calendar grid
       view is the remaining nicety).
 - [ ] Revision restore UI (revision table + audit log exist; restore screen TBD).
-- [ ] FAQPage schema where natural.
+- [ ] Admin editing of team education / experience / representative matters
+      (flat + list fields are editable; these structured arrays are seed-managed).
 - [ ] Lighthouse 90+ verification (needs a deployed URL to measure).
 - [ ] Vercel Analytics package (first-party capture already in place).
 
