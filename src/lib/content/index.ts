@@ -1,0 +1,282 @@
+import "server-only";
+import { db } from "@/db";
+import {
+  contentBlocks,
+  practiceAreas as paTable,
+  caseResults as crTable,
+  blogPosts,
+  glossaryTerms,
+  bannerItems,
+  settings,
+  type CaseResult,
+} from "@/db/schema";
+import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
+import { BLOCK_DEFAULTS } from "./defaults/blocks";
+import { PRACTICE_AREAS, type PracticeAreaSeed } from "./defaults/practice-areas";
+import { CASE_RESULTS, type CaseResultSeed } from "./defaults/results";
+import { GLOSSARY_TERMS, type GlossaryTermSeed } from "./defaults/glossary";
+import { BLOG_POSTS, type BlogPostSeed } from "./defaults/posts";
+import {
+  DEFAULT_COLOR_PALETTE_ID,
+  DEFAULT_FONT_PALETTE_ID,
+} from "@/lib/theme/palettes";
+import type { ActiveTheme } from "@/lib/theme/css";
+
+/**
+ * Content data-access layer. Every getter tries the database first and falls
+ * back to seed defaults if the DB is absent, unmigrated, or empty. All DB
+ * access is wrapped so a configuration gap degrades gracefully to the seed
+ * content instead of crashing a page render.
+ */
+
+async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  if (!db) return fallback;
+  try {
+    return await fn();
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[content] DB read failed, using defaults:", (err as Error).message);
+    }
+    return fallback;
+  }
+}
+
+/* ---- Content blocks ---- */
+
+export async function getBlocks(page: string): Promise<Record<string, string>> {
+  const defaults = Object.fromEntries(
+    Object.entries(BLOCK_DEFAULTS).filter(([k]) => k.startsWith(page + ".")),
+  );
+  const rows = await safe(
+    () => db!.select().from(contentBlocks).where(eq(contentBlocks.page, page)),
+    [],
+  );
+  const map = { ...defaults };
+  for (const r of rows) {
+    const v = (r.value ?? null) as unknown;
+    if (typeof v === "string") map[r.key] = v;
+    else if (v != null) map[r.key] = String(v);
+  }
+  return map;
+}
+
+/** Convenience: fetch every block group needed across the layout (global + footer). */
+export async function getGlobalBlocks(): Promise<Record<string, string>> {
+  const [global, footer] = await Promise.all([getBlocks("global"), getBlocks("footer")]);
+  return { ...global, ...footer };
+}
+
+/* ---- Theme ---- */
+
+export async function getActiveTheme(): Promise<ActiveTheme> {
+  const fallback: ActiveTheme = {
+    colorPaletteId: DEFAULT_COLOR_PALETTE_ID,
+    fontPaletteId: DEFAULT_FONT_PALETTE_ID,
+  };
+  const rows = await safe(
+    () => db!.select().from(settings).where(eq(settings.key, "theme")),
+    [],
+  );
+  if (rows.length && rows[0].value) {
+    return { ...fallback, ...(rows[0].value as object) } as ActiveTheme;
+  }
+  return fallback;
+}
+
+export async function getSetting<T = unknown>(key: string, fallback: T): Promise<T> {
+  const rows = await safe(
+    () => db!.select().from(settings).where(eq(settings.key, key)),
+    [],
+  );
+  if (rows.length) return rows[0].value as T;
+  return fallback;
+}
+
+/* ---- Practice areas ---- */
+
+export type PracticeAreaView = PracticeAreaSeed & { heroImage?: string | null };
+
+export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
+  const rows = await safe(
+    () =>
+      db!
+        .select()
+        .from(paTable)
+        .where(eq(paTable.visible, true))
+        .orderBy(asc(paTable.sort)),
+    [],
+  );
+  if (rows.length) {
+    return rows.map((r) => ({
+      slug: r.slug,
+      title: r.title,
+      group: r.group as PracticeAreaSeed["group"],
+      sort: r.sort,
+      tagline: r.tagline ?? "",
+      body: (r.body as string[]) ?? [],
+      approach: r.approach ?? "",
+      keywords: (r.keywords as string[]) ?? [],
+      seoTitle: r.seoTitle ?? r.title,
+      seoDescription: r.seoDescription ?? "",
+      heroImage: r.heroImage,
+    }));
+  }
+  return PRACTICE_AREAS;
+}
+
+export async function getPracticeArea(slug: string): Promise<PracticeAreaView | null> {
+  const all = await getPracticeAreas();
+  return all.find((p) => p.slug === slug) ?? null;
+}
+
+/* ---- Case results ---- */
+
+function normalizeResult(r: CaseResult): CaseResultSeed {
+  return {
+    category: r.category as CaseResultSeed["category"],
+    title: r.title,
+    stat: r.stat ?? undefined,
+    statLabel: r.statLabel ?? undefined,
+    year: r.year ?? undefined,
+    summary: r.summary ?? undefined,
+    detail: r.detail ?? undefined,
+    cite: r.cite ?? undefined,
+    link: r.link ?? undefined,
+    practiceSlug: r.practiceSlug ?? undefined,
+    featuredHome: r.featuredHome,
+    sort: r.sort,
+  };
+}
+
+export async function getResults(): Promise<CaseResultSeed[]> {
+  const rows = await safe(
+    () =>
+      db!
+        .select()
+        .from(crTable)
+        .where(eq(crTable.visible, true))
+        .orderBy(asc(crTable.sort)),
+    [],
+  );
+  if (rows.length) return rows.map(normalizeResult);
+  return CASE_RESULTS;
+}
+
+export async function getFeaturedResults(limit = 6): Promise<CaseResultSeed[]> {
+  const all = await getResults();
+  const featured = all.filter((r) => r.featuredHome || r.category === "marquee");
+  const rest = all.filter((r) => !featured.includes(r) && (r.stat || r.summary));
+  return [...featured, ...rest].slice(0, limit);
+}
+
+export async function getResultsForPractice(slug: string): Promise<CaseResultSeed[]> {
+  const all = await getResults();
+  return all.filter((r) => r.practiceSlug === slug);
+}
+
+/* ---- Blog ---- */
+
+export type PostView = BlogPostSeed & { publishedAtDate?: Date };
+
+function postFromRow(r: typeof blogPosts.$inferSelect): PostView {
+  return {
+    slug: r.slug,
+    title: r.title,
+    excerpt: r.excerpt ?? "",
+    body: r.body ?? "",
+    bannerImage: r.bannerImage ?? undefined,
+    category: r.category ?? undefined,
+    tags: (r.tags as string[]) ?? [],
+    author: r.author,
+    isFirmNews: r.isFirmNews,
+    status: r.status as BlogPostSeed["status"],
+    publishAt: r.publishAt ? r.publishAt.toISOString() : undefined,
+    seoTitle: r.seoTitle ?? undefined,
+    seoDescription: r.seoDescription ?? undefined,
+    relatedPractices: (r.relatedPractices as string[]) ?? [],
+    relatedPosts: (r.relatedPosts as string[]) ?? [],
+    publishedAtDate: r.publishedAt ?? r.publishAt ?? undefined,
+  };
+}
+
+/** Public list: only posts that should currently be visible to the world. */
+export async function getPublishedPosts(): Promise<PostView[]> {
+  const now = new Date();
+  const rows = await safe(
+    () =>
+      db!
+        .select()
+        .from(blogPosts)
+        .where(
+          or(
+            eq(blogPosts.status, "published"),
+            and(eq(blogPosts.status, "scheduled"), lte(blogPosts.publishAt, now)),
+          ),
+        )
+        .orderBy(desc(blogPosts.publishAt)),
+    [],
+  );
+  if (rows.length) return rows.map(postFromRow);
+
+  // Fallback to seed: published, or scheduled whose time has arrived.
+  return BLOG_POSTS.filter((p) => {
+    if (p.status === "published") return true;
+    if (p.status === "scheduled" && p.publishAt) return new Date(p.publishAt) <= now;
+    return false;
+  }).sort((a, b) => (b.publishAt ?? "").localeCompare(a.publishAt ?? ""));
+}
+
+export async function getPost(slug: string): Promise<PostView | null> {
+  const rows = await safe(
+    () => db!.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1),
+    [],
+  );
+  if (rows.length) return postFromRow(rows[0]);
+  return BLOG_POSTS.find((p) => p.slug === slug) ?? null;
+}
+
+export async function getPostsForPractice(slug: string, limit = 3): Promise<PostView[]> {
+  const all = await getPublishedPosts();
+  return all
+    .filter((p) => p.category === slug || (p.relatedPractices ?? []).includes(slug))
+    .slice(0, limit);
+}
+
+/* ---- Glossary ---- */
+
+export async function getGlossaryTerms(): Promise<GlossaryTermSeed[]> {
+  const rows = await safe(() => db!.select().from(glossaryTerms).orderBy(asc(glossaryTerms.term)), []);
+  if (rows.length) {
+    return rows.map((r) => ({
+      slug: r.slug,
+      term: r.term,
+      definition: r.definition,
+      hypothetical: r.hypothetical ?? "",
+      relatedPractices: (r.relatedPractices as string[]) ?? [],
+      aliases: (r.aliases as string[]) ?? [],
+    }));
+  }
+  return [...GLOSSARY_TERMS].sort((a, b) => a.term.localeCompare(b.term));
+}
+
+export async function getGlossaryTerm(slug: string): Promise<GlossaryTermSeed | null> {
+  const all = await getGlossaryTerms();
+  return all.find((t) => t.slug === slug) ?? null;
+}
+
+/* ---- Banner ---- */
+
+export async function getBannerItems() {
+  const rows = await safe(
+    () =>
+      db!
+        .select()
+        .from(bannerItems)
+        .where(eq(bannerItems.visible, true))
+        .orderBy(asc(bannerItems.sort)),
+    [],
+  );
+  return rows;
+}
+
+export { inArray }; // re-export for callers that filter by slug sets

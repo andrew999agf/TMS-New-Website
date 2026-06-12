@@ -1,0 +1,255 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 theme bridge.
+ *
+ * The actual color/font values live in runtime CSS custom properties (--c-*,
+ * --font-*) emitted by `themeToCss()` into <head>. Here we map those into
+ * Tailwind design tokens with `@theme inline` so that utilities like
+ * `bg-paper`, `text-ink`, `font-display` resolve to the live variables — which
+ * means an admin palette switch updates the whole site with no rebuild.
+ */
+@theme inline {
+  --color-paper: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface2: var(--c-surface-2);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-ink-muted);
+  --color-line: var(--c-border);
+  --color-accent: var(--c-accent);
+  --color-accent2: var(--c-accent-2);
+  --color-onaccent: var(--c-on-accent);
+  --color-term: var(--c-term);
+  --color-link: var(--c-link);
+  --color-success: var(--c-success);
+  --color-error: var(--c-error);
+
+  --color-dark: var(--c-dark-bg);
+  --color-darksurface: var(--c-dark-surface);
+  --color-darkink: var(--c-dark-ink);
+  --color-darkmuted: var(--c-dark-ink-muted);
+  --color-darkline: var(--c-dark-border);
+  --color-darkaccent: var(--c-dark-accent);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-ui: var(--font-ui);
+}
+
+/* Fallback theme values so the document renders even before themeToCss runs
+   (e.g. in isolated component tests). Mirrors the Oxblood & Bone default. */
+:root {
+  --c-bg: #f6f3ec;
+  --c-surface: #ffffff;
+  --c-surface-2: #efeae0;
+  --c-ink: #1a1714;
+  --c-ink-muted: #5c544b;
+  --c-border: #dad2c5;
+  --c-accent: #7a1f2b;
+  --c-accent-2: #5e1620;
+  --c-on-accent: #fbf7f0;
+  --c-term: #a8642a;
+  --c-link: #7a1f2b;
+  --c-success: #2f6b43;
+  --c-error: #a12b1e;
+  --c-dark-bg: #14110f;
+  --c-dark-surface: #1e1a17;
+  --c-dark-ink: #f4efe7;
+  --c-dark-ink-muted: #a89e92;
+  --c-dark-border: #332c26;
+  --c-dark-accent: #c46a52;
+  --font-display: ui-serif, Georgia, serif;
+  --font-body: ui-sans-serif, system-ui, sans-serif;
+  --font-ui: ui-sans-serif, system-ui, sans-serif;
+
+  /* Fluid type scale (clamp: min, preferred, max) */
+  --step--1: clamp(0.83rem, 0.8rem + 0.15vw, 0.92rem);
+  --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+  --step-1: clamp(1.2rem, 1.12rem + 0.4vw, 1.5rem);
+  --step-2: clamp(1.44rem, 1.3rem + 0.7vw, 2rem);
+  --step-3: clamp(1.73rem, 1.5rem + 1.15vw, 2.75rem);
+  --step-4: clamp(2.07rem, 1.7rem + 1.85vw, 3.75rem);
+  --step-5: clamp(2.49rem, 1.9rem + 2.95vw, 5.25rem);
+  --step-6: clamp(2.99rem, 2.1rem + 4.45vw, 7rem);
+}
+
+@layer base {
+  * {
+    border-color: var(--c-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+  body {
+    background: var(--c-bg);
+    color: var(--c-ink);
+    font-family: var(--font-body);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    color: var(--c-ink);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: var(--c-accent);
+    color: var(--c-on-accent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Section width container */
+  .container-page {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 5vw, 4rem);
+  }
+  .container-prose {
+    width: 100%;
+    max-width: 44rem;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 5vw, 2rem);
+  }
+
+  /* Eyebrow / kicker label */
+  .eyebrow {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--c-accent);
+  }
+  .eyebrow-muted {
+    color: var(--c-ink-muted);
+  }
+
+  /* Display headings */
+  .display-1 { font-size: var(--step-6); }
+  .display-2 { font-size: var(--step-5); }
+  .display-3 { font-size: var(--step-4); }
+  .h1 { font-size: var(--step-4); }
+  .h2 { font-size: var(--step-3); }
+  .h3 { font-size: var(--step-2); }
+  .lead {
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--c-ink-muted);
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1;
+    padding: 0.95rem 1.5rem;
+    border-radius: 2px;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .btn-accent {
+    background: var(--c-accent);
+    color: var(--c-on-accent);
+  }
+  .btn-accent:hover { background: var(--c-accent-2); }
+  .btn-outline {
+    border: 1px solid var(--c-border);
+    color: var(--c-ink);
+    background: transparent;
+  }
+  .btn-outline:hover { border-color: var(--c-ink); }
+  .btn-ghost-dark {
+    border: 1px solid var(--c-dark-border);
+    color: var(--c-dark-ink);
+    background: transparent;
+  }
+  .btn-ghost-dark:hover { border-color: var(--c-dark-ink); }
+
+  /* Hairline rule */
+  .rule {
+    height: 1px;
+    background: var(--c-border);
+    border: 0;
+  }
+
+  /* Link with animated underline */
+  .link-underline {
+    color: var(--c-link);
+    text-decoration: none;
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    background-size: 0% 1px;
+    transition: background-size 0.25s ease;
+  }
+  .link-underline:hover { background-size: 100% 1px; }
+}
+
+/* Long-form article body (blog posts, practice copy) */
+.prose-firm {
+  font-size: var(--step-0);
+  line-height: 1.75;
+  color: var(--c-ink);
+}
+.prose-firm > * + * { margin-top: 1.25em; }
+.prose-firm h2 { font-size: var(--step-2); margin-top: 2em; }
+.prose-firm h3 { font-size: var(--step-1); margin-top: 1.6em; }
+.prose-firm a { color: var(--c-link); text-decoration: underline; text-underline-offset: 3px; }
+.prose-firm ul { list-style: disc; padding-left: 1.4em; }
+.prose-firm ol { list-style: decimal; padding-left: 1.4em; }
+.prose-firm li + li { margin-top: 0.4em; }
+.prose-firm blockquote {
+  border-left: 3px solid var(--c-accent);
+  padding-left: 1.25rem;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-style: italic;
+  color: var(--c-ink-muted);
+}
+
+/* Ken Burns animation for hero stills (disabled under reduced-motion above) */
+@keyframes kenburns {
+  0% { transform: scale(1.05) translate(0, 0); }
+  100% { transform: scale(1.18) translate(-1.5%, -1.5%); }
+}
+.kenburns { animation: kenburns 18s ease-out forwards; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.7s ease both; }
