@@ -27,6 +27,7 @@ async function getStats() {
         .sort((a, b) => (a.publishAt ?? "").localeCompare(b.publishAt ?? ""))
         .slice(0, 5)
         .map((p) => ({ title: p.title, publishAt: p.publishAt })),
+      topPaths: [] as { path: string; count: number }[],
     };
   }
   try {
@@ -38,6 +39,13 @@ async function getStats() {
       .select({ c: sql<number>`count(*)` })
       .from(pageViewsTable)
       .where(gte(pageViewsTable.createdAt, since));
+    const topPaths = await db
+      .select({ path: pageViewsTable.path, c: sql<number>`count(*)` })
+      .from(pageViewsTable)
+      .where(gte(pageViewsTable.createdAt, since))
+      .groupBy(pageViewsTable.path)
+      .orderBy(sql`count(*) desc`)
+      .limit(8);
     const recentIntake = await db
       .select()
       .from(intakeSubmissions)
@@ -62,9 +70,10 @@ async function getStats() {
         isUrgent: r.isUrgent,
       })),
       upcoming: upcoming.map((u) => ({ title: u.title, publishAt: u.publishAt?.toISOString() })),
+      topPaths: topPaths.map((t) => ({ path: t.path, count: Number(t.c) })),
     };
   } catch {
-    return { published: 0, scheduled: 0, intakeCount: 0, views30: 0, recentIntake: [], upcoming: [] };
+    return { published: 0, scheduled: 0, intakeCount: 0, views30: 0, recentIntake: [], upcoming: [], topPaths: [] };
   }
 }
 
@@ -151,6 +160,30 @@ export default async function DashboardPage() {
             )}
           </section>
         </div>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Top pages — last 30 days</h2>
+          {s.topPaths.length === 0 ? (
+            <p className="text-sm text-[var(--c-ink-muted)]">
+              No traffic recorded yet. First-party page views accrue once the database is live.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {s.topPaths.map((t) => {
+                const max = s.topPaths[0]?.count || 1;
+                return (
+                  <li key={t.path} className="flex items-center gap-3 text-sm">
+                    <span className="w-48 truncate text-[var(--c-ink-muted)]">{t.path}</span>
+                    <span className="flex-1 h-2 rounded-full bg-[var(--c-surface2)] overflow-hidden">
+                      <span className="block h-full bg-[var(--c-accent)]" style={{ width: `${(t.count / max) * 100}%` }} />
+                    </span>
+                    <span className="w-10 text-right tabular-nums">{t.count}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </>
   );

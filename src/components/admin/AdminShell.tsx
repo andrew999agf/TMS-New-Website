@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   ExternalLink,
+  Quote,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
 
@@ -25,6 +26,7 @@ const NAV = [
   { label: "Results", href: "/admin/results", icon: Trophy },
   { label: "Blog", href: "/admin/blog", icon: Newspaper },
   { label: "Glossary", href: "/admin/glossary", icon: BookMarked },
+  { label: "Testimonials", href: "/admin/testimonials", icon: Quote },
   { label: "Media", href: "/admin/media", icon: ImageIcon },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },

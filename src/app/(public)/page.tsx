@@ -6,6 +6,7 @@ import {
   getBannerItems,
   getFeaturedResults,
   getPracticeAreas,
+  getTestimonials,
 } from "@/lib/content";
 import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 import {
@@ -15,11 +16,12 @@ import {
 } from "@/lib/firm";
 
 export default async function HomePage() {
-  const [home, banner, results, practices] = await Promise.all([
+  const [home, banner, results, practices, testimonials] = await Promise.all([
     getBlocks("home"),
     getBannerItems(),
     getFeaturedResults(6),
     getPracticeAreas(),
+    getTestimonials(),
   ]);
 
   const bannerMedia: BannerMedia[] = banner.map((b) => ({
@@ -169,6 +171,28 @@ export default async function HomePage() {
           <p className="mt-6 eyebrow eyebrow-muted">{home["home.quote.attribution"]}</p>
         </div>
       </section>
+
+      {/* ======================== TESTIMONIALS =========================== */}
+      {testimonials.length > 0 && (
+        <section className="container-page py-20 lg:py-28">
+          <p className="eyebrow">In their words</p>
+          <div className="mt-10 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+            {testimonials.slice(0, 6).map((t) => (
+              <figure key={t.id} className="border-l-2 border-[var(--c-accent)] pl-6">
+                <blockquote className="font-[family-name:var(--font-display)] text-lg leading-snug">
+                  “{t.quote}”
+                </blockquote>
+                {(t.attribution || t.context) && (
+                  <figcaption className="mt-3 text-sm text-[var(--c-ink-muted)]">
+                    {t.attribution}
+                    {t.context ? ` — ${t.context}` : ""}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ======================= COUNTIES BAND =========================== */}
       <section className="container-page py-20 lg:py-28">

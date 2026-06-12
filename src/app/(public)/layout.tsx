@@ -1,7 +1,8 @@
 import { Nav, type NavItem } from "@/components/site/Nav";
 import { Footer } from "@/components/site/Footer";
 import { JsonLd } from "@/components/site/JsonLd";
-import { getBlocks } from "@/lib/content";
+import { PageViewTracker, GA4 } from "@/components/site/Analytics";
+import { getBlocks, getSetting } from "@/lib/content";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
 
 const NAV_ITEMS: NavItem[] = [
@@ -19,6 +20,7 @@ export default async function PublicLayout({
 }) {
   const global = await getBlocks("global");
   const home = await getBlocks("home");
+  const ga4Id = (await getSetting<string>("ga4", process.env.NEXT_PUBLIC_GA4_ID ?? "")) || "";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
 
   const legalServiceSchema = {
@@ -49,6 +51,8 @@ export default async function PublicLayout({
   return (
     <>
       <JsonLd data={legalServiceSchema} />
+      <PageViewTracker />
+      <GA4 id={ga4Id} />
       <Nav
         firmName={global["global.firmShort"] ?? FIRM.shortName}
         items={NAV_ITEMS}

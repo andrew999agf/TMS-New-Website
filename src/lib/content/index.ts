@@ -8,6 +8,7 @@ import {
   glossaryTerms,
   bannerItems,
   settings,
+  testimonials as testimonialsTable,
   type CaseResult,
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
@@ -277,6 +278,25 @@ export async function getBannerItems() {
     [],
   );
   return rows;
+}
+
+/* ---- Testimonials ---- */
+
+export type TestimonialView = {
+  id: number;
+  quote: string;
+  attribution: string | null;
+  context: string | null;
+  visible: boolean;
+  sort: number;
+};
+
+export async function getTestimonials(visibleOnly = true): Promise<TestimonialView[]> {
+  const rows = await safe(
+    () => db!.select().from(testimonialsTable).orderBy(asc(testimonialsTable.sort)),
+    [],
+  );
+  return rows.filter((r) => (visibleOnly ? r.visible : true));
 }
 
 /* ---- Admin: editable block metadata (merges defaults + DB values) ---- */
