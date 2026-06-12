@@ -8,6 +8,7 @@ import { PRACTICE_AREAS } from "@/lib/content/defaults/practice-areas";
 import { CASE_RESULTS } from "@/lib/content/defaults/results";
 import { GLOSSARY_TERMS } from "@/lib/content/defaults/glossary";
 import { BLOG_POSTS } from "@/lib/content/defaults/posts";
+import { TEAM } from "@/lib/content/defaults/team";
 import {
   DEFAULT_COLOR_PALETTE_ID,
   DEFAULT_FONT_PALETTE_ID,
@@ -157,6 +158,64 @@ async function main() {
           publishedAt,
           relatedPractices: p.relatedPractices,
           relatedPosts: p.relatedPosts,
+        },
+      });
+  }
+
+  console.log("Seeding team members…");
+  for (const m of TEAM) {
+    await db
+      .insert(schema.teamMembers)
+      .values({
+        slug: m.slug,
+        name: m.name,
+        role: m.role,
+        isAttorney: m.isAttorney,
+        isLead: m.isLead,
+        teamLabel: m.teamLabel,
+        office: m.office,
+        email: m.email,
+        directPhone: m.directPhone,
+        barNumber: m.barNumber,
+        languages: m.languages,
+        photo: m.photo,
+        bioProfessional: m.bioProfessional,
+        bioBeyond: m.bioBeyond,
+        bioPersonal: m.bioPersonal,
+        experience: m.experience,
+        education: m.education,
+        representativeMatters: m.representativeMatters,
+        services: m.services,
+        practiceAreas: m.practiceAreas,
+        memberships: m.memberships,
+        barAdmissions: m.barAdmissions,
+        courtAdmissions: m.courtAdmissions,
+        sort: m.sort,
+      })
+      .onConflictDoUpdate({
+        target: schema.teamMembers.slug,
+        set: {
+          name: m.name,
+          role: m.role,
+          isAttorney: m.isAttorney,
+          isLead: m.isLead,
+          office: m.office,
+          email: m.email,
+          directPhone: m.directPhone,
+          barNumber: m.barNumber,
+          languages: m.languages,
+          bioProfessional: m.bioProfessional,
+          bioBeyond: m.bioBeyond,
+          bioPersonal: m.bioPersonal,
+          experience: m.experience,
+          education: m.education,
+          representativeMatters: m.representativeMatters,
+          services: m.services,
+          practiceAreas: m.practiceAreas,
+          memberships: m.memberships,
+          barAdmissions: m.barAdmissions,
+          courtAdmissions: m.courtAdmissions,
+          sort: m.sort,
         },
       });
   }

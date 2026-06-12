@@ -6,7 +6,7 @@ import { getBlocks, getSetting } from "@/lib/content";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "The Attorney", href: "/about" },
+  { label: "Our Team", href: "/about" },
   { label: "Practice Areas", href: "/practice-areas" },
   { label: "Results", href: "/results" },
   { label: "Insights", href: "/blog" },

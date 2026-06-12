@@ -1,0 +1,32 @@
+CREATE TABLE "team_members" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"slug" varchar(128) NOT NULL,
+	"name" varchar(191) NOT NULL,
+	"role" varchar(191) NOT NULL,
+	"is_attorney" boolean DEFAULT false NOT NULL,
+	"is_lead" boolean DEFAULT false NOT NULL,
+	"team_label" varchar(64) DEFAULT 'Texas Team' NOT NULL,
+	"office" varchar(128),
+	"email" varchar(255),
+	"direct_phone" varchar(64),
+	"bar_number" varchar(64),
+	"languages" varchar(191),
+	"photo" text,
+	"bio_professional" text,
+	"bio_beyond" text,
+	"bio_personal" text,
+	"experience" jsonb,
+	"education" jsonb,
+	"representative_matters" jsonb,
+	"services" jsonb,
+	"practice_areas" jsonb,
+	"memberships" jsonb,
+	"bar_admissions" jsonb,
+	"court_admissions" jsonb,
+	"visible" boolean DEFAULT true NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "team_members_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
+CREATE INDEX "team_sort_idx" ON "team_members" USING btree ("sort");

@@ -9,6 +9,7 @@ import {
   bannerItems,
   settings,
   testimonials as testimonialsTable,
+  teamMembers as teamTable,
   type CaseResult,
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
@@ -299,6 +300,58 @@ export async function getTestimonials(visibleOnly = true): Promise<TestimonialVi
   return rows.filter((r) => (visibleOnly ? r.visible : true));
 }
 
+/* ---- Team ---- */
+
+import { TEAM, type TeamMemberSeed } from "./defaults/team";
+
+export async function getTeam(visibleOnly = true): Promise<TeamMemberSeed[]> {
+  const rows = await safe(
+    () => db!.select().from(teamTable).orderBy(asc(teamTable.sort)),
+    [],
+  );
+  if (rows.length) {
+    return rows
+      .filter((r) => (visibleOnly ? r.visible : true))
+      .map((r) => ({
+        slug: r.slug,
+        name: r.name,
+        role: r.role,
+        isAttorney: r.isAttorney,
+        isLead: r.isLead,
+        teamLabel: r.teamLabel,
+        office: r.office ?? undefined,
+        email: r.email ?? undefined,
+        directPhone: r.directPhone ?? undefined,
+        barNumber: r.barNumber ?? undefined,
+        languages: r.languages ?? undefined,
+        photo: r.photo ?? undefined,
+        bioProfessional: r.bioProfessional ?? undefined,
+        bioBeyond: r.bioBeyond ?? undefined,
+        bioPersonal: r.bioPersonal ?? undefined,
+        experience: r.experience ?? undefined,
+        education: r.education ?? undefined,
+        representativeMatters: r.representativeMatters ?? undefined,
+        services: r.services ?? undefined,
+        practiceAreas: r.practiceAreas ?? undefined,
+        memberships: r.memberships ?? undefined,
+        barAdmissions: r.barAdmissions ?? undefined,
+        courtAdmissions: r.courtAdmissions ?? undefined,
+        sort: r.sort,
+      }));
+  }
+  return TEAM;
+}
+
+export async function getTeamMember(slug: string): Promise<TeamMemberSeed | null> {
+  const all = await getTeam(false);
+  return all.find((m) => m.slug === slug) ?? null;
+}
+
+export async function getLeadMember(): Promise<TeamMemberSeed | null> {
+  const all = await getTeam();
+  return all.find((m) => m.isLead) ?? all.find((m) => m.isAttorney) ?? all[0] ?? null;
+}
+
 /* ---- Admin: editable block metadata (merges defaults + DB values) ---- */
 
 import { CONTENT_BLOCKS } from "./defaults/blocks";
@@ -336,7 +389,7 @@ export async function getEditableBlocks(page: string): Promise<EditableBlock[]> 
 export const EDITABLE_PAGES = [
   { id: "global", label: "Global / Brand" },
   { id: "home", label: "Home" },
-  { id: "about", label: "About / The Attorney" },
+  { id: "about", label: "Our Team" },
   { id: "contact", label: "Contact" },
   { id: "consultation", label: "Consultation / Intake" },
   { id: "payment", label: "Payment" },

@@ -336,6 +336,68 @@ export const intakeSubmissions = pgTable(
 );
 
 /* ----------------------------------------------------------------------------
+ * Team members (attorneys + staff)
+ * ------------------------------------------------------------------------- */
+
+export type TeamExperience = {
+  title: string;
+  org: string;
+  dates?: string;
+  location?: string;
+  bullets?: string[];
+};
+export type TeamEducation = {
+  degree: string;
+  school: string;
+  year?: string;
+  location?: string;
+  note?: string;
+};
+export type TeamMatter = {
+  title: string;
+  cite?: string;
+  court?: string;
+  description?: string;
+};
+
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    id: serial("id").primaryKey(),
+    slug: varchar("slug", { length: 128 }).notNull().unique(),
+    name: varchar("name", { length: 191 }).notNull(),
+    role: varchar("role", { length: 191 }).notNull(),
+    isAttorney: boolean("is_attorney").notNull().default(false),
+    /** Lead member (Max) is featured at the top of the team page. */
+    isLead: boolean("is_lead").notNull().default(false),
+    teamLabel: varchar("team_label", { length: 64 }).notNull().default("Texas Team"),
+    office: varchar("office", { length: 128 }),
+    email: varchar("email", { length: 255 }),
+    directPhone: varchar("direct_phone", { length: 64 }),
+    barNumber: varchar("bar_number", { length: 64 }),
+    languages: varchar("languages", { length: 191 }),
+    photo: text("photo"),
+    bioProfessional: text("bio_professional"),
+    bioBeyond: text("bio_beyond"),
+    bioPersonal: text("bio_personal"),
+    experience: jsonb("experience").$type<TeamExperience[]>(),
+    education: jsonb("education").$type<TeamEducation[]>(),
+    representativeMatters: jsonb("representative_matters").$type<TeamMatter[]>(),
+    services: jsonb("services").$type<string[]>(),
+    practiceAreas: jsonb("practice_areas").$type<string[]>(),
+    memberships: jsonb("memberships").$type<string[]>(),
+    barAdmissions: jsonb("bar_admissions").$type<string[]>(),
+    courtAdmissions: jsonb("court_admissions").$type<string[]>(),
+    visible: boolean("visible").notNull().default(true),
+    sort: integer("sort").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ sortIdx: index("team_sort_idx").on(t.sort) }),
+);
+
+export type TeamMember = typeof teamMembers.$inferSelect;
+
+/* ----------------------------------------------------------------------------
  * Lightweight internal analytics (page views)
  * ------------------------------------------------------------------------- */
 
