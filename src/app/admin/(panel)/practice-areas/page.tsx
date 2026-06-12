@@ -25,13 +25,16 @@ export default async function PracticeAreasAdmin() {
                 .filter((a) => a.group === g.id)
                 .map((a) => (
                   <div key={a.slug} className="flex items-center justify-between px-5 py-3.5 bg-[var(--c-surface)]">
-                    <div>
-                      <div className="font-medium">{a.title}</div>
-                      <div className="text-xs text-[var(--c-ink-muted)]">{a.tagline}</div>
-                    </div>
-                    <Link href={`/practice-areas/${a.slug}`} target="_blank" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
-                      <ExternalLink size={15} />
+                    <Link href={`/admin/practice-areas/${a.slug}`} className="min-w-0 group">
+                      <div className="font-medium group-hover:text-[var(--c-accent)] transition-colors">{a.title}</div>
+                      <div className="text-xs text-[var(--c-ink-muted)] truncate">{a.tagline}</div>
                     </Link>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Link href={`/admin/practice-areas/${a.slug}`} className="text-xs text-[var(--c-accent)]">Edit</Link>
+                      <Link href={`/practice-areas/${a.slug}`} target="_blank" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+                        <ExternalLink size={15} />
+                      </Link>
+                    </div>
                   </div>
                 ))}
             </div>
