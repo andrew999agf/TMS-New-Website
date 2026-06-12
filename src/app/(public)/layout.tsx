@@ -60,6 +60,8 @@ export default async function PublicLayout({
         items={NAV_ITEMS}
         ctaLabel={home["home.hero.ctaLabel"] ?? "Request a Consultation"}
         ctaHref="/consultation"
+        logoLight={global["global.logoLight"] || undefined}
+        logoDark={global["global.logoDark"] || undefined}
       />
       <main className="flex-1">{children}</main>
       <Footer />

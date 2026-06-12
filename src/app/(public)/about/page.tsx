@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
+import { MediaPlaceholder } from "@/components/site/MediaPlaceholder";
 import { getBlocks } from "@/lib/content";
 import {
   BAR_ADMISSIONS,
@@ -31,12 +32,17 @@ export default async function AboutPage() {
         <div className="grid gap-12 lg:grid-cols-[1.4fr_0.6fr] lg:gap-16">
           {/* Bio */}
           <div>
-            {/* Portrait placeholder */}
-            <div className="aspect-[4/3] w-full bg-[var(--c-surface2)] border border-[var(--c-border)] flex items-center justify-center mb-10">
-              <span className="text-xs uppercase tracking-[0.2em] text-[var(--c-ink-muted)] opacity-50 font-[family-name:var(--font-ui)]">
-                Professional portrait — replace via admin
-              </span>
-            </div>
+            {/* Portrait — uploaded image or labeled placeholder */}
+            {about["about.portrait"] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={about["about.portrait"]}
+                alt={about["about.hero.heading"] ?? "Attorney portrait"}
+                className="w-full aspect-[4/5] object-cover mb-10 border border-[var(--c-border)]"
+              />
+            ) : (
+              <MediaPlaceholder slot="portrait" className="aspect-[4/5] w-full mb-10" />
+            )}
 
             <div
               className="prose-firm"

@@ -18,6 +18,7 @@ import {
   Check,
 } from "lucide-react";
 import { savePost, createGlossaryTerm, type PostInput } from "@/app/admin/(panel)/blog/post-actions";
+import { ImageUploadField } from "./ImageUploadField";
 import { slugify } from "@/lib/utils";
 
 type Practice = { slug: string; title: string };
@@ -212,8 +213,8 @@ export function PostEditor({
           <textarea value={excerpt} onChange={(e) => setExcerpt(e.target.value)} rows={3} className={inputCls} />
         </Field>
 
-        <Field label="Banner image URL">
-          <input value={bannerImage} onChange={(e) => setBannerImage(e.target.value)} placeholder="/… or https://…" className={inputCls} />
+        <Field label="Banner image">
+          <ImageUploadField value={bannerImage} onChange={setBannerImage} slot="blogBanner" folder="blog" />
         </Field>
 
         <Field label="Related practice areas">

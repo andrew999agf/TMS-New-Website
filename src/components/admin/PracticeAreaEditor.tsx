@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Check, Plus, Trash2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { savePracticeArea, type PracticeInput } from "@/app/admin/(panel)/practice-areas/actions";
+import { ImageUploadField } from "./ImageUploadField";
 
 export function PracticeAreaEditor({ initial }: { initial: PracticeInput }) {
   const [form, setForm] = useState<PracticeInput>(initial);
@@ -66,7 +67,14 @@ export function PracticeAreaEditor({ initial }: { initial: PracticeInput }) {
         />
       </Field>
 
-      <Field label="Hero image URL"><input value={form.heroImage ?? ""} onChange={(e) => { setForm({ ...form, heroImage: e.target.value }); setSaved(false); }} placeholder="/… or https://…" className={cls} /></Field>
+      <Field label="Hero background photo (shown behind the navy banner, under a scrim)">
+        <ImageUploadField
+          value={form.heroImage ?? ""}
+          onChange={(url) => { setForm((f) => ({ ...f, heroImage: url })); setSaved(false); }}
+          slot="practiceHero"
+          folder="practice"
+        />
+      </Field>
 
       <details className="text-sm">
         <summary className="cursor-pointer text-[var(--c-ink-muted)]">SEO</summary>

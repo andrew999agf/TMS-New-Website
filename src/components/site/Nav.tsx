@@ -14,12 +14,16 @@ export function Nav({
   items,
   ctaLabel,
   ctaHref,
+  logoLight,
+  logoDark,
 }: {
   firmName: string;
   logoUrl?: string | null;
   items: NavItem[];
   ctaLabel: string;
   ctaHref: string;
+  logoLight?: string;
+  logoDark?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -49,24 +53,26 @@ export function Nav({
       )}
     >
       <nav className="container-page flex items-center justify-between h-[72px]" aria-label="Primary">
-        <Link href="/" className="flex items-center leading-none" aria-label={firmName}>
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logoUrl}
-              alt={firmName}
-              className="h-10 w-auto max-h-11 object-contain"
-            />
-          ) : (
-            <span
-              className={cn(
-                "font-[family-name:var(--font-display)] text-lg tracking-tight",
-                onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
-              )}
-            >
-              {firmName}
-            </span>
-          )}
+        <Link href="/" aria-label={firmName} className="flex items-center leading-none">
+          {(() => {
+            // Prefer the context-aware light/dark logos; fall back to a single
+            // logo URL, then to the text wordmark. Layout adjusts either way.
+            const logo = (onDarkHero ? logoLight ?? logoDark : logoDark ?? logoLight) ?? logoUrl;
+            if (logo) {
+              // eslint-disable-next-line @next/next/no-img-element
+              return <img src={logo} alt={firmName} className="h-9 w-auto max-w-[260px] object-contain" />;
+            }
+            return (
+              <span
+                className={cn(
+                  "font-[family-name:var(--font-display)] text-lg tracking-tight leading-none",
+                  onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
+                )}
+              >
+                {firmName}
+              </span>
+            );
+          })()}
         </Link>
 
         <div className="hidden lg:flex items-center gap-7">

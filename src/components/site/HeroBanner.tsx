@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MEDIA_SPECS } from "@/lib/media-specs";
 
 export type BannerMedia = {
   id: string | number;
@@ -104,8 +105,13 @@ function PlaceholderBlock({
       }}
     >
       {label && (
-        <span className="text-[var(--c-dark-ink-muted)] text-xs uppercase tracking-[0.2em] font-[family-name:var(--font-ui)] opacity-40">
-          {label} — replace via admin
+        <span className="flex flex-col items-center gap-1.5 text-center px-4">
+          <span className="text-[var(--c-dark-ink-muted)] text-xs uppercase tracking-[0.2em] font-[family-name:var(--font-ui)] opacity-50">
+            {label} — replace via admin
+          </span>
+          <span className="text-[var(--c-dark-ink-muted)] text-[11px] opacity-40">
+            {MEDIA_SPECS.heroBanner.size}
+          </span>
         </span>
       )}
     </div>

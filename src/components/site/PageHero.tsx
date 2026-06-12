@@ -6,15 +6,27 @@ export function PageHero({
   title,
   lead,
   children,
+  bgImage,
 }: {
   eyebrow?: string;
   title: string;
   lead?: string;
   children?: React.ReactNode;
+  /** Optional background photo, shown under a semi-transparent scrim. */
+  bgImage?: string;
 }) {
   return (
-    <section className="bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] pt-36 pb-16 lg:pb-20">
-      <div className="container-page">
+    <section className="relative bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] pt-36 pb-16 lg:pb-20 overflow-hidden">
+      {bgImage && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={bgImage} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover" />
+          {/* Scrim keeps text readable over any photo. */}
+          <div className="absolute inset-0 bg-[var(--c-dark-bg)]/72" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--c-dark-bg)] via-transparent to-[var(--c-dark-bg)]/40" />
+        </>
+      )}
+      <div className="container-page relative z-10">
         {eyebrow && <p className="eyebrow text-[var(--c-dark-accent)]">{eyebrow}</p>}
         <h1 className="display-3 mt-4 max-w-4xl text-[var(--c-dark-ink)]">{title}</h1>
         {lead && (

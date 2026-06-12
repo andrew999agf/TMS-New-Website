@@ -8,6 +8,7 @@ import {
   toggleBannerItem,
   reorderBannerItem,
 } from "@/app/admin/(panel)/banner/actions";
+import { ImageUploadField } from "./ImageUploadField";
 
 export type BannerRow = {
   id: number;
@@ -61,7 +62,13 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
               <button key={k} onClick={() => setForm((f) => ({ ...f, kind: k }))} className={`text-sm px-3 py-1.5 rounded border capitalize ${form.kind === k ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>{k}</button>
             ))}
           </div>
-          <input value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="Media URL (from Media library)" className="w-full border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm outline-none focus:border-[var(--c-accent)]" />
+          <ImageUploadField
+            value={form.url}
+            onChange={(url) => setForm((f) => ({ ...f, url }))}
+            slot="heroBanner"
+            accept={form.kind === "video" ? "video/mp4,video/webm" : "image/*"}
+            folder="banner"
+          />
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2">Duration (ms)
               <input type="number" value={form.durationMs} onChange={(e) => setForm((f) => ({ ...f, durationMs: Number(e.target.value) }))} className="w-24 border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5" />

@@ -23,6 +23,8 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.firmName", page: "global", section: "brand", label: "Firm name", type: "text", value: FIRM.name },
   { key: "global.firmShort", page: "global", section: "brand", label: "Firm short name", type: "text", value: FIRM.shortName },
   { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "Trial lawyers for the whole of Texas law." },
+  { key: "global.logoLight", page: "global", section: "logo", label: "Logo — light (for dark backgrounds: header over hero, footer)", type: "image", value: "" },
+  { key: "global.logoDark", page: "global", section: "logo", label: "Logo — dark (for light backgrounds: scrolled header, interior pages)", type: "image", value: "" },
 
   // ---- Home: Hero ----
   { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "T. Maxwell Smith, PLLC — Fort Worth, Texas" },
@@ -65,6 +67,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "about.hero.eyebrow", page: "about", section: "hero", label: "Eyebrow", type: "text", value: "The Attorney" },
   { key: "about.hero.heading", page: "about", section: "hero", label: "Heading", type: "text", value: "Thomas Maxwell Smith" },
   { key: "about.hero.subhead", page: "about", section: "hero", label: "Subhead", type: "text", value: "Born and raised in Fort Worth. Bosque County roots since the mid-1800s. A trial lawyer who tries cases." },
+  { key: "about.portrait", page: "about", section: "bio", label: "Attorney portrait", type: "image", value: "" },
   { key: "about.bio.body", page: "about", section: "bio", label: "Biography", type: "richtext", value: "<p>Max Smith was born and raised in Fort Worth. He graduated from Arlington Heights High School in 2010 in the top ten percent of his class, played football and baseball, and earned the rank of Eagle Scout. He finished his B.A. in History at Southwestern University in three calendar years while playing varsity baseball, then earned an M.B.A. and a J.D. from Texas Tech.</p><p>He has been licensed since 2018 and has handled over a thousand legal matters — jury trials, bench trials, and appeals — across North and Central Texas and in federal court. He practiced with a Fort Worth firm before founding his own.</p><p>His family has farmed and ranched in southern Bosque County since the mid-1800s. Max and his wife help maintain the family farm and a small cattle operation today.</p>" },
   { key: "about.quote.text", page: "about", section: "quote", label: "Quote", type: "text", value: QUOTES.handshake.text },
   { key: "about.quote.attribution", page: "about", section: "quote", label: "Quote attribution", type: "text", value: QUOTES.handshake.attribution },

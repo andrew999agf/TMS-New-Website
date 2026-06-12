@@ -4,7 +4,16 @@ import { useState, useTransition } from "react";
 import { Check, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { saveBlocks } from "@/app/admin/(panel)/pages/actions";
+import { ImageUploadField } from "./ImageUploadField";
 import type { EditableBlock } from "@/lib/content";
+import type { MediaSlot } from "@/lib/media-specs";
+
+function slotForKey(key: string): MediaSlot | undefined {
+  if (key.includes("logo")) return "logoHeader";
+  if (key.includes("portrait")) return "portrait";
+  if (key.includes("og")) return "ogImage";
+  return undefined;
+}
 
 export function BlockEditor({
   blocks,
@@ -71,7 +80,15 @@ export function BlockEditor({
                       {b.label}
                       <span className="text-xs text-[var(--c-ink-muted)] font-normal">{b.type}</span>
                     </label>
-                    {b.type === "richtext" ? (
+                    {b.type === "image" || b.type === "video" ? (
+                      <ImageUploadField
+                        value={values[b.key] ?? ""}
+                        onChange={(url) => update(b.key, url)}
+                        slot={slotForKey(b.key)}
+                        accept={b.type === "video" ? "video/*" : "image/*"}
+                        folder="brand"
+                      />
+                    ) : b.type === "richtext" ? (
                       <textarea
                         value={values[b.key] ?? ""}
                         onChange={(e) => update(b.key, e.target.value)}

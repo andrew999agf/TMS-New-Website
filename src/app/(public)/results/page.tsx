@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
-import { getResults, getBlocks } from "@/lib/content";
+import { MarqueeTicker, type TickerItem } from "@/components/site/MarqueeTicker";
+import { getResults, getBlocks, getPracticeAreas } from "@/lib/content";
 import {
   LITIGATION_COUNTIES,
   FEDERAL_COURTS,
@@ -16,15 +17,42 @@ export const metadata: Metadata = {
 };
 
 export default async function ResultsPage() {
-  const [results, footer] = await Promise.all([getResults(), getBlocks("footer")]);
+  const [results, footer, practices] = await Promise.all([
+    getResults(),
+    getBlocks("footer"),
+    getPracticeAreas(),
+  ]);
   const disclaimer =
     footer["footer.results.disclaimer"] ??
     "Past results do not guarantee a similar outcome. Each case depends on its own facts and circumstances.";
 
-  const marquee = results.find((r) => r.category === "marquee");
+  const practiceTitle = (slug?: string) =>
+    practices.find((p) => p.slug === slug)?.title;
+
   const appellate = results.filter((r) => r.category === "appellate");
   const settlements = results.filter((r) => r.category === "settlement");
   const jury = results.filter((r) => r.category === "jury");
+
+  // Shuffle ticker: the marquee plus the strongest featured results (3–4),
+  // each labeled with its practice area instead of a generic "marquee" tag.
+  const tickerSource = [
+    ...results.filter((r) => r.category === "marquee"),
+    ...results.filter((r) => r.featuredHome && r.category !== "marquee"),
+    ...results.filter((r) => r.category === "appellate"),
+  ];
+  const seen = new Set<string>();
+  const tickerItems: TickerItem[] = tickerSource
+    .filter((r) => (seen.has(r.title) ? false : (seen.add(r.title), true)))
+    .slice(0, 4)
+    .map((r) => ({
+      practiceTitle: practiceTitle(r.practiceSlug),
+      stat: r.stat,
+      statLabel: r.statLabel,
+      title: r.title,
+      summary: r.summary,
+      detail: r.detail,
+      cite: r.cite,
+    }));
 
   return (
     <>
@@ -35,33 +63,8 @@ export default async function ResultsPage() {
       />
 
       <div className="container-page py-16 lg:py-24 space-y-20">
-        {/* Marquee */}
-        {marquee && (
-          <section className="bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] p-10 lg:p-16">
-            <p className="eyebrow text-[var(--c-dark-accent)]">Marquee result</p>
-            <div className="mt-6 grid gap-8 lg:grid-cols-[auto_1fr] lg:gap-16 lg:items-center">
-              <div className="font-[family-name:var(--font-display)] text-6xl lg:text-8xl text-[var(--c-dark-accent)] leading-none">
-                {marquee.stat}
-              </div>
-              <div>
-                <h2 className="h3 text-[var(--c-dark-ink)]">{marquee.title}</h2>
-                <p className="mt-4 text-[var(--c-dark-ink-muted)] leading-relaxed max-w-2xl">
-                  {marquee.summary}
-                </p>
-                {marquee.detail && (
-                  <details className="mt-5 group">
-                    <summary className="cursor-pointer text-sm text-[var(--c-dark-accent)] font-[family-name:var(--font-ui)] list-none">
-                      Case detail &amp; citation →
-                    </summary>
-                    <p className="mt-3 text-sm text-[var(--c-dark-ink-muted)] leading-relaxed">
-                      {marquee.detail}
-                    </p>
-                  </details>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+        {/* Featured results — shuffling ticker labeled by practice area */}
+        {tickerItems.length > 0 && <MarqueeTicker items={tickerItems} />}
 
         {/* Appellate record */}
         {appellate.length > 0 && (
