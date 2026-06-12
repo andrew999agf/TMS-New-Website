@@ -10,11 +10,13 @@ export type NavItem = { label: string; href: string };
 
 export function Nav({
   firmName,
+  logoUrl,
   items,
   ctaLabel,
   ctaHref,
 }: {
   firmName: string;
+  logoUrl?: string | null;
   items: NavItem[];
   ctaLabel: string;
   ctaHref: string;
@@ -47,14 +49,24 @@ export function Nav({
       )}
     >
       <nav className="container-page flex items-center justify-between h-[72px]" aria-label="Primary">
-        <Link
-          href="/"
-          className={cn(
-            "font-[family-name:var(--font-display)] text-lg tracking-tight leading-none",
-            onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
+        <Link href="/" className="flex items-center leading-none" aria-label={firmName}>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={firmName}
+              className="h-10 w-auto max-h-11 object-contain"
+            />
+          ) : (
+            <span
+              className={cn(
+                "font-[family-name:var(--font-display)] text-lg tracking-tight",
+                onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
+              )}
+            >
+              {firmName}
+            </span>
           )}
-        >
-          {firmName}
         </Link>
 
         <div className="hidden lg:flex items-center gap-7">

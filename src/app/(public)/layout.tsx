@@ -21,6 +21,7 @@ export default async function PublicLayout({
   const global = await getBlocks("global");
   const home = await getBlocks("home");
   const ga4Id = (await getSetting<string>("ga4", process.env.NEXT_PUBLIC_GA4_ID ?? "")) || "";
+  const logoUrl = (await getSetting<string>("logo", "")) || "";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
 
   const legalServiceSchema = {
@@ -55,6 +56,7 @@ export default async function PublicLayout({
       <GA4 id={ga4Id} />
       <Nav
         firmName={global["global.firmShort"] ?? FIRM.shortName}
+        logoUrl={logoUrl}
         items={NAV_ITEMS}
         ctaLabel={home["home.hero.ctaLabel"] ?? "Request a Consultation"}
         ctaHref="/consultation"

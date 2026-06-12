@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const ga4 = await getSetting<string>("ga4", "");
+  const logo = await getSetting<string>("logo", "");
 
   const envState = [
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
@@ -19,6 +20,17 @@ export default async function SettingsPage() {
     <>
       <AdminHeader title="Settings" description="Analytics, integrations, and environment status." />
       <div className="p-8 max-w-2xl space-y-8">
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Branding</h2>
+          <p className="text-sm text-[var(--c-ink-muted)] mb-4">
+            Logo shown in the top navigation. Upload an image in{" "}
+            <Link href="/admin/media" className="text-[var(--c-accent)]">Media</Link>, copy its URL,
+            and paste it here. Leave blank to show the firm name as text. Use a transparent PNG/SVG
+            that reads on both light and dark backgrounds (it sits over the dark hero on the home page).
+          </p>
+          <SettingsForm settingKey="logo" label="Logo image URL" placeholder="https://…(from Media library)" initial={logo} />
+        </section>
+
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Analytics</h2>
           <SettingsForm settingKey="ga4" label="Google Analytics 4 Measurement ID" placeholder="G-XXXXXXXXXX" initial={ga4} />
