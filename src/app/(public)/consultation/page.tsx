@@ -28,6 +28,7 @@ export default async function ConsultationPage({
         <IntakeWizard
           initialPractice={practice}
           consentText={blocks["intake.consent"] ?? ""}
+          turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
         />
         <p className="mt-12 max-w-2xl text-xs text-[var(--c-ink-muted)] leading-relaxed border-t border-[var(--c-border)] pt-6">
           {blocks["intake.consent"]}

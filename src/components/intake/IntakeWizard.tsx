@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import { ArrowLeft, ArrowRight, Check, Search } from "lucide-react";
+import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
   COMMON_STEPS,
@@ -16,9 +17,11 @@ type Answers = Record<string, string | string[]>;
 export function IntakeWizard({
   initialPractice,
   consentText,
+  turnstileSiteKey,
 }: {
   initialPractice?: string;
   consentText: string;
+  turnstileSiteKey?: string;
 }) {
   const initialBranch = initialPractice
     ? BRANCHES.find((b) => b.practiceSlug === initialPractice) ?? null
@@ -31,6 +34,7 @@ export function IntakeWizard({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const fuse = useMemo(
     () =>
@@ -77,6 +81,7 @@ export function IntakeWizard({
           practiceSlug: branch.practiceSlug,
           answers,
           referrer: typeof document !== "undefined" ? document.referrer : "",
+          turnstileToken: turnstileToken ?? undefined,
         }),
       });
       if (!res.ok) throw new Error("Submission failed");
@@ -193,6 +198,10 @@ export function IntakeWizard({
         ))}
       </div>
 
+      {currentStep.id === "consent" && turnstileSiteKey && (
+        <Turnstile siteKey={turnstileSiteKey} onToken={setTurnstileToken} />
+      )}
+
       {error && <p className="mt-6 text-[var(--c-error)]">{error}</p>}
 
       <div className="mt-10 flex items-center justify-between">
@@ -214,7 +223,7 @@ export function IntakeWizard({
         {isLast ? (
           <button
             onClick={handleSubmit}
-            disabled={!canAdvance(currentStep) || submitting}
+            disabled={!canAdvance(currentStep) || submitting || (Boolean(turnstileSiteKey) && !turnstileToken)}
             className="btn btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Sending…" : "Submit request"} <Check size={16} />

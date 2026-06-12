@@ -16,12 +16,14 @@ import {
   LogOut,
   ExternalLink,
   Quote,
+  Film,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
 
 const NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Pages", href: "/admin/pages", icon: FileText },
+  { label: "Home Banner", href: "/admin/banner", icon: Film },
   { label: "Practice Areas", href: "/admin/practice-areas", icon: Scale },
   { label: "Results", href: "/admin/results", icon: Trophy },
   { label: "Blog", href: "/admin/blog", icon: Newspaper },

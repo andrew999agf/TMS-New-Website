@@ -13,9 +13,27 @@ const schema = z.object({
   practiceSlug: z.string().optional(),
   answers: z.record(z.unknown()),
   referrer: z.string().optional(),
+  turnstileToken: z.string().optional(),
   // Honeypot — must be empty.
   company: z.string().optional(),
 });
+
+async function verifyTurnstile(token: string | undefined, ip: string): Promise<boolean> {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return true; // not enforced when unconfigured
+  if (!token) return false;
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip }),
+    });
+    const data = (await res.json()) as { success: boolean };
+    return data.success === true;
+  } catch {
+    return false;
+  }
+}
 
 // Very small in-memory rate limiter (per-instance). For production scale,
 // front with Vercel/Upstash; sufficient as a first line of defense here.
@@ -54,11 +72,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid submission" }, { status: 400 });
   }
 
-  const { branch, practiceSlug, answers, referrer, company } = parsed.data;
+  const { branch, practiceSlug, answers, referrer, company, turnstileToken } = parsed.data;
 
   // Honeypot tripped — pretend success, drop silently.
   if (company && company.trim()) {
     return NextResponse.json({ ok: true });
+  }
+
+  // Turnstile (only enforced when configured).
+  if (!(await verifyTurnstile(turnstileToken, ip))) {
+    return NextResponse.json({ error: "Verification failed. Please try again." }, { status: 400 });
   }
 
   const a = answers as Record<string, unknown>;
