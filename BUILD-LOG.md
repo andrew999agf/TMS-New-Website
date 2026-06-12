@@ -68,27 +68,30 @@ Living record of what is done, what is pending, and what needs the human.
 - [x] **Vercel Cron** publish route + `vercel.json`.
 - [x] **Drizzle migration** generated (`drizzle/0000_*.sql`).
 
-## Pending (next increments, not blocked on human)
+- [x] **In-browser image editor:** crop (free + hero/card/square/portrait) with
+      zoom, brightness/contrast/saturation/warmth/sharpness/vignette/rotate/flip/
+      monochrome, the four branded filters (Courtroom/Headshot/Authority/Archive),
+      background removal (lazy `@imgly/background-removal`) + headshot canvas;
+      non-destructive export to a new Blob asset. Wired into the Media library.
+- [x] **Rich editors:** Tiptap blog post editor with inline "mark as glossary
+      term"; full CRUD for glossary terms, case results, practice areas,
+      testimonials, and the hero banner sequence.
+- [x] **Analytics:** first-party page-view beacon + `/api/pv`, dashboard
+      top-pages breakdown, GA4 injection from the saved setting.
+- [x] **Testimonials** public home section + admin CRUD.
+- [x] **Turnstile** spam protection on intake (env-gated, server-verified).
 
-- [ ] **In-browser image editor** (crop/adjust/branded filters "Courtroom/
-      Headshot/Authority/Archive"/background removal/headshot canvas). The Media
-      library + upload pipeline are in place; the canvas editor is the remaining
-      piece.
-- [ ] **Per-record rich editors** for practice areas, results, glossary, and a
-      full blog post editor (Tiptap) with the inline "mark as glossary term"
-      flow and content-calendar drag-to-reschedule. (List views + visibility/
-      status controls are done; copy currently edited via DB/seed + Pages.)
-- [ ] **Analytics:** page-view capture middleware + internal dashboard charts;
-      GA4 script injection from the saved setting; Vercel Analytics.
-- [ ] **Testimonials** public section (schema + admin CRUD; none at launch).
-- [ ] **Revision restore UI** (schema in place).
-- [ ] Accessibility + performance verification passes (Lighthouse 90+).
-- [ ] Turnstile wiring (env-gated) on the intake form.
+## Pending (polish, not blocked on human)
+
+- [ ] Content-calendar drag-to-reschedule (scheduling itself works; calendar grid
+      view is the remaining nicety).
+- [ ] Revision restore UI (revision table + audit log exist; restore screen TBD).
 - [ ] FAQPage schema where natural.
+- [ ] Lighthouse 90+ verification (needs a deployed URL to measure).
+- [ ] Vercel Analytics package (first-party capture already in place).
 
-> Note: most "pending" admin editors require a live `DATABASE_URL` to exercise
-> end-to-end. The data model, server actions, and read paths are built; they
-> light up the moment the database is provisioned and seeded.
+> Note: admin editors fall back to seed content for preview without a database,
+> and persist the moment `DATABASE_URL` is set and the schema is migrated/seeded.
 
 ## Needs the human (collect; not blocking)
 
