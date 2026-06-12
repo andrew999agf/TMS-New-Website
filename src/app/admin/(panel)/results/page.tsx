@@ -1,46 +1,81 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { getResults } from "@/lib/content";
+import { ResultsManager } from "@/components/admin/ResultsManager";
+import { getResults, getPracticeAreas } from "@/lib/content";
+import { db, hasDb } from "@/db";
+import { caseResults } from "@/db/schema";
+import { asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
 export default async function ResultsAdmin() {
-  const results = await getResults();
-  const byCat = (c: string) => results.filter((r) => r.category === c);
-  const groups: { id: string; label: string }[] = [
-    { id: "marquee", label: "Marquee" },
-    { id: "appellate", label: "Appellate record" },
-    { id: "settlement", label: "Settlements & recoveries" },
-    { id: "jury", label: "Jury-trial record" },
-  ];
+  const practices = await getPracticeAreas();
+
+  let results: Array<{
+    id: number;
+    category: "marquee" | "appellate" | "settlement" | "jury" | "other";
+    title: string;
+    stat?: string;
+    statLabel?: string;
+    year?: string;
+    summary?: string;
+    detail?: string;
+    cite?: string;
+    link?: string;
+    practiceSlug?: string;
+    featuredHome: boolean;
+  }> = [];
+
+  if (db) {
+    try {
+      const rows = await db.select().from(caseResults).orderBy(asc(caseResults.sort));
+      results = rows.map((r) => ({
+        id: r.id,
+        category: r.category as "marquee" | "appellate" | "settlement" | "jury" | "other",
+        title: r.title,
+        stat: r.stat ?? undefined,
+        statLabel: r.statLabel ?? undefined,
+        year: r.year ?? undefined,
+        summary: r.summary ?? undefined,
+        detail: r.detail ?? undefined,
+        cite: r.cite ?? undefined,
+        link: r.link ?? undefined,
+        practiceSlug: r.practiceSlug ?? undefined,
+        featuredHome: r.featuredHome,
+      }));
+    } catch {
+      results = [];
+    }
+  }
+  if (results.length === 0) {
+    const seed = await getResults();
+    results = seed.map((r, i) => ({
+      id: -(i + 1),
+      category: r.category,
+      title: r.title,
+      stat: r.stat,
+      statLabel: r.statLabel,
+      year: r.year,
+      summary: r.summary,
+      detail: r.detail,
+      cite: r.cite,
+      link: r.link,
+      practiceSlug: r.practiceSlug,
+      featuredHome: r.featuredHome ?? false,
+    }));
+  }
 
   return (
     <>
       <AdminHeader
         title="Results"
-        description="Every result is a record: title, category, stat, summary, detail, cite, visibility, sort."
+        description="Every result is editable: category, stat, summary, citation, home-feature toggle."
       />
-      <div className="p-8 space-y-8 max-w-3xl">
-        {groups.map((g) => (
-          <section key={g.id}>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)] mb-3">{g.label}</h2>
-            <div className="rounded-lg border border-[var(--c-border)] overflow-hidden divide-y divide-[var(--c-border)]">
-              {byCat(g.id).map((r, i) => (
-                <div key={i} className="px-5 py-3.5 bg-[var(--c-surface)] flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-medium">{r.title}</div>
-                    {r.cite && <div className="text-xs text-[var(--c-ink-muted)]">{r.cite}</div>}
-                  </div>
-                  {r.stat && <span className="text-sm text-[var(--c-accent)] font-medium whitespace-nowrap">{r.stat}</span>}
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-        <p className="text-sm text-[var(--c-ink-muted)]">
-          Results are seeded from verified firm facts. Full CRUD writes to the
-          <code className="mx-1">case_results</code> table; the public Results page and per-area
-          sidebars read from it automatically.
-        </p>
+      <div className="p-8">
+        <ResultsManager
+          results={results}
+          practices={practices.map((p) => ({ slug: p.slug, title: p.title }))}
+          dbEnabled={hasDb}
+        />
       </div>
     </>
   );
