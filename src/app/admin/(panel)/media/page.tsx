@@ -18,6 +18,11 @@ export default async function MediaAdmin() {
     }
   }
   const blobConfigured = isBlobConfigured();
+  const detected = {
+    BLOB_STORE_ID: Boolean(process.env.BLOB_STORE_ID),
+    VERCEL_OIDC_TOKEN: Boolean(process.env.VERCEL_OIDC_TOKEN),
+    BLOB_READ_WRITE_TOKEN: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+  };
 
   return (
     <>
@@ -26,7 +31,7 @@ export default async function MediaAdmin() {
         description="Upload and manage images and banner video. Stored on Vercel Blob."
       />
       <div className="p-8">
-        <MediaLibrary assets={assets} blobConfigured={blobConfigured} />
+        <MediaLibrary assets={assets} blobConfigured={blobConfigured} detected={detected} />
       </div>
     </>
   );

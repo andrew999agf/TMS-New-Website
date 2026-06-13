@@ -9,9 +9,11 @@ type Asset = { id: number; url: string; kind: string; alt: string | null; folder
 export function MediaLibrary({
   assets,
   blobConfigured,
+  detected,
 }: {
   assets: Asset[];
   blobConfigured: boolean;
+  detected?: Record<string, boolean>;
 }) {
   const [items, setItems] = useState<Asset[]>(assets);
   const [uploading, setUploading] = useState(false);
@@ -46,8 +48,19 @@ export function MediaLibrary({
     <div>
       {!blobConfigured && (
         <div className="mb-6 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface2)] p-4 text-sm text-[var(--c-ink-muted)]">
-          Vercel Blob is not configured yet. Set <code>BLOB_READ_WRITE_TOKEN</code> to enable
-          uploads. The library and uploader are ready and will work the moment the token is added.
+          <p className="font-medium text-[var(--c-ink)]">Media storage not detected for this deployment.</p>
+          <p className="mt-1">
+            This build looks for a connected Vercel Blob store. Runtime check:
+          </p>
+          {detected && (
+            <ul className="mt-2 font-mono text-xs">
+              {Object.entries(detected).map(([k, v]) => (
+                <li key={k}>
+                  {v ? "✓" : "✗"} {k}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
