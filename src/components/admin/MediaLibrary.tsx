@@ -8,7 +8,7 @@ import { uploadToBlob } from "@/lib/upload-client";
 type Asset = { id: number; url: string; kind: string; alt: string | null; folder: string | null };
 
 // Bump this string on each media-upload change so we can confirm a deploy landed.
-const UPLOADER_BUILD = "uploader v3 — direct-to-storage + drag-drop";
+const UPLOADER_BUILD = "uploader v4 — auto-shrink + drag-drop";
 
 export function MediaLibrary({
   assets,
