@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { SettingsForm } from "@/components/admin/SettingsForm";
+import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
 import { getSetting } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +24,13 @@ export default async function SettingsPage() {
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Branding</h2>
           <p className="text-sm text-[var(--c-ink-muted)] mb-4">
-            Logo shown in the top navigation. Upload an image in{" "}
-            <Link href="/admin/media" className="text-[var(--c-accent)]">Media</Link>, copy its URL,
-            and paste it here. Leave blank to show the firm name as text. Use a transparent PNG/SVG
-            that reads on both light and dark backgrounds (it sits over the dark hero on the home page).
+            Logo shown in the top navigation. Upload a file directly below, or paste a URL. Leave
+            blank to show the firm name as text. Use a transparent PNG/SVG that reads on both light
+            and dark backgrounds (it sits over the dark hero on the home page). For separate
+            light/dark logos, use{" "}
+            <Link href="/admin/pages/global" className="text-[var(--c-accent)]">Pages → Global</Link>.
           </p>
-          <SettingsForm settingKey="logo" label="Logo image URL" placeholder="https://…(from Media library)" initial={logo} />
+          <LogoUploadSetting initial={logo} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
