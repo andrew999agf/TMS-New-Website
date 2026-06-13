@@ -3,6 +3,7 @@ import { MediaLibrary } from "@/components/admin/MediaLibrary";
 import { db } from "@/db";
 import { mediaAssets } from "@/db/schema";
 import { desc } from "drizzle-orm";
+import { isBlobConfigured } from "@/lib/blob";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function MediaAdmin() {
       assets = [];
     }
   }
-  const blobConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  const blobConfigured = isBlobConfigured();
 
   return (
     <>

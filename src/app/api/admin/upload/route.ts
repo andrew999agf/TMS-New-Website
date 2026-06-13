@@ -3,6 +3,7 @@ import { put } from "@vercel/blob";
 import { db } from "@/db";
 import { mediaAssets } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { isBlobConfigured } from "@/lib/blob";
 
 export const runtime = "nodejs";
 
@@ -13,9 +14,9 @@ export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!isBlobConfigured()) {
     return NextResponse.json(
-      { error: "Media storage not configured (BLOB_READ_WRITE_TOKEN missing)." },
+      { error: "Media storage not configured. Connect a Vercel Blob store to this project." },
       { status: 503 },
     );
   }

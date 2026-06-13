@@ -3,6 +3,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
 import { getSetting } from "@/lib/content";
+import { isBlobConfigured } from "@/lib/blob";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function SettingsPage() {
   const envState = [
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
     { key: "AUTH_SECRET", label: "Auth secret", set: Boolean(process.env.AUTH_SECRET) },
-    { key: "BLOB_READ_WRITE_TOKEN", label: "Media storage (Blob)", set: Boolean(process.env.BLOB_READ_WRITE_TOKEN) },
+    { key: "BLOB_READ_WRITE_TOKEN", label: "Media storage (Blob)", set: isBlobConfigured() },
     { key: "RESEND_API_KEY", label: "Email (Resend)", set: Boolean(process.env.RESEND_API_KEY) },
   ];
 
