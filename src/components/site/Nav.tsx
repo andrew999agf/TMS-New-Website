@@ -52,7 +52,7 @@ export function Nav({
             : "bg-[var(--c-bg)] border-b border-[var(--c-border)]",
       )}
     >
-      <nav className="container-page flex items-center justify-between h-[72px]" aria-label="Primary">
+      <nav className="container-page flex items-center justify-between h-24" aria-label="Primary">
         <Link href="/" aria-label={firmName} className="flex items-center leading-none">
           {(() => {
             // Prefer the context-aware light/dark logos; fall back to a single
@@ -60,7 +60,7 @@ export function Nav({
             const logo = (onDarkHero ? logoLight ?? logoDark : logoDark ?? logoLight) ?? logoUrl;
             if (logo) {
               // eslint-disable-next-line @next/next/no-img-element
-              return <img src={logo} alt={firmName} className="h-9 w-auto max-w-[260px] object-contain" />;
+              return <img src={logo} alt={firmName} className="h-[4.5rem] w-auto max-w-[360px] object-contain" />;
             }
             return (
               <span
