@@ -22,13 +22,13 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Global ----
   { key: "global.firmName", page: "global", section: "brand", label: "Firm name", type: "text", value: FIRM.name },
   { key: "global.firmShort", page: "global", section: "brand", label: "Firm short name", type: "text", value: FIRM.shortName },
-  { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "Trial lawyers for the whole of Texas law." },
+  { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "A general practice attorney who gets you answers." },
   { key: "global.logoLight", page: "global", section: "logo", label: "Logo — light (for dark backgrounds: header over hero, footer)", type: "image", value: "" },
   { key: "global.logoDark", page: "global", section: "logo", label: "Logo — dark (for light backgrounds: scrolled header, interior pages)", type: "image", value: "" },
 
   // ---- Home: Hero ----
   { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "T. Maxwell Smith, PLLC — Fort Worth, Texas" },
-  { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "Trial lawyers for the whole of Texas law." },
+  { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "A general practice attorney who gets you answers." },
   { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "The law is a seamless web. We practice across it — and prepare every matter for trial from day one, because that is how you win whether you ever pick a jury or not." },
   { key: "home.hero.ctaLabel", page: "home", section: "hero", label: "Hero button label", type: "text", value: "Request a Consultation" },
   { key: "home.hero.ctaHref", page: "home", section: "hero", label: "Hero button link", type: "url", value: "/consultation" },

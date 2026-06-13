@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
  * unless a route provides its own. On-brand with the default Oxblood & Bone
  * palette (OG images are generated outside the live-theme context).
  */
-export const alt = "T. Maxwell Smith, PLLC — Trial lawyers for the whole of Texas law.";
+export const alt = "T. Maxwell Smith, PLLC — A general practice attorney who gets you answers.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -40,8 +40,8 @@ export default function OpengraphImage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ color: "#f4efe7", fontSize: 76, lineHeight: 1.05, maxWidth: 1000 }}>
-            Trial lawyers for the whole of Texas law.
+          <div style={{ color: "#f4efe7", fontSize: 70, lineHeight: 1.05, maxWidth: 1000 }}>
+            A general practice attorney who gets you answers.
           </div>
           <div style={{ color: "#a89e92", fontSize: 30, marginTop: 24, fontFamily: "Arial, sans-serif" }}>
             Prepared for trial. From day one.
