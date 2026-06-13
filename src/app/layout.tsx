@@ -8,7 +8,7 @@ import { FIRM } from "@/lib/firm";
 export async function generateMetadata(): Promise<Metadata> {
   const blocks = await getBlocks("global");
   const name = blocks["global.firmName"] ?? FIRM.name;
-  const tagline = blocks["global.tagline"] ?? "A general practice attorney who gets you answers.";
+  const tagline = blocks["global.tagline"] ?? "Generally trained for your specific legal matter.";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
   return {
     metadataBase: new URL(baseUrl),

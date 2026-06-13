@@ -217,7 +217,7 @@ export function AppearanceEditor({ initial }: { initial: ActiveTheme }) {
               T. Maxwell Smith, PLLC
             </div>
             <div className="text-2xl mt-2 leading-tight" style={{ color: "var(--c-dark-ink)", fontFamily: "var(--font-display)" }}>
-              A general practice attorney who gets you answers.
+              Generally trained for your specific legal matter.
             </div>
             <p className="text-xs mt-2" style={{ color: "var(--c-dark-ink-muted)", fontFamily: "var(--font-body)" }}>
               Prepared for trial from day one.

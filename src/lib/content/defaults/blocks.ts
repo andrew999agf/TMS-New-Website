@@ -22,14 +22,14 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Global ----
   { key: "global.firmName", page: "global", section: "brand", label: "Firm name", type: "text", value: FIRM.name },
   { key: "global.firmShort", page: "global", section: "brand", label: "Firm short name", type: "text", value: FIRM.shortName },
-  { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "A general practice attorney who gets you answers." },
+  { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "Generally trained for your specific legal matter." },
   { key: "global.logoLight", page: "global", section: "logo", label: "Logo — light (for dark backgrounds: header over hero, footer)", type: "image", value: "" },
   { key: "global.logoDark", page: "global", section: "logo", label: "Logo — dark (for light backgrounds: scrolled header, interior pages)", type: "image", value: "" },
 
   // ---- Home: Hero ----
   { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "T. Maxwell Smith, PLLC — Fort Worth, Texas" },
-  { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "A general practice attorney who gets you answers." },
-  { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "The law is a seamless web. We practice across it — and prepare every matter for trial from day one, because that is how you win whether you ever pick a jury or not." },
+  { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "Generally trained for your specific legal matter." },
+  { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "The law is a seamless web — one matter bleeds into the next. A general practice built around litigators, ready for whatever your case touches." },
   { key: "home.hero.ctaLabel", page: "home", section: "hero", label: "Hero button label", type: "text", value: "Request a Consultation" },
   { key: "home.hero.ctaHref", page: "home", section: "hero", label: "Hero button link", type: "url", value: "/consultation" },
   { key: "home.hero.cta2Label", page: "home", section: "hero", label: "Hero secondary label", type: "text", value: "See the Record" },
@@ -38,7 +38,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Home: Firm strip ----
   { key: "home.firm.eyebrow", page: "home", section: "firmStrip", label: "Eyebrow", type: "text", value: "The Firm" },
   { key: "home.firm.heading", page: "home", section: "firmStrip", label: "Heading", type: "text", value: "A general practice built around litigators." },
-  { key: "home.firm.body", page: "home", section: "firmStrip", label: "Body", type: "richtext", value: "<p>Over a thousand matters. Jury trials, bench trials, appeals. We have seen how this goes.</p><p>We practice across the whole of Texas law because one matter bleeds into another, and a lawyer without the full baseline misses things. If you want what you are owed, you have to be willing to sue. If you sue and lose, you have to be able to appeal. Front end, back end, and everything in between.</p>" },
+  { key: "home.firm.body", page: "home", section: "firmStrip", label: "Body", type: "richtext", value: "<p>Nobody ever wants to need a lawyer. When you do, you want one who gets you the answers you need — not one who passes the buck.</p><p>The law is a seamless web: a business matter can turn on family, probate, criminal, or tort law without warning, and an issue in one area often calls for counsel in another. We practice across the whole of Texas law so your representation is comprehensive — and we bring a born Texan's mindset of no retreat, no surrender to every matter.</p>" },
 
   // ---- Home: Results band ----
   { key: "home.results.eyebrow", page: "home", section: "resultsBand", label: "Eyebrow", type: "text", value: "The Record" },
