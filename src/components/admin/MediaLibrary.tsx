@@ -8,7 +8,7 @@ import { uploadToBlob } from "@/lib/upload-client";
 type Asset = { id: number; url: string; kind: string; alt: string | null; folder: string | null };
 
 // Bump this string on each media-upload change so we can confirm a deploy landed.
-const UPLOADER_BUILD = "uploader v4 — auto-shrink + drag-drop";
+const UPLOADER_BUILD = "uploader v5 — OIDC (blob 2.x) + auto-shrink";
 
 export function MediaLibrary({
   assets,
@@ -97,7 +97,17 @@ export function MediaLibrary({
       />
 
       {error && <p className="mt-3 text-sm text-[var(--c-error)]">{error}</p>}
-      <p className="mt-2 text-[10px] text-[var(--c-ink-muted)] opacity-60">{UPLOADER_BUILD}</p>
+      <p className="mt-2 text-[10px] text-[var(--c-ink-muted)] opacity-60">
+        {UPLOADER_BUILD}
+        {detected && (
+          <>
+            {" · "}
+            {Object.entries(detected)
+              .map(([k, v]) => `${v ? "✓" : "✗"}${k.replace("BLOB_", "").replace("VERCEL_", "")}`)
+              .join(" ")}
+          </>
+        )}
+      </p>
 
       <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {items.map((a) => (
