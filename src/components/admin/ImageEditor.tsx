@@ -40,6 +40,7 @@ export function ImageEditor({
   const [zoom, setZoom] = useState(1); // 1 = full image within aspect
   const [loaded, setLoaded] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [removeProgress, setRemoveProgress] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hasCutout, setHasCutout] = useState(false);
   const [backdrop, setBackdrop] = useState<Backdrop>({ type: "none", color: "#14110f", color2: "#7a1f2b" });
@@ -107,9 +108,19 @@ export function ImageEditor({
   async function removeBackground() {
     setRemoving(true);
     setError(null);
+    setRemoveProgress("Starting…");
     try {
       const mod = await import("@imgly/background-removal");
-      const blob = await mod.removeBackground(src);
+      const blob = await mod.removeBackground(src, {
+        // Quantized model: ~half the download of the default, faster inference.
+        model: "isnet_quint8",
+        output: { format: "image/png" },
+        progress: (key: string, current: number, total: number) => {
+          const pct = total ? Math.round((current / total) * 100) : 0;
+          if (key.startsWith("fetch")) setRemoveProgress(`Loading model… ${pct}% (one-time)`);
+          else setRemoveProgress(`Processing… ${pct}%`);
+        },
+      });
       const url = URL.createObjectURL(blob);
       const img = new Image();
       img.onload = () => {
@@ -117,11 +128,13 @@ export function ImageEditor({
         setHasCutout(true);
         setBackdrop((b) => ({ ...b, type: "solid" }));
         setRemoving(false);
+        setRemoveProgress(null);
       };
       img.src = url;
     } catch (e) {
-      setError("Background removal failed to load. " + (e as Error).message);
+      setError("Background removal failed. " + (e as Error).message);
       setRemoving(false);
+      setRemoveProgress(null);
     }
   }
 
@@ -238,8 +251,11 @@ export function ImageEditor({
               <h4 className="text-xs uppercase tracking-[0.14em] text-[var(--c-ink-muted)] mb-2">Background &amp; headshot</h4>
               <button onClick={removeBackground} disabled={removing} className="btn btn-outline text-sm py-2 px-3 w-full justify-center">
                 {removing ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
-                {removing ? "Removing… (first run downloads model)" : hasCutout ? "Background removed" : "Remove background"}
+                {removing ? "Removing…" : hasCutout ? "Background removed" : "Remove background"}
               </button>
+              {removing && removeProgress && (
+                <p className="mt-2 text-xs text-[var(--c-ink-muted)]">{removeProgress}</p>
+              )}
               {hasCutout && (
                 <div className="mt-3 space-y-2">
                   <div className="flex gap-1.5">
