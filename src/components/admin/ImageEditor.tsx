@@ -45,8 +45,15 @@ export function ImageEditor({
   const [hasCutout, setHasCutout] = useState(false);
   const [backdrop, setBackdrop] = useState<Backdrop>({ type: "none", color: "#14110f", color2: "#7a1f2b" });
   const [error, setError] = useState<string | null>(null);
+  // Crop position offset (image pixels) set by dragging the preview to recenter.
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const dragStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
   const activeImg = () => (hasCutout ? cutoutImg.current : baseImg.current);
+
+  // Render-safe flag (no ref access): is a crop region currently in effect?
+  const cropActive =
+    aspect !== "free" || zoom !== 1 || cropOffset.x !== 0 || cropOffset.y !== 0;
 
   const computeCrop = useCallback((): CropRect => {
     const img = activeImg();
@@ -54,24 +61,32 @@ export function ImageEditor({
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
     const preset = ASPECT_PRESETS.find((p) => p.id === aspect);
+
+    let w: number;
+    let h: number;
     if (!preset?.ratio) {
-      if (zoom === 1) return null;
-      const w = iw / zoom;
-      const h = ih / zoom;
-      return { x: (iw - w) / 2, y: (ih - h) / 2, w, h };
+      if (zoom === 1 && cropOffset.x === 0 && cropOffset.y === 0) return null;
+      w = iw / zoom;
+      h = ih / zoom;
+    } else {
+      // Fit a crop of the requested aspect inside the image, then apply zoom.
+      w = iw;
+      h = w / preset.ratio;
+      if (h > ih) {
+        h = ih;
+        w = h * preset.ratio;
+      }
+      w /= zoom;
+      h /= zoom;
     }
-    // Fit a crop of the requested aspect inside the image, then apply zoom.
-    let w = iw;
-    let h = w / preset.ratio;
-    if (h > ih) {
-      h = ih;
-      w = h * preset.ratio;
-    }
-    w /= zoom;
-    h /= zoom;
-    return { x: (iw - w) / 2, y: (ih - h) / 2, w, h };
+
+    // Center, then apply the drag offset, clamped so the crop stays in-bounds.
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+    const x = clamp((iw - w) / 2 + cropOffset.x, 0, Math.max(0, iw - w));
+    const y = clamp((ih - h) / 2 + cropOffset.y, 0, Math.max(0, ih - h));
+    return { x, y, w, h };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aspect, zoom, hasCutout]);
+  }, [aspect, zoom, hasCutout, cropOffset]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -176,7 +191,30 @@ export function ImageEditor({
           {/* Canvas */}
           <div className="bg-[var(--c-surface2)] flex items-center justify-center p-6 overflow-auto checkerboard">
             {loaded ? (
-              <canvas ref={canvasRef} className="max-w-full max-h-[70vh] object-contain shadow-lg" />
+              <canvas
+                ref={canvasRef}
+                onPointerDown={(e) => {
+                  if (!computeCrop()) return; // nothing to reposition unless cropped
+                  (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
+                  dragStart.current = { x: e.clientX, y: e.clientY, ox: cropOffset.x, oy: cropOffset.y };
+                }}
+                onPointerMove={(e) => {
+                  const start = dragStart.current;
+                  const canvas = canvasRef.current;
+                  const crop = computeCrop();
+                  if (!start || !canvas || !crop) return;
+                  const scaleX = crop.w / canvas.clientWidth;
+                  const scaleY = crop.h / canvas.clientHeight;
+                  const dx = (e.clientX - start.x) * scaleX;
+                  const dy = (e.clientY - start.y) * scaleY;
+                  setCropOffset({ x: start.ox - dx, y: start.oy - dy });
+                }}
+                onPointerUp={() => (dragStart.current = null)}
+                onPointerLeave={() => (dragStart.current = null)}
+                className={`max-w-full max-h-[70vh] object-contain shadow-lg touch-none ${
+                  cropActive ? "cursor-grab active:cursor-grabbing" : ""
+                }`}
+              />
             ) : (
               <Loader2 className="animate-spin text-[var(--c-ink-muted)]" />
             )}
@@ -236,7 +274,10 @@ export function ImageEditor({
                 {ASPECT_PRESETS.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setAspect(p.id)}
+                    onClick={() => {
+                      setAspect(p.id);
+                      setCropOffset({ x: 0, y: 0 });
+                    }}
                     className={`text-xs px-2 py-1 rounded border ${aspect === p.id ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)]"}`}
                   >
                     {p.label}
@@ -244,6 +285,19 @@ export function ImageEditor({
                 ))}
               </div>
               <Slider label="Zoom" min={1} max={3} step={0.05} value={zoom} onChange={setZoom} />
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-xs text-[var(--c-ink-muted)]">
+                  {cropActive ? "Drag the image to reposition the crop." : "Zoom or pick a ratio to crop."}
+                </p>
+                {(cropOffset.x !== 0 || cropOffset.y !== 0) && (
+                  <button
+                    onClick={() => setCropOffset({ x: 0, y: 0 })}
+                    className="text-xs text-[var(--c-accent)]"
+                  >
+                    Re-center
+                  </button>
+                )}
+              </div>
             </section>
 
             {/* Background removal + headshot canvas */}
