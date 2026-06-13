@@ -1,5 +1,5 @@
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
 import { db } from "@/db";
 import { mediaAssets } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -7,13 +7,24 @@ import { isBlobConfigured } from "@/lib/blob";
 
 export const runtime = "nodejs";
 
-const MAX_BYTES = 50 * 1024 * 1024; // 50MB (covers banner video clips)
-const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/avif", "video/mp4", "video/webm"];
+const ALLOWED = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+  "image/svg+xml",
+  "video/mp4",
+  "video/webm",
+];
 
-export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+/**
+ * Client-upload token endpoint for Vercel Blob. The browser uploads files
+ * DIRECTLY to Blob (no 4.5MB serverless body limit), and this route only mints
+ * the short-lived upload token and records metadata on completion. Works with
+ * an OIDC-connected store or a static BLOB_READ_WRITE_TOKEN.
+ */
+export async function POST(req: Request): Promise<NextResponse> {
   if (!isBlobConfigured()) {
     return NextResponse.json(
       { error: "Media storage not configured. Connect a Vercel Blob store to this project." },
@@ -21,42 +32,46 @@ export async function POST(req: Request) {
     );
   }
 
-  const form = await req.formData();
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
-  }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "File too large (max 50MB)" }, { status: 413 });
-  }
-  if (!ALLOWED.includes(file.type)) {
-    return NextResponse.json({ error: `Unsupported type: ${file.type}` }, { status: 415 });
+  let body: HandleUploadBody;
+  try {
+    body = (await req.json()) as HandleUploadBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const folder = String(form.get("folder") ?? "uploads");
-  const blob = await put(`${folder}/${Date.now()}-${file.name}`, file, {
-    access: "public",
-    addRandomSuffix: true,
-  });
-
-  let id: number | null = null;
-  if (db) {
-    try {
-      const [row] = await db
-        .insert(mediaAssets)
-        .values({
-          url: blob.url,
-          pathname: blob.pathname,
-          kind: file.type.startsWith("video") ? "video" : "image",
-          sizeBytes: file.size,
-          folder,
-        })
-        .returning({ id: mediaAssets.id });
-      id = row?.id ?? null;
-    } catch {
-      /* metadata persistence is best-effort */
-    }
+  try {
+    const result = await handleUpload({
+      body,
+      request: req,
+      onBeforeGenerateToken: async (_pathname, clientPayload) => {
+        // Only signed-in admins may request an upload token.
+        const session = await getSession();
+        if (!session) throw new Error("Unauthorized");
+        return {
+          allowedContentTypes: ALLOWED,
+          maximumSizeInBytes: 50 * 1024 * 1024, // 50MB (covers banner clips)
+          addRandomSuffix: true,
+          tokenPayload: clientPayload ?? "uploads",
+        };
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
+        // Fired by Vercel after the direct upload finishes (production only).
+        if (!db) return;
+        try {
+          const folder = typeof tokenPayload === "string" && tokenPayload ? tokenPayload : "uploads";
+          await db.insert(mediaAssets).values({
+            url: blob.url,
+            pathname: blob.pathname,
+            kind: (blob.contentType ?? "").startsWith("video") ? "video" : "image",
+            folder,
+          });
+        } catch {
+          /* metadata is best-effort */
+        }
+      },
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
-
-  return NextResponse.json({ ok: true, url: blob.url, pathname: blob.pathname, id });
 }

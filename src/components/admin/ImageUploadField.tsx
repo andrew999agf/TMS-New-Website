@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Upload, Loader2, X, Link2 } from "lucide-react";
 import { MEDIA_SPECS, type MediaSlot } from "@/lib/media-specs";
+import { uploadToBlob } from "@/lib/upload-client";
 
 /**
  * Reusable image/video field used across the admin: upload a file (primary) or
@@ -36,15 +37,10 @@ export function ImageUploadField({
     setUploading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("folder", folder);
-      const res = await fetch("/api/admin/upload", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      onChange(data.url);
+      const url = await uploadToBlob(file, folder);
+      onChange(url);
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message || "Upload failed");
     } finally {
       setUploading(false);
     }
