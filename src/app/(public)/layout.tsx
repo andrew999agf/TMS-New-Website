@@ -20,9 +20,17 @@ export default async function PublicLayout({
 }) {
   const global = await getBlocks("global");
   const home = await getBlocks("home");
+  const payment = await getBlocks("payment");
   const ga4Id = (await getSetting<string>("ga4", process.env.NEXT_PUBLIC_GA4_ID ?? "")) || "";
   const logoUrl = (await getSetting<string>("logo", "")) || "";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+
+  const fortWorth = OFFICES.find((o) => o.id === "fort-worth");
+  const meridian = OFFICES.find((o) => o.id === "meridian");
+  const headerPhones = [
+    fortWorth && { label: "Fort Worth", number: fortWorth.phone },
+    meridian && { label: "Bosque County", number: meridian.phone },
+  ].filter(Boolean) as { label: string; number: string }[];
 
   const legalServiceSchema = {
     "@context": "https://schema.org",
@@ -68,6 +76,8 @@ export default async function PublicLayout({
         ctaHref="/consultation"
         logoLight={global["global.logoLight"] || undefined}
         logoDark={global["global.logoDark"] || undefined}
+        paymentUrl={payment["payment.url"] || undefined}
+        phones={headerPhones}
       />
       <main id="main-content" className="flex-1">{children}</main>
       <Footer />

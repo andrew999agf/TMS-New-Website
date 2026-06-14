@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Menu, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Menu, X, Phone, CreditCard } from "lucide-react";
+import { cn, telHref } from "@/lib/utils";
 
 export type NavItem = { label: string; href: string };
 
@@ -16,6 +16,8 @@ export function Nav({
   ctaHref,
   logoLight,
   logoDark,
+  paymentUrl,
+  phones,
 }: {
   firmName: string;
   logoUrl?: string | null;
@@ -24,14 +26,40 @@ export function Nav({
   ctaHref: string;
   logoLight?: string;
   logoDark?: string;
+  paymentUrl?: string;
+  phones?: { label: string; number: string }[];
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   useEffect(() => setOpen(false), [pathname]);
 
+  const payHref = paymentUrl || "/payment";
+  const payExternal = Boolean(paymentUrl);
+
   return (
     <header className="sticky top-0 z-50 bg-[var(--c-bg)]/95 backdrop-blur border-b border-[var(--c-border)]">
+      {/* Utility bar: office phones (left) + Make a Payment (right) */}
+      <div className="hidden lg:block border-b border-[var(--c-border)] bg-[var(--c-surface2)]">
+        <div className="container-page flex items-center justify-between h-9 text-xs">
+          <div className="flex items-center gap-5 text-[var(--c-ink-muted)]">
+            {(phones ?? []).map((p) => (
+              <a key={p.label} href={telHref(p.number)} className="flex items-center gap-1.5 hover:text-[var(--c-ink)]">
+                <Phone size={12} />
+                <span className="font-medium text-[var(--c-ink)]">{p.label}</span> {p.number}
+              </a>
+            ))}
+          </div>
+          <a
+            href={payHref}
+            {...(payExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            className="flex items-center gap-1.5 font-[family-name:var(--font-ui)] font-semibold text-[var(--c-accent)] hover:opacity-80"
+          >
+            <CreditCard size={13} /> Make a Payment
+          </a>
+        </div>
+      </div>
+
       <nav className="container-page flex items-center justify-between h-24" aria-label="Primary">
         <Link href="/" aria-label={firmName} className="flex items-center leading-none">
           {(() => {
@@ -91,6 +119,18 @@ export function Nav({
               >
                 {item.label}
               </Link>
+            ))}
+            <a
+              href={payHref}
+              {...(payExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              className="py-3 text-base text-[var(--c-accent)] font-medium border-b border-[var(--c-border)] flex items-center gap-2"
+            >
+              <CreditCard size={16} /> Make a Payment
+            </a>
+            {(phones ?? []).map((p) => (
+              <a key={p.label} href={telHref(p.number)} className="py-2.5 text-sm text-[var(--c-ink-muted)] flex items-center gap-2">
+                <Phone size={14} /> <span className="font-medium text-[var(--c-ink)]">{p.label}</span> {p.number}
+              </a>
             ))}
             <Link href={ctaHref} className="btn btn-accent mt-4">
               {ctaLabel}
