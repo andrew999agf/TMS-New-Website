@@ -56,18 +56,27 @@ export async function Footer() {
       <div className="container-page py-16 lg:py-20">
         <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
-            {global["global.logoLight"] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={global["global.logoLight"]}
-                alt={firmName}
-                className="h-12 w-auto max-w-[280px] object-contain"
-              />
-            ) : (
-              <div className="font-[family-name:var(--font-display)] text-2xl leading-tight">
-                {firmName}
-              </div>
-            )}
+            {(() => {
+              // Prefer an explicit white/light logo; otherwise auto-whiten the
+              // main (dark) logo so it reads on the dark footer.
+              const lightLogo = global["global.logoLight"];
+              const darkLogo = global["global.logoDark"];
+              const footerLogo = lightLogo || darkLogo;
+              const whiten = !lightLogo && !!darkLogo;
+              return footerLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={footerLogo}
+                  alt={firmName}
+                  className="h-12 w-auto max-w-[280px] object-contain"
+                  style={whiten ? { filter: "brightness(0) invert(1)" } : undefined}
+                />
+              ) : (
+                <div className="font-[family-name:var(--font-display)] text-2xl leading-tight">
+                  {firmName}
+                </div>
+              );
+            })()}
             <p className="mt-4 text-[var(--c-dark-ink-muted)] max-w-xs text-sm leading-relaxed">
               {blocks["footer.blurb"]}
             </p>

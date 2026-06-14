@@ -27,9 +27,11 @@ export default async function PublicLayout({
 
   const fortWorth = OFFICES.find((o) => o.id === "fort-worth");
   const meridian = OFFICES.find((o) => o.id === "meridian");
+  const weatherford = OFFICES.find((o) => o.id === "weatherford");
   const headerPhones = [
     fortWorth && { label: "Fort Worth", number: fortWorth.phone },
     meridian && { label: "Bosque County", number: meridian.phone },
+    weatherford && { label: "Weatherford", number: weatherford.phone },
   ].filter(Boolean) as { label: string; number: string }[];
 
   const legalServiceSchema = {

@@ -23,8 +23,8 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.firmName", page: "global", section: "brand", label: "Firm name", type: "text", value: FIRM.name },
   { key: "global.firmShort", page: "global", section: "brand", label: "Firm short name", type: "text", value: FIRM.shortName },
   { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "Generally trained for your specific legal matter." },
-  { key: "global.logoLight", page: "global", section: "logo", label: "Logo — light (for dark backgrounds: header over hero, footer)", type: "image", value: "" },
-  { key: "global.logoDark", page: "global", section: "logo", label: "Logo — dark (for light backgrounds: scrolled header, interior pages)", type: "image", value: "" },
+  { key: "global.logoDark", page: "global", section: "logo", label: "Logo (your main logo — shown white automatically on dark areas like the footer)", type: "image", value: "" },
+  { key: "global.logoLight", page: "global", section: "logo", label: "Logo — white/light version (optional; only needed if you don't want the auto-white)", type: "image", value: "" },
   { key: "global.socialImage", page: "global", section: "logo", label: "Social share image (shown when pages are texted or posted to social media — 1200×630px)", type: "image", value: "" },
   { key: "global.favicon", page: "global", section: "logo", label: "Favicon (browser tab icon — square PNG, 512×512px)", type: "image", value: "" },
 

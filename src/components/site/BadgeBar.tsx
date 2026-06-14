@@ -12,13 +12,14 @@ export function BadgeBar({ badges }: { badges: BadgeView[] }) {
 
   // Duplicate the set so the marquee can loop seamlessly.
   const loop = [...withLogos, ...withLogos];
-  const durationS = Math.max(24, withLogos.length * 7);
+  // Half speed = double the duration.
+  const durationS = Math.max(48, withLogos.length * 14);
 
   return (
     <section className="border-b border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
-      <div className="py-8 group">
+      <div className="py-10 group">
         <div
-          className="badge-marquee flex items-center gap-20 w-max"
+          className="badge-marquee flex items-center gap-28 w-max"
           style={{ animationDuration: `${durationS}s` }}
         >
           {loop.map((b, i) => {
@@ -28,7 +29,7 @@ export function BadgeBar({ badges }: { badges: BadgeView[] }) {
                 src={b.logo!}
                 alt={b.name}
                 title={b.name}
-                className="h-28 w-auto max-w-[360px] object-contain"
+                className="h-[8.4rem] w-auto max-w-[432px] object-contain"
               />
             );
             return b.url ? (
