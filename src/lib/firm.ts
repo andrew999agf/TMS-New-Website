@@ -20,7 +20,7 @@ export const FIRM = {
     title: "Trial Attorney & Founder",
   },
   email: "max@texaslawsmith.com",
-  fax: "(817) 532-3419",
+  fax: "(817) 348-8328",
   paymentUrlPlaceholder: "", // [HUMAN: supply current Clio payment link]
   domain: "texaslawsmith.com", // confirm
 } as const;
