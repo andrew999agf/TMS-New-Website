@@ -68,16 +68,21 @@ export async function POST() {
   if (!db) return NextResponse.json({ error: "Database not configured." }, { status: 503 });
 
   const applied: string[] = [];
+  const failed: string[] = [];
 
-  // 1) Ensure tables exist (this is the critical part).
-  try {
-    for (const stmt of DDL) {
+  // 1) Ensure tables/columns exist. Run each statement independently so one
+  //    problematic statement (e.g. an enum change) can't abort the rest or the
+  //    seeding below. All statements are idempotent (IF NOT EXISTS).
+  for (const stmt of DDL) {
+    try {
       await db.execute(sql.raw(stmt));
+    } catch (err) {
+      // "already exists" style errors are fine and expected on repeat runs.
+      const msg = (err as Error).message;
+      if (!/already exists/i.test(msg)) failed.push(`${stmt.slice(0, 60)}…: ${msg}`);
     }
-    applied.push("Ensured tables: team_members, badges");
-  } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
+  applied.push("Ensured tables & columns (team_members, badges, focal columns)");
 
   // 2) Seed team if empty (best-effort; failures don't abort).
   try {
@@ -128,5 +133,5 @@ export async function POST() {
     /* non-fatal */
   }
 
-  return NextResponse.json({ ok: true, applied });
+  return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });
 }
