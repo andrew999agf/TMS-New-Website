@@ -2,14 +2,17 @@ import Link from "next/link";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
+import { PaymentLinkSetting } from "@/components/admin/PaymentLinkSetting";
 import { DbSyncButton } from "@/components/admin/DbSyncButton";
-import { getSetting } from "@/lib/content";
+import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const ga4 = await getSetting<string>("ga4", "");
+  const paymentBlocks = await getBlocks("payment");
+  const paymentUrl = paymentBlocks["payment.url"] ?? "";
   const logo = await getSetting<string>("logo", "");
 
   const envState = [
@@ -33,6 +36,15 @@ export default async function SettingsPage() {
             <Link href="/admin/pages/global" className="text-[var(--c-accent)]">Pages → Global</Link>.
           </p>
           <LogoUploadSetting initial={logo} />
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Make a Payment</h2>
+          <p className="text-sm text-[var(--c-ink-muted)] mb-4">
+            The link behind the &quot;Make a Payment&quot; button in the header (and the Payment page).
+            Paste your Clio payment URL here.
+          </p>
+          <PaymentLinkSetting initial={paymentUrl} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

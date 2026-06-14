@@ -96,7 +96,6 @@ export const TEAM: TeamMemberSeed[] = [
       "Business-Related Matters",
       "Civil Litigation",
       "Estate Planning & Probate Matters",
-      "Foreclosures",
       "Plaintiff's Litigation, Personal Injury & Wrongful Death",
     ],
     services: [
