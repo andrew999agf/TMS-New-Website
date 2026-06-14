@@ -89,8 +89,16 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "contact.hero.heading", page: "contact", section: "hero", label: "Heading", type: "text", value: "Talk to the firm." },
   { key: "contact.hero.body", page: "contact", section: "hero", label: "Body", type: "text", value: "Nobody ever wants to need a lawyer. When you do, you want one who will get you the answers you need — not one who will pass the buck." },
 
+  // ---- Office location photos (shown on each Contact card, replacing the map) ----
+  { key: "contact.office.fort-worth.photo", page: "contact", section: "officePhotos", label: "Fort Worth — location photo", type: "image", value: "" },
+  { key: "contact.office.fort-worth.photo.focal", page: "contact", section: "officePhotos", label: "Fort Worth photo position", type: "focal", value: "center" },
+  { key: "contact.office.meridian.photo", page: "contact", section: "officePhotos", label: "Bosque County — location photo", type: "image", value: "" },
+  { key: "contact.office.meridian.photo.focal", page: "contact", section: "officePhotos", label: "Bosque County photo position", type: "focal", value: "center" },
+  { key: "contact.office.weatherford.photo", page: "contact", section: "officePhotos", label: "Weatherford — location photo", type: "image", value: "" },
+  { key: "contact.office.weatherford.photo.focal", page: "contact", section: "officePhotos", label: "Weatherford photo position", type: "focal", value: "center" },
+
   // ---- Footer ----
-  { key: "footer.blurb", page: "footer", section: "main", label: "Footer blurb", type: "text", value: "A Texas trial firm. Prepared for trial from day one." },
+  { key: "footer.blurb", page: "footer", section: "main", label: "Footer blurb", type: "text", value: "A Texas trial firm. Preparing for trial from day one." },
   { key: "footer.disclaimer", page: "footer", section: "legal", label: "Footer disclaimer", type: "richtext", value: `<p>This website is for informational purposes only and does not constitute legal advice. Viewing this site or contacting the firm does not create an attorney-client relationship. Do not send confidential information until an attorney-client relationship has been established in writing.</p><p>Principal office: Meridian, Texas. The attorney responsible for this site is Thomas Maxwell Smith. ${FIRM.name}.</p>` },
   { key: "footer.results.disclaimer", page: "footer", section: "legal", label: "Results disclaimer", type: "text", value: "Past results do not guarantee a similar outcome. Each case depends on its own facts and circumstances." },
 

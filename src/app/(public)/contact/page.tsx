@@ -37,7 +37,10 @@ export default async function ContactPage() {
 
       <div className="container-page py-16 lg:py-24">
         <div className="grid gap-8 md:grid-cols-3">
-          {OFFICES.map((o) => (
+          {OFFICES.map((o) => {
+            const photo = contact[`contact.office.${o.id}.photo`];
+            const photoFocal = contact[`contact.office.${o.id}.photo.focal`];
+            return (
             <div key={o.id} className="border border-[var(--c-border)] p-8 bg-[var(--c-surface)] flex flex-col">
               <span className="eyebrow">{o.role}</span>
               <h2 className="font-[family-name:var(--font-display)] text-2xl mt-2">{o.name}</h2>
@@ -68,14 +71,25 @@ export default async function ContactPage() {
               {o.byAppointment && (
                 <span className="mt-2 text-xs text-[var(--c-ink-muted)]">By appointment</span>
               )}
-              {/* Map placeholder */}
-              <div className="mt-6 aspect-video bg-[var(--c-surface2)] border border-[var(--c-border)] flex items-center justify-center">
-                <span className="text-xs uppercase tracking-[0.16em] text-[var(--c-ink-muted)] opacity-50 font-[family-name:var(--font-ui)]">
-                  Map — embed via admin
-                </span>
+              {/* Location photo (uploaded via the Contact admin tab) */}
+              <div className="mt-6 aspect-video bg-[var(--c-surface2)] border border-[var(--c-border)] overflow-hidden flex items-center justify-center">
+                {photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photo}
+                    alt={`${o.name} office`}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: photoFocal || "center" }}
+                  />
+                ) : (
+                  <span className="text-xs uppercase tracking-[0.16em] text-[var(--c-ink-muted)] opacity-50 font-[family-name:var(--font-ui)]">
+                    Add a photo via admin
+                  </span>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-12 flex flex-wrap gap-x-10 gap-y-3 border-t border-[var(--c-border)] pt-8 text-[var(--c-ink-muted)]">
