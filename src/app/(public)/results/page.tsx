@@ -16,6 +16,8 @@ export const metadata: Metadata = {
     "The record talks. Summary-judgment dismissals, appellate affirmances, recoveries, and jury-trial experience across Texas.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function ResultsPage() {
   const [results, footer, practices, page] = await Promise.all([
     getResults(),

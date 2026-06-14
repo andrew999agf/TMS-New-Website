@@ -28,6 +28,10 @@ import {
   OFFICES,
 } from "@/lib/firm";
 
+// Always render from current database content (banners, copy, team, badges)
+// so admin changes appear immediately — never a stale prebuilt snapshot.
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [home, global, banner, results, practices, testimonials, team, badges] = await Promise.all([
     getBlocks("home"),

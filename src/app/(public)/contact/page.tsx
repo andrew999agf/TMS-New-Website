@@ -14,6 +14,8 @@ export const metadata: Metadata = {
     "Three Texas offices — Fort Worth litigation hub, Meridian principal office, and Weatherford by appointment. Talk to the firm.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function ContactPage() {
   const contact = await getBlocks("contact");
 

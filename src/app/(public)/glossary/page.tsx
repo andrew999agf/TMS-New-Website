@@ -9,6 +9,8 @@ export const metadata: Metadata = {
     "Plain-English definitions of Texas legal terms, each with a worked hypothetical. From summary judgment to supersedeas bonds.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function GlossaryPage() {
   const [terms, page] = await Promise.all([getGlossaryTerms(), getBlocks("glossary")]);
   return (

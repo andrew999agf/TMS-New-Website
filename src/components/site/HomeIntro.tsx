@@ -20,6 +20,8 @@ export function HomeIntro({
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Phones only — not desktop/laptop.
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
     if (sessionStorage.getItem("tms_intro_seen")) return;
     sessionStorage.setItem("tms_intro_seen", "1");
     setShow(true);

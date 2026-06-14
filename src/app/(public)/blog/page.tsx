@@ -9,6 +9,8 @@ export const metadata: Metadata = {
     "Plain-English explainers on Texas litigation, appeals, injury, debt defense, business, estate planning, and probate.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function BlogPage() {
   const [posts, practices, page] = await Promise.all([
     getPublishedPosts(),

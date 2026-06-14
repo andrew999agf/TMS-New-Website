@@ -11,6 +11,8 @@ export const metadata: Metadata = {
     "The team behind T. Maxwell Smith, PLLC — led by trial attorney Max Smith, supported by staff across Fort Worth and Bosque County.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function OurTeamPage() {
   const [about, team, lead] = await Promise.all([
     getBlocks("about"),

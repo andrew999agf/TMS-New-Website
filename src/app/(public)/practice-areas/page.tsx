@@ -11,6 +11,8 @@ export const metadata: Metadata = {
     "A trial firm with a general practice. Practice areas across litigation, defense, and counsel — every matter prepared for trial.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function PracticeAreasPage() {
   const [practices, page] = await Promise.all([getPracticeAreas(), getBlocks("practiceareas")]);
 
