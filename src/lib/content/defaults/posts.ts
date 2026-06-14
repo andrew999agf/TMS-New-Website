@@ -64,16 +64,16 @@ const firmNews: BlogPostSeed[] = [
   },
   {
     slug: "two-affirmances-supersedeas-bond-recovered",
-    title: "Two Appellate Affirmances and a Recovered Supersedeas Bond",
+    title: "Two Appellate Affirmances, Both Judgments Upheld",
     excerpt:
-      "We defended a property owner through two separate appeals, secured affirmances in both, saw a petition for review dismissed by the Supreme Court of Texas, and recovered the supersedeas bond.",
+      "We defended a property owner through two separate appeals, secured affirmances in both, and saw a petition for review dismissed by the Supreme Court of Texas.",
     isFirmNews: true,
     status: "hidden",
     category: "appellate-law",
-    relatedPractices: ["appellate-law", "foreclosures"],
+    relatedPractices: ["appellate-law"],
     body: html([
       ["p", "Post-foreclosure litigation has a way of generating appeals. We defended a property owner, as appellee, through two of them in the Fifth Court of Appeals at Dallas."],
-      ["p", "Both judgments were affirmed. A petition for review was dismissed by the Supreme Court of Texas. And we recovered the supersedeas bond for the client."],
+      ["p", "Both judgments were affirmed. A petition for review was dismissed by the Supreme Court of Texas."],
       ["p", `Good ${paLink("appellate-law", "appellate work")} starts at trial, with a record built to hold up. These results came from exactly that discipline.`],
     ]),
   },
@@ -315,10 +315,10 @@ const eduRaw: EduInput[] = [
     excerpt:
       "Losing a money judgment does not mean the winner can empty your accounts tomorrow. A supersedeas bond buys time to appeal.",
     category: "appellate-law",
-    related: ["appellate-law", "foreclosures"],
+    related: ["appellate-law"],
     body: [
       ["p", "When you appeal a money judgment, the winner can normally try to collect immediately. A supersedeas bond suspends that, protecting both sides during the appeal."],
-      ["p", "If you win the appeal, the bond comes back. We have recovered a supersedeas bond for a client after defeating the underlying judgment on appeal."],
+      ["p", "If you win the appeal, the bond comes back. Getting the amount and the security right at the outset is part of the work."],
     ],
   },
   {

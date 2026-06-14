@@ -26,6 +26,9 @@ export type BannerMedia = {
  */
 export function HeroBanner({ items }: { items: BannerMedia[] }) {
   const [active, setActive] = useState(0);
+  // The item currently fading out. We keep its Ken Burns zoom applied through
+  // the crossfade so it never snaps back to the start mid-transition.
+  const [prev, setPrev] = useState(-1);
   const reduced = usePrefersReducedMotion();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
@@ -38,7 +41,10 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
     const current = list[active];
     const duration = current?.durationMs ?? 6000;
     timer.current = setTimeout(() => {
-      setActive((i) => (i + 1) % list.length);
+      setActive((i) => {
+        setPrev(i);
+        return (i + 1) % list.length;
+      });
     }, duration);
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -65,6 +71,9 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
       {list.map((item, i) => {
         const isActive = i === active;
         const kb = item.kenBurns?.enabled && !reduced;
+        // Keep the zoom running on the active item AND the one fading out, so
+        // the outgoing still doesn't jump back to its start during the fade.
+        const zooming = kb && (isActive || i === prev);
         return (
           <div
             key={item.id}
@@ -91,14 +100,14 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
               <img
                 src={item.url}
                 alt=""
-                className={`h-full w-full object-cover ${kb && isActive ? "kenburns" : ""}`}
+                className={`h-full w-full object-cover ${zooming ? "kenburns" : ""}`}
                 style={{ objectPosition: item.focal || "center" }}
               />
             ) : (
               <PlaceholderBlock
                 color={item.placeholderColor}
                 label={item.placeholderLabel}
-                animate={kb && isActive}
+                animate={zooming}
               />
             )}
           </div>

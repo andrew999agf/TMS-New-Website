@@ -93,7 +93,7 @@ export default async function HomePage() {
       <BadgeBar badges={badges} />
 
       {/* ========================== FIRM STRIP =========================== */}
-      <section className="container-page py-20 lg:py-28">
+      <section className="container-page pt-20 lg:pt-28 pb-12 lg:pb-16">
         <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
           <div>
             <p className="eyebrow">{home["home.firm.eyebrow"]}</p>
@@ -108,7 +108,7 @@ export default async function HomePage() {
 
       {/* =========================== TEAM TEASER ========================= */}
       {lead && (
-        <section className="bg-[var(--c-surface2)] py-20 lg:py-28">
+        <section className="bg-[var(--c-surface2)] pt-12 lg:pt-16 pb-20 lg:pb-28">
           <div className="container-page grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-16 lg:items-center">
             <div>
               <p className="eyebrow">Our Team</p>
