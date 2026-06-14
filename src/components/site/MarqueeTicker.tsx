@@ -35,6 +35,14 @@ export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[
   if (items.length === 0) return null;
   const item = items[active];
 
+  // Short numeric stats ($11.2M) get the giant display size; word/phrase stats
+  // ("Funds returned", "Both Affirmed") get a much smaller size so a single card
+  // never balloons to fill the whole screen.
+  const isShortStat = !!item.stat && item.stat.length <= 8 && !/\s/.test(item.stat);
+  const statClass = isShortStat
+    ? "text-6xl lg:text-8xl"
+    : "text-3xl lg:text-4xl";
+
   return (
     <section
       className="bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] p-10 lg:p-16"
@@ -46,7 +54,7 @@ export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[
         <p className="eyebrow text-[var(--c-dark-accent)]">{item.practiceTitle ?? "Result"}</p>
         <div className="mt-6 grid gap-8 lg:grid-cols-[auto_1fr] lg:gap-16 lg:items-center">
           {item.stat && (
-            <div className="font-[family-name:var(--font-display)] text-6xl lg:text-8xl text-[var(--c-dark-accent)] leading-none">
+            <div className={`font-[family-name:var(--font-display)] ${statClass} text-[var(--c-dark-accent)] leading-none`}>
               {item.stat}
             </div>
           )}

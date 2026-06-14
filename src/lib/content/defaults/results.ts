@@ -72,9 +72,9 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     title: "Appeal prosecuted to resolution against a national bank",
     year: "2025",
     summary:
-      "Appellate counsel for the appellant in a dispute with JPMorgan Chase Bank, N.A. Prosecuted the appeal until the matter was resolved, then dismissed it.",
+      "Appellate counsel for the appellant in a dispute with a national bank Prosecuted the appeal until the matter was resolved, then dismissed it.",
     detail:
-      "Fifth Court of Appeals, No. 05-25-00712-CV (2025). Appellate counsel for the appellant in a dispute with JPMorgan Chase Bank, N.A.; prosecuted the appeal until the matter was resolved.",
+      "Fifth Court of Appeals, No. 05-25-00712-CV (2025). Appellate counsel for the appellant in a dispute with a national bank; prosecuted the appeal until the matter was resolved.",
     cite: "Fifth Court of Appeals, No. 05-25-00712-CV",
     practiceSlug: "appellate-law",
     sort: 4,
