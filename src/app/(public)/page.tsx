@@ -261,10 +261,18 @@ export default async function HomePage() {
       {testimonials.length > 0 && (
         <section className="container-page py-20 lg:py-28">
           <p className="eyebrow">In their words</p>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="h2">5-star reviews from Google</h2>
+            <span className="text-[var(--c-accent)] text-lg tracking-wide" aria-hidden>★★★★★</span>
+          </div>
+          <p className="mt-3 text-sm text-[var(--c-ink-muted)] max-w-2xl">
+            Verified 5-star reviews published by clients on Google.
+          </p>
           <div className="mt-10 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             {testimonials.slice(0, 6).map((t) => (
               <figure key={t.id} className="border-l-2 border-[var(--c-accent)] pl-6">
-                <blockquote className="font-[family-name:var(--font-display)] text-lg leading-snug">
+                <span className="text-[var(--c-accent)] text-sm tracking-wide" aria-label="5 out of 5 stars">★★★★★</span>
+                <blockquote className="mt-2 font-[family-name:var(--font-display)] text-lg leading-snug">
                   “{t.quote}”
                 </blockquote>
                 {(t.attribution || t.context) && (
@@ -276,6 +284,13 @@ export default async function HomePage() {
               </figure>
             ))}
           </div>
+          <p className="mt-10 text-xs text-[var(--c-ink-muted)] max-w-3xl leading-relaxed border-t border-[var(--c-border)] pt-6">
+            Reviews are reproduced from Google and reflect the individual experience of each
+            reviewer. They are not a guarantee, warranty, or prediction regarding the outcome of
+            your legal matter — every case is different and depends on its own facts. These
+            testimonials are not a paid endorsement. This website may be considered attorney
+            advertising.
+          </p>
         </section>
       )}
 
