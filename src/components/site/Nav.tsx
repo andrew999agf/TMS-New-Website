@@ -27,48 +27,22 @@ export function Nav({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => setOpen(false), [pathname]);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // The home page has a dark hero, so the nav starts transparent/light there.
-  const onDarkHero = pathname === "/" && !scrolled;
-
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 transition-colors duration-300",
-        scrolled
-          ? "bg-[var(--c-bg)]/95 backdrop-blur border-b border-[var(--c-border)]"
-          : onDarkHero
-            ? "bg-transparent"
-            : "bg-[var(--c-bg)] border-b border-[var(--c-border)]",
-      )}
-    >
+    <header className="sticky top-0 z-50 bg-[var(--c-bg)]/95 backdrop-blur border-b border-[var(--c-border)]">
       <nav className="container-page flex items-center justify-between h-24" aria-label="Primary">
         <Link href="/" aria-label={firmName} className="flex items-center leading-none">
           {(() => {
-            // Prefer the context-aware light/dark logos; fall back to a single
-            // logo URL, then to the text wordmark. Layout adjusts either way.
-            const logo = (onDarkHero ? logoLight ?? logoDark : logoDark ?? logoLight) ?? logoUrl;
+            // Dark logo on the light header; fall back to a single logo URL or text.
+            const logo = logoDark ?? logoLight ?? logoUrl;
             if (logo) {
               // eslint-disable-next-line @next/next/no-img-element
               return <img src={logo} alt={firmName} className="h-[4.5rem] w-auto max-w-[360px] object-contain" />;
             }
             return (
-              <span
-                className={cn(
-                  "font-[family-name:var(--font-display)] text-lg tracking-tight leading-none",
-                  onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
-                )}
-              >
+              <span className="font-[family-name:var(--font-display)] text-lg tracking-tight leading-none text-[var(--c-ink)]">
                 {firmName}
               </span>
             );
@@ -83,28 +57,21 @@ export function Nav({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "text-sm font-[family-name:var(--font-ui)] transition-opacity hover:opacity-70",
-                  onDarkHero ? "text-[var(--c-dark-ink-muted)]" : "text-[var(--c-ink-muted)]",
-                  active && (onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]"),
+                  "text-sm font-[family-name:var(--font-ui)] transition-opacity hover:opacity-70 text-[var(--c-ink-muted)]",
+                  active && "text-[var(--c-ink)]",
                 )}
               >
                 {item.label}
               </Link>
             );
           })}
-          <Link
-            href={ctaHref}
-            className={cn("btn text-sm py-2.5 px-4", onDarkHero ? "btn-ghost-dark" : "btn-accent")}
-          >
+          <Link href={ctaHref} className="btn btn-accent text-sm py-2.5 px-4">
             {ctaLabel}
           </Link>
         </div>
 
         <button
-          className={cn(
-            "lg:hidden p-2 -mr-2",
-            onDarkHero ? "text-[var(--c-dark-ink)]" : "text-[var(--c-ink)]",
-          )}
+          className="lg:hidden p-2 -mr-2 text-[var(--c-ink)]"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
