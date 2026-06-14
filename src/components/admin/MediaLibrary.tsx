@@ -85,7 +85,7 @@ export function MediaLibrary({
       >
         {uploading ? <Loader2 className="animate-spin" /> : <Upload size={24} />}
         <span className="text-sm font-medium">{uploading ? "Uploading…" : "Drag photos here, or click to choose files"}</span>
-        <span className="text-xs text-[var(--c-ink-muted)]">Images and video. Banner clips: keep under ~20MB, 10–20 seconds.</span>
+        <span className="text-xs text-[var(--c-ink-muted)]">Images and video. Videos up to ~15&nbsp;MB; MP4 plays everywhere.</span>
       </div>
       <input
         ref={inputRef}

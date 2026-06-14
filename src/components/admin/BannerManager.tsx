@@ -80,7 +80,8 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
       <p className="text-sm text-[var(--c-ink-muted)] mb-5">
         The home hero plays these top to bottom, with crossfades. <strong>Drag a row by the
         handle</strong> to change the order (the top one plays first). Stills support Ken Burns
-        motion; videos autoplay muted and loop.
+        motion; videos autoplay muted and loop. Videos up to ~15&nbsp;MB upload directly; use MP4
+        for best cross-browser playback.
       </p>
 
       {!adding ? (

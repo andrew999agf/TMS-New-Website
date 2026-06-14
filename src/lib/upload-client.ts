@@ -44,11 +44,24 @@ async function downscaleImage(blob: Blob): Promise<Blob> {
   }
 }
 
-/** Upload a file to Vercel Blob via the server route. Returns the public URL. */
+const SERVER_LIMIT = 4.4 * 1024 * 1024; // small-file server path
+const VIDEO_LIMIT = 64 * 1024 * 1024; // direct-upload path
+
+const TYPE_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/avif": "avif",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/quicktime": "mov",
+};
+
+/** Upload a file to Vercel Blob. Returns the public URL. */
 export async function uploadToBlob(file: File, folder = "uploads"): Promise<string> {
   // 1) Convert iPhone HEIC to JPEG so it displays everywhere.
   let working: Blob = file;
-  let baseName = file.name.replace(/\.[^.]+$/, "");
+  const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]/g, "-") || "upload";
   if (isHeic(file)) {
     try {
       working = await convertHeic(file);
@@ -57,28 +70,29 @@ export async function uploadToBlob(file: File, folder = "uploads"): Promise<stri
     }
   }
 
-  // 2) Shrink large images.
+  // 2) Shrink large images (no-op for video).
   working = await downscaleImage(working);
 
-  if (working.size > 4.4 * 1024 * 1024) {
-    throw new Error(
-      "This file is too large to upload (4.5MB limit). Photos are shrunk automatically; large videos (.mov/.mp4) need large-file uploads enabled — ask to add a storage token.",
-    );
+  const ext = TYPE_EXT[working.type] ?? file.name.split(".").pop() ?? "bin";
+  const filename = `${folder}/${baseName}.${ext}`;
+  const isVideo = working.type.startsWith("video") || file.type.startsWith("video");
+
+  // 3a) Videos / anything still too big for the server path → direct browser→Blob upload.
+  if (isVideo || working.size > SERVER_LIMIT) {
+    if (working.size > VIDEO_LIMIT) {
+      throw new Error("This file is over 64MB. Please trim or compress it before uploading.");
+    }
+    const { upload } = await import("@vercel/blob/client");
+    const blob = await upload(filename, working, {
+      access: "public",
+      handleUploadUrl: "/api/admin/upload",
+      clientPayload: folder,
+      contentType: working.type || undefined,
+    });
+    return blob.url;
   }
 
-  // 3) Pick a clean filename + extension based on the final type.
-  baseName = baseName.replace(/[^a-zA-Z0-9._-]/g, "-") || "upload";
-  const typeExt: Record<string, string> = {
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-    "image/avif": "avif",
-    "video/mp4": "mp4",
-    "video/webm": "webm",
-    "video/quicktime": "mov",
-  };
-  const ext = typeExt[working.type] ?? file.name.split(".").pop() ?? "bin";
-
+  // 3b) Small images → server-side upload.
   const form = new FormData();
   form.append("file", working, `${baseName}.${ext}`);
   form.append("folder", folder);
