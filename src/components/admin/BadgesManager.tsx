@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus, Pencil, Trash2, Check, X, Eye, EyeOff, ChevronUp, ChevronDown, Scissors, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Eye, EyeOff, ChevronUp, ChevronDown } from "lucide-react";
 import { ImageUploadField } from "./ImageUploadField";
-import { uploadToBlob } from "@/lib/upload-client";
 import { saveBadge, deleteBadge, toggleBadge, setBadgeOrder, type BadgeInput } from "@/app/admin/(panel)/badges/actions";
 
 type Badge = BadgeInput & { id: number };
@@ -74,35 +73,7 @@ function BadgeForm({ initial, onClose }: { initial: BadgeInput; onClose: () => v
   const [form, setForm] = useState<BadgeInput>(initial);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [bgWorking, setBgWorking] = useState(false);
-  const [bgProgress, setBgProgress] = useState<string | null>(null);
   const cls = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm outline-none focus:border-[var(--c-accent)]";
-
-  async function removeBg() {
-    if (!form.logo) return;
-    setBgWorking(true);
-    setError(null);
-    setBgProgress("Starting…");
-    try {
-      const mod = await import("@imgly/background-removal");
-      const blob = await mod.removeBackground(form.logo, {
-        model: "isnet_quint8",
-        output: { format: "image/png" },
-        progress: (key: string, current: number, total: number) => {
-          const pct = total ? Math.round((current / total) * 100) : 0;
-          setBgProgress(key.startsWith("fetch") ? `Loading model… ${pct}% (one-time)` : `Processing… ${pct}%`);
-        },
-      });
-      const file = new File([blob], "badge.png", { type: "image/png" });
-      const url = await uploadToBlob(file, "badges");
-      setForm((f) => ({ ...f, logo: url }));
-    } catch (e) {
-      setError("Background removal failed. " + (e as Error).message);
-    } finally {
-      setBgWorking(false);
-      setBgProgress(null);
-    }
-  }
 
   function save() {
     startTransition(async () => {
@@ -123,15 +94,6 @@ function BadgeForm({ initial, onClose }: { initial: BadgeInput; onClose: () => v
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., State Bar of Texas" className={cls} />
       </div>
       <ImageUploadField value={form.logo} onChange={(url) => setForm({ ...form, logo: url })} slot="logoHeader" folder="badges" label="Logo / seal (PNG — transparent background looks best)" />
-      {form.logo && (
-        <div>
-          <button onClick={removeBg} disabled={bgWorking} className="btn btn-outline text-sm py-2 px-3 disabled:opacity-60">
-            {bgWorking ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
-            {bgWorking ? "Removing…" : "Remove background"}
-          </button>
-          {bgProgress && <p className="mt-1.5 text-xs text-[var(--c-ink-muted)]">{bgProgress}</p>}
-        </div>
-      )}
       <div>
         <label className="block text-sm font-medium mb-1.5">Link (optional)</label>
         <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" className={cls} />

@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, Loader2, X, Link2 } from "lucide-react";
+import { Upload, Loader2, X, Link2, Scissors } from "lucide-react";
 import { MEDIA_SPECS, type MediaSlot } from "@/lib/media-specs";
 import { uploadToBlob } from "@/lib/upload-client";
 
 /**
  * Reusable image/video field used across the admin: upload a file (primary) or
  * paste a URL (secondary). Shows a live preview and the recommended dimensions
- * for the given slot.
+ * for the given slot. Image values get an optional one-click background remover.
  */
 export function ImageUploadField({
   value,
@@ -17,6 +17,7 @@ export function ImageUploadField({
   accept = "image/*,.heic,.heif",
   folder = "uploads",
   label,
+  allowRemoveBg = true,
 }: {
   value: string;
   onChange: (url: string) => void;
@@ -24,13 +25,16 @@ export function ImageUploadField({
   accept?: string;
   folder?: string;
   label?: string;
+  allowRemoveBg?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bgWorking, setBgWorking] = useState(false);
+  const [bgProgress, setBgProgress] = useState<string | null>(null);
   const spec = slot ? MEDIA_SPECS[slot] : null;
-  const isVideo = value && /\.(mp4|webm)(\?|$)/i.test(value);
+  const isVideo = value && /\.(mp4|webm|mov)(\?|$)/i.test(value);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -43,6 +47,32 @@ export function ImageUploadField({
       setError((e as Error).message || "Upload failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function removeBg() {
+    if (!value) return;
+    setBgWorking(true);
+    setError(null);
+    setBgProgress("Starting…");
+    try {
+      const mod = await import("@imgly/background-removal");
+      const blob = await mod.removeBackground(value, {
+        model: "isnet_quint8",
+        output: { format: "image/png" },
+        progress: (key: string, current: number, total: number) => {
+          const pct = total ? Math.round((current / total) * 100) : 0;
+          setBgProgress(key.startsWith("fetch") ? `Loading model… ${pct}% (one-time)` : `Processing… ${pct}%`);
+        },
+      });
+      const file = new File([blob], "cutout.png", { type: "image/png" });
+      const url = await uploadToBlob(file, folder);
+      onChange(url);
+    } catch (e) {
+      setError("Background removal failed. " + (e as Error).message);
+    } finally {
+      setBgWorking(false);
+      setBgProgress(null);
     }
   }
 
@@ -70,6 +100,19 @@ export function ImageUploadField({
                   <X size={12} /> Remove
                 </button>
               </div>
+              {allowRemoveBg && !isVideo && (
+                <div className="mt-2">
+                  <button
+                    onClick={removeBg}
+                    disabled={bgWorking}
+                    className="text-xs text-[var(--c-accent)] flex items-center gap-1 disabled:opacity-60"
+                  >
+                    {bgWorking ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
+                    {bgWorking ? "Removing…" : "Remove background / make transparent"}
+                  </button>
+                  {bgProgress && <p className="mt-1 text-[10px] text-[var(--c-ink-muted)]">{bgProgress}</p>}
+                </div>
+              )}
             </div>
           </div>
         ) : (
