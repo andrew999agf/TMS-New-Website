@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 
 /**
- * Brief, classy landing animation: the logo fades in centered on a navy field,
- * then the whole overlay fades away to reveal the page. Shows once per session,
- * and is skipped entirely under prefers-reduced-motion. Never blocks clicks.
+ * Brief, classy phone-only landing animation: a navy field with the centered
+ * logo that fades away to reveal the page. It is rendered in the initial HTML
+ * (starts visible) so it already covers the screen on first paint — there is no
+ * flash of the home page before the fade begins. CSS limits it to phones and
+ * disables it under reduced-motion; this effect only removes it from the DOM
+ * after it has played, and skips replaying it within the same session.
  */
 export function HomeIntro({
   logoLight,
@@ -16,16 +19,18 @@ export function HomeIntro({
   logoDark?: string;
   firmName: string;
 }) {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(true);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // Phones only — not desktop/laptop.
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
-    if (sessionStorage.getItem("tms_intro_seen")) return;
+    const isPhone = window.matchMedia("(max-width: 767px)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Not a phone, reduced-motion, or already seen this session → drop it.
+    if (!isPhone || reduced || sessionStorage.getItem("tms_intro_seen")) {
+      setShow(false);
+      return;
+    }
     sessionStorage.setItem("tms_intro_seen", "1");
-    setShow(true);
-    const t = setTimeout(() => setShow(false), 1700);
+    const t = setTimeout(() => setShow(false), 1800);
     return () => clearTimeout(t);
   }, []);
 
@@ -36,7 +41,7 @@ export function HomeIntro({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-[var(--c-dark-bg)] pointer-events-none home-intro"
+      className="home-intro fixed inset-0 z-[200] bg-[var(--c-dark-bg)] pointer-events-none"
       aria-hidden="true"
     >
       <div className="home-intro-logo">

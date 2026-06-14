@@ -265,8 +265,23 @@
   72% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; }
 }
-.home-intro { animation: homeIntroOverlay 1.7s ease forwards; }
+/* Phone-only landing intro. The overlay ships in the initial HTML so it already
+   covers the page on first paint (no flash of the home page before the fade).
+   Desktop and reduced-motion never display it — handled here in CSS so it works
+   before JavaScript runs. */
+.home-intro { display: none; }
 .home-intro-logo { animation: homeIntroLogo 1.7s ease forwards; }
+@media (max-width: 767px) {
+  .home-intro {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: homeIntroOverlay 1.7s ease forwards;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .home-intro { display: none; }
+}
 
 /* Slow, looping logo marquee for the badge bar (pauses on hover). */
 @keyframes badgeScroll {

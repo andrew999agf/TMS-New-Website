@@ -130,7 +130,7 @@ export function TestimonialsManager({
                   draggable
                   onDragStart={() => setDragIdx(i)}
                   onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                  className="cursor-grab active:cursor-grabbing text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] shrink-0 mt-0.5 touch-none"
+                  className="hidden sm:block cursor-grab active:cursor-grabbing text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] shrink-0 mt-0.5 touch-none"
                   title="Drag to reorder"
                   aria-label="Drag to reorder"
                 >
@@ -143,10 +143,10 @@ export function TestimonialsManager({
                     {t.attribution} {t.context ? `· ${t.context}` : ""}
                   </p>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button disabled={i === 0 || pending} onClick={() => move(i, -1)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-30" title="Move up"><ChevronUp size={16} /></button>
-                  <button disabled={i === list.length - 1 || pending} onClick={() => move(i, 1)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-30" title="Move down"><ChevronDown size={16} /></button>
-                  <button onClick={() => setEditingId(t.id)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit"><Pencil size={15} /></button>
+                <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-2.5 shrink-0">
+                  <button disabled={i === 0 || pending} onClick={() => move(i, -1)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-30" title="Move up"><ChevronUp size={18} /></button>
+                  <button disabled={i === list.length - 1 || pending} onClick={() => move(i, 1)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-30" title="Move down"><ChevronDown size={18} /></button>
+                  <button onClick={() => setEditingId(t.id)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit"><Pencil size={16} /></button>
                   <button
                     title={t.visible ? "Hide" : "Show"}
                     onClick={() => startTransition(() => { void updateTestimonial(t.id, { quote: t.quote, attribution: t.attribution ?? "", context: t.context ?? "", visible: !t.visible }); })}

@@ -66,7 +66,7 @@ export function Nav({
             const logo = logoDark ?? logoLight ?? logoUrl;
             if (logo) {
               // eslint-disable-next-line @next/next/no-img-element
-              return <img src={logo} alt={firmName} className="h-16 sm:h-[4.5rem] w-auto max-w-[250px] sm:max-w-[360px] object-contain" />;
+              return <img src={logo} alt={firmName} className="h-20 sm:h-[4.5rem] w-auto max-w-[calc(100vw-6rem)] sm:max-w-[360px] object-contain" />;
             }
             return (
               <span className="font-[family-name:var(--font-display)] text-base sm:text-lg tracking-tight leading-none text-[var(--c-ink)] truncate">
