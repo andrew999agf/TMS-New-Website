@@ -61,13 +61,19 @@ export async function POST() {
   if (!db) return NextResponse.json({ error: "Database not configured." }, { status: 503 });
 
   const applied: string[] = [];
+
+  // 1) Ensure tables exist (this is the critical part).
   try {
     for (const stmt of DDL) {
       await db.execute(sql.raw(stmt));
     }
     applied.push("Ensured tables: team_members, badges");
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 
-    // Seed team if empty.
+  // 2) Seed team if empty (best-effort; failures don't abort).
+  try {
     const teamCount = await db.select({ id: teamMembers.id }).from(teamMembers).limit(1);
     if (teamCount.length === 0) {
       for (const m of TEAM) {
@@ -83,18 +89,22 @@ export async function POST() {
       }
       applied.push(`Seeded ${TEAM.length} team members`);
     }
+  } catch {
+    /* non-fatal */
+  }
 
-    // Seed badges if empty.
+  // 3) Seed badges if empty (BADGES is empty by default — no presets).
+  try {
     const badgeCount = await db.select({ id: badges.id }).from(badges).limit(1);
-    if (badgeCount.length === 0) {
+    if (badgeCount.length === 0 && BADGES.length > 0) {
       for (const b of BADGES) {
         await db.insert(badges).values({ name: b.name, logo: b.logo, url: b.url, sort: b.sort });
       }
       applied.push(`Seeded ${BADGES.length} badges`);
     }
-
-    return NextResponse.json({ ok: true, applied });
-  } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  } catch {
+    /* non-fatal */
   }
+
+  return NextResponse.json({ ok: true, applied });
 }

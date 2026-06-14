@@ -1,7 +1,7 @@
 /**
  * Badge bar defaults — organizations, bar associations, and awards shown in a
- * strip below the hero. Seeded from the firm's memberships as text badges;
- * upload a logo in admin → Badges to replace the text with the org's seal.
+ * slow-scrolling strip below the hero. Image-only (PNG logos). Seeded empty;
+ * the firm uploads its own logos in admin → Badges.
  */
 export type BadgeSeed = {
   name: string;
@@ -10,11 +10,4 @@ export type BadgeSeed = {
   sort: number;
 };
 
-export const BADGES: BadgeSeed[] = [
-  { name: "State Bar of Texas", sort: 1 },
-  { name: "Texas Trial Lawyers Association", sort: 2 },
-  { name: "Tarrant County Bar Association", sort: 3 },
-  { name: "Tarrant County Trial Lawyers Association", sort: 4 },
-  { name: "Tarrant County Criminal Defense Lawyers Association", sort: 5 },
-  { name: "St. Thomas More Society", sort: 6 },
-];
+export const BADGES: BadgeSeed[] = [];
