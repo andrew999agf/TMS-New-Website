@@ -8,7 +8,7 @@ import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 export const metadata: Metadata = {
   title: "Practice Areas",
   description:
-    "A general practice built around litigators. Fifteen practice areas across litigation, defense, and counsel — every matter prepared for trial.",
+    "A trial firm with a general practice. Fifteen practice areas across litigation, defense, and counsel — every matter prepared for trial.",
 };
 
 export default async function PracticeAreasPage() {
@@ -18,7 +18,7 @@ export default async function PracticeAreasPage() {
     <>
       <PageHero
         eyebrow="Practice Areas"
-        title="A general practice built around litigators."
+        title="A trial firm with a general practice."
         lead="The law is a seamless web. We practice across it — and prepare every matter for trial from day one."
       />
       <div className="container-page py-16 lg:py-24 space-y-16">

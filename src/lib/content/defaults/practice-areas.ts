@@ -35,7 +35,7 @@ export const PRACTICE_GROUPS: { id: PracticeGroup; label: string; blurb: string 
   {
     id: "counsel",
     label: "Counsel & Planning",
-    blurb: "Built by litigators, so the plan holds up when it is tested.",
+    blurb: "Built by a trial firm, so the plan holds up when it is tested.",
   },
 ];
 

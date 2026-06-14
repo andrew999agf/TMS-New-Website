@@ -139,7 +139,7 @@ export const TEAM: TeamMemberSeed[] = [
     languages: "Fluent in Spanish",
     sort: 2,
     bioProfessional:
-      "Frankie Moreno is a Legal Assistant at T. Maxwell Smith, PLLC, supporting the firm's litigation and transactional teams across Texas and based out of Tarrant County. Frankie keeps cases moving — from intake and discovery through hearing preparation — and is the steady operational hand behind the firm's daily docket. Fluent in Spanish.",
+      "Frankie Moreno is a Legal Assistant at T. Maxwell Smith, PLLC, supporting the firm's litigation and transactional work across Texas and based out of Tarrant County. Frankie keeps cases moving — from intake and discovery through hearing preparation — and is the steady operational hand behind the firm's daily docket. Fluent in Spanish.",
     services: [
       "Case intake, file opening, and conflicts checks",
       "Drafting and e-filing pleadings and discovery in Texas debt-defense and small-claims matters",
@@ -200,7 +200,7 @@ export const TEAM: TeamMemberSeed[] = [
     office: "Fort Worth",
     sort: 4,
     bioProfessional:
-      "Andrew Bergeron is a Legal Assistant at T. Maxwell Smith, PLLC, where he supports the firm's attorneys. Andrew prepares initial drafts of motions, pleadings, discovery requests, and correspondence, and helps prepare cases for trial. His role demands precision and organization, and he brings each of those qualities to bear on every file he touches.",
+      "Andrew Bergeron is a Legal Assistant at T. Maxwell Smith, PLLC, where he supports the firm's attorney and casework. Andrew prepares initial drafts of motions, pleadings, discovery requests, and correspondence, and helps prepare cases for trial. His role demands precision and organization, and he brings each of those qualities to bear on every file he touches.",
     bioBeyond:
       "Andrew served as President of the National Honor Society at Keller Central High School and as a Local and Area 7 Officer for Future Business Leaders of America. He is currently studying Economics at The University of Texas at Austin.",
     bioPersonal:

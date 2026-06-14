@@ -8,7 +8,7 @@ export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
   {
     q: "What types of matters does the firm handle?",
-    a: "T. Maxwell Smith, PLLC is a general practice built around litigators. We handle civil and commercial litigation, personal injury and wrongful death, appeals, criminal defense, consumer and commercial debt matters, foreclosures, garnishments, business formation and disputes, and estate planning and probate.",
+    a: "T. Maxwell Smith, PLLC is a trial firm with a general practice. We handle civil and commercial litigation, personal injury and wrongful death, appeals, criminal defense, consumer and commercial debt matters, foreclosures, garnishments, business formation and disputes, and estate planning and probate.",
   },
   {
     q: "Where are the firm's offices?",
