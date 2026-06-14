@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { teamMembers, badges } from "@/db/schema";
+import { teamMembers, badges, testimonials } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
+import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 
 export const runtime = "nodejs";
 
@@ -107,6 +108,21 @@ export async function POST() {
         await db.insert(badges).values({ name: b.name, logo: b.logo, url: b.url, sort: b.sort });
       }
       applied.push(`Seeded ${BADGES.length} badges`);
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // 4) Seed testimonials if empty (Google reviews).
+  try {
+    const tCount = await db.select({ id: testimonials.id }).from(testimonials).limit(1);
+    if (tCount.length === 0 && TESTIMONIALS.length > 0) {
+      for (const t of TESTIMONIALS) {
+        await db.insert(testimonials).values({
+          quote: t.quote, attribution: t.attribution, context: t.context, sort: t.sort,
+        });
+      }
+      applied.push(`Seeded ${TESTIMONIALS.length} testimonials`);
     }
   } catch {
     /* non-fatal */
