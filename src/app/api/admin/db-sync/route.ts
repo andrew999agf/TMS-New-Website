@@ -53,6 +53,8 @@ const DDL = [
     sort integer NOT NULL DEFAULT 0,
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  // New columns on existing tables (idempotent).
+  `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
 ];
 
 export async function POST() {

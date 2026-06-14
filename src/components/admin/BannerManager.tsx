@@ -18,10 +18,26 @@ export type BannerRow = {
   url: string | null;
   alt: string | null;
   durationMs: number;
+  focal: string;
   kenBurns: { enabled: boolean; direction: string; intensity: number } | null;
   visible: boolean;
   sort: number;
 };
+
+const FOCAL_OPTIONS = ["center", "top", "bottom", "left", "right"] as const;
+
+function FocalSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-2">
+      Position
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5 capitalize">
+        {FOCAL_OPTIONS.map((o) => (
+          <option key={o} value={o} className="capitalize">{o === "center" ? "Center" : `Shift to ${o}`}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnabled: boolean }) {
   const [adding, setAdding] = useState(false);
@@ -34,6 +50,7 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
     kind: "image" as "image" | "video",
     url: "",
     durationMs: 6500,
+    focal: "center",
     kenBurns: true,
     direction: "in",
     intensity: 1,
@@ -106,6 +123,7 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
             <label className="flex items-center gap-2">Duration (ms)
               <input type="number" value={form.durationMs} onChange={(e) => setForm((f) => ({ ...f, durationMs: Number(e.target.value) }))} className="w-24 border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5" />
             </label>
+            <FocalSelect value={form.focal} onChange={(focal) => setForm((f) => ({ ...f, focal }))} />
             {form.kind === "image" && (
               <>
                 <label className="flex items-center gap-2">
@@ -202,6 +220,7 @@ function EditBannerForm({ item, onClose }: { item: BannerRow; onClose: () => voi
     kind: (item.kind as "image" | "video") ?? "image",
     url: item.url ?? "",
     durationMs: item.durationMs,
+    focal: item.focal ?? "center",
     kenBurns: item.kenBurns?.enabled ?? false,
     direction: item.kenBurns?.direction ?? "in",
     intensity: item.kenBurns?.intensity ?? 1,
@@ -237,6 +256,7 @@ function EditBannerForm({ item, onClose }: { item: BannerRow; onClose: () => voi
         <label className="flex items-center gap-2">Duration (ms)
           <input type="number" value={form.durationMs} onChange={(e) => setForm((f) => ({ ...f, durationMs: Number(e.target.value) }))} className="w-24 border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5" />
         </label>
+        <FocalSelect value={form.focal} onChange={(focal) => setForm((f) => ({ ...f, focal }))} />
         {form.kind === "image" && (
           <>
             <label className="flex items-center gap-2">

@@ -50,6 +50,41 @@ export function ImageUploadField({
     }
   }
 
+  async function makeWhite() {
+    if (!value) return;
+    setBgWorking(true);
+    setError(null);
+    setBgProgress("Recoloring to white…");
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.crossOrigin = "anonymous";
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("Could not load image"));
+        el.src = value;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas unavailable");
+      ctx.drawImage(img, 0, 0);
+      // Keep the logo's transparency, recolor everything opaque to white.
+      ctx.globalCompositeOperation = "source-in";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+      if (!blob) throw new Error("Export failed");
+      const url = await uploadToBlob(new File([blob], "white.png", { type: "image/png" }), folder);
+      onChange(url);
+    } catch (e) {
+      setError("Could not recolor. Use a transparent PNG (remove the background first). " + (e as Error).message);
+    } finally {
+      setBgWorking(false);
+      setBgProgress(null);
+    }
+  }
+
   async function removeBg() {
     if (!value) return;
     setBgWorking(true);
@@ -101,16 +136,24 @@ export function ImageUploadField({
                 </button>
               </div>
               {allowRemoveBg && !isVideo && (
-                <div className="mt-2">
+                <div className="mt-2 flex flex-col gap-1.5">
                   <button
                     onClick={removeBg}
                     disabled={bgWorking}
-                    className="text-xs text-[var(--c-accent)] flex items-center gap-1 disabled:opacity-60"
+                    className="text-xs text-[var(--c-accent)] flex items-center gap-1 disabled:opacity-60 w-fit"
                   >
                     {bgWorking ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
-                    {bgWorking ? "Removing…" : "Remove background / make transparent"}
+                    {bgWorking ? "Working…" : "Remove background / make transparent"}
                   </button>
-                  {bgProgress && <p className="mt-1 text-[10px] text-[var(--c-ink-muted)]">{bgProgress}</p>}
+                  <button
+                    onClick={makeWhite}
+                    disabled={bgWorking}
+                    className="text-xs text-[var(--c-accent)] flex items-center gap-1 disabled:opacity-60 w-fit"
+                  >
+                    <span className="inline-block h-3 w-3 rounded-full bg-white border border-[var(--c-border)]" />
+                    Make white (transparent background)
+                  </button>
+                  {bgProgress && <p className="text-[10px] text-[var(--c-ink-muted)]">{bgProgress}</p>}
                 </div>
               )}
             </div>

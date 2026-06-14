@@ -1,0 +1,1 @@
+ALTER TABLE "banner_items" ADD COLUMN "focal" varchar(16) DEFAULT 'center' NOT NULL;

@@ -254,6 +254,20 @@
 }
 .fade-up { animation: fadeUp 0.7s ease both; }
 
+/* Home landing intro: navy overlay fades out, logo fades/scales in. */
+@keyframes homeIntroOverlay {
+  0%, 72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes homeIntroLogo {
+  0% { opacity: 0; transform: scale(0.94); }
+  35% { opacity: 1; transform: scale(1); }
+  72% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; }
+}
+.home-intro { animation: homeIntroOverlay 1.7s ease forwards; }
+.home-intro-logo { animation: homeIntroLogo 1.7s ease forwards; }
+
 /* Slow, looping logo marquee for the badge bar (pauses on hover). */
 @keyframes badgeScroll {
   from { transform: translateX(0); }

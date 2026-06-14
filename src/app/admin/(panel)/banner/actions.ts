@@ -15,6 +15,7 @@ export async function addBannerItem(data: {
   kenBurns: boolean;
   direction: string;
   intensity: number;
+  focal?: string;
 }) {
   const session = await requireAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
@@ -25,6 +26,7 @@ export async function addBannerItem(data: {
     posterUrl: data.posterUrl || null,
     alt: data.alt || null,
     durationMs: data.durationMs,
+    focal: data.focal || "center",
     kenBurns: { enabled: data.kenBurns, direction: data.direction, intensity: data.intensity },
     sort: Number(max) + 1,
   });
@@ -44,6 +46,7 @@ export async function updateBannerItem(
     direction: string;
     intensity: number;
     alt?: string;
+    focal?: string;
   },
 ) {
   const session = await requireAdmin();
@@ -56,6 +59,7 @@ export async function updateBannerItem(
       url: data.url,
       durationMs: data.durationMs,
       alt: data.alt ?? null,
+      focal: data.focal || "center",
       kenBurns: { enabled: data.kenBurns, direction: data.direction, intensity: data.intensity },
     })
     .where(eq(bannerItems.id, id));

@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
 import { BadgeBar } from "@/components/site/BadgeBar";
 import { TeamTeaser } from "@/components/site/TeamTeaser";
+import { HomeIntro } from "@/components/site/HomeIntro";
 
 /** First sentence (or a short truncation) of a bio, for the hover popover. */
 function shortSummary(bio?: string): string | undefined {
@@ -28,8 +29,9 @@ import {
 } from "@/lib/firm";
 
 export default async function HomePage() {
-  const [home, banner, results, practices, testimonials, team, badges] = await Promise.all([
+  const [home, global, banner, results, practices, testimonials, team, badges] = await Promise.all([
     getBlocks("home"),
+    getBlocks("global"),
     getBannerItems(),
     getFeaturedResults(6),
     getPracticeAreas(),
@@ -47,15 +49,22 @@ export default async function HomePage() {
     alt: b.alt,
     durationMs: b.durationMs,
     kenBurns: b.kenBurns,
+    focal: b.focal,
   }));
 
   return (
     <>
+      <HomeIntro
+        logoLight={global["global.logoLight"] || undefined}
+        logoDark={global["global.logoDark"] || undefined}
+        firmName={global["global.firmShort"] ?? "T. Maxwell Smith"}
+      />
+
       {/* ============================== HERO ============================== */}
       <section className="relative min-h-[68vh] flex items-end text-[var(--c-dark-ink)]">
         <HeroBanner items={bannerMedia} />
         <div className="container-page relative z-10 pb-16 pt-32 lg:pb-20">
-          <p className="eyebrow text-[var(--c-dark-accent)] fade-up">
+          <p className="eyebrow text-[var(--c-dark-ink-muted)] fade-up">
             {home["home.hero.eyebrow"]}
           </p>
           <h1 className="display-2 mt-5 max-w-4xl text-[var(--c-dark-ink)] fade-up">

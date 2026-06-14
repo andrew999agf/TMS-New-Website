@@ -17,6 +17,7 @@ export default async function BannerAdmin() {
         url: r.url,
         alt: r.alt,
         durationMs: r.durationMs,
+        focal: r.focal,
         kenBurns: r.kenBurns,
         visible: r.visible,
         sort: r.sort,

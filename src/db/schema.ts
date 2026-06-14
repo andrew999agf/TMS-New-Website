@@ -274,6 +274,8 @@ export const bannerItems = pgTable("banner_items", {
   posterUrl: text("poster_url"),
   alt: text("alt"),
   durationMs: integer("duration_ms").notNull().default(6000),
+  /** Focal point / object-position: center | top | bottom | left | right */
+  focal: varchar("focal", { length: 16 }).notNull().default("center"),
   /** Ken Burns config for stills */
   kenBurns: jsonb("ken_burns").$type<{
     enabled: boolean;

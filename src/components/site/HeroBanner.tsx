@@ -11,6 +11,8 @@ export type BannerMedia = {
   alt?: string | null;
   durationMs?: number;
   kenBurns?: { enabled: boolean; direction: string; intensity: number } | null;
+  /** Focal point: center | top | bottom | left | right */
+  focal?: string | null;
   /** Placeholder color block when no media is supplied yet */
   placeholderColor?: string;
   placeholderLabel?: string;
@@ -26,8 +28,10 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
   const [active, setActive] = useState(0);
   const reduced = usePrefersReducedMotion();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const list = items.length ? items : DEFAULT_PLACEHOLDERS;
+  const single = list.length === 1;
 
   useEffect(() => {
     if (list.length <= 1) return;
@@ -40,6 +44,21 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [active, list]);
+
+  // Whenever an item becomes active, restart its video from the very beginning
+  // (so clients never see it resume from the middle).
+  useEffect(() => {
+    const v = videoRefs.current[active];
+    if (v) {
+      try {
+        v.currentTime = 0;
+        const p = v.play();
+        if (p) p.catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [active]);
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-[var(--c-dark-bg)]" aria-hidden="true">
@@ -54,12 +73,16 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
           >
             {item.kind === "video" && item.url && !reduced ? (
               <video
-                className="h-full w-full object-contain"
+                ref={(el) => {
+                  videoRefs.current[i] = el;
+                }}
+                className="h-full w-full object-cover"
+                style={{ objectPosition: item.focal || "center" }}
                 src={item.url}
                 poster={item.posterUrl ?? undefined}
                 autoPlay
                 muted
-                loop
+                loop={single}
                 playsInline
                 preload="metadata"
               />
@@ -69,6 +92,7 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
                 src={item.url}
                 alt=""
                 className={`h-full w-full object-cover ${kb && isActive ? "kenburns" : ""}`}
+                style={{ objectPosition: item.focal || "center" }}
               />
             ) : (
               <PlaceholderBlock
