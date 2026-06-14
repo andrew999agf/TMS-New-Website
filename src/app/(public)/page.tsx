@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
+import { BadgeBar } from "@/components/site/BadgeBar";
 import {
   getBlocks,
   getBannerItems,
@@ -8,6 +9,7 @@ import {
   getPracticeAreas,
   getTestimonials,
   getTeam,
+  getBadges,
 } from "@/lib/content";
 import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 import {
@@ -17,13 +19,14 @@ import {
 } from "@/lib/firm";
 
 export default async function HomePage() {
-  const [home, banner, results, practices, testimonials, team] = await Promise.all([
+  const [home, banner, results, practices, testimonials, team, badges] = await Promise.all([
     getBlocks("home"),
     getBannerItems(),
     getFeaturedResults(6),
     getPracticeAreas(),
     getTestimonials(),
     getTeam(),
+    getBadges(),
   ]);
   const lead = team.find((m) => m.isLead) ?? team[0];
 
@@ -40,9 +43,9 @@ export default async function HomePage() {
   return (
     <>
       {/* ============================== HERO ============================== */}
-      <section className="relative min-h-[88vh] flex items-end text-[var(--c-dark-ink)]">
+      <section className="relative min-h-[68vh] flex items-end text-[var(--c-dark-ink)]">
         <HeroBanner items={bannerMedia} />
-        <div className="container-page relative z-10 pb-20 pt-32 lg:pb-28">
+        <div className="container-page relative z-10 pb-16 pt-32 lg:pb-20">
           <p className="eyebrow text-[var(--c-dark-accent)] fade-up">
             {home["home.hero.eyebrow"]}
           </p>
@@ -63,6 +66,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ============================ BADGE BAR ========================== */}
+      <BadgeBar badges={badges} />
 
       {/* ========================== FIRM STRIP =========================== */}
       <section className="container-page py-20 lg:py-28">

@@ -9,6 +9,7 @@ import { CASE_RESULTS } from "@/lib/content/defaults/results";
 import { GLOSSARY_TERMS } from "@/lib/content/defaults/glossary";
 import { BLOG_POSTS } from "@/lib/content/defaults/posts";
 import { TEAM } from "@/lib/content/defaults/team";
+import { BADGES } from "@/lib/content/defaults/badges";
 import {
   DEFAULT_COLOR_PALETTE_ID,
   DEFAULT_FONT_PALETTE_ID,
@@ -218,6 +219,14 @@ async function main() {
           sort: m.sort,
         },
       });
+  }
+
+  console.log("Seeding badges…");
+  const existingBadges = await db.select({ id: schema.badges.id }).from(schema.badges).limit(1);
+  if (existingBadges.length === 0) {
+    for (const b of BADGES) {
+      await db.insert(schema.badges).values({ name: b.name, logo: b.logo, url: b.url, sort: b.sort });
+    }
   }
 
   console.log("Seeding theme setting…");

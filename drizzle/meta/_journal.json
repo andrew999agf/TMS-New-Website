@@ -15,6 +15,13 @@
       "when": 1781299398973,
       "tag": "0001_bitter_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781401526924,
+      "tag": "0002_brief_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

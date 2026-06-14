@@ -19,6 +19,7 @@ import {
   Quote,
   Film,
   Users,
+  Award,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const NAV = [
   { label: "Pages", href: "/admin/pages", icon: FileText },
   { label: "Our Team", href: "/admin/team", icon: Users },
   { label: "Home Banner", href: "/admin/banner", icon: Film },
+  { label: "Badges", href: "/admin/badges", icon: Award },
   { label: "Practice Areas", href: "/admin/practice-areas", icon: Scale },
   { label: "Results", href: "/admin/results", icon: Trophy },
   { label: "Blog", href: "/admin/blog", icon: Newspaper },

@@ -10,6 +10,7 @@ import {
   settings,
   testimonials as testimonialsTable,
   teamMembers as teamTable,
+  badges as badgesTable,
   type CaseResult,
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
@@ -350,6 +351,29 @@ export async function getTeamMember(slug: string): Promise<TeamMemberSeed | null
 export async function getLeadMember(): Promise<TeamMemberSeed | null> {
   const all = await getTeam();
   return all.find((m) => m.isLead) ?? all.find((m) => m.isAttorney) ?? all[0] ?? null;
+}
+
+/* ---- Badges ---- */
+
+import { BADGES, type BadgeSeed } from "./defaults/badges";
+
+export type BadgeView = { id: number; name: string; logo: string | null; url: string | null; sort: number; visible: boolean };
+
+export async function getBadges(visibleOnly = true): Promise<BadgeView[]> {
+  const rows = await safe(() => db!.select().from(badgesTable).orderBy(asc(badgesTable.sort)), []);
+  if (rows.length) {
+    return rows
+      .filter((r) => (visibleOnly ? r.visible : true))
+      .map((r) => ({ id: r.id, name: r.name, logo: r.logo, url: r.url, sort: r.sort, visible: r.visible }));
+  }
+  return BADGES.map((b: BadgeSeed, i) => ({
+    id: -(i + 1),
+    name: b.name,
+    logo: b.logo ?? null,
+    url: b.url ?? null,
+    sort: b.sort,
+    visible: true,
+  }));
 }
 
 /* ---- Admin: editable block metadata (merges defaults + DB values) ---- */

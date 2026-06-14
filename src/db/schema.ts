@@ -398,6 +398,26 @@ export const teamMembers = pgTable(
 export type TeamMember = typeof teamMembers.$inferSelect;
 
 /* ----------------------------------------------------------------------------
+ * Badges — organizations, bar associations, and awards shown below the hero
+ * ------------------------------------------------------------------------- */
+
+export const badges = pgTable(
+  "badges",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 191 }).notNull(),
+    logo: text("logo"),
+    url: text("url"),
+    visible: boolean("visible").notNull().default(true),
+    sort: integer("sort").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ sortIdx: index("badges_sort_idx").on(t.sort) }),
+);
+
+export type Badge = typeof badges.$inferSelect;
+
+/* ----------------------------------------------------------------------------
  * Lightweight internal analytics (page views)
  * ------------------------------------------------------------------------- */
 
