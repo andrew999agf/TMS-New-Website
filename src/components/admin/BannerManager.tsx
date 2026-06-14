@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, GripVertical, Pencil, Check, X } from "lucide-react";
 import {
   addBannerItem,
+  updateBannerItem,
   deleteBannerItem,
   toggleBannerItem,
   reorderBannerItem,
@@ -28,6 +29,7 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
   const [list, setList] = useState<BannerRow[]>(items);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     kind: "image" as "image" | "video",
     url: "",
@@ -124,8 +126,8 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
 
       <div className="mt-6 space-y-3">
         {list.map((it, i) => (
+          <div key={it.id}>
           <div
-            key={it.id}
             onDragOver={(e) => {
               e.preventDefault();
               setOverIdx(i);
@@ -133,7 +135,7 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
             onDrop={() => handleDrop(i)}
             className={`rounded-lg border bg-[var(--c-surface)] p-3 flex items-center gap-3 transition-colors ${
               overIdx === i && dragIdx !== null ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"
-            } ${dragIdx === i ? "opacity-50" : ""} ${it.visible ? "" : "opacity-60"}`}
+            } ${dragIdx === i ? "opacity-50" : ""} ${it.visible ? "" : "opacity-60"} ${editingId === it.id ? "rounded-b-none" : ""}`}
           >
             {/* Drag handle */}
             <button
@@ -172,9 +174,14 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
             <div className="flex items-center gap-2 shrink-0">
               <button disabled={i === 0 || pending} onClick={() => run(() => reorderBannerItem(it.id, "up"))} className="text-[var(--c-ink-muted)] disabled:opacity-30" title="Move up"><ChevronUp size={16} /></button>
               <button disabled={i === list.length - 1 || pending} onClick={() => run(() => reorderBannerItem(it.id, "down"))} className="text-[var(--c-ink-muted)] disabled:opacity-30" title="Move down"><ChevronDown size={16} /></button>
+              <button onClick={() => setEditingId(editingId === it.id ? null : it.id)} className={`hover:text-[var(--c-accent)] ${editingId === it.id ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"}`} title="Edit"><Pencil size={16} /></button>
               <button onClick={() => run(() => toggleBannerItem(it.id, !it.visible))} disabled={pending} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" title={it.visible ? "Hide" : "Show"}>{it.visible ? <Eye size={16} /> : <EyeOff size={16} />}</button>
               <button onClick={() => run(() => deleteBannerItem(it.id))} disabled={pending} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]" title="Delete"><Trash2 size={16} /></button>
             </div>
+          </div>
+          {editingId === it.id && (
+            <EditBannerForm item={it} onClose={() => setEditingId(null)} />
+          )}
           </div>
         ))}
         {list.length === 0 && (
@@ -182,6 +189,69 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
             No banner items yet — the home hero shows labeled placeholder blocks until you add media.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function EditBannerForm({ item, onClose }: { item: BannerRow; onClose: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    kind: (item.kind as "image" | "video") ?? "image",
+    url: item.url ?? "",
+    durationMs: item.durationMs,
+    kenBurns: item.kenBurns?.enabled ?? false,
+    direction: item.kenBurns?.direction ?? "in",
+    intensity: item.kenBurns?.intensity ?? 1,
+  });
+
+  function save() {
+    startTransition(async () => {
+      const res = await updateBannerItem(item.id, form);
+      if (res.ok) onClose();
+      else setError(res.error ?? "Save failed");
+    });
+  }
+
+  return (
+    <div className="rounded-b-lg border border-t-0 border-[var(--c-accent)] bg-[var(--c-surface)] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Edit banner item</span>
+        <button onClick={onClose} className="text-[var(--c-ink-muted)]"><X size={16} /></button>
+      </div>
+      <div className="flex gap-2">
+        {(["image", "video"] as const).map((k) => (
+          <button key={k} onClick={() => setForm((f) => ({ ...f, kind: k }))} className={`text-sm px-3 py-1.5 rounded border capitalize ${form.kind === k ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>{k}</button>
+        ))}
+      </div>
+      <ImageUploadField
+        value={form.url}
+        onChange={(url) => setForm((f) => ({ ...f, url }))}
+        slot="heroBanner"
+        accept={form.kind === "video" ? "video/mp4,video/webm,video/quicktime,.mov" : "image/*,.heic,.heif"}
+        folder="banner"
+      />
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-2">Duration (ms)
+          <input type="number" value={form.durationMs} onChange={(e) => setForm((f) => ({ ...f, durationMs: Number(e.target.value) }))} className="w-24 border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5" />
+        </label>
+        {form.kind === "image" && (
+          <>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={form.kenBurns} onChange={(e) => setForm((f) => ({ ...f, kenBurns: e.target.checked }))} className="accent-[var(--c-accent)]" /> Ken Burns
+            </label>
+            <select value={form.direction} onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))} className="border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5">
+              <option value="in">Zoom in</option>
+              <option value="out">Zoom out</option>
+            </select>
+          </>
+        )}
+      </div>
+      {error && <p className="text-sm text-[var(--c-error)]">{error}</p>}
+      <div className="flex gap-2">
+        <button onClick={save} disabled={pending || !form.url} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50"><Check size={15} /> Save</button>
+        <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
       </div>
     </div>
   );

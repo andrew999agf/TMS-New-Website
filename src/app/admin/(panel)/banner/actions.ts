@@ -34,6 +34,37 @@ export async function addBannerItem(data: {
   return { ok: true };
 }
 
+export async function updateBannerItem(
+  id: number,
+  data: {
+    kind: "image" | "video";
+    url: string;
+    durationMs: number;
+    kenBurns: boolean;
+    direction: string;
+    intensity: number;
+    alt?: string;
+  },
+) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  if (!data.url) return { ok: false, error: "Media is required." };
+  await db
+    .update(bannerItems)
+    .set({
+      kind: data.kind,
+      url: data.url,
+      durationMs: data.durationMs,
+      alt: data.alt ?? null,
+      kenBurns: { enabled: data.kenBurns, direction: data.direction, intensity: data.intensity },
+    })
+    .where(eq(bannerItems.id, id));
+  await audit(session.email, "update", "banner", String(id), "Edited banner item");
+  revalidatePath("/");
+  revalidatePath("/admin/banner");
+  return { ok: true };
+}
+
 export async function deleteBannerItem(id: number) {
   const session = await requireAdmin();
   if (!db) return { ok: false };
