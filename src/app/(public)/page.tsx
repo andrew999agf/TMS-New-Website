@@ -68,7 +68,7 @@ export default async function HomePage() {
       <section className="relative min-h-[68vh] flex items-end text-[var(--c-dark-ink)]">
         <HeroBanner items={bannerMedia} />
         <div className="container-page relative z-10 pb-16 pt-32 lg:pb-20">
-          <p className="eyebrow text-[var(--c-dark-ink-muted)] fade-up">
+          <p className="eyebrow text-[var(--c-dark-accent)] fade-up">
             {home["home.hero.eyebrow"]}
           </p>
           <h1 className="display-2 mt-5 max-w-4xl text-[var(--c-dark-ink)] fade-up">

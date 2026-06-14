@@ -37,7 +37,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.social.tiktok", page: "global", section: "social", label: "TikTok URL", type: "url", value: "" },
 
   // ---- Home: Hero ----
-  { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "T. Maxwell Smith, PLLC | Bosque County | Fort Worth | Weatherford" },
+  { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "Bosque County, Texas | Fort Worth, Texas" },
   { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "Generally trained for your specific legal matter." },
   { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches." },
   { key: "home.hero.ctaLabel", page: "home", section: "hero", label: "Hero button label", type: "text", value: "Request a Consultation" },
