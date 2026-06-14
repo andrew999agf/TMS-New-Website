@@ -20,6 +20,7 @@ export type BlogPostSeed = {
   excerpt: string;
   body: string;
   bannerImage?: string;
+  bannerFocal?: string;
   category?: string;
   tags?: string[];
   author?: string;

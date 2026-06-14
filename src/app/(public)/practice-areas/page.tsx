@@ -23,6 +23,7 @@ export default async function PracticeAreasPage() {
         title="A trial firm with a general practice."
         lead="The law is a seamless web. We practice across it — and prepare every matter for trial from day one."
         bgImage={page["practiceareas.hero.image"] || undefined}
+        focal={page["practiceareas.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24 space-y-16">
         {PRACTICE_GROUPS.map((group) => {

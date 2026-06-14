@@ -20,6 +20,7 @@ export default async function GlossaryPage() {
         title="The vocabulary, in plain English."
         lead="Every term below comes with a definition and a worked hypothetical — the way you would actually learn it."
         bgImage={page["glossary.hero.image"] || undefined}
+        focal={page["glossary.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24">
         <GlossaryIndex

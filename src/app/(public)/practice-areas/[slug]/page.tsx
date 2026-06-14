@@ -52,7 +52,7 @@ export default async function PracticeAreaPage({
 
   return (
     <>
-      <PageHero eyebrow="Practice Area" title={pa.title} lead={pa.tagline} bgImage={pa.heroImage ?? undefined}>
+      <PageHero eyebrow="Practice Area" title={pa.title} lead={pa.tagline} bgImage={pa.heroImage ?? undefined} focal={pa.heroFocal}>
         <div className="mt-2">
           <Breadcrumbs
             items={[

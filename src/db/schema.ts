@@ -73,6 +73,7 @@ export const blockType = pgEnum("block_type", [
   "number",
   "url",
   "json",
+  "focal",
 ]);
 
 export const contentBlocks = pgTable(
@@ -143,6 +144,8 @@ export const practiceAreas = pgTable("practice_areas", {
   /** "How we approach it" trial-readiness block */
   approach: text("approach"),
   heroImage: text("hero_image"),
+  /** Banner crop position: center | top | bottom | left | right */
+  heroFocal: varchar("hero_focal", { length: 16 }).notNull().default("center"),
   /** Keyword/synonym map for the intake wizard fuzzy matcher */
   keywords: jsonb("keywords").$type<string[]>(),
   seoTitle: varchar("seo_title", { length: 191 }),
@@ -202,6 +205,8 @@ export const blogPosts = pgTable(
     excerpt: text("excerpt"),
     body: text("body"), // rich HTML
     bannerImage: text("banner_image"),
+    /** Banner crop position: center | top | bottom | left | right */
+    bannerFocal: varchar("banner_focal", { length: 16 }).notNull().default("center"),
     category: varchar("category", { length: 128 }), // practice-area slug
     tags: jsonb("tags").$type<string[]>(),
     author: varchar("author", { length: 191 }).notNull().default("T. Maxwell Smith"),

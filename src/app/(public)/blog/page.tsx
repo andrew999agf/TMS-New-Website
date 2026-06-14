@@ -30,6 +30,7 @@ export default async function BlogPage() {
         title="What we know, in plain English."
         lead="No invented cases. Just how this actually works — litigation, appeals, injury, debt, business, and estates."
         bgImage={page["blog.hero.image"] || undefined}
+        focal={page["blog.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24">
         <BlogIndex

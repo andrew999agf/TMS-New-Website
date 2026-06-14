@@ -27,10 +27,11 @@ export async function POST() {
   const applied: string[] = [];
 
   try {
-    // 1) Content blocks — text only (skip image/video so uploads are kept).
+    // 1) Content blocks — text only (skip image/video/focal so uploads and
+    //    chosen banner crop positions are kept).
     let blockCount = 0;
     for (const b of CONTENT_BLOCKS) {
-      if (b.type === "image" || b.type === "video") continue;
+      if (b.type === "image" || b.type === "video" || b.type === "focal") continue;
       await db
         .insert(contentBlocks)
         .values({ key: b.key, page: b.page, section: b.section, label: b.label, type: b.type, value: b.value })

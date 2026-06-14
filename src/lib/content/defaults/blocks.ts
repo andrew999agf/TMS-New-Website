@@ -6,7 +6,7 @@
  */
 import { FIRM, QUOTES } from "@/lib/firm";
 
-export type BlockType = "text" | "richtext" | "image" | "video" | "number" | "url" | "json";
+export type BlockType = "text" | "richtext" | "image" | "video" | "number" | "url" | "json" | "focal";
 
 export type BlockSeed = {
   key: string;
@@ -105,14 +105,24 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "payment.url", page: "payment", section: "main", label: "Clio payment link", type: "url", value: "https://app.clio.com/link/v2/2/2/8d238d952200edf08657e749c231dc5d?hmac=0350ff9c5acc29605730ca8904589ed49123ea2654b4781f2b6b4dba5d9f2d51" },
 
   // ---- Page banner images (the photo behind each page's navy header) ----
+  // Each banner photo has a companion ".focal" block controlling its crop
+  // position (center / shift to top / bottom / left / right).
   { key: "about.hero.image", page: "about", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "about.hero.image.focal", page: "about", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "contact.hero.image", page: "contact", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "contact.hero.image.focal", page: "contact", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "consultation.hero.image", page: "consultation", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "consultation.hero.image.focal", page: "consultation", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "payment.hero.image", page: "payment", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "payment.hero.image.focal", page: "payment", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "results.hero.image", page: "results", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "results.hero.image.focal", page: "results", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "blog.hero.image", page: "blog", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "blog.hero.image.focal", page: "blog", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "glossary.hero.image", page: "glossary", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "glossary.hero.image.focal", page: "glossary", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
   { key: "practiceareas.hero.image", page: "practiceareas", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "practiceareas.hero.image.focal", page: "practiceareas", section: "banner", label: "Banner photo position", type: "focal", value: "center" },
 ];
 
 export const BLOCK_DEFAULTS: Record<string, string> = Object.fromEntries(

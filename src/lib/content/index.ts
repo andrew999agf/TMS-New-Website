@@ -97,7 +97,7 @@ export async function getSetting<T = unknown>(key: string, fallback: T): Promise
 
 /* ---- Practice areas ---- */
 
-export type PracticeAreaView = PracticeAreaSeed & { heroImage?: string | null };
+export type PracticeAreaView = PracticeAreaSeed & { heroImage?: string | null; heroFocal?: string | null };
 
 export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
   const rows = await safe(
@@ -122,6 +122,7 @@ export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
       seoTitle: r.seoTitle ?? r.title,
       seoDescription: r.seoDescription ?? "",
       heroImage: r.heroImage,
+      heroFocal: r.heroFocal ?? "center",
     }));
   }
   return PRACTICE_AREAS;
@@ -188,6 +189,7 @@ function postFromRow(r: typeof blogPosts.$inferSelect): PostView {
     excerpt: r.excerpt ?? "",
     body: r.body ?? "",
     bannerImage: r.bannerImage ?? undefined,
+    bannerFocal: r.bannerFocal ?? "center",
     category: r.category ?? undefined,
     tags: (r.tags as string[]) ?? [],
     author: r.author,

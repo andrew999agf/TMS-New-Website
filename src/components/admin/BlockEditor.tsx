@@ -5,6 +5,7 @@ import { Check, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { saveBlocks } from "@/app/admin/(panel)/pages/actions";
 import { ImageUploadField } from "./ImageUploadField";
+import { FocalSelect } from "./FocalSelect";
 import type { EditableBlock } from "@/lib/content";
 import type { MediaSlot } from "@/lib/media-specs";
 
@@ -31,6 +32,8 @@ export function BlockEditor({
   const [pending, startTransition] = useTransition();
 
   const sections = [...new Set(blocks.map((b) => b.section))];
+  const keySet = new Set(blocks.map((b) => b.key));
+  const hasFocal = (key: string) => keySet.has(`${key}.focal`);
 
   function update(key: string, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -74,6 +77,8 @@ export function BlockEditor({
             <div className="space-y-5">
               {blocks
                 .filter((b) => b.section === section)
+                // Focal blocks are rendered inline under their image, not on their own.
+                .filter((b) => b.type !== "focal")
                 .map((b) => (
                   <div key={b.key}>
                     <label className="flex items-center justify-between text-sm font-medium mb-1.5">
@@ -81,13 +86,23 @@ export function BlockEditor({
                       <span className="text-xs text-[var(--c-ink-muted)] font-normal">{b.type}</span>
                     </label>
                     {b.type === "image" || b.type === "video" ? (
-                      <ImageUploadField
-                        value={values[b.key] ?? ""}
-                        onChange={(url) => update(b.key, url)}
-                        slot={slotForKey(b.key)}
-                        accept={b.type === "video" ? "video/*" : "image/*"}
-                        folder="brand"
-                      />
+                      <>
+                        <ImageUploadField
+                          value={values[b.key] ?? ""}
+                          onChange={(url) => update(b.key, url)}
+                          slot={slotForKey(b.key)}
+                          accept={b.type === "video" ? "video/*" : "image/*"}
+                          folder="brand"
+                        />
+                        {hasFocal(b.key) && values[b.key] && (
+                          <div className="mt-2.5">
+                            <FocalSelect
+                              value={values[`${b.key}.focal`] ?? "center"}
+                              onChange={(v) => update(`${b.key}.focal`, v)}
+                            />
+                          </div>
+                        )}
+                      </>
                     ) : b.type === "richtext" ? (
                       <textarea
                         value={values[b.key] ?? ""}

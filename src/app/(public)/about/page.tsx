@@ -29,6 +29,7 @@ export default async function OurTeamPage() {
         title={about["about.hero.heading"]}
         lead={about["about.hero.subhead"]}
         bgImage={about["about.hero.image"] || undefined}
+        focal={about["about.hero.image.focal"]}
       />
 
       {/* Lead attorney — featured */}

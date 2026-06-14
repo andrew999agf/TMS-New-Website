@@ -24,6 +24,7 @@ export default async function ConsultationPage({
         title={blocks["intake.hero.heading"] || "What brings you in?"}
         lead={blocks["intake.hero.body"]}
         bgImage={blocks["consultation.hero.image"] || undefined}
+        focal={blocks["consultation.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24">
         <IntakeWizard

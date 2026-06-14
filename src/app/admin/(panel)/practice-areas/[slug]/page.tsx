@@ -33,6 +33,7 @@ export default async function EditPracticeArea({
             approach: pa.approach,
             keywords: pa.keywords,
             heroImage: pa.heroImage ?? "",
+            heroFocal: pa.heroFocal ?? "center",
             seoTitle: pa.seoTitle,
             seoDescription: pa.seoDescription,
             visible: true,

@@ -64,6 +64,7 @@ export default async function ResultsPage() {
         title="We don't say much. The record talks."
         lead="Over a thousand matters. Jury trials, bench trials, appeals. Here is some of it."
         bgImage={page["results.hero.image"] || undefined}
+        focal={page["results.hero.image.focal"]}
       />
 
       <div className="container-page py-16 lg:py-24 space-y-20">

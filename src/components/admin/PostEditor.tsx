@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { savePost, createGlossaryTerm, type PostInput } from "@/app/admin/(panel)/blog/post-actions";
 import { ImageUploadField } from "./ImageUploadField";
+import { FocalSelect } from "./FocalSelect";
 import { slugify } from "@/lib/utils";
 
 type Practice = { slug: string; title: string };
@@ -44,6 +45,7 @@ export function PostEditor({
     initial.publishAt ? initial.publishAt.slice(0, 16) : "",
   );
   const [bannerImage, setBannerImage] = useState(initial.bannerImage ?? "");
+  const [bannerFocal, setBannerFocal] = useState(initial.bannerFocal ?? "center");
   const [seoTitle, setSeoTitle] = useState(initial.seoTitle ?? "");
   const [seoDescription, setSeoDescription] = useState(initial.seoDescription ?? "");
   const [isFirmNews, setIsFirmNews] = useState(initial.isFirmNews ?? false);
@@ -90,6 +92,7 @@ export function PostEditor({
       excerpt,
       body: editor?.getHTML() ?? "",
       bannerImage,
+      bannerFocal,
       category: category || undefined,
       tags: category ? [category] : [],
       isFirmNews,
@@ -215,6 +218,11 @@ export function PostEditor({
 
         <Field label="Banner image">
           <ImageUploadField value={bannerImage} onChange={setBannerImage} slot="blogBanner" folder="blog" />
+          {bannerImage && (
+            <div className="mt-2.5">
+              <FocalSelect value={bannerFocal} onChange={setBannerFocal} />
+            </div>
+          )}
         </Field>
 
         <Field label="Related practice areas">

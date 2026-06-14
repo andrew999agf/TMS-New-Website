@@ -11,6 +11,7 @@ import {
   setBannerOrder,
 } from "@/app/admin/(panel)/banner/actions";
 import { ImageUploadField } from "./ImageUploadField";
+import { FocalSelect } from "./FocalSelect";
 
 export type BannerRow = {
   id: number;
@@ -23,21 +24,6 @@ export type BannerRow = {
   visible: boolean;
   sort: number;
 };
-
-const FOCAL_OPTIONS = ["center", "top", "bottom", "left", "right"] as const;
-
-function FocalSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="flex items-center gap-2">
-      Position
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5 capitalize">
-        {FOCAL_OPTIONS.map((o) => (
-          <option key={o} value={o} className="capitalize">{o === "center" ? "Center" : `Shift to ${o}`}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnabled: boolean }) {
   const [adding, setAdding] = useState(false);

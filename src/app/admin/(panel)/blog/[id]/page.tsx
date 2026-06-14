@@ -34,6 +34,7 @@ export default async function EditPostPage({
             excerpt: post.excerpt ?? "",
             body: post.body ?? "",
             bannerImage: post.bannerImage ?? "",
+            bannerFocal: post.bannerFocal ?? "center",
             category: post.category ?? "",
             status: post.status as "draft" | "hidden" | "scheduled" | "published",
             publishAt: post.publishAt?.toISOString(),

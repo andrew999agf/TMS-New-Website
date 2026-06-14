@@ -5,6 +5,7 @@ import { Check, Plus, Trash2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { savePracticeArea, type PracticeInput } from "@/app/admin/(panel)/practice-areas/actions";
 import { ImageUploadField } from "./ImageUploadField";
+import { FocalSelect } from "./FocalSelect";
 
 export function PracticeAreaEditor({ initial }: { initial: PracticeInput }) {
   const [form, setForm] = useState<PracticeInput>(initial);
@@ -74,6 +75,14 @@ export function PracticeAreaEditor({ initial }: { initial: PracticeInput }) {
           slot="practiceHero"
           folder="practice"
         />
+        {form.heroImage && (
+          <div className="mt-2.5">
+            <FocalSelect
+              value={form.heroFocal ?? "center"}
+              onChange={(v) => { setForm((f) => ({ ...f, heroFocal: v })); setSaved(false); }}
+            />
+          </div>
+        )}
       </Field>
 
       <details className="text-sm">

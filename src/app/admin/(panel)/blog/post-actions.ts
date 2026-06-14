@@ -14,6 +14,7 @@ export type PostInput = {
   excerpt: string;
   body: string;
   bannerImage?: string;
+  bannerFocal?: string;
   category?: string;
   tags?: string[];
   isFirmNews?: boolean;
@@ -40,6 +41,7 @@ export async function savePost(input: PostInput): Promise<{ ok: boolean; error?:
     excerpt: input.excerpt,
     body: input.body,
     bannerImage: input.bannerImage || null,
+    bannerFocal: input.bannerFocal || "center",
     category: input.category || null,
     tags: input.tags ?? [],
     isFirmNews: input.isFirmNews ?? false,

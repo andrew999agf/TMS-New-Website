@@ -26,6 +26,7 @@ export default async function ContactPage() {
         title={contact["contact.hero.heading"]}
         lead={contact["contact.hero.body"]}
         bgImage={contact["contact.hero.image"] || undefined}
+        focal={contact["contact.hero.image.focal"]}
       >
         <div className="mt-8">
           <Link href="/consultation" className="btn btn-accent">

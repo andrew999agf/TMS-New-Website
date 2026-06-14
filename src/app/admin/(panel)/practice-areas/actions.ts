@@ -14,6 +14,7 @@ export type PracticeInput = {
   approach: string;
   keywords: string[];
   heroImage?: string;
+  heroFocal?: string;
   seoTitle?: string;
   seoDescription?: string;
   visible: boolean;
@@ -33,6 +34,7 @@ export async function savePracticeArea(input: PracticeInput) {
         approach: input.approach,
         keywords: input.keywords,
         heroImage: input.heroImage || null,
+        heroFocal: input.heroFocal || "center",
         seoTitle: input.seoTitle || null,
         seoDescription: input.seoDescription || null,
         visible: input.visible,

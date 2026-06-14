@@ -88,7 +88,7 @@ export default async function PostPage({
           articleSection: category?.title,
         }}
       />
-      <PageHero eyebrow={category?.title ?? "Insights"} title={post.title} bgImage={post.bannerImage}>
+      <PageHero eyebrow={category?.title ?? "Insights"} title={post.title} bgImage={post.bannerImage} focal={post.bannerFocal}>
         <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[var(--c-dark-ink-muted)]">
           <span>{post.author}</span>
           {post.publishAt && <span>· {formatDate(post.publishAt)}</span>}
