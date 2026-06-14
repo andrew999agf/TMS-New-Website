@@ -39,9 +39,9 @@ export const CASE_RESULTS: CaseResultSeed[] = [
   },
   {
     category: "appellate",
-    title: "Successful Defense of Two Appeals",
+    title: "Two Appeals Defended for the Property Owner",
     stat: "Both Affirmed",
-    statLabel: "Two appeals successfully defended",
+    statLabel: "Two appeals defended on the same property",
     year: "2025–2026",
     summary:
       "Defended a property owner (appellee) through two separate appeals arising from post-foreclosure litigation. Both judgments affirmed; petition for review dismissed by the Supreme Court of Texas.",

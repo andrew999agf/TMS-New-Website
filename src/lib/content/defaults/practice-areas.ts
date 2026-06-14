@@ -189,7 +189,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     tagline: "If you sue and lose, you have to be able to appeal.",
     body: [
       "An appeal is not a second trial. It is a different craft — built on the record, the standard of review, and error that was preserved while the trial was still happening.",
-      "We handle appeals on both sides, and we have the affirmances and the bond recovery to show for it. We have argued before the Court of Appeals and briefed matters through the Supreme Court of Texas and into the Fifth Circuit.",
+      "We handle appeals on both sides, with affirmances on the record. We have argued before the Court of Appeals and briefed matters through the Supreme Court of Texas and into the Fifth Circuit.",
       "The best appellate work starts at trial. We think about the record before there is anything to appeal, so the issues are preserved when they matter.",
     ],
     approach:
@@ -206,7 +206,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     ],
     seoTitle: "Appellate Attorney | Texas Courts of Appeals & Fifth Circuit",
     seoDescription:
-      "Texas appellate attorney. Civil appeals, supersedeas bonds, and oral argument. Affirmances and bond recovery on the record.",
+      "Texas appellate attorney. Civil appeals, supersedeas bonds, and oral argument. Affirmances on the record.",
   },
   {
     slug: "consumer-debt-defense",
