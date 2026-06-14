@@ -61,7 +61,7 @@ export default async function HomePage() {
       />
 
       {/* ============================== HERO ============================== */}
-      <section className="relative min-h-[68vh] flex items-end text-[var(--c-dark-ink)]">
+      <section className="relative min-h-[68vh] -mt-24 lg:-mt-[8.25rem] flex items-end text-[var(--c-dark-ink)]">
         <HeroBanner items={bannerMedia} />
         <div className="container-page relative z-10 pb-16 pt-32 lg:pb-20">
           <p className="eyebrow text-[var(--c-dark-ink-muted)] fade-up">
