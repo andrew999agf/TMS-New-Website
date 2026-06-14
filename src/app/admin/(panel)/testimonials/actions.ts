@@ -55,3 +55,17 @@ export async function deleteTestimonial(id: number) {
   revalidatePath("/");
   return { ok: true };
 }
+
+/** Persist a new display order; `ids` is the full list of testimonial ids in
+ *  the order they should appear on the site (top to bottom). */
+export async function setTestimonialOrder(ids: number[]) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  await Promise.all(
+    ids.map((id, i) => db!.update(testimonials).set({ sort: i }).where(eq(testimonials.id, id))),
+  );
+  await audit(session.email, "update", "testimonial", undefined, "Reordered testimonials");
+  revalidatePath("/admin/testimonials");
+  revalidatePath("/");
+  return { ok: true };
+}
