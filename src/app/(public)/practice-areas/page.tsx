@@ -8,7 +8,7 @@ import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 export const metadata: Metadata = {
   title: "Practice Areas",
   description:
-    "A trial firm with a general practice. Fifteen practice areas across litigation, defense, and counsel — every matter prepared for trial.",
+    "A trial firm with a general practice. Practice areas across litigation, defense, and counsel — every matter prepared for trial.",
 };
 
 export default async function PracticeAreasPage() {

@@ -2,6 +2,15 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
 import { BadgeBar } from "@/components/site/BadgeBar";
+import { TeamTeaser } from "@/components/site/TeamTeaser";
+
+/** First sentence (or a short truncation) of a bio, for the hover popover. */
+function shortSummary(bio?: string): string | undefined {
+  if (!bio) return undefined;
+  const firstSentence = bio.split(/(?<=\.)\s/)[0];
+  const base = firstSentence.length <= 180 ? firstSentence : bio.slice(0, 160).trim() + "…";
+  return base;
+}
 import {
   getBlocks,
   getBannerItems,
@@ -102,27 +111,15 @@ export default async function HomePage() {
                 Meet the team <ArrowRight size={16} />
               </Link>
             </div>
-            <ul className="divide-y divide-[var(--c-border)] border-y border-[var(--c-border)]">
-              {team.slice(0, 4).map((m) => (
-                <li key={m.slug}>
-                  <Link
-                    href={`/about/${m.slug}`}
-                    className="group flex items-center justify-between gap-4 py-4"
-                  >
-                    <span>
-                      <span className="font-[family-name:var(--font-display)] text-lg group-hover:text-[var(--c-accent)] transition-colors">
-                        {m.name}
-                      </span>
-                      <span className="block text-sm text-[var(--c-ink-muted)]">{m.role}</span>
-                    </span>
-                    <ArrowRight
-                      size={16}
-                      className="text-[var(--c-ink-muted)] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all"
-                    />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <TeamTeaser
+              members={team.slice(0, 4).map((m) => ({
+                slug: m.slug,
+                name: m.name,
+                role: m.role,
+                photo: m.photo,
+                shortBio: shortSummary(m.bioProfessional),
+              }))}
+            />
           </div>
         </section>
       )}
@@ -146,23 +143,32 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-12 grid gap-px bg-[var(--c-dark-border)] sm:grid-cols-2 lg:grid-cols-3 border border-[var(--c-dark-border)]">
-            {results.map((r, i) => (
-              <div key={i} className="bg-[var(--c-dark-bg)] p-8 lg:p-10">
-                {r.stat && (
-                  <div className="font-[family-name:var(--font-display)] text-4xl lg:text-5xl text-[var(--c-dark-accent)] leading-none">
-                    {r.stat}
-                  </div>
-                )}
-                <p className="mt-4 text-[var(--c-dark-ink)] font-[family-name:var(--font-ui)] leading-snug">
-                  {r.statLabel ?? r.title}
-                </p>
-                {r.summary && (
-                  <p className="mt-3 text-sm text-[var(--c-dark-ink-muted)] leading-relaxed line-clamp-4">
-                    {r.summary}
+            {results.map((r, i) => {
+              const practiceTitle = practices.find((p) => p.slug === r.practiceSlug)?.title;
+              return (
+                <div key={i} className="bg-[var(--c-dark-bg)] p-8 lg:p-10 flex flex-col">
+                  {/* Practice type — small */}
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--c-dark-accent)] font-[family-name:var(--font-ui)]">
+                    {practiceTitle ?? "Result"}
                   </p>
-                )}
-              </div>
-            ))}
+                  {/* Value / tagline — larger */}
+                  {r.stat && (
+                    <div className="mt-3 font-[family-name:var(--font-display)] text-3xl lg:text-4xl text-[var(--c-dark-ink)] leading-none">
+                      {r.stat}
+                    </div>
+                  )}
+                  <p className="mt-3 text-[var(--c-dark-ink)] font-[family-name:var(--font-ui)] font-medium leading-snug">
+                    {r.statLabel ?? r.title}
+                  </p>
+                  {/* Description */}
+                  {r.summary && (
+                    <p className="mt-3 text-sm text-[var(--c-dark-ink-muted)] leading-relaxed line-clamp-4">
+                      {r.summary}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p className="mt-6 text-xs text-[var(--c-dark-ink-muted)] max-w-2xl">
             Past results do not guarantee a similar outcome. Each case depends on its own facts.
@@ -215,14 +221,28 @@ export default async function HomePage() {
       </section>
 
       {/* ========================= QUOTE BAND ============================ */}
-      <section className="bg-[var(--c-surface2)] py-20 lg:py-28">
-        <div className="container-prose text-center">
-          <blockquote className="font-[family-name:var(--font-display)] text-2xl lg:text-4xl leading-tight text-[var(--c-ink)]">
-            “{home["home.quote.text"]}”
-          </blockquote>
-          <p className="mt-6 eyebrow eyebrow-muted">{home["home.quote.attribution"]}</p>
-        </div>
-      </section>
+      {home["home.quote.image"] ? (
+        <section className="relative py-28 lg:py-36 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={home["home.quote.image"]} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-[var(--c-dark-bg)]/72" />
+          <div className="container-prose text-center relative z-10">
+            <blockquote className="font-[family-name:var(--font-display)] text-2xl lg:text-4xl leading-tight text-[var(--c-dark-ink)]">
+              “{home["home.quote.text"]}”
+            </blockquote>
+            <p className="mt-6 eyebrow text-[var(--c-dark-accent)]">{home["home.quote.attribution"]}</p>
+          </div>
+        </section>
+      ) : (
+        <section className="bg-[var(--c-surface2)] py-20 lg:py-28">
+          <div className="container-prose text-center">
+            <blockquote className="font-[family-name:var(--font-display)] text-2xl lg:text-4xl leading-tight text-[var(--c-ink)]">
+              “{home["home.quote.text"]}”
+            </blockquote>
+            <p className="mt-6 eyebrow eyebrow-muted">{home["home.quote.attribution"]}</p>
+          </div>
+        </section>
+      )}
 
       {/* ======================== TESTIMONIALS =========================== */}
       {testimonials.length > 0 && (

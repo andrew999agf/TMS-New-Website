@@ -97,6 +97,14 @@ export const LITIGATION_COUNTIES = [
   "Parker",
   "Bosque",
   "Hamilton",
+  "Harris",
+  "Travis",
+  "Hill",
+  "Hood",
+  "McLennan",
+  "Somervell",
+  "Coryell",
+  "Grayson",
 ];
 
 export const PROBATE_COUNTIES = ["Bosque", "Johnson", "Tarrant", "Dallas"];

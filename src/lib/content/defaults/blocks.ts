@@ -58,7 +58,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Home: Practice areas band ----
   { key: "home.practice.eyebrow", page: "home", section: "practiceBand", label: "Eyebrow", type: "text", value: "Practice Areas" },
   { key: "home.practice.heading", page: "home", section: "practiceBand", label: "Heading", type: "text", value: "What we handle." },
-  { key: "home.practice.body", page: "home", section: "practiceBand", label: "Body", type: "text", value: "Fifteen practice areas, one discipline: prepare it for trial." },
+  { key: "home.practice.body", page: "home", section: "practiceBand", label: "Body", type: "text", value: "A full range of practice areas, one discipline: prepare it for trial." },
 
   // ---- Home: Counties band ----
   { key: "home.counties.eyebrow", page: "home", section: "countiesBand", label: "Eyebrow", type: "text", value: "Reach" },
@@ -68,6 +68,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Home: Quote ----
   { key: "home.quote.text", page: "home", section: "quote", label: "Quote text", type: "text", value: QUOTES.clayton.text },
   { key: "home.quote.attribution", page: "home", section: "quote", label: "Quote attribution", type: "text", value: QUOTES.clayton.attribution },
+  { key: "home.quote.image", page: "home", section: "quote", label: "Quote background photo (shown behind the quote, under a dark scrim)", type: "image", value: "" },
 
   // ---- Home: Offices band ----
   { key: "home.offices.eyebrow", page: "home", section: "officesBand", label: "Eyebrow", type: "text", value: "Offices" },

@@ -265,33 +265,6 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "Texas commercial debt attorney. Collection for businesses owed money and defense against overreaching collection claims.",
   },
   {
-    slug: "foreclosures",
-    title: "Foreclosures",
-    group: "defense",
-    sort: 9,
-    tagline: "A posted sale date is a deadline, not a verdict.",
-    body: [
-      "Texas foreclosures move fast and largely outside the courtroom. By the time most people call a lawyer, the sale is weeks away. The earlier you act, the more options remain.",
-      "We represent property owners facing foreclosure and parties in the litigation that follows — wrongful foreclosure, title disputes, and the eviction fight that comes after a sale.",
-      "We also handle the appellate side of post-foreclosure litigation. We have defended owners through multiple appeals and recovered a supersedeas bond for a client.",
-    ],
-    approach:
-      "We treat a foreclosure as the opening move in litigation that may run all the way to an appeal — and we prepare it that way from the first notice.",
-    keywords: [
-      "foreclosure",
-      "foreclose",
-      "house",
-      "sale date",
-      "notice of sale",
-      "eviction",
-      "mortgage",
-      "deed of trust",
-    ],
-    seoTitle: "Foreclosure Attorney | Texas Property Owner Defense",
-    seoDescription:
-      "Texas foreclosure attorney. Property-owner defense, wrongful foreclosure, post-sale litigation, and appeals.",
-  },
-  {
     slug: "garnishments",
     title: "Garnishments",
     group: "defense",
