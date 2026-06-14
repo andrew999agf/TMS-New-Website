@@ -38,7 +38,7 @@ export function Nav({
   const payExternal = Boolean(paymentUrl);
 
   return (
-    <header className="sticky top-0 z-50 bg-[var(--c-bg)]/95 backdrop-blur border-b border-[var(--c-border)]">
+    <header className="sticky top-0 z-50 bg-[var(--c-bg)]/95 backdrop-blur border-b border-[var(--c-border)] shadow-[0_3px_8px_-4px_rgba(0,0,0,0.18)]">
       {/* Utility bar: office phones (left) + Make a Payment (right) */}
       <div className="hidden lg:block border-b border-[var(--c-border)] bg-[var(--c-surface2)]">
         <div className="container-page flex items-center justify-between h-9 text-xs">
@@ -134,6 +134,17 @@ export function Nav({
           </div>
         </div>
       )}
+
+      {/* Modern accent edge: the brand color sits behind the white header and
+          peeks out below as a thin stripe across the full width, then juts
+          lower with a diagonal on the right (under the hamburger on mobile /
+          the Make-a-Payment link on desktop). Purely decorative. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-[18px] overflow-hidden">
+        <div
+          className="h-full w-full bg-[var(--c-accent)]"
+          style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 87% 30%, 0 30%)" }}
+        />
+      </div>
     </header>
   );
 }
