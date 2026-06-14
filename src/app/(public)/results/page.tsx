@@ -17,10 +17,11 @@ export const metadata: Metadata = {
 };
 
 export default async function ResultsPage() {
-  const [results, footer, practices] = await Promise.all([
+  const [results, footer, practices, page] = await Promise.all([
     getResults(),
     getBlocks("footer"),
     getPracticeAreas(),
+    getBlocks("results"),
   ]);
   const disclaimer =
     footer["footer.results.disclaimer"] ??
@@ -60,6 +61,7 @@ export default async function ResultsPage() {
         eyebrow="The Record"
         title="We don't say much. The record talks."
         lead="Over a thousand matters. Jury trials, bench trials, appeals. Here is some of it."
+        bgImage={page["results.hero.image"] || undefined}
       />
 
       <div className="container-page py-16 lg:py-24 space-y-20">

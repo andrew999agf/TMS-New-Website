@@ -25,6 +25,8 @@ export const FIRM = {
   domain: "texaslawsmith.com", // confirm
 } as const;
 
+export type Mailing = { line: string; city: string; state: string; zip: string };
+
 export type Office = {
   id: string;
   name: string;
@@ -32,7 +34,7 @@ export type Office = {
   county?: string;
   street: string;
   street2?: string;
-  mailing?: string;
+  mailing?: Mailing;
   city: string;
   state: string;
   zip: string;
@@ -43,6 +45,8 @@ export type Office = {
   note?: string;
 };
 
+const FW_MAILING: Mailing = { line: "PO Box 11009", city: "Fort Worth", state: "Texas", zip: "76110" };
+
 export const OFFICES: Office[] = [
   {
     id: "fort-worth",
@@ -52,17 +56,18 @@ export const OFFICES: Office[] = [
     city: "Fort Worth",
     state: "Texas",
     zip: "76102",
+    mailing: FW_MAILING,
     phone: "(817) 348-8325",
     isHub: true,
     note: "VERIFY suite number and phone with Max.",
   },
   {
     id: "meridian",
-    name: "Meridian",
+    name: "Bosque County",
     role: "Principal Office",
     county: "Bosque County",
     street: "115 W. River Street",
-    mailing: "PO Box 123",
+    mailing: { line: "PO Box 123", city: "Meridian", state: "Texas", zip: "76665" },
     city: "Meridian",
     state: "Texas",
     zip: "76665",
@@ -78,6 +83,7 @@ export const OFFICES: Office[] = [
     city: "Weatherford",
     state: "Texas",
     zip: "76086",
+    mailing: FW_MAILING,
     phone: "(817) 475-5522",
     byAppointment: true,
   },

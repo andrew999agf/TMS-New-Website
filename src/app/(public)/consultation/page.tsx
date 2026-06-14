@@ -23,6 +23,7 @@ export default async function ConsultationPage({
         eyebrow="Request a Consultation"
         title={blocks["intake.hero.heading"] || "What brings you in?"}
         lead={blocks["intake.hero.body"]}
+        bgImage={blocks["consultation.hero.image"] || undefined}
       />
       <div className="container-page py-16 lg:py-24">
         <IntakeWizard

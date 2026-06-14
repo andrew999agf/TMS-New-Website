@@ -62,7 +62,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
 
   // ---- Home: Counties band ----
   { key: "home.counties.eyebrow", page: "home", section: "countiesBand", label: "Eyebrow", type: "text", value: "Reach" },
-  { key: "home.counties.heading", page: "home", section: "countiesBand", label: "Heading", type: "text", value: "Counties & courts we know." },
+  { key: "home.counties.heading", page: "home", section: "countiesBand", label: "Heading", type: "text", value: "Counties & courts where we practice." },
   { key: "home.counties.body", page: "home", section: "countiesBand", label: "Body", type: "text", value: "Litigation experience across North and Central Texas, plus the federal courts." },
 
   // ---- Home: Quote ----
@@ -103,6 +103,16 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "payment.heading", page: "payment", section: "main", label: "Heading", type: "text", value: "Make a Payment" },
   { key: "payment.body", page: "payment", section: "main", label: "Body", type: "text", value: "Pay securely through the firm's payment portal." },
   { key: "payment.url", page: "payment", section: "main", label: "Clio payment link", type: "url", value: "https://app.clio.com/link/v2/2/2/8d238d952200edf08657e749c231dc5d?hmac=0350ff9c5acc29605730ca8904589ed49123ea2654b4781f2b6b4dba5d9f2d51" },
+
+  // ---- Page banner images (the photo behind each page's navy header) ----
+  { key: "about.hero.image", page: "about", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "contact.hero.image", page: "contact", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "consultation.hero.image", page: "consultation", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "payment.hero.image", page: "payment", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "results.hero.image", page: "results", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "blog.hero.image", page: "blog", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "glossary.hero.image", page: "glossary", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
+  { key: "practiceareas.hero.image", page: "practiceareas", section: "banner", label: "Page banner photo (behind the navy header)", type: "image", value: "" },
 ];
 
 export const BLOCK_DEFAULTS: Record<string, string> = Object.fromEntries(

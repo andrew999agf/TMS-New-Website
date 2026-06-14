@@ -317,14 +317,15 @@ export default async function HomePage() {
                 </h3>
                 <address className="not-italic mt-4 text-sm text-[var(--c-dark-ink-muted)] leading-relaxed flex-1">
                   {o.street}
-                  {o.mailing ? (
-                    <>
-                      <br />
-                      {o.mailing}
-                    </>
-                  ) : null}
                   <br />
                   {o.city}, {o.state} {o.zip}
+                  {o.mailing ? (
+                    <span className="block mt-2">
+                      {o.mailing.line} (mailing address)
+                      <br />
+                      {o.mailing.city}, {o.mailing.state} {o.mailing.zip}
+                    </span>
+                  ) : null}
                 </address>
                 <a
                   href={`tel:${o.phone.replace(/[^\d+]/g, "")}`}

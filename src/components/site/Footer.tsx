@@ -48,6 +48,8 @@ const NAV_COLUMNS: { title: string; links: { label: string; href: string }[] }[]
 export async function Footer() {
   const blocks = await getBlocks("footer");
   const global = await getBlocks("global");
+  const payment = await getBlocks("payment");
+  const paymentUrl = payment["payment.url"] || "";
   const firmName = global["global.firmName"] ?? FIRM.name;
   const disclaimer = blocks["footer.disclaimer"] ?? "";
 
@@ -115,16 +117,23 @@ export async function Footer() {
                 {col.title}
               </h4>
               <ul className="space-y-2.5">
-                {col.links.map((l) => (
-                  <li key={l.href}>
-                    <Link
-                      href={l.href}
-                      className="text-sm text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] transition-colors"
-                    >
-                      {l.label}
-                    </Link>
-                  </li>
-                ))}
+                {col.links.map((l) => {
+                  // Make a Payment goes straight to the Clio portal when set.
+                  const isPay = l.href === "/payment";
+                  const href = isPay && paymentUrl ? paymentUrl : l.href;
+                  const external = isPay && Boolean(paymentUrl);
+                  return (
+                    <li key={l.href}>
+                      <Link
+                        href={href}
+                        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                        className="text-sm text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] transition-colors"
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}

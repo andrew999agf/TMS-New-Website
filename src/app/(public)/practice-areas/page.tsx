@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
-import { getPracticeAreas } from "@/lib/content";
+import { getPracticeAreas, getBlocks } from "@/lib/content";
 import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PracticeAreasPage() {
-  const practices = await getPracticeAreas();
+  const [practices, page] = await Promise.all([getPracticeAreas(), getBlocks("practiceareas")]);
 
   return (
     <>
@@ -20,6 +20,7 @@ export default async function PracticeAreasPage() {
         eyebrow="Practice Areas"
         title="A trial firm with a general practice."
         lead="The law is a seamless web. We practice across it — and prepare every matter for trial from day one."
+        bgImage={page["practiceareas.hero.image"] || undefined}
       />
       <div className="container-page py-16 lg:py-24 space-y-16">
         {PRACTICE_GROUPS.map((group) => {

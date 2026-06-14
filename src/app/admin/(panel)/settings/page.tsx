@@ -4,6 +4,7 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
 import { PaymentLinkSetting } from "@/components/admin/PaymentLinkSetting";
 import { DbSyncButton } from "@/components/admin/DbSyncButton";
+import { ContentRefreshButton } from "@/components/admin/ContentRefreshButton";
 import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 
@@ -59,6 +60,16 @@ export default async function SettingsPage() {
             create any new tables and load their starter content. It is safe to run anytime.
           </p>
           <DbSyncButton />
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Refresh site text</h2>
+          <p className="text-sm text-[var(--c-ink-muted)] mb-4">
+            Pull the latest wording, results, counties, glossary, and team bios into the live site.
+            <strong> Your uploaded logos, photos, banners, and badges are kept.</strong> Note: this
+            overwrites text you may have hand-edited here with the latest version.
+          </p>
+          <ContentRefreshButton />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

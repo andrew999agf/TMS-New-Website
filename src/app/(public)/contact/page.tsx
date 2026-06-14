@@ -23,6 +23,7 @@ export default async function ContactPage() {
         eyebrow={contact["contact.hero.eyebrow"]}
         title={contact["contact.hero.heading"]}
         lead={contact["contact.hero.body"]}
+        bgImage={contact["contact.hero.image"] || undefined}
       >
         <div className="mt-8">
           <Link href="/consultation" className="btn btn-accent">
@@ -42,14 +43,18 @@ export default async function ContactPage() {
               )}
               <address className="not-italic mt-5 text-[var(--c-ink-muted)] leading-relaxed flex-1">
                 {o.street}
+                <br />
+                {o.city}, {o.state} {o.zip}
                 {o.mailing ? (
                   <>
                     <br />
-                    Mailing: {o.mailing}
+                    <span className="block mt-2">
+                      {o.mailing.line} (mailing address)
+                      <br />
+                      {o.mailing.city}, {o.mailing.state} {o.mailing.zip}
+                    </span>
                   </>
                 ) : null}
-                <br />
-                {o.city}, {o.state} {o.zip}
               </address>
               <a
                 href={telHref(o.phone)}

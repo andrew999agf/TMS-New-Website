@@ -26,6 +26,7 @@ export default async function OurTeamPage() {
         eyebrow={about["about.hero.eyebrow"]}
         title={about["about.hero.heading"]}
         lead={about["about.hero.subhead"]}
+        bgImage={about["about.hero.image"] || undefined}
       />
 
       {/* Lead attorney — featured */}

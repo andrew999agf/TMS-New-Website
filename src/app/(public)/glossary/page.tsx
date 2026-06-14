@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PageHero } from "@/components/site/PageHero";
 import { GlossaryIndex } from "@/components/site/GlossaryIndex";
-import { getGlossaryTerms } from "@/lib/content";
+import { getGlossaryTerms, getBlocks } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Glossary",
@@ -10,13 +10,14 @@ export const metadata: Metadata = {
 };
 
 export default async function GlossaryPage() {
-  const terms = await getGlossaryTerms();
+  const [terms, page] = await Promise.all([getGlossaryTerms(), getBlocks("glossary")]);
   return (
     <>
       <PageHero
         eyebrow="Index of Terms"
         title="The vocabulary, in plain English."
         lead="Every term below comes with a definition and a worked hypothetical — the way you would actually learn it."
+        bgImage={page["glossary.hero.image"] || undefined}
       />
       <div className="container-page py-16 lg:py-24">
         <GlossaryIndex
