@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
+import { DbSyncButton } from "@/components/admin/DbSyncButton";
 import { getSetting } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 
@@ -37,6 +38,15 @@ export default async function SettingsPage() {
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Analytics</h2>
           <SettingsForm settingKey="ga4" label="Google Analytics 4 Measurement ID" placeholder="G-XXXXXXXXXX" initial={ga4} />
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Database updates</h2>
+          <p className="text-sm text-[var(--c-ink-muted)] mb-4">
+            When new features are added (like the team and badges sections), click this once to
+            create any new tables and load their starter content. It is safe to run anytime.
+          </p>
+          <DbSyncButton />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
