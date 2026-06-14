@@ -139,12 +139,12 @@ export function Nav({
           peeks out below as a thin stripe across the full width, then juts
           lower with a diagonal on the right (under the hamburger on mobile /
           the Make-a-Payment link on desktop). Purely decorative. */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-[20px] overflow-hidden">
-        {/* very thin midnight-navy line tucked between the white header and the gold */}
-        <div className="absolute inset-x-0 top-0 h-[2px] bg-[var(--c-dark-bg)]" />
-        {/* gold stripe + diagonal jet on the right, just below the navy line */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-[21px] overflow-hidden">
+        {/* thin midnight-navy band tucked between the white header and the gold */}
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-[var(--c-dark-bg)]" />
+        {/* gold stripe + diagonal jet on the right, just below the navy band */}
         <div
-          className="absolute inset-x-0 top-[2px] bottom-0 bg-[var(--c-accent)]"
+          className="absolute inset-x-0 top-[3px] bottom-0 bg-[var(--c-accent)]"
           style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 87% 30%, 0 30%)" }}
         />
       </div>
