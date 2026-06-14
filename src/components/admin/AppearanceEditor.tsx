@@ -232,7 +232,7 @@ export function AppearanceEditor({ initial }: { initial: ActiveTheme }) {
               The record talks.
             </div>
             <p className="text-xs mt-2" style={{ color: "var(--c-ink-muted)", fontFamily: "var(--font-body)" }}>
-              Over a thousand matters. Jury trials, bench trials, appeals. We have seen how this goes. A{" "}
+              Hundreds of matters. Jury trials, bench trials, appeals. We have seen how this goes. A{" "}
               <span style={{ color: "var(--c-term)", borderBottom: "1px dotted var(--c-term)" }}>summary judgment</span>{" "}
               can end a case before trial.
             </p>

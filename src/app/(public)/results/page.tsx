@@ -62,7 +62,7 @@ export default async function ResultsPage() {
       <PageHero
         eyebrow="The Record"
         title="We don't say much. The record talks."
-        lead="Over a thousand matters. Jury trials, bench trials, appeals. Here is some of it."
+        lead="Hundreds of matters. Jury trials, bench trials, appeals. Here is some of it."
         bgImage={page["results.hero.image"] || undefined}
         focal={page["results.hero.image.focal"]}
       />
