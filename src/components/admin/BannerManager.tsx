@@ -96,7 +96,7 @@ export function BannerManager({ items, dbEnabled }: { items: BannerRow[]; dbEnab
             value={form.url}
             onChange={(url) => setForm((f) => ({ ...f, url }))}
             slot="heroBanner"
-            accept={form.kind === "video" ? "video/mp4,video/webm" : "image/*"}
+            accept={form.kind === "video" ? "video/mp4,video/webm,video/quicktime,.mov" : "image/*,.heic,.heif"}
             folder="banner"
           />
           <div className="flex flex-wrap items-center gap-4 text-sm">

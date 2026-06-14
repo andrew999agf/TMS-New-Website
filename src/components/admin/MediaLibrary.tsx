@@ -91,7 +91,7 @@ export function MediaLibrary({
         ref={inputRef}
         type="file"
         multiple
-        accept="image/*,video/mp4,video/webm"
+        accept="image/*,.heic,.heif,video/mp4,video/webm,video/quicktime,.mov"
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />

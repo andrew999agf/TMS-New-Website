@@ -15,8 +15,11 @@ const ALLOWED = [
   "image/avif",
   "image/gif",
   "image/svg+xml",
+  "image/heic",
+  "image/heif",
   "video/mp4",
   "video/webm",
+  "video/quicktime", // .mov
 ];
 
 /**

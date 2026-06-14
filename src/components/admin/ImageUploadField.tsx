@@ -14,7 +14,7 @@ export function ImageUploadField({
   value,
   onChange,
   slot,
-  accept = "image/*",
+  accept = "image/*,.heic,.heif",
   folder = "uploads",
   label,
 }: {
