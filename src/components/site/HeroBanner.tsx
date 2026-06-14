@@ -54,7 +54,7 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
           >
             {item.kind === "video" && item.url && !reduced ? (
               <video
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 src={item.url}
                 poster={item.posterUrl ?? undefined}
                 autoPlay
