@@ -60,13 +60,13 @@ export function Nav({
         </div>
       </div>
 
-      <nav className="container-page flex items-center justify-between gap-3 h-20 lg:h-24" aria-label="Primary">
+      <nav className="container-page flex items-center justify-between gap-3 h-[5.5rem] lg:h-24" aria-label="Primary">
         <Link href="/" aria-label={firmName} className="flex items-center leading-none min-w-0">
           {(() => {
             const logo = logoDark ?? logoLight ?? logoUrl;
             if (logo) {
               // eslint-disable-next-line @next/next/no-img-element
-              return <img src={logo} alt={firmName} className="h-12 sm:h-[4.5rem] w-auto max-w-[190px] sm:max-w-[360px] object-contain" />;
+              return <img src={logo} alt={firmName} className="h-16 sm:h-[4.5rem] w-auto max-w-[250px] sm:max-w-[360px] object-contain" />;
             }
             return (
               <span className="font-[family-name:var(--font-display)] text-base sm:text-lg tracking-tight leading-none text-[var(--c-ink)] truncate">
