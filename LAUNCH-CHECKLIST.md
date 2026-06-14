@@ -59,7 +59,7 @@ All firm facts live in `src/lib/firm.ts` (the single source of truth). Confirm:
 
 | Fact | Current value | Where | Note |
 |---|---|---|---|
-| **Bar number** | `24110379` | `firm.ts:17` | A signature block shows **`24110371`** — confirm which is correct. |
+| **Bar number** | `24110379` | `firm.ts` | Confirmed correct (2026-06-14). |
 | **Fort Worth suite** | `Suite 200`, `1612 Summit Ave.` | `firm.ts:51` | Confirm suite #. |
 | **Fort Worth phone** | `(817) 348-8325` | `firm.ts:55` | Confirm. |
 | **Domain** | `texaslawsmith.com` | `firm.ts:25` | Confirm. |

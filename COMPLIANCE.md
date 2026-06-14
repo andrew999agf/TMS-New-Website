@@ -29,7 +29,7 @@ the items requiring the attorney's review before launch.
 
 ## [VERIFY WITH MAX] — confirm before publish
 
-- **Bar number:** using `24110379`; a signature block shows `24110371`. Confirm.
+- **Bar number:** `24110379` — confirmed correct (2026-06-14).
 - **Fort Worth office:** suite number (Suite 200?) and phone `(817) 348-8325`.
 - **Jury-trial count:** site currently says "numerous jury trials" rather than a
   number. If a specific count (>10) is to be published, confirm it.

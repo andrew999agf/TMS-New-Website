@@ -13,9 +13,7 @@ export const FIRM = {
     fullName: "Thomas Maxwell Smith",
     displayName: "T. Maxwell Smith",
     nickname: "Max",
-    // VERIFY: one signature block shows 24110371; confirm before publishing.
     barNumber: "24110379",
-    barNumberNote: "VERIFY — a signature block shows 24110371; confirm with Max.",
     admittedYear: "2018",
     title: "Trial Attorney & Founder",
   },
