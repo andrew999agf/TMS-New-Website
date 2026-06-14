@@ -41,7 +41,6 @@ export default async function TeamMemberPage({
           "@type": member.isAttorney ? "Attorney" : "Person",
           name: member.name,
           jobTitle: member.role,
-          email: member.email,
           telephone: member.directPhone,
           worksFor: { "@type": "LegalService", name: "T. Maxwell Smith, PLLC" },
         }}

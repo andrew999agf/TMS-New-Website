@@ -39,7 +39,6 @@ export default async function PublicLayout({
     "@type": "LegalService",
     name: FIRM.name,
     url: baseUrl,
-    email: FIRM.email,
     faxNumber: FIRM.fax,
     description:
       "A Texas trial firm. Civil and commercial litigation, personal injury, appeals, debt defense, business, and estate matters — prepared for trial.",

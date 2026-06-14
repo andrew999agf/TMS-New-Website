@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Mail, Phone, Printer } from "lucide-react";
+import { ArrowRight, Phone, Printer } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
 import { FaqSection } from "@/components/site/FaqSection";
 import { getBlocks } from "@/lib/content";
@@ -93,12 +93,12 @@ export default async function ContactPage() {
         </div>
 
         <div className="mt-12 flex flex-wrap gap-x-10 gap-y-3 border-t border-[var(--c-border)] pt-8 text-[var(--c-ink-muted)]">
-          <a href={`mailto:${FIRM.email}`} className="inline-flex items-center gap-2 link-underline">
-            <Mail size={16} /> {FIRM.email}
-          </a>
           <span className="inline-flex items-center gap-2">
             <Printer size={16} /> Fax {FIRM.fax}
           </span>
+          <Link href="/consultation" className="inline-flex items-center gap-2 link-underline">
+            <ArrowRight size={16} /> Send a secure message through our consultation form
+          </Link>
         </div>
       </div>
 

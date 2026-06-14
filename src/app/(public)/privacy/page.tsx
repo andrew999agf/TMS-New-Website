@@ -46,7 +46,8 @@ export default function PrivacyPage() {
         </p>
         <h2>Contact</h2>
         <p>
-          Questions about this policy may be directed to {FIRM.email}.
+          Questions about this policy may be directed to the firm by phone or through our{" "}
+          <a href="/consultation">contact form</a>.
         </p>
       </div>
     </>

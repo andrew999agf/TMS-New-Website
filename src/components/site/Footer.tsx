@@ -173,12 +173,7 @@ export async function Footer() {
           <span>
             © {new Date().getFullYear()} {firmName}. All rights reserved.
           </span>
-          <span>
-            Fax {FIRM.fax} ·{" "}
-            <a href={`mailto:${FIRM.email}`} className="hover:text-[var(--c-dark-ink)]">
-              {FIRM.email}
-            </a>
-          </span>
+          <span>Fax {FIRM.fax}</span>
         </div>
       </div>
     </footer>

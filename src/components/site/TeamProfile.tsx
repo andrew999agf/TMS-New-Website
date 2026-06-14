@@ -1,4 +1,4 @@
-import { Mail, Phone } from "lucide-react";
+import { Phone } from "lucide-react";
 import { MediaPlaceholder } from "@/components/site/MediaPlaceholder";
 import { telHref } from "@/lib/utils";
 import type { TeamMemberSeed } from "@/lib/content/defaults/team";
@@ -34,11 +34,6 @@ export function TeamProfile({ member }: { member: TeamMemberSeed }) {
             <p className="eyebrow mt-2">{member.role}</p>
 
             <div className="mt-5 space-y-1.5 text-sm">
-              {member.email && (
-                <a href={`mailto:${member.email}`} className="flex items-center gap-2 link-underline w-fit">
-                  <Mail size={15} /> {member.email}
-                </a>
-              )}
               {member.directPhone && (
                 <a href={telHref(member.directPhone)} className="flex items-center gap-2 link-underline w-fit">
                   <Phone size={15} /> {member.directPhone}
