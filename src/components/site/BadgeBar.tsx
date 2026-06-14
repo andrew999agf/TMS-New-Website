@@ -16,9 +16,9 @@ export function BadgeBar({ badges }: { badges: BadgeView[] }) {
 
   return (
     <section className="border-b border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
-      <div className="py-6 group">
+      <div className="py-8 group">
         <div
-          className="badge-marquee flex items-center gap-16 w-max"
+          className="badge-marquee flex items-center gap-20 w-max"
           style={{ animationDuration: `${durationS}s` }}
         >
           {loop.map((b, i) => {
@@ -28,7 +28,7 @@ export function BadgeBar({ badges }: { badges: BadgeView[] }) {
                 src={b.logo!}
                 alt={b.name}
                 title={b.name}
-                className="h-14 w-auto max-w-[180px] object-contain"
+                className="h-28 w-auto max-w-[360px] object-contain"
               />
             );
             return b.url ? (
