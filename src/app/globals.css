@@ -253,3 +253,15 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fadeUp 0.7s ease both; }
+
+/* Slow, looping logo marquee for the badge bar (pauses on hover). */
+@keyframes badgeScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.badge-marquee {
+  animation-name: badgeScroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.group:hover .badge-marquee { animation-play-state: paused; }

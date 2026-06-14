@@ -1,36 +1,43 @@
 import type { BadgeView } from "@/lib/content";
 
 /**
- * Strip of organizations, bar associations, and awards shown directly below the
- * hero. Renders each badge's logo when uploaded, otherwise a clean text chip.
+ * Trust strip below the hero: organization, bar-association, and award logos
+ * (PNG, ideally transparent). Badges without a logo are skipped — this bar is
+ * image-only. The set slowly scrolls and loops; it pauses on hover and freezes
+ * under prefers-reduced-motion.
  */
 export function BadgeBar({ badges }: { badges: BadgeView[] }) {
-  if (badges.length === 0) return null;
+  const withLogos = badges.filter((b) => b.logo);
+  if (withLogos.length === 0) return null;
+
+  // Duplicate the set so the marquee can loop seamlessly.
+  const loop = [...withLogos, ...withLogos];
+  const durationS = Math.max(24, withLogos.length * 7);
+
   return (
-    <section className="border-b border-[var(--c-border)] bg-[var(--c-surface)]">
-      <div className="container-page py-6">
-        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-5">
-          {badges.map((b) => {
-            const inner = b.logo ? (
+    <section className="border-b border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
+      <div className="py-6 group">
+        <div
+          className="badge-marquee flex items-center gap-16 w-max"
+          style={{ animationDuration: `${durationS}s` }}
+        >
+          {loop.map((b, i) => {
+            const img = (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={b.logo}
+                src={b.logo!}
                 alt={b.name}
                 title={b.name}
-                className="h-12 w-auto max-w-[160px] object-contain opacity-80 grayscale hover:grayscale-0 hover:opacity-100 transition"
+                className="h-14 w-auto max-w-[180px] object-contain"
               />
-            ) : (
-              <span className="text-sm font-[family-name:var(--font-ui)] uppercase tracking-[0.1em] text-[var(--c-ink-muted)]">
-                {b.name}
-              </span>
             );
             return b.url ? (
-              <a key={b.id} href={b.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {inner}
+              <a key={i} href={b.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                {img}
               </a>
             ) : (
-              <span key={b.id} className="shrink-0">
-                {inner}
+              <span key={i} className="shrink-0">
+                {img}
               </span>
             );
           })}
