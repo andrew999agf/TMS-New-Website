@@ -71,3 +71,16 @@ export async function reorderBannerItem(id: number, dir: "up" | "down") {
   revalidatePath("/admin/banner");
   return { ok: true };
 }
+
+/** Persist a full new order (drag-and-drop). orderedIds top→bottom = play order. */
+export async function setBannerOrder(orderedIds: number[]) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false };
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(bannerItems).set({ sort: i + 1 }).where(eq(bannerItems.id, orderedIds[i]));
+  }
+  await audit(session.email, "update", "banner", undefined, "Reordered banner (drag)");
+  revalidatePath("/");
+  revalidatePath("/admin/banner");
+  return { ok: true };
+}
