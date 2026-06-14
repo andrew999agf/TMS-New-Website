@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { GlossaryBody } from "@/components/site/GlossaryTooltips";
+import { ShareButtons } from "@/components/site/ShareButtons";
 import { JsonLd } from "@/components/site/JsonLd";
 import {
   getPost,
@@ -106,6 +107,10 @@ export default async function PostPage({
         )}
 
         <GlossaryBody html={annotated} entries={glossEntries} />
+
+        <div className="mt-10 border-t border-[var(--c-border)] pt-6">
+          <ShareButtons title={post.title} />
+        </div>
 
         {post.isFirmNews && (
           <p className="mt-10 text-sm text-[var(--c-ink-muted)] border-t border-[var(--c-border)] pt-6">

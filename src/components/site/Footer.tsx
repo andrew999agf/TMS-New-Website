@@ -1,7 +1,17 @@
 import Link from "next/link";
+import { Facebook, Instagram, Linkedin, Youtube, Twitter } from "lucide-react";
 import { getBlocks } from "@/lib/content";
 import { FIRM, OFFICES } from "@/lib/firm";
 import { telHref } from "@/lib/utils";
+
+const SOCIALS = [
+  { key: "global.social.facebook", label: "Facebook", Icon: Facebook },
+  { key: "global.social.instagram", label: "Instagram", Icon: Instagram },
+  { key: "global.social.linkedin", label: "LinkedIn", Icon: Linkedin },
+  { key: "global.social.x", label: "X", Icon: Twitter },
+  { key: "global.social.youtube", label: "YouTube", Icon: Youtube },
+  { key: "global.social.tiktok", label: "TikTok", Icon: null },
+];
 
 const NAV_COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
@@ -67,6 +77,27 @@ export async function Footer() {
             >
               Request a Consultation
             </Link>
+
+            {/* Social media icons (shown only for links that are set) */}
+            <div className="mt-6 flex items-center gap-3">
+              {SOCIALS.map(({ key, label, Icon }) => {
+                const url = global[key];
+                if (!url) return null;
+                return (
+                  <a
+                    key={key}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={label}
+                    className="h-9 w-9 flex items-center justify-center rounded-full border border-[var(--c-dark-border)] text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] hover:border-[var(--c-dark-ink)] transition-colors"
+                  >
+                    {Icon ? <Icon size={16} /> : <span className="text-xs font-semibold">TT</span>}
+                  </a>
+                );
+              })}
+            </div>
           </div>
 
           {NAV_COLUMNS.map((col) => (

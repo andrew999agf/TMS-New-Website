@@ -10,6 +10,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const name = blocks["global.firmName"] ?? FIRM.name;
   const tagline = blocks["global.tagline"] ?? "Generally trained for your specific legal matter.";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const socialImage = blocks["global.socialImage"] || "";
+  const favicon = blocks["global.favicon"] || "";
   return {
     metadataBase: new URL(baseUrl),
     title: {
@@ -18,13 +20,18 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description:
       "A Texas trial firm. Over a thousand matters — jury trials, bench trials, and appeals. Prepared for trial from day one.",
+    ...(favicon ? { icons: { icon: favicon, apple: favicon } } : {}),
     openGraph: {
       type: "website",
       siteName: name,
       title: `${name} — ${tagline}`,
       locale: "en_US",
+      ...(socialImage ? { images: [{ url: socialImage, width: 1200, height: 630 }] } : {}),
     },
-    twitter: { card: "summary_large_image" },
+    twitter: {
+      card: "summary_large_image",
+      ...(socialImage ? { images: [socialImage] } : {}),
+    },
     robots: { index: true, follow: true },
   };
 }

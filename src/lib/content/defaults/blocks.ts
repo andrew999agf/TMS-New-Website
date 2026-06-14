@@ -25,6 +25,16 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.tagline", page: "global", section: "brand", label: "Tagline", type: "text", value: "Generally trained for your specific legal matter." },
   { key: "global.logoLight", page: "global", section: "logo", label: "Logo — light (for dark backgrounds: header over hero, footer)", type: "image", value: "" },
   { key: "global.logoDark", page: "global", section: "logo", label: "Logo — dark (for light backgrounds: scrolled header, interior pages)", type: "image", value: "" },
+  { key: "global.socialImage", page: "global", section: "logo", label: "Social share image (shown when pages are texted or posted to social media — 1200×630px)", type: "image", value: "" },
+  { key: "global.favicon", page: "global", section: "logo", label: "Favicon (browser tab icon — square PNG, 512×512px)", type: "image", value: "" },
+
+  // ---- Global: Social media links (icons in the footer) ----
+  { key: "global.social.facebook", page: "global", section: "social", label: "Facebook URL", type: "url", value: "" },
+  { key: "global.social.instagram", page: "global", section: "social", label: "Instagram URL", type: "url", value: "" },
+  { key: "global.social.linkedin", page: "global", section: "social", label: "LinkedIn URL", type: "url", value: "" },
+  { key: "global.social.x", page: "global", section: "social", label: "X (Twitter) URL", type: "url", value: "" },
+  { key: "global.social.youtube", page: "global", section: "social", label: "YouTube URL", type: "url", value: "" },
+  { key: "global.social.tiktok", page: "global", section: "social", label: "TikTok URL", type: "url", value: "" },
 
   // ---- Home: Hero ----
   { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "T. Maxwell Smith, PLLC — Fort Worth, Texas" },
