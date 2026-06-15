@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Fuse from "fuse.js";
-import { ArrowLeft, ArrowRight, Check, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search, Info } from "lucide-react";
 import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
@@ -274,10 +274,13 @@ function FieldInput({
   consentText?: string;
 }) {
   const labelEl = (
-    <label className="block font-[family-name:var(--font-ui)] font-medium mb-2">
-      {field.label}
-      {field.required && <span className="text-[var(--c-accent)]"> *</span>}
-    </label>
+    <div className="flex items-center gap-1.5 font-[family-name:var(--font-ui)] font-medium mb-2">
+      <span>
+        {field.label}
+        {field.required && <span className="text-[var(--c-accent)]"> *</span>}
+      </span>
+      {field.help && <InfoTip text={field.help} />}
+    </div>
   );
 
   const inputClass =
@@ -401,8 +404,35 @@ function FieldInput({
             placeholder={field.placeholder}
             className={inputClass}
           />
-          {field.help && <p className="mt-1.5 text-xs text-[var(--c-ink-muted)]">{field.help}</p>}
         </div>
       );
   }
+}
+
+/** Small info icon that reveals help text on hover (desktop) or tap (mobile). */
+function InfoTip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onBlur={() => setShow(false)}
+        aria-label="More information"
+        className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+      >
+        <Info size={15} />
+      </button>
+      {show && (
+        <span
+          role="tooltip"
+          className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+8px)] z-30 w-64 max-w-[80vw] rounded-md bg-[var(--c-ink)] text-[var(--c-bg)] text-xs font-normal leading-relaxed px-3 py-2 shadow-lg"
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
 }

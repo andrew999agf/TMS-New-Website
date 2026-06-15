@@ -54,6 +54,13 @@ export type Branch = {
   commonOverrides?: Record<string, Step>;
 };
 
+/** Reused help text guiding a prospect to identify the exact court. */
+export const COURT_HELP =
+  "Look at the top of the first page of the lawsuit, citation, or court notice — it names the court, e.g. “141st District Court, Tarrant County,” “County Court at Law No. 2, Tarrant County,” or “City of Fort Worth Municipal Court.” If no case has been filed yet, you can leave this blank.";
+
+const COURT_HELP_CRIMINAL =
+  "It’s on your citation, bond paperwork, or court notice — e.g. “County Criminal Court No. 3, Tarrant County,” “396th District Court, Tarrant County,” or for a ticket, “City of Fort Worth Municipal Court.”";
+
 /** Steps appended to every branch before submission. */
 export const COMMON_STEPS: Step[] = [
   {
@@ -206,7 +213,7 @@ export const BRANCHES: Branch[] = [
           { name: "amountClaimed", label: "Amount claimed (if stated)", type: "text", placeholder: "$" },
           { name: "served", label: "Have you been served with papers?", type: "yesno" },
           { name: "servedWhen", label: "If served, when?", type: "date" },
-          { name: "courtNamed", label: "Court named on the papers (if known)", type: "text" },
+          { name: "court", label: "Which court? (named on the papers)", type: "text", placeholder: "e.g., County Court at Law No. 2, Tarrant County", help: COURT_HELP },
         ],
       },
     ],
@@ -250,6 +257,7 @@ export const BRANCHES: Branch[] = [
             options: ["Under $25,000", "$25,000–$100,000", "$100,000–$500,000", "$500,000–$1M", "Over $1M", "Not sure"],
           },
           { name: "documents", label: "Do key documents exist (contracts, emails)?", type: "yesno" },
+          { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
           {
             name: "timeline",
             label: "Brief timeline of events",
@@ -301,6 +309,7 @@ export const BRANCHES: Branch[] = [
           },
           { name: "yourInsurer", label: "Have you spoken to any insurer yet?", type: "yesno" },
           { name: "otherInsurer", label: "Do you know the other side's insurer?", type: "text" },
+          { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
         ],
       },
     ],
@@ -332,6 +341,7 @@ export const BRANCHES: Branch[] = [
           },
           { name: "chargeType", label: "Charge type (if known)", type: "text" },
           { name: "chargeCounty", label: "County", type: "text" },
+          { name: "court", label: "Which court is the case in? (if known)", type: "text", placeholder: "e.g., County Criminal Court No. 3, Tarrant County", help: COURT_HELP_CRIMINAL },
         ],
       },
       {
@@ -436,7 +446,7 @@ export const BRANCHES: Branch[] = [
         title: "About the estate",
         fields: [
           { name: "deathDate", label: "Date of death", type: "date" },
-          { name: "deathCounty", label: "County", type: "text" },
+          { name: "deathCounty", label: "County", type: "text", help: "Probate is usually filed in the Texas county where the person lived when they passed away." },
           { name: "willExists", label: "Is there a will?", type: "yesno" },
           { name: "originalLocated", label: "Has the original will been located?", type: "yesno" },
         ],
@@ -524,6 +534,7 @@ export const BRANCHES: Branch[] = [
             type: "text",
             placeholder: "Notice received? Sale date set? Writ served?",
           },
+          { name: "court", label: "Court that issued the order (if known)", type: "text", placeholder: "e.g., 348th District Court, Tarrant County", help: COURT_HELP },
           { name: "amounts", label: "Amounts involved", type: "text", placeholder: "$" },
         ],
       },
@@ -545,7 +556,7 @@ export const BRANCHES: Branch[] = [
         id: "trial",
         title: "About the judgment",
         fields: [
-          { name: "trialCourt", label: "Trial court & county", type: "text", required: true },
+          { name: "trialCourt", label: "Trial court & county", type: "text", required: true, help: COURT_HELP },
           {
             name: "judgmentDate",
             label: "Date of the judgment",

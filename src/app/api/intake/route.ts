@@ -196,6 +196,9 @@ export async function POST(req: Request) {
   const phone = str("phone");
   const email = str("email");
   const county = str("county");
+  const court = str("court") || str("trialCourt") || str("courtNamed");
+  // For the subject: prefer the exact court, then any county captured, then city.
+  const location = court || str("chargeCounty") || str("deathCounty") || county || "";
   const message = str("message") || str("description");
 
   const row = (label: string, val?: string) =>
@@ -212,15 +215,17 @@ export async function POST(req: Request) {
         ${row("Preferred contact", pref || "—")}
         ${row("Telephone", phone)}
         ${row("Email", email)}
+        ${row("Court", court)}
         ${row("County / City", county)}
       </table>
       ${message ? `<p style="margin:0 0 6px;color:#777;font-size:13px">In their words:</p><p style="margin:0 0 18px;padding:12px 16px;background:#f6f4f1;border-left:3px solid #7a1f2b;font-style:italic">${esc(message)}</p>` : ""}
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 
+  const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
   await sendEmail({
     to,
-    subject: `New inquiry — ${matterSubject} — ${clientName}`,
+    subject: subjectParts.join(" — "),
     html: summaryHtml,
   });
 
