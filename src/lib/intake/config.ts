@@ -46,6 +46,9 @@ export type Branch = {
   /** Fuzzy-match keywords/synonyms */
   keywords: string[];
   steps: Step[];
+  /** Per-branch replacements for shared COMMON_STEPS, keyed by step id
+   *  (e.g. reword the "conflict" or "urgency" step for this matter type). */
+  commonOverrides?: Record<string, Step>;
 };
 
 /** Steps appended to every branch before submission. */
@@ -287,6 +290,31 @@ export const BRANCHES: Branch[] = [
     blurb: "I want to plan ahead",
     practiceSlug: "estate-succession-planning",
     keywords: ["will", "trust", "estate", "power of attorney", "poa", "plan", "guardian", "directive", "inherit", "succession", "farm", "land"],
+    commonOverrides: {
+      conflict: {
+        id: "conflict",
+        title: "Who else is involved?",
+        subtitle:
+          "Just so we can run a conflicts check. List the people who would be part of your plan — spouse, children, beneficiaries, family members, or anyone who might have an adverse interest. Leave blank if you are not sure.",
+        fields: [
+          {
+            name: "opposingParty",
+            label: "Family members, beneficiaries, or other interested parties",
+            type: "textarea",
+            placeholder: "e.g., spouse, children, beneficiaries, business partners, other family",
+          },
+        ],
+      },
+      urgency: {
+        id: "urgency",
+        title: "Is there a deadline?",
+        subtitle: "A deadline or time concern tells us how quickly we need to move.",
+        fields: [
+          { name: "hasDeadline", label: "Do you have a deadline or time-sensitive concern?", type: "yesno" },
+          { name: "deadline", label: "If so, what date?", type: "date" },
+        ],
+      },
+    },
     steps: [
       {
         id: "household",

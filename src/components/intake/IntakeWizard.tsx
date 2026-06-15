@@ -53,7 +53,9 @@ export function IntakeWizard({
     return fuse.search(query).map((r) => r.item);
   }, [query, fuse]);
 
-  const steps: Step[] = branch ? [...branch.steps, ...COMMON_STEPS] : [];
+  const steps: Step[] = branch
+    ? [...branch.steps, ...COMMON_STEPS.map((s) => branch.commonOverrides?.[s.id] ?? s)]
+    : [];
   const currentStep = steps[stepIndex];
   const totalSteps = steps.length;
 
