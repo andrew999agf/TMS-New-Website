@@ -17,6 +17,7 @@ import {
   addCategory, updateCategory, deleteCategory, replaceMatters,
   type TimeEntryInput,
 } from "@/app/admin/(panel)/time-tracker/actions";
+import { VoiceTimeEntry } from "@/components/admin/VoiceTimeEntry";
 
 export type EntryView = {
   id: number; ownerId: number; ownerName: string; matter: string; entryDate: string;
@@ -369,6 +370,14 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
           </div>
         </Modal>
       )}
+
+      <VoiceTimeEntry
+        matters={matterList}
+        categories={categoryNames}
+        activityUsers={activityUsers}
+        defaultUser={defaultUser}
+        onAdd={(input) => run(() => addTimeEntry(input))}
+      />
     </div>
   );
 }
