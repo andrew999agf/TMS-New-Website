@@ -67,6 +67,7 @@ const DDL = [
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS banner_focal varchar(16) NOT NULL DEFAULT 'center'`,
+  `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
   // Allow the new "focal" content-block type used for page-banner positions.
   `ALTER TYPE block_type ADD VALUE IF NOT EXISTS 'focal'`,
 ];

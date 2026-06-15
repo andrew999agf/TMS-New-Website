@@ -17,3 +17,12 @@ export async function updateIntakeStatus(
   revalidatePath("/admin/intake");
   return { ok: true };
 }
+
+export async function setIntakeArchived(id: number, archived: boolean) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false };
+  await db.update(intakeSubmissions).set({ archived }).where(eq(intakeSubmissions.id, id));
+  await audit(session.email, "update", "intake", String(id), archived ? "Archived" : "Restored");
+  revalidatePath("/admin/intake");
+  return { ok: true };
+}

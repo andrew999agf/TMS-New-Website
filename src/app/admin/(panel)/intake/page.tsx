@@ -30,6 +30,7 @@ export default async function IntakeAdminPage() {
         isUrgent: r.isUrgent,
         deadline: r.deadline,
         status: r.status as IntakeRow["status"],
+        archived: r.archived ?? false,
         createdAt: r.createdAt.toISOString(),
         answers: (r.answers as Record<string, unknown>) ?? {},
       }));

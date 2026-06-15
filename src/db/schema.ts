@@ -348,6 +348,7 @@ export const intakeSubmissions = pgTable(
     isUrgent: boolean("is_urgent").notNull().default(false),
     message: text("message"),
     status: intakeStatus("status").notNull().default("new"),
+    archived: boolean("archived").notNull().default(false),
     referrer: text("referrer"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

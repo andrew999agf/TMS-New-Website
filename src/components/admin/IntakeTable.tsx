@@ -1,8 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState, useTransition } from "react";
-import { Download, ChevronDown } from "lucide-react";
-import { updateIntakeStatus } from "@/app/admin/(panel)/intake/actions";
+import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft } from "lucide-react";
+import { updateIntakeStatus, setIntakeArchived } from "@/app/admin/(panel)/intake/actions";
 
 export type IntakeRow = {
   id: number;
@@ -15,6 +15,7 @@ export type IntakeRow = {
   isUrgent: boolean;
   deadline: string | null;
   status: "new" | "contacted" | "scheduled" | "declined";
+  archived: boolean;
   createdAt: string;
   answers: Record<string, unknown>;
 };
@@ -25,6 +26,7 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
+  const [view, setView] = useState<"active" | "archived">("active");
   const [open, setOpen] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -33,7 +35,10 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
     [rows],
   );
 
+  const archivedCount = useMemo(() => rows.filter((r) => r.archived).length, [rows]);
+
   const filtered = rows.filter((r) => {
+    if ((view === "archived") !== Boolean(r.archived)) return false;
     if (status !== "all" && r.status !== status) return false;
     if (practice !== "all" && r.practiceSlug !== practice) return false;
     if (urgentOnly && !r.isUrgent) return false;
@@ -66,6 +71,12 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
     });
   }
 
+  function archiveRow(id: number, archived: boolean) {
+    startTransition(() => {
+      void setIntakeArchived(id, archived);
+    });
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-5">
@@ -75,10 +86,27 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
           <input type="checkbox" checked={urgentOnly} onChange={(e) => setUrgentOnly(e.target.checked)} className="accent-[var(--c-accent)]" />
           Urgent only
         </label>
-        <button onClick={exportCsv} className="btn btn-outline text-sm py-2 px-3 ml-auto">
-          <Download size={15} /> Export CSV ({filtered.length})
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={exportCsv} className="btn btn-outline text-sm py-2 px-3">
+            <Download size={15} /> Export CSV ({filtered.length})
+          </button>
+          {view === "active" ? (
+            <button onClick={() => { setView("archived"); setOpen(null); }} className="btn btn-outline text-sm py-2 px-3">
+              <Archive size={15} /> Archive ({archivedCount})
+            </button>
+          ) : (
+            <button onClick={() => { setView("active"); setOpen(null); }} className="btn btn-accent text-sm py-2 px-3">
+              <ArrowLeft size={15} /> Back to active
+            </button>
+          )}
+        </div>
       </div>
+
+      {view === "archived" && (
+        <p className="mb-4 text-sm text-[var(--c-ink-muted)] flex items-center gap-2">
+          <Archive size={14} /> Viewing archived submissions. Use the restore button on a row to bring it back.
+        </p>
+      )}
 
       <div className="rounded-lg border border-[var(--c-border)] overflow-hidden">
         <table className="w-full text-sm">
@@ -129,9 +157,19 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setOpen(open === r.id ? null : r.id)} aria-label="Toggle detail">
-                      <ChevronDown size={16} className={open === r.id ? "rotate-180 transition-transform" : "transition-transform"} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => archiveRow(r.id, !r.archived)}
+                        disabled={pending}
+                        title={r.archived ? "Restore to active" : "Archive"}
+                        className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+                      >
+                        {r.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                      </button>
+                      <button onClick={() => setOpen(open === r.id ? null : r.id)} aria-label="Toggle detail">
+                        <ChevronDown size={16} className={open === r.id ? "rotate-180 transition-transform" : "transition-transform"} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {open === r.id && (

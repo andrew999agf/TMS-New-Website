@@ -124,13 +124,46 @@ export const COMMON_STEPS: Step[] = [
   },
 ];
 
+/**
+ * Reusable replacements for the shared conflict/urgency steps, for matters where
+ * "the other side" and "a court date" don't fit (planning, formation, probate).
+ */
+const SOFT_URGENCY: Step = {
+  id: "urgency",
+  title: "Is there a deadline?",
+  subtitle: "Any deadline — a hearing, a closing, a filing date — tells us how quickly to move.",
+  fields: [
+    { name: "hasDeadline", label: "Do you have a deadline or time-sensitive concern?", type: "yesno" },
+    { name: "deadline", label: "If so, what date?", type: "date" },
+  ],
+};
+
+function involvedStep(
+  label: string,
+  placeholder: string,
+  subtitle = "We ask only so we can run a conflicts check. Leave blank if you are not sure.",
+): Step {
+  return {
+    id: "conflict",
+    title: "Who else is involved?",
+    subtitle,
+    fields: [{ name: "opposingParty", label, type: "textarea", placeholder }],
+  };
+}
+
 export const BRANCHES: Branch[] = [
   {
     id: "sued",
     label: "I'm being sued / received legal papers",
     blurb: "Someone filed against me",
     practiceSlug: "consumer-debt-defense",
-    keywords: ["sued", "served", "papers", "lawsuit", "summons", "citation", "default", "court papers", "debt", "collection"],
+    keywords: [
+      "sued", "being sued", "lawsuit", "law suit", "summons", "citation", "served", "served papers",
+      "court papers", "legal papers", "petition", "complaint", "answer deadline", "default judgment",
+      "judgment against me", "taken to court", "they are suing me", "someone is suing me",
+      "debt", "debt collector", "collection", "collections", "credit card", "credit card debt",
+      "collection lawsuit", "owe money", "creditor",
+    ],
     steps: [
       {
         id: "who",
@@ -146,15 +179,16 @@ export const BRANCHES: Branch[] = [
         ],
       },
       {
-        id: "bank",
-        title: "Which bank or debt buyer?",
-        subtitle: "Skip if it is not a bank or debt buyer.",
+        id: "lawsuit",
+        title: "About the lawsuit",
+        subtitle: "Whatever you know — estimates are fine, and you can leave blanks.",
         fields: [
           {
             name: "creditor",
-            label: "Creditor",
+            label: "If it's a debt or collection case, which creditor?",
             type: "select",
             options: [
+              "Not a debt case",
               "Discover",
               "Capital One",
               "Bank of America",
@@ -165,10 +199,10 @@ export const BRANCHES: Branch[] = [
               "Other / Not listed",
             ],
           },
-          { name: "amountClaimed", label: "Amount claimed", type: "text", placeholder: "$" },
-          { name: "served", label: "Have you been served?", type: "yesno" },
+          { name: "amountClaimed", label: "Amount claimed (if stated)", type: "text", placeholder: "$" },
+          { name: "served", label: "Have you been served with papers?", type: "yesno" },
           { name: "servedWhen", label: "If served, when?", type: "date" },
-          { name: "courtNamed", label: "Court named on the papers", type: "text" },
+          { name: "courtNamed", label: "Court named on the papers (if known)", type: "text" },
         ],
       },
     ],
@@ -178,7 +212,14 @@ export const BRANCHES: Branch[] = [
     label: "I need to sue someone / I'm owed money",
     blurb: "I need to bring a claim",
     practiceSlug: "plaintiffs-litigation",
-    keywords: ["sue", "owed", "owe me", "money", "claim", "breach", "contract", "fraud", "partnership", "defamation", "collect"],
+    keywords: [
+      "sue", "i want to sue", "file a lawsuit", "owed", "owe me", "they owe me", "someone owes me",
+      "money owed", "unpaid", "didn't pay", "not paid", "won't pay", "claim", "breach", "breach of contract",
+      "contract dispute", "fraud", "scammed", "ripped off", "cheated", "partnership", "partnership dispute",
+      "business partner", "defamation", "slander", "libel", "property dispute", "boundary dispute",
+      "contractor", "bad contractor", "unpaid invoice", "collect", "deceptive trade", "dtpa",
+      "consumer protection", "lemon", "warranty", "negligence",
+    ],
     steps: [
       {
         id: "nature",
@@ -219,7 +260,14 @@ export const BRANCHES: Branch[] = [
     label: "I was injured / a loved one died",
     blurb: "An accident or loss",
     practiceSlug: "personal-injury-wrongful-death",
-    keywords: ["injured", "hurt", "wreck", "crash", "accident", "wrongful death", "died", "killed", "18-wheeler", "truck", "premises", "fall", "insurance"],
+    keywords: [
+      "injured", "injury", "hurt", "wreck", "car wreck", "car accident", "crash", "collision",
+      "rear ended", "hit by a car", "accident", "18-wheeler", "18 wheeler", "semi", "semi truck",
+      "commercial truck", "trucking", "motorcycle", "pedestrian", "premises", "slip and fall",
+      "slip", "fall", "fell", "dog bite", "hurt at work", "on the job", "broken bone", "hospital",
+      "wrongful death", "died", "killed", "fatality", "drunk driver", "at fault", "insurance",
+      "insurance claim", "adjuster", "uninsured", "underinsured",
+    ],
     steps: [
       {
         id: "incident",
@@ -256,7 +304,13 @@ export const BRANCHES: Branch[] = [
     label: "Criminal charge or investigation",
     blurb: "I'm facing the State",
     practiceSlug: "criminal-defense",
-    keywords: ["criminal", "arrested", "charged", "charge", "dwi", "dui", "assault", "investigation", "jail", "bond", "warrant", "police"],
+    keywords: [
+      "criminal", "crime", "arrested", "arrest", "charged", "charge", "criminal charge", "dwi", "dui",
+      "drunk driving", "assault", "family violence", "domestic violence", "theft", "drugs", "possession",
+      "investigation", "investigated", "detective", "jail", "in jail", "bond", "bail", "warrant",
+      "police", "indicted", "felony", "misdemeanor", "probation", "probation violation", "expunction",
+      "expungement", "nondisclosure",
+    ],
     steps: [
       {
         id: "status",
@@ -277,7 +331,7 @@ export const BRANCHES: Branch[] = [
         id: "custody",
         title: "Custody and court",
         fields: [
-          { name: "inCustody", label: "Is the person currently in custody?", type: "yesno" },
+          { name: "inCustody", label: "Are you or your loved one currently in custody?", type: "yesno" },
           { name: "bondStatus", label: "Bond status (if known)", type: "text" },
           { name: "courtDate", label: "Upcoming court date", type: "date" },
         ],
@@ -289,7 +343,13 @@ export const BRANCHES: Branch[] = [
     label: "Estate planning (will / trust / POA)",
     blurb: "I want to plan ahead",
     practiceSlug: "estate-succession-planning",
-    keywords: ["will", "trust", "estate", "power of attorney", "poa", "plan", "guardian", "directive", "inherit", "succession", "farm", "land"],
+    keywords: [
+      "will", "last will", "make a will", "trust", "living trust", "estate plan", "estate planning",
+      "power of attorney", "poa", "medical power of attorney", "directive", "living will", "advance directive",
+      "guardian", "guardianship", "beneficiary", "inherit", "inheritance plan", "succession", "farm",
+      "ranch", "land", "transfer on death", "lady bird deed", "plan ahead", "when i die", "leave to my kids",
+      "estate planning attorney",
+    ],
     commonOverrides: {
       conflict: {
         id: "conflict",
@@ -348,7 +408,19 @@ export const BRANCHES: Branch[] = [
     label: "Probate / inheritance issue",
     blurb: "Someone passed away",
     practiceSlug: "probate",
-    keywords: ["probate", "inheritance", "died", "passed away", "executor", "heir", "will contest", "estate dispute", "inherit"],
+    keywords: [
+      "probate", "probate a will", "inheritance", "died", "passed away", "death", "executor",
+      "administrator", "heir", "heirs", "will contest", "contest a will", "estate dispute", "inherit",
+      "no will", "intestate", "muniment of title", "letters testamentary", "dependent administration",
+      "determination of heirship", "estate of",
+    ],
+    commonOverrides: {
+      conflict: involvedStep(
+        "Heirs, executor, or other interested parties",
+        "e.g., siblings, other heirs, the named executor",
+      ),
+      urgency: SOFT_URGENCY,
+    },
     steps: [
       {
         id: "death",
@@ -380,7 +452,20 @@ export const BRANCHES: Branch[] = [
     label: "Business matter",
     blurb: "Formation, contracts, or a dispute",
     practiceSlug: "business-related-matters",
-    keywords: ["business", "llc", "corporation", "company", "formation", "contract", "partner", "succession", "operating agreement", "deal"],
+    keywords: [
+      "business", "llc", "corporation", "incorporate", "company", "form a company", "formation",
+      "operating agreement", "bylaws", "partnership agreement", "contract", "contract review",
+      "draft a contract", "vendor", "buy a business", "sell a business", "business sale", "succession",
+      "shareholder", "member dispute", "business dispute", "commercial dispute", "commercial litigation",
+      "non-compete", "deal", "transaction",
+    ],
+    commonOverrides: {
+      conflict: involvedStep(
+        "Other parties involved (partners, counterparties, or the other side of a dispute)",
+        "e.g., business partner, vendor, the other company",
+      ),
+      urgency: SOFT_URGENCY,
+    },
     steps: [
       {
         id: "type",
@@ -403,8 +488,13 @@ export const BRANCHES: Branch[] = [
     id: "creditor",
     label: "Foreclosure / garnishment / receivership",
     blurb: "My property or accounts are at risk",
-    practiceSlug: "foreclosures",
-    keywords: ["foreclosure", "foreclose", "garnishment", "garnished", "frozen account", "receiver", "receivership", "sale date", "writ", "house"],
+    practiceSlug: "garnishments",
+    keywords: [
+      "foreclosure", "foreclose", "foreclosure sale", "sale date", "save my house", "my house",
+      "garnishment", "garnished", "wages garnished", "bank account frozen", "frozen account", "levy",
+      "writ", "writ of garnishment", "receiver", "receivership", "turnover", "post-judgment",
+      "judgment collection", "they froze my account", "property seized", "seizure",
+    ],
     steps: [
       {
         id: "which",
@@ -433,7 +523,11 @@ export const BRANCHES: Branch[] = [
     label: "Appeal",
     blurb: "I lost and want to appeal",
     practiceSlug: "appellate-law",
-    keywords: ["appeal", "appellate", "lost", "judgment", "reverse", "court of appeals", "supersedeas", "deadline"],
+    keywords: [
+      "appeal", "appeal a judgment", "appellate", "lost", "lost my case", "lost at trial",
+      "judgment against me", "reverse", "overturn", "court of appeals", "supersedeas",
+      "supersedeas bond", "notice of appeal", "motion for new trial", "appeal deadline", "deadline",
+    ],
     steps: [
       {
         id: "trial",
@@ -456,7 +550,17 @@ export const BRANCHES: Branch[] = [
     label: "Something else / not sure",
     blurb: "I just need to talk to someone",
     practiceSlug: "business-related-matters",
-    keywords: ["other", "not sure", "help", "question", "general", "consultation"],
+    keywords: [
+      "other", "not sure", "unsure", "help", "question", "general", "general question", "advice",
+      "need advice", "talk to a lawyer", "consultation", "don't know", "something else", "legal question",
+    ],
+    commonOverrides: {
+      conflict: involvedStep(
+        "Anyone else involved (optional)",
+        "If your matter involves another person or business, list them",
+      ),
+      urgency: SOFT_URGENCY,
+    },
     steps: [
       {
         id: "describe",
