@@ -20,7 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description:
       "A Texas trial firm. Hundreds of matters — jury trials, bench trials, and appeals. Preparing for trial from day one.",
-    ...(favicon ? { icons: { icon: favicon, apple: favicon } } : {}),
+    ...(favicon
+      ? { icons: { icon: [{ url: favicon }], shortcut: [{ url: favicon }], apple: [{ url: favicon }] } }
+      : {}),
     openGraph: {
       type: "website",
       siteName: name,
