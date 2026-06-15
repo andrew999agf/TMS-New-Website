@@ -254,12 +254,12 @@
 }
 .fade-up { animation: fadeUp 0.7s ease both; }
 
-/* Header search: grows out of the magnifying glass when opened. */
+/* Header search: drops down out of the magnifying glass when opened. */
 @keyframes searchGrow {
-  from { opacity: 0; transform: translateY(-50%) scaleX(0.55); }
-  to { opacity: 1; transform: translateY(-50%) scaleX(1); }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.search-grow { animation: searchGrow 0.2s ease-out; }
+.search-grow { animation: searchGrow 0.18s ease-out; transform-origin: top; }
 @media (prefers-reduced-motion: reduce) {
   .search-grow { animation: none; }
 }

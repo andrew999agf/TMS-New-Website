@@ -95,60 +95,65 @@ export function SiteSearch({ className }: { className?: string }) {
 
       {open && (
         <div
-          className="search-grow absolute right-0 top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] shadow-lg pl-3 pr-1.5 py-1.5 w-[20rem] max-w-[78vw]"
-          style={{ transformOrigin: "right center" }}
+          className="search-grow absolute top-full mt-2 z-50 right-0 lg:left-0 lg:right-auto w-[24rem] max-w-[90vw] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl overflow-hidden"
         >
-          <Search size={16} className="text-[var(--c-ink-muted)] shrink-0" />
-          <input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && results[0]) go(results[0].url);
-            }}
-            placeholder="Search practice areas, articles, team…"
-            aria-label="Search the site"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--c-ink-muted)]"
-          />
-          {loading ? (
-            <Loader2 size={15} className="animate-spin text-[var(--c-ink-muted)] shrink-0" />
-          ) : (
-            <button onClick={close} aria-label="Close search" className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] shrink-0 p-1">
-              <X size={15} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {open && q.trim().length >= 2 && (
-        <div className="absolute right-0 top-[calc(50%+1.6rem)] z-50 mt-1 w-[24rem] max-w-[90vw] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl overflow-hidden">
-          <div className="max-h-[70vh] overflow-y-auto py-2">
-            {!loading && grouped.length === 0 && (
-              <p className="px-4 py-6 text-sm text-[var(--c-ink-muted)] text-center">
-                No matches for “{q.trim()}”.
-              </p>
+          {/* Search input row */}
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--c-border)]">
+            <Search size={16} className="text-[var(--c-ink-muted)] shrink-0" />
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && results[0]) go(results[0].url);
+              }}
+              placeholder="Search practice areas, articles, team…"
+              aria-label="Search the site"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--c-ink-muted)]"
+            />
+            {loading ? (
+              <Loader2 size={15} className="animate-spin text-[var(--c-ink-muted)] shrink-0" />
+            ) : (
+              <button onClick={close} aria-label="Close search" className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] shrink-0 p-1">
+                <X size={15} />
+              </button>
             )}
-            {grouped.map((g) => (
-              <div key={g.type} className="px-2 py-1">
-                <p className="px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[var(--c-accent)] font-[family-name:var(--font-ui)]">
-                  {g.type}
-                </p>
-                {g.items.map((r) => (
-                  <Link
-                    key={`${r.type}-${r.url}-${r.title}`}
-                    href={r.url}
-                    onClick={close}
-                    className="block rounded-md px-2 py-2 hover:bg-[var(--c-surface2)]"
-                  >
-                    <span className="block text-sm font-medium leading-snug">{r.title}</span>
-                    {r.subtitle && (
-                      <span className="block text-xs text-[var(--c-ink-muted)] truncate">{r.subtitle}</span>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            ))}
           </div>
+
+          {/* Results */}
+          {q.trim().length < 2 ? (
+            <p className="px-4 py-3 text-xs text-[var(--c-ink-muted)]">
+              Type to search practice areas, articles, team, glossary, and more.
+            </p>
+          ) : (
+            <div className="max-h-[70vh] overflow-y-auto py-2">
+              {!loading && grouped.length === 0 && (
+                <p className="px-4 py-6 text-sm text-[var(--c-ink-muted)] text-center">
+                  No matches for “{q.trim()}”.
+                </p>
+              )}
+              {grouped.map((g) => (
+                <div key={g.type} className="px-2 py-1">
+                  <p className="px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[var(--c-accent)] font-[family-name:var(--font-ui)]">
+                    {g.type}
+                  </p>
+                  {g.items.map((r) => (
+                    <Link
+                      key={`${r.type}-${r.url}-${r.title}`}
+                      href={r.url}
+                      onClick={close}
+                      className="block rounded-md px-2 py-2 hover:bg-[var(--c-surface2)]"
+                    >
+                      <span className="block text-sm font-medium leading-snug">{r.title}</span>
+                      {r.subtitle && (
+                        <span className="block text-xs text-[var(--c-ink-muted)] truncate">{r.subtitle}</span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
