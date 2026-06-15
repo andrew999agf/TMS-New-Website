@@ -20,6 +20,7 @@ import {
   Film,
   Users,
   Award,
+  Clock,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -38,6 +39,7 @@ const NAV = [
   { label: "Testimonials", href: "/admin/testimonials", icon: Quote },
   { label: "Media", href: "/admin/media", icon: ImageIcon },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
+  { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
