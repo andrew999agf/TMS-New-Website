@@ -1,17 +1,80 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { TimeTracker } from "@/components/admin/TimeTracker";
+import { TimeTracker, type EntryView } from "@/components/admin/TimeTracker";
+import { requireAdmin, isFullAdmin } from "@/lib/auth";
+import { db } from "@/db";
+import { timeEntries, timeActivityUsers, timeCategories, timeMatters, admins } from "@/db/schema";
+import { eq, asc, desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
-export default function TimeTrackerPage() {
+export default async function TimeTrackerPage() {
+  const session = await requireAdmin();
+  const me = Number(session.sub);
+  const admin = isFullAdmin(session.role);
+
+  let entries: EntryView[] = [];
+  let activityUsers: { id: number; name: string; rate: number }[] = [];
+  let categories: { id: number; name: string }[] = [];
+  let matters: { displayNumber: string; description: string }[] = [];
+  let owners: { id: number; name: string }[] = [{ id: me, name: session.name }];
+
+  if (db) {
+    try {
+      const [users, cats, matterRows] = await Promise.all([
+        db.select().from(timeActivityUsers).orderBy(asc(timeActivityUsers.sort)),
+        db.select().from(timeCategories).orderBy(asc(timeCategories.sort)),
+        db.select().from(timeMatters).orderBy(asc(timeMatters.sort)),
+      ]);
+      activityUsers = users.map((u) => ({ id: u.id, name: u.name, rate: u.rate }));
+      categories = cats.map((c) => ({ id: c.id, name: c.name }));
+      matters = matterRows.map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
+
+      const rows = admin
+        ? await db.select().from(timeEntries).orderBy(desc(timeEntries.createdAt))
+        : await db.select().from(timeEntries).where(eq(timeEntries.ownerId, me)).orderBy(desc(timeEntries.createdAt));
+
+      if (admin) {
+        const ad = await db.select({ id: admins.id, name: admins.name }).from(admins).orderBy(asc(admins.name));
+        owners = ad;
+      }
+      const ownerName = new Map(owners.map((o) => [o.id, o.name]));
+
+      entries = rows.map((e) => ({
+        id: e.id,
+        ownerId: e.ownerId,
+        ownerName: ownerName.get(e.ownerId) ?? "—",
+        matter: e.matter,
+        entryDate: e.entryDate,
+        activityDescription: e.activityDescription,
+        note: e.note,
+        price: e.price,
+        quantity: e.quantity,
+        activityUserName: e.activityUserName,
+        nonBillable: e.nonBillable,
+        status: e.status as "active" | "archived",
+        exportedAt: e.exportedAt ? e.exportedAt.toISOString() : null,
+        exportedBy: e.exportedBy,
+      }));
+    } catch {
+      /* tables may not exist yet — run Apply database updates */
+    }
+  }
+
   return (
     <>
       <AdminHeader
         title="Time Tracker"
-        description="Billable time tracking. Entries are stored in this browser; export to CSV for Clio."
+        description="Billable time tracking. Export to CSV for Clio, then archive so nothing is billed twice."
       />
       <div className="p-8">
-        <TimeTracker />
+        <TimeTracker
+          entries={entries}
+          activityUsers={activityUsers}
+          categories={categories}
+          matters={matters}
+          me={{ id: me, name: session.name, admin }}
+          owners={owners}
+        />
       </div>
     </>
   );

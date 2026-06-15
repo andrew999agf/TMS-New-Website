@@ -21,6 +21,7 @@ import {
   Users,
   Award,
   Clock,
+  KeyRound,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const NAV = [
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },
+  { label: "Logins", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
@@ -49,10 +51,12 @@ export function AdminShell({
   user,
 }: {
   children: React.ReactNode;
-  user: { name: string; email: string };
+  user: { name: string; email: string; role: string };
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const fullAdmin = user.role === "owner" || user.role === "editor";
+  const nav = fullAdmin ? NAV : NAV.filter((i) => i.href === "/admin/time-tracker");
 
   // Restore the saved preference on mount, and persist changes.
   useEffect(() => {
@@ -97,7 +101,7 @@ export function AdminShell({
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const active =
               item.href === "/admin"
                 ? pathname === "/admin"

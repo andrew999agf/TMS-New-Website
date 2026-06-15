@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { teamMembers, badges, testimonials, intakeRecipients } from "@/db/schema";
+import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
 import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
+import { TIME_ACTIVITY_USERS, TIME_CATEGORIES } from "@/lib/content/defaults/time";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,42 @@ const DDL = [
     active boolean NOT NULL DEFAULT true,
     sort integer NOT NULL DEFAULT 0
   )`,
+  // Time tracker.
+  `DO $$ BEGIN CREATE TYPE time_entry_status AS ENUM ('active','archived'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS time_entries (
+    id serial PRIMARY KEY,
+    owner_id integer NOT NULL,
+    matter text NOT NULL DEFAULT '',
+    entry_date varchar(10) NOT NULL,
+    activity_description text NOT NULL DEFAULT '',
+    note text NOT NULL DEFAULT '',
+    price real NOT NULL DEFAULT 0,
+    quantity real NOT NULL DEFAULT 0,
+    activity_user_name text NOT NULL DEFAULT '',
+    non_billable boolean NOT NULL DEFAULT false,
+    status time_entry_status NOT NULL DEFAULT 'active',
+    exported_at timestamptz,
+    exported_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS time_activity_users (
+    id serial PRIMARY KEY,
+    name varchar(255) NOT NULL,
+    rate real NOT NULL DEFAULT 145,
+    sort integer NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS time_categories (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL,
+    sort integer NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS time_matters (
+    id serial PRIMARY KEY,
+    display_number text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0
+  )`,
+  `ALTER TYPE admin_role ADD VALUE IF NOT EXISTS 'timekeeper'`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
@@ -153,6 +190,27 @@ export async function POST() {
         });
       }
       applied.push(`Seeded ${INTAKE_RECIPIENTS.length} intake recipients`);
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // 6) Seed time-tracker activity users & categories if empty.
+  try {
+    const auCount = await db.select({ id: timeActivityUsers.id }).from(timeActivityUsers).limit(1);
+    if (auCount.length === 0) {
+      for (let i = 0; i < TIME_ACTIVITY_USERS.length; i++) {
+        const u = TIME_ACTIVITY_USERS[i];
+        await db.insert(timeActivityUsers).values({ name: u.name, rate: u.rate, sort: i });
+      }
+      applied.push(`Seeded ${TIME_ACTIVITY_USERS.length} time-tracker users`);
+    }
+    const catCount = await db.select({ id: timeCategories.id }).from(timeCategories).limit(1);
+    if (catCount.length === 0) {
+      for (let i = 0; i < TIME_CATEGORIES.length; i++) {
+        await db.insert(timeCategories).values({ name: TIME_CATEGORIES[i], sort: i });
+      }
+      applied.push(`Seeded ${TIME_CATEGORIES.length} time-tracker categories`);
     }
   } catch {
     /* non-fatal */

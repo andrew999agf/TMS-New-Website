@@ -18,13 +18,14 @@ import {
   jsonb,
   pgEnum,
   index,
+  real,
 } from "drizzle-orm/pg-core";
 
 /* ----------------------------------------------------------------------------
  * Auth & audit
  * ------------------------------------------------------------------------- */
 
-export const adminRole = pgEnum("admin_role", ["owner", "editor"]);
+export const adminRole = pgEnum("admin_role", ["owner", "editor", "timekeeper"]);
 
 export const admins = pgTable("admins", {
   id: serial("id").primaryKey(),
@@ -316,6 +317,52 @@ export const intakeRecipients = pgTable("intake_recipients", {
   email: varchar("email", { length: 255 }).notNull(),
   branches: jsonb("branches").$type<string[]>().notNull().default([]),
   active: boolean("active").notNull().default(true),
+  sort: integer("sort").notNull().default(0),
+});
+
+/* ----------------------------------------------------------------------------
+ * Time tracker (billable hours). Entries are owned by the login that created
+ * them (per-user "active" board); exporting to CSV can archive them so they
+ * are never billed twice. Activity users, categories, and matters are shared
+ * firm-wide and admin-managed.
+ * ------------------------------------------------------------------------- */
+
+export const timeEntryStatus = pgEnum("time_entry_status", ["active", "archived"]);
+
+export const timeEntries = pgTable("time_entries", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull(),
+  matter: text("matter").notNull().default(""),
+  entryDate: varchar("entry_date", { length: 10 }).notNull(), // YYYY-MM-DD
+  activityDescription: text("activity_description").notNull().default(""),
+  note: text("note").notNull().default(""),
+  price: real("price").notNull().default(0),
+  quantity: real("quantity").notNull().default(0),
+  activityUserName: text("activity_user_name").notNull().default(""),
+  nonBillable: boolean("non_billable").notNull().default(false),
+  status: timeEntryStatus("status").notNull().default("active"),
+  exportedAt: timestamp("exported_at", { withTimezone: true }),
+  exportedBy: varchar("exported_by", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const timeActivityUsers = pgTable("time_activity_users", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  rate: real("rate").notNull().default(145),
+  sort: integer("sort").notNull().default(0),
+});
+
+export const timeCategories = pgTable("time_categories", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 191 }).notNull(),
+  sort: integer("sort").notNull().default(0),
+});
+
+export const timeMatters = pgTable("time_matters", {
+  id: serial("id").primaryKey(),
+  displayNumber: text("display_number").notNull(),
+  description: text("description").notNull().default(""),
   sort: integer("sort").notNull().default(0),
 });
 

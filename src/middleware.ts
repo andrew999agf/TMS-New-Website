@@ -20,6 +20,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Time-tracker-only logins are restricted to the time tracker.
+  const fullAdmin = valid.role === "owner" || valid.role === "editor";
+  if (!fullAdmin && !pathname.startsWith("/admin/time-tracker")) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/admin/time-tracker";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   return NextResponse.next();
 }
 

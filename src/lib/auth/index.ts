@@ -89,6 +89,19 @@ export async function requireAdmin(): Promise<SessionPayload> {
   return session;
 }
 
+/** True for full administrators (not time-tracker-only logins). */
+export function isFullAdmin(role?: string): boolean {
+  return role === "owner" || role === "editor";
+}
+
+/** Gate full-admin areas. Timekeeper logins are bounced to the time tracker. */
+export async function requireFullAdmin(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session) redirect("/admin/login");
+  if (!isFullAdmin(session.role)) redirect("/admin/time-tracker");
+  return session;
+}
+
 /** Append an audit-log entry (best-effort). */
 export async function audit(
   adminEmail: string,
