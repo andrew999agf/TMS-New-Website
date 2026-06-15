@@ -9,6 +9,15 @@ import { recipientsForBranch } from "@/lib/content";
 
 export const runtime = "nodejs";
 
+/** Escape user-supplied text before placing it in an HTML email. */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 const schema = z.object({
   branch: z.string().min(1),
   practiceSlug: z.string().optional(),
@@ -174,6 +183,45 @@ export async function POST(req: Request) {
     subject: `${isUrgent ? "[URGENT] " : ""}New consultation: ${branchLabel}`,
     html,
     attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }],
+  });
+
+  // Second email: a clean, professional summary the team can forward — no raw
+  // data dump or attachment. Reads as if prepared by the office.
+  const clientName = (str("name") || "A prospective client").trim();
+  const matterNoun = branchDef?.summaryNoun ?? `a ${branchLabel.toLowerCase()} matter`;
+  const matterShort = (branchDef?.summaryNoun ?? branchLabel).replace(/^an?\s+/i, "");
+  const matterSubject = matterShort.charAt(0).toUpperCase() + matterShort.slice(1);
+  const pref = str("preferredContact");
+  const preferredPhrase = pref === "Email" ? "email" : pref === "Telephone" || pref === "Phone" ? "telephone" : "telephone or email";
+  const phone = str("phone");
+  const email = str("email");
+  const county = str("county");
+  const message = str("message") || str("description");
+
+  const row = (label: string, val?: string) =>
+    val ? `<tr><td style="padding:3px 18px 3px 0;color:#777;white-space:nowrap;vertical-align:top">${label}</td><td style="padding:3px 0">${esc(val)}</td></tr>` : "";
+
+  const summaryHtml = `
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px;line-height:1.55;font-size:15px">
+      <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
+      <p style="margin:0 0 14px">${esc(clientName)} has reached out to our firm in connection with ${esc(matterNoun)}, and prefers to be contacted by ${preferredPhrase}.</p>
+      ${isUrgent && deadline ? `<p style="margin:0 0 14px;color:#b00"><strong>Time-sensitive:</strong> deadline / date noted as ${esc(deadline)}.</p>` : ""}
+      <table style="border-collapse:collapse;font-size:14px;margin:4px 0 16px">
+        ${row("Name", clientName)}
+        ${row("Matter", matterSubject)}
+        ${row("Preferred contact", pref || "—")}
+        ${row("Telephone", phone)}
+        ${row("Email", email)}
+        ${row("County / City", county)}
+      </table>
+      ${message ? `<p style="margin:0 0 6px;color:#777;font-size:13px">In their words:</p><p style="margin:0 0 18px;padding:12px 16px;background:#f6f4f1;border-left:3px solid #7a1f2b;font-style:italic">${esc(message)}</p>` : ""}
+      <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
+    </div>`;
+
+  await sendEmail({
+    to,
+    subject: `New inquiry — ${matterSubject} — ${clientName}`,
+    html: summaryHtml,
   });
 
   return NextResponse.json({ ok: true, id, emailed: emailResult.sent });

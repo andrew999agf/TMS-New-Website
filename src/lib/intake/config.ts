@@ -45,6 +45,9 @@ export type Branch = {
   practiceSlug: string;
   /** Fuzzy-match keywords/synonyms */
   keywords: string[];
+  /** Plain-English description of the matter for the forwardable summary email
+   *  (e.g. "a criminal matter"). Falls back to the label. */
+  summaryNoun?: string;
   steps: Step[];
   /** Per-branch replacements for shared COMMON_STEPS, keyed by step id
    *  (e.g. reword the "conflict" or "urgency" step for this matter type). */
@@ -64,7 +67,7 @@ export const COMMON_STEPS: Step[] = [
         name: "preferredContact",
         label: "Preferred contact method",
         type: "radio",
-        options: ["Phone", "Email", "Text"],
+        options: ["Telephone", "Email"],
       },
       { name: "county", label: "Your county or city", type: "text" },
     ],
@@ -157,6 +160,7 @@ export const BRANCHES: Branch[] = [
     label: "I'm being sued / received legal papers",
     blurb: "Someone filed against me",
     practiceSlug: "consumer-debt-defense",
+    summaryNoun: "a lawsuit that has been filed against them",
     keywords: [
       "sued", "being sued", "lawsuit", "law suit", "summons", "citation", "served", "served papers",
       "court papers", "legal papers", "petition", "complaint", "answer deadline", "default judgment",
@@ -212,6 +216,7 @@ export const BRANCHES: Branch[] = [
     label: "I need to sue someone / I'm owed money",
     blurb: "I need to bring a claim",
     practiceSlug: "plaintiffs-litigation",
+    summaryNoun: "a civil claim or dispute",
     keywords: [
       "sue", "i want to sue", "file a lawsuit", "owed", "owe me", "they owe me", "someone owes me",
       "money owed", "unpaid", "didn't pay", "not paid", "won't pay", "claim", "breach", "breach of contract",
@@ -260,6 +265,7 @@ export const BRANCHES: Branch[] = [
     label: "I was injured / a loved one died",
     blurb: "An accident or loss",
     practiceSlug: "personal-injury-wrongful-death",
+    summaryNoun: "a personal injury matter",
     keywords: [
       "injured", "injury", "hurt", "wreck", "car wreck", "car accident", "crash", "collision",
       "rear ended", "hit by a car", "accident", "18-wheeler", "18 wheeler", "semi", "semi truck",
@@ -304,6 +310,7 @@ export const BRANCHES: Branch[] = [
     label: "Criminal charge or investigation",
     blurb: "I'm facing the State",
     practiceSlug: "criminal-defense",
+    summaryNoun: "a criminal matter",
     keywords: [
       "criminal", "crime", "arrested", "arrest", "charged", "charge", "criminal charge", "dwi", "dui",
       "drunk driving", "assault", "family violence", "domestic violence", "theft", "drugs", "possession",
@@ -343,6 +350,7 @@ export const BRANCHES: Branch[] = [
     label: "Estate planning (will / trust / POA)",
     blurb: "I want to plan ahead",
     practiceSlug: "estate-succession-planning",
+    summaryNoun: "an estate planning matter",
     keywords: [
       "will", "last will", "make a will", "trust", "living trust", "estate plan", "estate planning",
       "power of attorney", "poa", "medical power of attorney", "directive", "living will", "advance directive",
@@ -408,6 +416,7 @@ export const BRANCHES: Branch[] = [
     label: "Probate / inheritance issue",
     blurb: "Someone passed away",
     practiceSlug: "probate",
+    summaryNoun: "a probate matter",
     keywords: [
       "probate", "probate a will", "inheritance", "died", "passed away", "death", "executor",
       "administrator", "heir", "heirs", "will contest", "contest a will", "estate dispute", "inherit",
@@ -452,6 +461,7 @@ export const BRANCHES: Branch[] = [
     label: "Business matter",
     blurb: "Formation, contracts, or a dispute",
     practiceSlug: "business-related-matters",
+    summaryNoun: "a business matter",
     keywords: [
       "business", "llc", "corporation", "incorporate", "company", "form a company", "formation",
       "operating agreement", "bylaws", "partnership agreement", "contract", "contract review",
@@ -489,6 +499,7 @@ export const BRANCHES: Branch[] = [
     label: "Foreclosure / garnishment / receivership",
     blurb: "My property or accounts are at risk",
     practiceSlug: "garnishments",
+    summaryNoun: "a foreclosure, garnishment, or receivership matter",
     keywords: [
       "foreclosure", "foreclose", "foreclosure sale", "sale date", "save my house", "my house",
       "garnishment", "garnished", "wages garnished", "bank account frozen", "frozen account", "levy",
@@ -523,6 +534,7 @@ export const BRANCHES: Branch[] = [
     label: "Appeal",
     blurb: "I lost and want to appeal",
     practiceSlug: "appellate-law",
+    summaryNoun: "an appeal",
     keywords: [
       "appeal", "appeal a judgment", "appellate", "lost", "lost my case", "lost at trial",
       "judgment against me", "reverse", "overturn", "court of appeals", "supersedeas",
@@ -550,6 +562,7 @@ export const BRANCHES: Branch[] = [
     label: "Something else / not sure",
     blurb: "I just need to talk to someone",
     practiceSlug: "business-related-matters",
+    summaryNoun: "a legal matter",
     keywords: [
       "other", "not sure", "unsure", "help", "question", "general", "general question", "advice",
       "need advice", "talk to a lawyer", "consultation", "don't know", "something else", "legal question",
