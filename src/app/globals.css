@@ -254,6 +254,16 @@
 }
 .fade-up { animation: fadeUp 0.7s ease both; }
 
+/* Header search: grows out of the magnifying glass when opened. */
+@keyframes searchGrow {
+  from { opacity: 0; transform: translateY(-50%) scaleX(0.55); }
+  to { opacity: 1; transform: translateY(-50%) scaleX(1); }
+}
+.search-grow { animation: searchGrow 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .search-grow { animation: none; }
+}
+
 /* Home landing intro: navy overlay fades out, logo fades/scales in. */
 @keyframes homeIntroOverlay {
   0%, 72% { opacity: 1; }

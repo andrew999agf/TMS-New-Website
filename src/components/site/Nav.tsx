@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X, Phone, CreditCard } from "lucide-react";
 import { telHref } from "@/lib/utils";
+import { SiteSearch } from "./SiteSearch";
 
 export type NavItem = { label: string; href: string };
 
@@ -76,32 +77,35 @@ export function Nav({
           })()}
         </Link>
 
-        <div className="hidden lg:flex items-center gap-7">
-          {items.map((item) => {
-            const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`text-sm font-[family-name:var(--font-ui)] transition-opacity hover:opacity-70 text-[var(--c-ink-muted)]${active ? " !text-[var(--c-ink)]" : ""}`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-          <Link href={ctaHref} className="btn btn-accent text-sm py-2.5 px-4">
-            {ctaLabel}
-          </Link>
-        </div>
+        <div className="flex items-center gap-1 lg:gap-6">
+          <SiteSearch />
+          <div className="hidden lg:flex items-center gap-7">
+            {items.map((item) => {
+              const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`text-sm font-[family-name:var(--font-ui)] transition-opacity hover:opacity-70 text-[var(--c-ink-muted)]${active ? " !text-[var(--c-ink)]" : ""}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+            <Link href={ctaHref} className="btn btn-accent text-sm py-2.5 px-4">
+              {ctaLabel}
+            </Link>
+          </div>
 
-        <button
-          className="lg:hidden shrink-0 p-2 -mr-2 text-[var(--c-ink)]"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-        >
-          {open ? <X size={24} /> : <Menu size={24} />}
-        </button>
+          <button
+            className="lg:hidden shrink-0 p-2 -mr-2 text-[var(--c-ink)]"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+          >
+            {open ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </nav>
 
       {open && (
