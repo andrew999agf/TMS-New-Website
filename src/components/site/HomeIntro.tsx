@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { media } from "@/lib/media";
 
 /**
  * Brief, classy phone-only landing animation: a navy field with the centered
@@ -47,11 +48,11 @@ export function HomeIntro({
       <div className="home-intro-logo">
         {whiteLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={whiteLogo} alt="" className="h-24 sm:h-32 w-auto max-w-[80vw] object-contain" />
+          <img src={media(whiteLogo)} alt="" className="h-24 sm:h-32 w-auto max-w-[80vw] object-contain" />
         ) : colorLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={colorLogo}
+            src={media(colorLogo)}
             alt=""
             className="h-24 sm:h-32 w-auto max-w-[80vw] object-contain"
             style={{ filter: "brightness(0) invert(1)" }}

@@ -7,6 +7,7 @@ import { getBlocks } from "@/lib/content";
 import { FAQS } from "@/lib/content/defaults/faqs";
 import { FIRM, OFFICES } from "@/lib/firm";
 import { telHref } from "@/lib/utils";
+import { media } from "@/lib/media";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -76,7 +77,7 @@ export default async function ContactPage() {
                 {photo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={photo}
+                    src={media(photo)}
                     alt={`${o.name} office`}
                     className="h-full w-full object-cover"
                     style={{ objectPosition: photoFocal || "center" }}

@@ -3,6 +3,7 @@ import { Facebook, Instagram, Linkedin, Youtube, Twitter } from "lucide-react";
 import { getBlocks } from "@/lib/content";
 import { FIRM, OFFICES } from "@/lib/firm";
 import { telHref } from "@/lib/utils";
+import { media } from "@/lib/media";
 
 const SOCIALS = [
   { key: "global.social.facebook", label: "Facebook", Icon: Facebook },
@@ -68,7 +69,7 @@ export async function Footer() {
               return footerLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={footerLogo}
+                  src={media(footerLogo)}
                   alt={firmName}
                   className="h-12 w-auto max-w-[280px] object-contain"
                   style={whiten ? { filter: "brightness(0) invert(1)" } : undefined}

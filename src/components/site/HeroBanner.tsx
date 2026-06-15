@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MEDIA_SPECS } from "@/lib/media-specs";
+import { media } from "@/lib/media";
 
 export type BannerMedia = {
   id: string | number;
@@ -87,8 +88,8 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
                 }}
                 className="h-full w-full object-cover"
                 style={{ objectPosition: item.focal || "center" }}
-                src={item.url}
-                poster={item.posterUrl ?? undefined}
+                src={media(item.url)}
+                poster={media(item.posterUrl)}
                 autoPlay
                 muted
                 loop={single}
@@ -98,7 +99,7 @@ export function HeroBanner({ items }: { items: BannerMedia[] }) {
             ) : item.url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={item.url}
+                src={media(item.url)}
                 alt=""
                 className={`h-full w-full object-cover ${zooming ? "kenburns" : ""}`}
                 style={{ objectPosition: item.focal || "center" }}

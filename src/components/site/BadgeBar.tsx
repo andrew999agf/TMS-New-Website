@@ -1,4 +1,5 @@
 import type { BadgeView } from "@/lib/content";
+import { media } from "@/lib/media";
 
 /**
  * Trust strip below the hero: organization, bar-association, and award logos
@@ -26,7 +27,7 @@ export function BadgeBar({ badges }: { badges: BadgeView[] }) {
             const img = (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={b.logo!}
+                src={media(b.logo)}
                 alt={b.name}
                 title={b.name}
                 className="h-20 sm:h-28 lg:h-[8.4rem] w-auto max-w-[200px] sm:max-w-[320px] lg:max-w-[432px] object-contain"

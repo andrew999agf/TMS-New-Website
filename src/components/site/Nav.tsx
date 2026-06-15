@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X, Phone, CreditCard } from "lucide-react";
 import { telHref } from "@/lib/utils";
+import { media } from "@/lib/media";
 import { SiteSearch } from "./SiteSearch";
 
 export type NavItem = { label: string; href: string };
@@ -67,7 +68,7 @@ export function Nav({
             const logo = logoDark ?? logoLight ?? logoUrl;
             if (logo) {
               // eslint-disable-next-line @next/next/no-img-element
-              return <img src={logo} alt={firmName} className="h-20 sm:h-[4.5rem] w-auto max-w-[calc(100vw-6rem)] sm:max-w-[360px] object-contain" />;
+              return <img src={media(logo)} alt={firmName} className="h-20 sm:h-[4.5rem] w-auto max-w-[calc(100vw-6rem)] sm:max-w-[360px] object-contain" />;
             }
             return (
               <span className="font-[family-name:var(--font-display)] text-base sm:text-lg tracking-tight leading-none text-[var(--c-ink)] truncate">

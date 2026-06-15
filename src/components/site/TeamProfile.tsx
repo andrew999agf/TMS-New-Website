@@ -1,6 +1,7 @@
 import { Phone } from "lucide-react";
 import { MediaPlaceholder } from "@/components/site/MediaPlaceholder";
 import { telHref } from "@/lib/utils";
+import { media } from "@/lib/media";
 import type { TeamMemberSeed } from "@/lib/content/defaults/team";
 
 /** Full attorney/staff profile. Used for the lead member and on detail pages. */
@@ -21,7 +22,7 @@ export function TeamProfile({ member }: { member: TeamMemberSeed }) {
           {member.photo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={member.photo}
+              src={media(member.photo)}
               alt={member.name}
               className="w-full sm:w-[200px] aspect-[4/5] object-cover border border-[var(--c-border)]"
             />
@@ -162,7 +163,7 @@ export function TeamCard({ member }: { member: TeamMemberSeed }) {
       <div className="aspect-[4/5] bg-[var(--c-surface2)] flex items-center justify-center overflow-hidden">
         {member.photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={member.photo} alt={member.name} className="h-full w-full object-cover" />
+          <img src={media(member.photo)} alt={member.name} className="h-full w-full object-cover" />
         ) : (
           <span className="font-[family-name:var(--font-display)] text-5xl text-[var(--c-ink-muted)] opacity-30">
             {initials}

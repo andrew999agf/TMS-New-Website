@@ -4,6 +4,7 @@ import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
 import { BadgeBar } from "@/components/site/BadgeBar";
 import { TeamTeaser } from "@/components/site/TeamTeaser";
 import { HomeIntro } from "@/components/site/HomeIntro";
+import { media } from "@/lib/media";
 
 /** First sentence (or a short truncation) of a bio, for the hover popover. */
 function shortSummary(bio?: string): string | undefined {
@@ -237,7 +238,7 @@ export default async function HomePage() {
       {home["home.quote.image"] ? (
         <section className="relative py-28 lg:py-36 overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={home["home.quote.image"]} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover" />
+          <img src={media(home["home.quote.image"])} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-[var(--c-dark-bg)]/72" />
           <div className="container-prose text-center relative z-10">
             <blockquote className="font-[family-name:var(--font-display)] text-2xl lg:text-4xl leading-tight text-[var(--c-dark-ink)]">

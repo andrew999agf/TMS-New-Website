@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { media } from "@/lib/media";
 
 export type TeaserMember = {
   slug: string;
@@ -46,7 +47,7 @@ export function TeamTeaser({ members }: { members: TeaserMember[] }) {
                 <div className="h-20 w-16 shrink-0 rounded overflow-hidden bg-[var(--c-surface2)] flex items-center justify-center">
                   {m.photo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={m.photo} alt={m.name} className="h-full w-full object-cover" />
+                    <img src={media(m.photo)} alt={m.name} className="h-full w-full object-cover" />
                   ) : (
                     <span className="font-[family-name:var(--font-display)] text-xl text-[var(--c-ink-muted)] opacity-40">
                       {initials}
