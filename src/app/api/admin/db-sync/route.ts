@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { teamMembers, badges, testimonials } from "@/db/schema";
+import { teamMembers, badges, testimonials, intakeRecipients } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
 import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
+import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
 
 export const runtime = "nodejs";
 
@@ -53,6 +54,14 @@ const DDL = [
     visible boolean NOT NULL DEFAULT true,
     sort integer NOT NULL DEFAULT 0,
     updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS intake_recipients (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL DEFAULT '',
+    email varchar(255) NOT NULL,
+    branches jsonb NOT NULL DEFAULT '[]'::jsonb,
+    active boolean NOT NULL DEFAULT true,
+    sort integer NOT NULL DEFAULT 0
   )`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
@@ -128,6 +137,21 @@ export async function POST() {
         });
       }
       applied.push(`Seeded ${TESTIMONIALS.length} testimonials`);
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // 5) Seed intake notification recipients if empty (the intake team).
+  try {
+    const rCount = await db.select({ id: intakeRecipients.id }).from(intakeRecipients).limit(1);
+    if (rCount.length === 0 && INTAKE_RECIPIENTS.length > 0) {
+      for (const r of INTAKE_RECIPIENTS) {
+        await db.insert(intakeRecipients).values({
+          name: r.name, email: r.email, branches: r.branches, sort: r.sort,
+        });
+      }
+      applied.push(`Seeded ${INTAKE_RECIPIENTS.length} intake recipients`);
     }
   } catch {
     /* non-fatal */

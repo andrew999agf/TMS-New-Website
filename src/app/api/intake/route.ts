@@ -5,6 +5,7 @@ import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getBranch } from "@/lib/intake/config";
+import { recipientsForBranch } from "@/lib/content";
 
 export const runtime = "nodejs";
 
@@ -163,8 +164,13 @@ export async function POST(req: Request) {
       }</p>
     </div>`;
 
+  // Resolve recipients from the admin-managed list (scoped by intake branch),
+  // falling back to the default address if none are configured.
+  const managed = await recipientsForBranch(branch);
+  const to = managed.length ? managed : [INTAKE_NOTIFY_TO];
+
   const emailResult = await sendEmail({
-    to: INTAKE_NOTIFY_TO,
+    to,
     subject: `${isUrgent ? "[URGENT] " : ""}New consultation: ${branchLabel}`,
     html,
     attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }],

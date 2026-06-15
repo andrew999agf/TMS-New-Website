@@ -11,6 +11,7 @@ import {
   testimonials as testimonialsTable,
   teamMembers as teamTable,
   badges as badgesTable,
+  intakeRecipients as intakeRecipientsTable,
   type CaseResult,
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
@@ -301,6 +302,41 @@ export async function getTestimonials(visibleOnly = true): Promise<TestimonialVi
     [],
   );
   return rows.filter((r) => (visibleOnly ? r.visible : true));
+}
+
+/* ---- Intake notification recipients ---- */
+
+export type IntakeRecipientView = {
+  id: number;
+  name: string;
+  email: string;
+  branches: string[];
+  active: boolean;
+  sort: number;
+};
+
+export async function getIntakeRecipients(activeOnly = false): Promise<IntakeRecipientView[]> {
+  const rows = await safe(
+    () => db!.select().from(intakeRecipientsTable).orderBy(asc(intakeRecipientsTable.sort)),
+    [],
+  );
+  return rows
+    .map((r) => ({
+      id: r.id,
+      name: r.name ?? "",
+      email: r.email,
+      branches: (r.branches as string[]) ?? [],
+      active: r.active,
+      sort: r.sort,
+    }))
+    .filter((r) => (activeOnly ? r.active : true));
+}
+
+/** Resolve which addresses should be emailed for a given intake branch. */
+export async function recipientsForBranch(branch: string): Promise<string[]> {
+  const all = await getIntakeRecipients(true);
+  const matched = all.filter((r) => r.branches.length === 0 || r.branches.includes(branch));
+  return [...new Set(matched.map((r) => r.email.trim()).filter(Boolean))];
 }
 
 /* ---- Team ---- */

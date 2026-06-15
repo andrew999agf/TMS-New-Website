@@ -305,6 +305,21 @@ export const testimonials = pgTable("testimonials", {
 });
 
 /* ----------------------------------------------------------------------------
+ * Intake notification recipients (who gets emailed when a consultation form is
+ * submitted). `branches` scopes a recipient to specific intake types; an empty
+ * array means they receive every submission.
+ * ------------------------------------------------------------------------- */
+
+export const intakeRecipients = pgTable("intake_recipients", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 191 }).notNull().default(""),
+  email: varchar("email", { length: 255 }).notNull(),
+  branches: jsonb("branches").$type<string[]>().notNull().default([]),
+  active: boolean("active").notNull().default(true),
+  sort: integer("sort").notNull().default(0),
+});
+
+/* ----------------------------------------------------------------------------
  * Intake submissions
  * ------------------------------------------------------------------------- */
 
