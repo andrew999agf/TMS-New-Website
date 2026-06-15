@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { db } from "@/db";
-import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories } from "@/db/schema";
+import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories, admins } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
@@ -100,6 +102,9 @@ const DDL = [
     sort integer NOT NULL DEFAULT 0
   )`,
   `ALTER TYPE admin_role ADD VALUE IF NOT EXISTS 'timekeeper'`,
+  `ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_token varchar(128)`,
+  `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_expires timestamptz`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
@@ -214,6 +219,31 @@ export async function POST() {
     }
   } catch {
     /* non-fatal */
+  }
+
+  // 7) Seed the team's time-tracker logins (timekeeper role) if missing. Each
+  //    gets an unguessable random password; the admin sends a setup link so the
+  //    person chooses their own. Existing accounts are never modified.
+  try {
+    const SEED_LOGINS = [
+      { name: "Max Smith", email: "max@texaslawsmith.com" },
+      { name: "Frankie Moreno", email: "frankie@richardsandsmith.com" },
+      { name: "Andrew Bergeron", email: "abergeron@texaslawsmith.com" },
+      { name: "Linda Smith", email: "probate@texaslawsmith.com" },
+      { name: "Jessica Smith", email: "office@texaslawsmith.com" },
+    ];
+    let created = 0;
+    for (const l of SEED_LOGINS) {
+      const existing = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, l.email)).limit(1);
+      if (existing.length === 0) {
+        const hash = await bcrypt.hash(randomUUID() + randomUUID(), 12);
+        await db.insert(admins).values({ name: l.name, email: l.email, role: "timekeeper", passwordHash: hash, permissions: [] });
+        created++;
+      }
+    }
+    if (created) applied.push(`Created ${created} timekeeper login(s)`);
+  } catch (err) {
+    failed.push(`Seed logins: ${(err as Error).message}`);
   }
 
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });

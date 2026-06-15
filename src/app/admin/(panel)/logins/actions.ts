@@ -2,10 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { admins } from "@/db/schema";
 import { requireFullAdmin, audit } from "@/lib/auth";
+import { sendEmail } from "@/lib/email";
+import { FIRM } from "@/lib/firm";
+import { TOGGLEABLE_SECTIONS } from "@/lib/admin-sections";
 
 type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["owner", "editor", "timekeeper"];
@@ -52,6 +56,47 @@ export async function updateLoginRole(id: number, role: Role) {
   await audit(session.email, "update", "login", String(id), `Role → ${role}`);
   revalidatePath("/admin/logins");
   return { ok: true };
+}
+
+export async function updateLoginPermissions(id: number, permissions: string[]) {
+  const session = await requireFullAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const allowed = new Set(TOGGLEABLE_SECTIONS.map((s) => s.key));
+  const clean = [...new Set(permissions.filter((p) => allowed.has(p)))];
+  await db.update(admins).set({ permissions: clean }).where(eq(admins.id, id));
+  await audit(session.email, "update", "login", String(id), `Permissions: ${clean.join(", ") || "none"}`);
+  revalidatePath("/admin/logins");
+  return { ok: true };
+}
+
+/** Generate a setup/reset link and email it from the office mailbox. If email
+ *  isn't configured, returns the link so the admin can share it manually. */
+export async function sendSetupLink(id: number) {
+  const session = await requireFullAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const [a] = await db.select().from(admins).where(eq(admins.id, id));
+  if (!a) return { ok: false, error: "Not found." };
+
+  const token = randomBytes(24).toString("hex");
+  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.update(admins).set({ resetToken: token, resetExpires: expires }).where(eq(admins.id, id));
+
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const link = `${base}/admin/reset?token=${token}&email=${encodeURIComponent(a.email)}`;
+  const html = `
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
+      <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
+      <p style="margin:0 0 14px">Hello ${a.name.replace(/</g, "")},</p>
+      <p style="margin:0 0 14px">A login has been created for you to access the firm's time tracker. Click below to set your password and sign in:</p>
+      <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">Set your password</a></p>
+      <p style="margin:0 0 8px;font-size:13px;color:#777">Or paste this link into your browser:</p>
+      <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
+      <p style="margin:0;font-size:13px;color:#777">This link expires in 7 days. If you weren't expecting it, you can ignore this email.</p>
+    </div>`;
+  const res = await sendEmail({ to: a.email, subject: "Set up your T. Maxwell Smith login", html });
+  await audit(session.email, "update", "login", String(id), "Sent setup link");
+  revalidatePath("/admin/logins");
+  return { ok: true, sent: res.sent, link: res.sent ? undefined : link };
 }
 
 export async function deleteLogin(id: number) {

@@ -21,7 +21,20 @@ export async function login(email: string, password: string): Promise<LoginResul
   if (!process.env.AUTH_SECRET)
     return { ok: false, error: "AUTH_SECRET is not configured." };
 
-  const [admin] = await db.select().from(admins).where(eq(admins.email, email.toLowerCase()));
+  // Explicit columns only (so login keeps working before the permissions/reset
+  // columns are added by "Apply database updates").
+  const [admin] = await db
+    .select({
+      id: admins.id,
+      email: admins.email,
+      name: admins.name,
+      passwordHash: admins.passwordHash,
+      role: admins.role,
+      failedLogins: admins.failedLogins,
+      lockedUntil: admins.lockedUntil,
+    })
+    .from(admins)
+    .where(eq(admins.email, email.toLowerCase()));
   if (!admin) {
     // Constant-ish time: still run a hash to blunt user enumeration.
     await bcrypt.compare(password, "$2a$12$............................................");
@@ -50,11 +63,21 @@ export async function login(email: string, password: string): Promise<LoginResul
     .set({ failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() })
     .where(eq(admins.id, admin.id));
 
+  // Permissions read defensively (column may not exist before db-sync).
+  let permissions: string[] = [];
+  try {
+    const [p] = await db.select({ permissions: admins.permissions }).from(admins).where(eq(admins.id, admin.id));
+    permissions = (p?.permissions as string[]) ?? [];
+  } catch {
+    /* column not present yet */
+  }
+
   const token = await createSessionToken({
     sub: String(admin.id),
     email: admin.email,
     name: admin.name,
     role: admin.role,
+    permissions,
   });
 
   const jar = await cookies();

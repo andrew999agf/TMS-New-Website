@@ -26,6 +26,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
+import { allowedSections, sectionForPath } from "@/lib/admin-sections";
 
 const NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -42,7 +43,7 @@ const NAV = [
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },
-  { label: "Logins", href: "/admin/logins", icon: KeyRound },
+  { label: "User Management", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
@@ -51,12 +52,12 @@ export function AdminShell({
   user,
 }: {
   children: React.ReactNode;
-  user: { name: string; email: string; role: string };
+  user: { name: string; email: string; role: string; permissions: string[] };
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const fullAdmin = user.role === "owner" || user.role === "editor";
-  const nav = fullAdmin ? NAV : NAV.filter((i) => i.href === "/admin/time-tracker");
+  const allowed = new Set(allowedSections(user.role, user.permissions));
+  const nav = NAV.filter((i) => allowed.has(sectionForPath(i.href) ?? ""));
 
   // Restore the saved preference on mount, and persist changes.
   useEffect(() => {

@@ -33,6 +33,10 @@ export const admins = pgTable("admins", {
   name: varchar("name", { length: 255 }).notNull(),
   passwordHash: text("password_hash").notNull(),
   role: adminRole("role").notNull().default("owner"),
+  /** Extra admin sections this account may access beyond its role's defaults. */
+  permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  resetToken: varchar("reset_token", { length: 128 }),
+  resetExpires: timestamp("reset_expires", { withTimezone: true }),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),

@@ -14,6 +14,7 @@ export type SessionPayload = {
   email: string;
   name: string;
   role: string;
+  permissions?: string[];
 };
 
 function secret(): Uint8Array {

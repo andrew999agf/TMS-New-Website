@@ -9,23 +9,28 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginsPage() {
   const session = await requireFullAdmin();
-  let rows: { id: number; name: string; email: string; role: string; lastLoginAt: string | null }[] = [];
+  let rows: { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null }[] = [];
   if (db) {
-    const data = await db.select().from(admins).orderBy(asc(admins.name));
-    rows = data.map((a) => ({
-      id: a.id,
-      name: a.name,
-      email: a.email,
-      role: a.role,
-      lastLoginAt: a.lastLoginAt ? a.lastLoginAt.toISOString() : null,
-    }));
+    try {
+      const data = await db.select().from(admins).orderBy(asc(admins.name));
+      rows = data.map((a) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        role: a.role,
+        permissions: (a.permissions as string[]) ?? [],
+        lastLoginAt: a.lastLoginAt ? a.lastLoginAt.toISOString() : null,
+      }));
+    } catch {
+      /* run Apply database updates to add the new account columns */
+    }
   }
 
   return (
     <>
       <AdminHeader
-        title="Logins"
-        description="Admin accounts. A “timekeeper” login can only use the Time Tracker; “editor” and “owner” have full admin access."
+        title="User Management"
+        description="Accounts &amp; access. Timekeeper logins get the Time Tracker only — use the access toggles to grant more. Owner/Editor have full access."
       />
       <div className="p-8">
         <LoginsManager initial={rows} selfId={Number(session.sub)} />
