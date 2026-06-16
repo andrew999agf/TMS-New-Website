@@ -5,7 +5,10 @@ import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getBranch } from "@/lib/intake/config";
-import { recipientsForBranch } from "@/lib/content";
+import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
+import { getColorPalette } from "@/lib/theme/palettes";
+import { brandedEmailHtml } from "@/lib/email-template";
+import { FIRM } from "@/lib/firm";
 
 export const runtime = "nodejs";
 
@@ -229,22 +232,30 @@ export async function POST(req: Request) {
     html: summaryHtml,
   });
 
-  // Acknowledgment email to the prospective client (from the office), with the
+  // Acknowledgment email to the prospective client — a branded HTML email that
+  // matches the live site (logo banner, theme colors, office footer), with the
   // representation disclaimer.
   if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
+    const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
+    const firmName = globals["global.firmName"] || FIRM.name;
     const greetingName = str("name") ? esc(str("name")!.trim()) : "there";
-    const ackHtml = `
-      <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55;font-size:15px">
-        <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
-        <p style="margin:0 0 14px">Dear ${greetingName},</p>
-        <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it.</p>
-        <p style="margin:0 0 14px"><strong>This has not created an attorney-client relationship.</strong> Please note that our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
-        <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
-        <p style="margin:0;color:#777;font-size:13px">— The office of T. Maxwell Smith, PLLC</p>
-      </div>`;
+    const ackBody = `
+      <p style="margin:0 0 14px">Dear ${greetingName},</p>
+      <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it, then follow up using the contact method you chose.</p>
+      <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This has not created an attorney-client relationship.</strong> Our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
+      <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
+      <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">— The office of ${esc(firmName)}</p>`;
+    const ackHtml = brandedEmailHtml({
+      colors,
+      logoLight: globals["global.logoLight"] || undefined,
+      logoDark: globals["global.logoDark"] || undefined,
+      firmName,
+      bodyHtml: ackBody,
+    });
     await sendEmail({
       to: email,
-      subject: "Thank you for contacting T. Maxwell Smith, PLLC",
+      subject: `Thank you for contacting ${firmName}`,
       html: ackHtml,
     });
   }
