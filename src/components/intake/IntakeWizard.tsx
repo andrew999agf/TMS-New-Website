@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Fuse from "fuse.js";
 import { ArrowLeft, ArrowRight, Check, Search, Info } from "lucide-react";
 import { Turnstile } from "./Turnstile";
@@ -49,6 +49,18 @@ export function IntakeWizard({
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   // Honeypot: hidden field humans never see; bots that fill it are dropped server-side.
   const [honeypot, setHoneypot] = useState("");
+
+  // Each step renders in place (it's not a real page load), so scroll the new
+  // step's questions into view when advancing/going back — except on first load.
+  const topRef = useRef<HTMLDivElement>(null);
+  const firstScroll = useRef(true);
+  useEffect(() => {
+    if (firstScroll.current) {
+      firstScroll.current = false;
+      return;
+    }
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [stepIndex, branch]);
 
   const fuse = useMemo(
     () =>
@@ -180,7 +192,7 @@ export function IntakeWizard({
   const isLast = stepIndex === totalSteps - 1;
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl" ref={topRef} style={{ scrollMarginTop: "100px" }}>
       <RepNotice />
       {/* Progress */}
       <div className="flex items-center gap-2 mb-8">
