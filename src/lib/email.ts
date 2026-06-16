@@ -44,8 +44,14 @@ function getTransport() {
   return transporter;
 }
 
-function fromAddress() {
-  return process.env.SMTP_FROM || process.env.RESEND_FROM || `${FIRM.name} <${SMTP_USER ?? `intake@${FIRM.domain}`}>`;
+const SENDER_ADDRESS = SMTP_USER ?? process.env.RESEND_FROM ?? `intake@${FIRM.domain}`;
+
+/** Build the From header. A per-email `fromName` keeps the sender line logical
+ *  for what the message is about (e.g. an intake notice vs. a login link),
+ *  instead of one fixed label on everything. */
+function fromAddress(fromName?: string) {
+  if (fromName) return `${fromName} <${SENDER_ADDRESS}>`;
+  return process.env.SMTP_FROM || process.env.RESEND_FROM || `${FIRM.name} <${SENDER_ADDRESS}>`;
 }
 
 type Attachment = { filename: string; content: string };
@@ -55,11 +61,13 @@ export async function sendEmail({
   subject,
   html,
   attachments,
+  fromName,
 }: {
   to: string | string[];
   subject: string;
   html: string;
   attachments?: Attachment[];
+  fromName?: string;
 }): Promise<{ sent: boolean; reason?: string }> {
   const recipients = (Array.isArray(to) ? to : [to]).map((s) => s.trim()).filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: "no-recipients" };
@@ -69,7 +77,7 @@ export async function sendEmail({
   if (tx) {
     try {
       await tx.sendMail({
-        from: fromAddress(),
+        from: fromAddress(fromName),
         to: recipients,
         subject,
         html,
@@ -86,7 +94,7 @@ export async function sendEmail({
   if (resend) {
     try {
       await resend.emails.send({
-        from: fromAddress(),
+        from: fromAddress(fromName),
         to: recipients,
         subject,
         html,

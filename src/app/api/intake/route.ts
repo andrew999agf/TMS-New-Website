@@ -183,6 +183,7 @@ export async function POST(req: Request) {
 
   const emailResult = await sendEmail({
     to,
+    fromName: `${FIRM.name} — Intake`,
     subject: `${isUrgent ? "[URGENT] " : ""}New consultation: ${branchLabel}`,
     html,
     attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }],
@@ -228,6 +229,7 @@ export async function POST(req: Request) {
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
   await sendEmail({
     to,
+    fromName: `${FIRM.name} — Intake`,
     subject: subjectParts.join(" — "),
     html: summaryHtml,
   });
@@ -255,6 +257,7 @@ export async function POST(req: Request) {
     });
     await sendEmail({
       to: email,
+      fromName: firmName,
       subject: `Thank you for contacting ${firmName}`,
       html: ackHtml,
     });

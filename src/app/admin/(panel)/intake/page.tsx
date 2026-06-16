@@ -2,8 +2,8 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { db, hasDb } from "@/db";
-import { intakeSubmissions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { intakeSubmissions, referralAttorneys } from "@/db/schema";
+import { desc, asc } from "drizzle-orm";
 import { getIntakeRecipients } from "@/lib/content";
 import { emailConfigured } from "@/lib/email";
 import { BRANCHES } from "@/lib/intake/config";
@@ -16,6 +16,7 @@ export default async function IntakeAdminPage() {
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
 
   let rows: IntakeRow[] = [];
+  let attorneys: string[] = [];
   if (db) {
     try {
       const data = await db.select().from(intakeSubmissions).orderBy(desc(intakeSubmissions.createdAt));
@@ -31,11 +32,20 @@ export default async function IntakeAdminPage() {
         deadline: r.deadline,
         status: r.status as IntakeRow["status"],
         archived: r.archived ?? false,
+        referredTo: r.referredTo ?? null,
+        feeExpected: r.feeExpected ?? false,
+        feeAmount: r.feeAmount ?? null,
         createdAt: r.createdAt.toISOString(),
         answers: (r.answers as Record<string, unknown>) ?? {},
       }));
     } catch {
       rows = [];
+    }
+    try {
+      const a = await db.select({ name: referralAttorneys.name }).from(referralAttorneys).orderBy(asc(referralAttorneys.name));
+      attorneys = a.map((x) => x.name);
+    } catch {
+      attorneys = [];
     }
   }
 
@@ -53,7 +63,7 @@ export default async function IntakeAdminPage() {
           emailConfigured={emailConfigured}
           senderFrom={senderFrom}
         />
-        <IntakeTable rows={rows} />
+        <IntakeTable rows={rows} attorneys={attorneys} />
       </div>
     </>
   );

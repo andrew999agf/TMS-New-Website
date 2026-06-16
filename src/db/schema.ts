@@ -379,6 +379,7 @@ export const intakeStatus = pgEnum("intake_status", [
   "contacted",
   "scheduled",
   "declined",
+  "referred-out",
 ]);
 
 export const intakeSubmissions = pgTable(
@@ -400,6 +401,10 @@ export const intakeSubmissions = pgTable(
     message: text("message"),
     status: intakeStatus("status").notNull().default("new"),
     archived: boolean("archived").notNull().default(false),
+    /** Referral details (shown inline in the Status column when referred out) */
+    referredTo: varchar("referred_to", { length: 191 }),
+    feeExpected: boolean("fee_expected").notNull().default(false),
+    feeAmount: varchar("fee_amount", { length: 64 }),
     referrer: text("referrer"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -408,6 +413,13 @@ export const intakeSubmissions = pgTable(
     practiceIdx: index("intake_practice_idx").on(t.practiceSlug),
   }),
 );
+
+/** Names of attorneys cases have been referred to — saved for autocomplete. */
+export const referralAttorneys = pgTable("referral_attorneys", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 191 }).notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /* ----------------------------------------------------------------------------
  * Team members (attorneys + staff)

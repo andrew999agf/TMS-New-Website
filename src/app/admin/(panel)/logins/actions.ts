@@ -93,7 +93,7 @@ export async function sendSetupLink(id: number) {
       <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
       <p style="margin:0;font-size:13px;color:#777">This link expires in 7 days. If you weren't expecting it, you can ignore this email.</p>
     </div>`;
-  const res = await sendEmail({ to: a.email, subject: "Set up your T. Maxwell Smith login", html });
+  const res = await sendEmail({ to: a.email, fromName: `${FIRM.name} — Accounts`, subject: "Set up your T. Maxwell Smith login", html });
   await audit(session.email, "update", "login", String(id), "Sent setup link");
   revalidatePath("/admin/logins");
   return { ok: true, sent: res.sent, link: res.sent ? undefined : link };

@@ -1,8 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState, useTransition } from "react";
-import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft } from "lucide-react";
-import { updateIntakeStatus, setIntakeArchived } from "@/app/admin/(panel)/intake/actions";
+import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check } from "lucide-react";
+import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 
 export type IntakeRow = {
   id: number;
@@ -14,20 +14,34 @@ export type IntakeRow = {
   county: string | null;
   isUrgent: boolean;
   deadline: string | null;
-  status: "new" | "contacted" | "scheduled" | "declined";
+  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out";
   archived: boolean;
+  referredTo: string | null;
+  feeExpected: boolean;
+  feeAmount: string | null;
   createdAt: string;
   answers: Record<string, unknown>;
 };
 
-const STATUSES = ["new", "contacted", "scheduled", "declined"] as const;
+const STATUSES = ["new", "contacted", "scheduled", "declined", "referred-out"] as const;
+const STATUS_LABEL: Record<string, string> = {
+  all: "all", new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred Out",
+};
 
-export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
+/** Human label for the Status column / CSV — referrals show the attorney + fee. */
+function statusLabel(r: IntakeRow): string {
+  if (r.status !== "referred-out") return STATUS_LABEL[r.status] ?? r.status;
+  const fee = r.feeExpected ? `fee ${r.feeAmount ? r.feeAmount : "expected"}` : "no fee";
+  return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
+}
+
+export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys: string[] }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [view, setView] = useState<"active" | "archived">("active");
   const [open, setOpen] = useState<number | null>(null);
+  const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   const practices = useMemo(
@@ -51,7 +65,7 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
     const lines = [headers.join(",")];
     for (const r of filtered) {
       lines.push(
-        [r.id, r.createdAt, r.branch, r.practiceSlug ?? "", r.name ?? "", r.email ?? "", r.phone ?? "", r.county ?? "", r.isUrgent ? "yes" : "no", r.deadline ?? "", r.status]
+        [r.id, r.createdAt, r.branch, r.practiceSlug ?? "", r.name ?? "", r.email ?? "", r.phone ?? "", r.county ?? "", r.isUrgent ? "yes" : "no", r.deadline ?? "", statusLabel(r)]
           .map((v) => escape(String(v)))
           .join(","),
       );
@@ -65,16 +79,16 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
     URL.revokeObjectURL(url);
   }
 
-  function setRowStatus(id: number, s: IntakeRow["status"]) {
-    startTransition(() => {
-      void updateIntakeStatus(id, s);
-    });
+  function onStatusChange(r: IntakeRow, value: string) {
+    if (value === "referred-out") {
+      setReferralFor(r); // open the modal; nothing saved until they confirm
+      return;
+    }
+    startTransition(() => { void updateIntakeStatus(r.id, value as IntakeRow["status"]); });
   }
 
   function archiveRow(id: number, archived: boolean) {
-    startTransition(() => {
-      void setIntakeArchived(id, archived);
-    });
+    startTransition(() => { void setIntakeArchived(id, archived); });
   }
 
   return (
@@ -147,14 +161,20 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
                   <td className="px-4 py-3">
                     <select
                       value={r.status}
-                      onChange={(e) => setRowStatus(r.id, e.target.value as IntakeRow["status"])}
+                      onChange={(e) => onStatusChange(r, e.target.value)}
                       disabled={pending}
-                      className="border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1 text-xs capitalize"
+                      className="border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1 text-xs"
                     >
                       {STATUSES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
+                        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                       ))}
                     </select>
+                    {r.status === "referred-out" && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]">
+                        <span>→ {r.referredTo ?? "?"}{r.feeExpected ? ` · fee ${r.feeAmount || "expected"}` : " · no fee"}</span>
+                        <button onClick={() => setReferralFor(r)} title="Edit referral" className="hover:text-[var(--c-accent)]"><Pencil size={12} /></button>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
@@ -191,6 +211,98 @@ export function IntakeTable({ rows }: { rows: IntakeRow[] }) {
           </tbody>
         </table>
       </div>
+
+      {referralFor && (
+        <ReferralModal row={referralFor} attorneys={attorneys} onClose={() => setReferralFor(null)} />
+      )}
+    </div>
+  );
+}
+
+function ReferralModal({ row, attorneys, onClose }: { row: IntakeRow; attorneys: string[]; onClose: () => void }) {
+  const [name, setName] = useState(row.referredTo ?? "");
+  const [fee, setFee] = useState(row.feeExpected);
+  const [amount, setAmount] = useState(row.feeAmount ?? "");
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const matches = name.trim()
+    ? attorneys.filter((a) => a.toLowerCase().includes(name.toLowerCase()) && a.toLowerCase() !== name.toLowerCase())
+    : attorneys;
+
+  function save() {
+    if (!name.trim()) { setError("Enter the attorney's name."); return; }
+    startTransition(async () => {
+      const res = await setIntakeReferral(row.id, { referredTo: name.trim(), feeExpected: fee, feeAmount: amount });
+      if (res.ok) onClose();
+      else setError(res.error ?? "Save failed.");
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-md p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-[family-name:var(--font-display)] text-lg">Refer out</h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)]"><X size={18} /></button>
+        </div>
+
+        <label className="block text-sm font-medium mb-1.5">Attorney the case was referred to</label>
+        <div className="relative">
+          <div className="flex items-center border border-[var(--c-border)] bg-[var(--c-bg)] rounded focus-within:border-[var(--c-accent)]">
+            <input
+              value={name}
+              onChange={(e) => { setName(e.target.value); setOpen(true); setError(null); }}
+              onFocus={() => setOpen(true)}
+              onBlur={() => setTimeout(() => setOpen(false), 150)}
+              placeholder="Start typing a name…"
+              className="w-full bg-transparent p-2.5 text-sm outline-none"
+              autoFocus
+            />
+            {name && (
+              <button onMouseDown={(e) => { e.preventDefault(); setName(""); }} title="Clear" className="px-2 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={15} /></button>
+            )}
+          </div>
+          {open && matches.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-44 overflow-y-auto rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] shadow-lg">
+              {matches.map((a) => (
+                <div key={a} onMouseDown={(e) => { e.preventDefault(); setName(a); setOpen(false); }} className="px-3 py-2 text-sm cursor-pointer hover:bg-[var(--c-surface2)]">
+                  {a}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5">
+          <span className="block text-sm font-medium mb-1.5">Is a fee expected?</span>
+          <div className="flex gap-2">
+            {[["Yes", true], ["No", false]].map(([label, val]) => (
+              <button
+                key={label as string}
+                onClick={() => setFee(val as boolean)}
+                className={`px-5 py-2 text-sm rounded-md border ${fee === val ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {fee && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium mb-1.5">Expected fee amount</label>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="$" className="w-full border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm rounded outline-none focus:border-[var(--c-accent)]" />
+          </div>
+        )}
+
+        {error && <p className="mt-3 text-sm text-[var(--c-error)]">{error}</p>}
+        <div className="mt-6 flex gap-2 justify-end">
+          <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={save} disabled={pending} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50"><Check size={15} /> Save</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -215,7 +327,7 @@ function Select({
         className="border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1.5 capitalize"
       >
         {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
+          <option key={o} value={o}>{STATUS_LABEL[o] ?? o}</option>
         ))}
       </select>
     </label>
