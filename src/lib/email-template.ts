@@ -43,15 +43,24 @@ export function brandedEmailHtml({
 
   const dark = colors.darkBg;
 
-  // Header: white logo on the dark banner if we have one; otherwise the main
-  // logo on a light banner; otherwise the firm name.
+  // Logo that's small on phones, large on desktop — and reliably large in
+  // Outlook too (it ignores media queries, so it gets an MSO-only fixed size).
+  const logoImg = (src: string) =>
+    `<!--[if mso]><img src="${src}" alt="${esc(firmName)}" width="430" style="display:inline-block;border:0" /><![endif]-->` +
+    `<!--[if !mso]><!--><img src="${src}" alt="${esc(firmName)}" class="tms-logo" width="220" style="width:220px;max-width:88%;height:auto;display:inline-block;border:0" /><!--<![endif]-->`;
+
+  // Dark band wrapped in its own bgcolor table (most reliable across clients,
+  // incl. mobile and dark mode) rather than a bgcolor on a single cell.
+  const band = (bg: string, inner: string, pad = "30px 32px") =>
+    `<tr><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${bg}" style="background-color:${bg};background:${bg}"><tr><td align="center" style="padding:${pad}">${inner}</td></tr></table></td></tr>`;
+
   let header: string;
   if (logoLight) {
-    header = `<tr><td bgcolor="${dark}" style="background-color:${dark};padding:30px 32px;text-align:center"><img src="${logoLight}" alt="${esc(firmName)}" class="tms-logo" width="220" style="width:220px;max-width:88%;height:auto;display:inline-block;border:0" /></td></tr>`;
+    header = band(dark, logoImg(logoLight));
   } else if (logoDark) {
-    header = `<tr><td bgcolor="${colors.surface}" style="background-color:${colors.surface};padding:30px 32px;text-align:center"><img src="${logoDark}" alt="${esc(firmName)}" class="tms-logo" width="220" style="width:220px;max-width:88%;height:auto;display:inline-block;border:0" /></td></tr>`;
+    header = band(colors.surface, logoImg(logoDark));
   } else {
-    header = `<tr><td bgcolor="${dark}" style="background-color:${dark};padding:34px 32px;text-align:center"><div style="font-family:${SERIF};color:${colors.darkInk};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div></td></tr>`;
+    header = band(dark, `<div style="font-family:${SERIF};color:${colors.darkInk};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
   }
 
   const accent = `<tr><td style="padding:0;font-size:0;line-height:0"><div style="height:3px;background-color:${colors.darkAccent}">&nbsp;</div><div style="height:4px;background-color:${colors.accent}">&nbsp;</div></td></tr>`;
@@ -66,17 +75,19 @@ export function brandedEmailHtml({
     </td>`;
   }).join("");
 
-  const footer = `<tr><td bgcolor="${dark}" style="background-color:${dark};padding:28px 32px">
+  const footerInner = `
       <div style="font-family:${SERIF};color:${colors.darkInk};font-size:18px;margin-bottom:16px">${esc(firmName)}</div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>${officeCells}</tr></table>
       <div style="border-top:1px solid ${colors.darkBorder};margin-top:8px;padding-top:14px;font-family:${SANS};font-size:11px;color:${colors.darkInkMuted};line-height:1.7">
         Fax <a href="${tel(FIRM.fax)}" style="color:${colors.darkInkMuted};text-decoration:none">${esc(FIRM.fax)}</a><br/>
         This email and the firm's website may be considered attorney advertising. Submitting an inquiry does not create an attorney-client relationship.
-      </div>
-    </td></tr>`;
+      </div>`;
+  const footer = `<tr><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${dark}" style="background-color:${dark};background:${dark}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
 
-  return `<!doctype html><html><head>
+  return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     ${fontLink}
     <style>
       /* Logo enlarges on wider (desktop) screens; stays smaller on phones. */
