@@ -6,7 +6,7 @@ import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getBranch } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
-import { getColorPalette } from "@/lib/theme/palettes";
+import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
 import { FIRM } from "@/lib/firm";
 
@@ -240,6 +240,8 @@ export async function POST(req: Request) {
   if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
     const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
+    const fontPalette = getFontPalette(theme.fontPaletteId);
+    const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
     const firmName = globals["global.firmName"] || FIRM.name;
     const greetingName = str("name") ? esc(str("name")!.trim()) : "there";
     const ackBody = `
@@ -250,6 +252,7 @@ export async function POST(req: Request) {
       <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">— The office of ${esc(firmName)}</p>`;
     const ackHtml = brandedEmailHtml({
       colors,
+      fonts,
       logoLight: globals["global.logoLight"] || undefined,
       logoDark: globals["global.logoDark"] || undefined,
       firmName,
