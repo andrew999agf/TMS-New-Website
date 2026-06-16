@@ -105,7 +105,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Consultation / Intake ----
   { key: "intake.hero.heading", page: "consultation", section: "hero", label: "Heading", type: "text", value: "What brings you in?" },
   { key: "intake.hero.body", page: "consultation", section: "hero", label: "Body", type: "text", value: "Tell us what is going on. Start typing, or pick what fits. This takes a couple of minutes." },
-  { key: "intake.consent", page: "consultation", section: "consent", label: "Consent language", type: "text", value: "Submitting this form does not create an attorney-client relationship. Please do not send confidential or time-sensitive details here. We will follow up to discuss your matter." },
+  { key: "intake.consent", page: "consultation", section: "consent", label: "Consent language", type: "text", value: "Submitting this form does not create an attorney-client relationship. I understand and agree that the firm does not represent me until I have signed a representation agreement issued by the firm and paid the applicable retainer fee. Please do not send confidential or time-sensitive details here." },
 
   // ---- Payment ----
   { key: "payment.heading", page: "payment", section: "main", label: "Heading", type: "text", value: "Make a Payment" },

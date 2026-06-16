@@ -229,5 +229,25 @@ export async function POST(req: Request) {
     html: summaryHtml,
   });
 
+  // Acknowledgment email to the prospective client (from the office), with the
+  // representation disclaimer.
+  if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const greetingName = str("name") ? esc(str("name")!.trim()) : "there";
+    const ackHtml = `
+      <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55;font-size:15px">
+        <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
+        <p style="margin:0 0 14px">Dear ${greetingName},</p>
+        <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it.</p>
+        <p style="margin:0 0 14px"><strong>This has not created an attorney-client relationship.</strong> Please note that our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
+        <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
+        <p style="margin:0;color:#777;font-size:13px">— The office of T. Maxwell Smith, PLLC</p>
+      </div>`;
+    await sendEmail({
+      to: email,
+      subject: "Thank you for contacting T. Maxwell Smith, PLLC",
+      html: ackHtml,
+    });
+  }
+
   return NextResponse.json({ ok: true, id, emailed: emailResult.sent });
 }

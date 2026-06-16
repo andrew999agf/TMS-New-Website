@@ -14,6 +14,18 @@ import {
 
 type Answers = Record<string, string | string[]>;
 
+const REP_NOTICE =
+  "This firm does not represent you until you have signed a representation agreement issued by our firm and paid the applicable retainer fee.";
+
+/** Low-profile representation disclaimer shown at the top of every step. */
+function RepNotice() {
+  return (
+    <p className="mb-5 text-[11px] leading-relaxed text-[var(--c-ink-muted)] bg-[var(--c-surface2)] border border-[var(--c-border)] rounded-md px-3 py-2">
+      {REP_NOTICE}
+    </p>
+  );
+}
+
 export function IntakeWizard({
   initialPractice,
   consentText,
@@ -110,6 +122,9 @@ export function IntakeWizard({
           Thank you. The firm will review what you sent and follow up using the contact method
           you chose. If your matter is urgent, please call the office directly.
         </p>
+        <p className="mt-6 max-w-xl mx-auto text-sm font-semibold text-[var(--c-ink)]">
+          {REP_NOTICE}
+        </p>
       </div>
     );
   }
@@ -118,6 +133,7 @@ export function IntakeWizard({
   if (!branch) {
     return (
       <div>
+        <RepNotice />
         <div className="relative max-w-xl">
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)]" />
           <input
@@ -165,6 +181,7 @@ export function IntakeWizard({
 
   return (
     <div className="max-w-2xl">
+      <RepNotice />
       {/* Progress */}
       <div className="flex items-center gap-2 mb-8">
         {steps.map((s, i) => (
