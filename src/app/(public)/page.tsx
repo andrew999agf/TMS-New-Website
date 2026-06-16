@@ -115,8 +115,8 @@ export default async function HomePage() {
               <p className="eyebrow">Our Team</p>
               <h2 className="h2 mt-3">Led by a trial lawyer who tries cases.</h2>
               <p className="lead mt-4">
-                {lead.name} founded the firm and leads its litigation. A Texas team across Fort
-                Worth, Meridian, and Weatherford keeps every matter moving.
+                {lead.name} founded the firm and leads its litigation. A Texas team across Bosque
+                County, Fort Worth, and Weatherford keeps every matter moving.
               </p>
               <Link
                 href="/about"

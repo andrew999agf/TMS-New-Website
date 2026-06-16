@@ -8,7 +8,7 @@ import { getBlocks, getTeam, getLeadMember } from "@/lib/content";
 export const metadata: Metadata = {
   title: "Our Team",
   description:
-    "The team behind T. Maxwell Smith, PLLC — led by trial attorney Max Smith, supported by staff across Fort Worth and Bosque County.",
+    "The team behind T. Maxwell Smith, PLLC — led by trial attorney Max Smith, supported by staff across Bosque County and Fort Worth.",
 };
 
 export const dynamic = "force-dynamic";

@@ -47,19 +47,6 @@ const FW_MAILING: Mailing = { line: "PO Box 11009", city: "Fort Worth", state: "
 
 export const OFFICES: Office[] = [
   {
-    id: "fort-worth",
-    name: "Fort Worth",
-    role: "Litigation Hub",
-    street: "1612 Summit Ave., Suite 200",
-    city: "Fort Worth",
-    state: "Texas",
-    zip: "76102",
-    mailing: FW_MAILING,
-    phone: "(817) 348-8325",
-    isHub: true,
-    note: "VERIFY suite number and phone with Max.",
-  },
-  {
     id: "meridian",
     name: "Bosque County",
     role: "Principal Office",
@@ -71,6 +58,19 @@ export const OFFICES: Office[] = [
     zip: "76665",
     phone: "(254) 435-4288",
     isPrincipal: true,
+  },
+  {
+    id: "fort-worth",
+    name: "Fort Worth",
+    role: "Litigation Hub",
+    street: "1612 Summit Ave., Suite 200",
+    city: "Fort Worth",
+    state: "Texas",
+    zip: "76102",
+    mailing: FW_MAILING,
+    phone: "(817) 348-8325",
+    isHub: true,
+    note: "VERIFY suite number and phone with Max.",
   },
   {
     id: "weatherford",

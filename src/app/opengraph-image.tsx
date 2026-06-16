@@ -35,7 +35,7 @@ export default function OpengraphImage() {
               fontFamily: "Arial, sans-serif",
             }}
           >
-            Fort Worth · Meridian · Weatherford, Texas
+            Bosque County · Fort Worth · Weatherford, Texas
           </div>
         </div>
 

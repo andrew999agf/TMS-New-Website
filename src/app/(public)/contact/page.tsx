@@ -12,7 +12,7 @@ import { media } from "@/lib/media";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Three Texas offices — Fort Worth litigation hub, Meridian principal office, and Weatherford by appointment. Talk to the firm.",
+    "Three Texas offices — Bosque County principal office, Fort Worth litigation hub, and Weatherford by appointment. Talk to the firm.",
 };
 
 export const dynamic = "force-dynamic";
