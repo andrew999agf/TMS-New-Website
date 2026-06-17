@@ -34,6 +34,8 @@ export function VoiceTimeEntry({
   const [listening, setListening] = useState(false);
   const [slots, setSlots] = useState<Slots>({});
   const [saved, setSaved] = useState(false);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const pickedRef = useRef<string | null>(null);
   const cancelRef = useRef(false);
   const recRef = useRef<any>(null);
   const runningRef = useRef(false);
@@ -139,12 +141,34 @@ export function VoiceTimeEntry({
   }
   const isYes = (s: string) => /\b(yes|yeah|yep|yup|good|ok|okay|correct|right|sure|perfect|confirm|that's right|looks good)\b/i.test(s);
   const isNo = (s: string) => /\b(no|nope|nah|negative|wrong|not it|incorrect)\b/i.test(s);
-  const isSkip = (s: string) => !s.trim() || /\b(no|none|skip|nope|nothing|that's all)\b/i.test(s);
 
   // ---- matter matching against the uploaded Clio matters ----
+  // Matters look like "0042 - Nelson, John". The speaker usually says just the
+  // name, so we match spoken words against the matter's words (ignoring the
+  // numbers) with a fuzzy comparison so near-misses ("Nelsen" → "Nelson") count.
   const STOP = new Set(["the", "and", "for", "matter", "client", "case", "file", "our"]);
   const toks = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
-  const mToks = (m: string) => m.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const mToks = (m: string) => m.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+
+  function lev(a: string, b: string): number {
+    const m = a.length, n = b.length;
+    if (!m) return n; if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[n];
+  }
+  function tokenMatch(st: string, mt: string): boolean {
+    if (/^\d+$/.test(mt)) return st === mt; // matter number only matches if said exactly
+    if (mt.includes(st) || st.includes(mt)) return true;
+    if (st.length >= 4 && mt.length >= 4) return lev(st, mt) <= Math.floor(Math.max(st.length, mt.length) / 4);
+    return false;
+  }
 
   /** Top candidate matters for spoken text, ranked, each with whether it covers
    *  every spoken word (a strong/confident signal). */
@@ -154,7 +178,7 @@ export function VoiceTimeEntry({
     return matters
       .map((m) => {
         const mt = mToks(m);
-        const hits = st.filter((t) => mt.some((w) => w.includes(t) || t.includes(w)));
+        const hits = st.filter((t) => mt.some((w) => tokenMatch(t, w)));
         return { matter: m, score: hits.length, coversAll: hits.length === st.length };
       })
       .filter((x) => x.score > 0)
@@ -168,46 +192,92 @@ export function VoiceTimeEntry({
     return covering.length === 1 ? covering[0].matter : undefined;
   }
 
-  /** Resolve the matter conversationally: use a single sure hit; otherwise walk
-   *  the top candidates ("Did you mean …?"); if none fit, ask them to repeat. */
+  /** Tapping a shown candidate selects it immediately (and stops the voice walk). */
+  function tapCandidate(m: string) {
+    pickedRef.current = m;
+    try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+  }
+
+  /** Resolve the matter: a single sure hit is used outright; otherwise the top
+   *  candidates (≤5) are shown as tappable buttons AND read aloud one by one —
+   *  the user can tap the right one or answer yes/no. If none fit, re-ask. */
   async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
     if (cancelRef.current) return undefined;
     const ranked = rankMatters(spoken);
     if (ranked.length === 0) {
       if (attempt >= 3) return spoken.trim() || undefined;
-      const again = await ask("I couldn't find that one. Please say the matter or client name again.", (x) => x.trim(), true);
+      const again = await ask("I couldn't find a matching case. Please say the client or matter name again.", (x) => x.trim(), true);
       return resolveMatter(again ?? "", attempt + 1);
     }
     const covering = ranked.filter((r) => r.coversAll);
-    if (covering.length === 1) return covering[0].matter; // 100% sure
-    const order = [...covering, ...ranked.filter((r) => !r.coversAll)].slice(0, 5);
-    for (const r of order) {
-      if (cancelRef.current) return undefined;
-      await speak(`Did you mean ${r.matter}?`);
+    if (covering.length === 1) return covering[0].matter; // 100% sure → just use it
+
+    const cands = [...covering, ...ranked.filter((r) => !r.coversAll)].slice(0, 5).map((r) => r.matter);
+    pickedRef.current = null;
+    setCandidates(cands);
+    await speak(cands.length === 1 ? "I found one possible match. Tap it, or say yes." : "I found a few. Tap the right one, or say yes when I read it.");
+    for (const c of cands) {
+      if (cancelRef.current) { setCandidates([]); return undefined; }
+      if (pickedRef.current) break;
+      await speak(`Is it ${c}?`);
+      if (pickedRef.current || cancelRef.current) break;
       const ans = await listen();
-      if (cancelRef.current) return undefined;
-      if (isYes(ans)) return r.matter;
-      if (!isNo(ans) && ans.trim() && !/\bnext\b/i.test(ans)) {
-        // They said a different name instead of yes/no — re-resolve on that.
-        return resolveMatter(ans, attempt + 1);
-      }
+      if (pickedRef.current || cancelRef.current) break;
+      if (isYes(ans)) { setCandidates([]); return c; }
+      if (!isNo(ans) && ans.trim() && !/\bnext\b/i.test(ans)) { setCandidates([]); return resolveMatter(ans, attempt + 1); }
     }
+    setCandidates([]);
+    if (pickedRef.current) { const m = pickedRef.current; pickedRef.current = null; return m; }
+    if (cancelRef.current) return undefined;
     if (attempt >= 3) return spoken.trim() || undefined;
-    const again = await ask("None of those matched. Please say the matter or client name again.", (x) => x.trim(), true);
+    const again = await ask("None of those matched. Please say the client or matter name again.", (x) => x.trim(), true);
     return resolveMatter(again ?? "", attempt + 1);
   }
 
+  /* ---- date ---- */
+  function stripTime(s: string): string {
+    return (" " + s + " ")
+      .replace(/\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b/gi, " ")
+      .replace(/\b\d+\s*\/\s*10\b/gi, " ")
+      .replace(/\bpoint\s+\w+(?:\s+\w+)?\b/gi, " ");
+  }
+  function parseDate(s: string): string | undefined {
+    const t = s.toLowerCase();
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (/\b(today|this morning|this afternoon|tonight|now)\b/.test(t)) return fmt(new Date());
+    if (/\byesterday\b/.test(t)) { const d = new Date(); d.setDate(d.getDate() - 1); return fmt(d); }
+    let m: RegExpMatchArray | null;
+    if ((m = t.match(/\b(\d+)\s+days?\s+ago\b/))) { const d = new Date(); d.setDate(d.getDate() - parseInt(m[1])); return fmt(d); }
+    const days: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    for (const name in days) {
+      if (new RegExp(`\\b${name}\\b`).test(t)) { const d = new Date(); let diff = (d.getDay() - days[name] + 7) % 7; if (diff === 0) diff = 7; d.setDate(d.getDate() - diff); return fmt(d); }
+    }
+    const mo: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+    const monRe = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+    if ((m = t.match(new RegExp(`\\b(${monRe})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?`)))) {
+      const month = mo[m[1].slice(0, 3)]; const day = parseInt(m[2]); const yr = m[3] ? parseInt(m[3]) : new Date().getFullYear();
+      if (month != null) return fmt(new Date(yr, month, day));
+    }
+    if ((m = t.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+of\\s+(${monRe})`)))) {
+      const day = parseInt(m[1]); const month = mo[m[2].slice(0, 3)]; if (month != null) return fmt(new Date(new Date().getFullYear(), month, day));
+    }
+    if ((m = t.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/))) {
+      const month = parseInt(m[1]) - 1; const day = parseInt(m[2]); let yr = m[3] ? parseInt(m[3]) : new Date().getFullYear(); if (yr < 100) yr += 2000;
+      return fmt(new Date(yr, month, day));
+    }
+    return undefined;
+  }
+
+  /** First-utterance parse: pull client/date/category/time in any order. The
+   *  note is captured separately on its own prompt (easier to recognize). */
   function parseInitial(s: string): Slots {
     const out: Slots = {};
     const h = parseHours(s); if (h != null) out.hours = h;
     const cat = matchCategory(s, true); if (cat) out.category = cat;
     const mt = confidentMatter(s); if (mt) out.matter = mt;
     if (/non[- ]?billable|no charge|not billable/i.test(s)) out.nonBillable = true;
-    if (/yesterday/i.test(s)) out.date = yesterdayISO();
-    // Capture the note: an explicit "note …", otherwise whatever description is
-    // left after removing the time/category/billing words they rattled off.
-    const note = extractNoteValue(s) || noteFromDump(s, out.category);
-    if (note) out.notes = note;
+    const d = parseDate(stripTime(s)); if (d) out.date = d;
     return out;
   }
 
@@ -215,25 +285,6 @@ export function VoiceTimeEntry({
   function extractNoteValue(t: string): string {
     const m = t.match(/notes?\s+(?:should (?:be|say|read)|that says|saying|reads?|is|are|to be|to|of|:)\s*(.+)/i);
     return m ? m[1].trim() : "";
-  }
-
-  /** The leftover description after stripping the recognized fields. */
-  function noteFromDump(s: string, category?: string): string {
-    let n = " " + s + " ";
-    const rm = (re: RegExp) => { n = n.replace(re, " "); };
-    rm(/\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b/gi);
-    rm(/\b(?:a |an |one )?half(?: an?)? hour\b/gi);
-    rm(/\bquarter(?: of an)? hour\b/gi);
-    rm(/\bpoint\s+\w+(?:\s+\w+)?\b/gi);
-    rm(/\b\d+\s*\/\s*10\b/gi);
-    rm(/\b(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+tenths?\b/gi);
-    rm(/\bnon[- ]?billable\b/gi); rm(/\bno charge\b/gi); rm(/\byesterday\b/gi);
-    if (category) rm(new RegExp("\\b" + category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"));
-    rm(/\bnotes?\b/gi);
-    n = n.replace(/\s{2,}/g, " ").trim();
-    n = n.replace(/^(?:and|for|of|on|the|um|uh|so|then|with|a|an)\b\s*/i, "").trim();
-    n = n.replace(/[\s,]+$/, "");
-    return n.split(/\s+/).filter(Boolean).length >= 2 ? n : "";
   }
 
   function detectEditField(s: string): "matter" | "hours" | "category" | "note" | "nonBillable" | null {
@@ -246,8 +297,13 @@ export function VoiceTimeEntry({
     return null;
   }
 
+  function dateLabel(d?: string): string {
+    if (!d || d === todayISO()) return "today";
+    if (d === yesterdayISO()) return "yesterday";
+    const [y, mo, da] = d.split("-");
+    return `${parseInt(mo)}/${parseInt(da)}/${y}`;
+  }
   function summaryText(s: Slots): string {
-    const dateLabel = s.date && s.date !== todayISO() ? "yesterday" : "today";
     const parts = [
       `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`,
       `of ${s.category || "no category"}`,
@@ -255,7 +311,7 @@ export function VoiceTimeEntry({
     ];
     if (s.notes) parts.push(`note: ${s.notes}`);
     parts.push(s.nonBillable ? "non-billable" : "billable");
-    parts.push(`dated ${dateLabel}`);
+    parts.push(`dated ${dateLabel(s.date)}`);
     return parts.join(", ");
   }
 
@@ -304,23 +360,38 @@ export function VoiceTimeEntry({
     runningRef.current = true; cancelRef.current = false; setOpen(true); setSaved(false); setSlots({});
     const set = (s: Slots) => setSlots({ ...s });
     try {
-      await speak("Go ahead. Describe the time entry.");
+      // Step 1 — say the client, date, category, and time in any order.
+      await speak("Tell me the client, the date, the category, and how long it took.");
       const s: Slots = parseInitial(await listen());
       set(s);
       if (cancelRef.current) return;
 
+      // Fill anything not caught — in order: client, date, category, time.
       if (!s.matter) {
-        const spoken = (await ask("Which matter or client?", (x) => x.trim())) ?? "";
+        const spoken = (await ask("Which client or matter?", (x) => x.trim())) ?? "";
         if (cancelRef.current) return;
         s.matter = await resolveMatter(spoken);
         set(s);
       }
       if (cancelRef.current) return;
-      if (s.hours == null) { s.hours = await ask("How long did it take?", parseHours); set(s); }
+      if (!s.date) {
+        const d = (await ask("What date? Say today if it's for today.", (x) => x, true)) ?? "";
+        s.date = !d.trim() || /\btoday\b/i.test(d) ? todayISO() : (parseDate(d) || todayISO());
+        set(s);
+      }
       if (cancelRef.current) return;
       if (!s.category) { s.category = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false); set(s); }
       if (cancelRef.current) return;
-      if (s.notes == null) { const n = await ask("Any notes? Say skip if none.", (x) => x, false); s.notes = isSkip(n ?? "") ? "" : (n ?? ""); set(s); }
+      if (s.hours == null) { s.hours = await ask("How much time? For example, half an hour, point five, or forty-five minutes.", parseHours); set(s); }
+      if (cancelRef.current) return;
+
+      // Step 2 — the activity note, on its own so it's easy to capture.
+      {
+        const n = (await ask("Now, what is the activity note?", (x) => x, false)) ?? "";
+        const skip = !n.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(n.trim());
+        s.notes = skip ? "" : n.trim();
+        set(s);
+      }
       if (cancelRef.current) return;
 
       const user = defaultUser;
@@ -359,9 +430,10 @@ export function VoiceTimeEntry({
 
   function cancel() {
     cancelRef.current = true;
+    pickedRef.current = null;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
-    runningRef.current = false; setListening(false); setOpen(false);
+    runningRef.current = false; setListening(false); setOpen(false); setCandidates([]);
   }
 
   return (
@@ -386,11 +458,34 @@ export function VoiceTimeEntry({
             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
               {listening ? <><Loader2 size={14} className="animate-spin" /> Listening…</> : heard ? `“${heard}”` : null}
             </div>
+
+            {candidates.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-[var(--c-ink-muted)] mb-1.5">Tap the correct case (or say yes when I read it):</p>
+                <div className="space-y-1.5">
+                  {candidates.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => tapCandidate(c)}
+                      className="w-full text-left rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm hover:border-[var(--c-accent)] hover:bg-[var(--c-surface2)]"
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               {([["Matter", slots.matter], ["Hours", slots.hours], ["Category", slots.category], ["Notes", slots.notes], ["Non-billable", slots.nonBillable ? "Yes" : ""]] as [string, unknown][])
                 .map(([k, v]) => (v ? <div key={k}><span className="text-[var(--c-ink-muted)]">{k}: </span>{String(v)}</div> : null))}
             </div>
             {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
+            {!saved && (
+              <p className="mt-4 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
+                Say the client&apos;s name to find their case. Time can be &ldquo;half an hour&rdquo;, &ldquo;point five&rdquo;, or &ldquo;45 minutes&rdquo;.
+              </p>
+            )}
             <div className="mt-5 flex justify-end">
               <button onClick={cancel} className="btn btn-outline text-sm py-2 px-4">{saved ? "Close" : "Cancel"}</button>
             </div>
