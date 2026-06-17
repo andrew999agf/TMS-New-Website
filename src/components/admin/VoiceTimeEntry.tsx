@@ -204,9 +204,98 @@ export function VoiceTimeEntry({
     const mt = confidentMatter(s); if (mt) out.matter = mt;
     if (/non[- ]?billable|no charge|not billable/i.test(s)) out.nonBillable = true;
     if (/yesterday/i.test(s)) out.date = yesterdayISO();
-    const nm = s.match(/notes?\s+(?:that says\s+|saying\s+|is\s+|of\s+)?(.+)$/i);
-    if (nm) out.notes = nm[1].trim();
+    // Capture the note: an explicit "note …", otherwise whatever description is
+    // left after removing the time/category/billing words they rattled off.
+    const note = extractNoteValue(s) || noteFromDump(s, out.category);
+    if (note) out.notes = note;
     return out;
+  }
+
+  /** Pull a note value when the speaker explicitly flags it ("the note is …"). */
+  function extractNoteValue(t: string): string {
+    const m = t.match(/notes?\s+(?:should (?:be|say|read)|that says|saying|reads?|is|are|to be|to|of|:)\s*(.+)/i);
+    return m ? m[1].trim() : "";
+  }
+
+  /** The leftover description after stripping the recognized fields. */
+  function noteFromDump(s: string, category?: string): string {
+    let n = " " + s + " ";
+    const rm = (re: RegExp) => { n = n.replace(re, " "); };
+    rm(/\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b/gi);
+    rm(/\b(?:a |an |one )?half(?: an?)? hour\b/gi);
+    rm(/\bquarter(?: of an)? hour\b/gi);
+    rm(/\bpoint\s+\w+(?:\s+\w+)?\b/gi);
+    rm(/\b\d+\s*\/\s*10\b/gi);
+    rm(/\b(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+tenths?\b/gi);
+    rm(/\bnon[- ]?billable\b/gi); rm(/\bno charge\b/gi); rm(/\byesterday\b/gi);
+    if (category) rm(new RegExp("\\b" + category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"));
+    rm(/\bnotes?\b/gi);
+    n = n.replace(/\s{2,}/g, " ").trim();
+    n = n.replace(/^(?:and|for|of|on|the|um|uh|so|then|with|a|an)\b\s*/i, "").trim();
+    n = n.replace(/[\s,]+$/, "");
+    return n.split(/\s+/).filter(Boolean).length >= 2 ? n : "";
+  }
+
+  function detectEditField(s: string): "matter" | "hours" | "category" | "note" | "nonBillable" | null {
+    const t = s.toLowerCase();
+    if (/\b(matter|client|case|file)\b/.test(t)) return "matter";
+    if (/\b(hours?|time|long|duration|minutes?)\b/.test(t)) return "hours";
+    if (/\b(category|type of work|activity)\b/.test(t)) return "category";
+    if (/\b(notes?|description|memo)\b/.test(t)) return "note";
+    if (/\b(billable|non[- ]?billable|charge)\b/.test(t)) return "nonBillable";
+    return null;
+  }
+
+  function summaryText(s: Slots): string {
+    const dateLabel = s.date && s.date !== todayISO() ? "yesterday" : "today";
+    const parts = [
+      `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`,
+      `of ${s.category || "no category"}`,
+      `on ${s.matter || "no matter"}`,
+    ];
+    if (s.notes) parts.push(`note: ${s.notes}`);
+    parts.push(s.nonBillable ? "non-billable" : "billable");
+    parts.push(`dated ${dateLabel}`);
+    return parts.join(", ");
+  }
+
+  /** Apply a spoken edit at the confirmation step (instead of discarding). */
+  async function applyEdit(s: Slots, utterance: string): Promise<void> {
+    const field = detectEditField(utterance);
+    if (field === "hours") {
+      let h = parseHours(utterance);
+      if (h == null) h = await ask("What should the time be?", parseHours);
+      if (h != null) s.hours = h;
+      return;
+    }
+    if (field === "category") {
+      let c = matchCategory(utterance, true);
+      if (!c) c = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false);
+      if (c) s.category = c;
+      return;
+    }
+    if (field === "matter") {
+      const spoken = (await ask("Which matter or client?", (x) => x.trim())) ?? "";
+      if (cancelRef.current) return;
+      const r = await resolveMatter(spoken);
+      if (r) s.matter = r;
+      return;
+    }
+    if (field === "note") {
+      let note = extractNoteValue(utterance);
+      if (!note) note = (await ask("What should the note say?", (x) => x.trim())) ?? "";
+      s.notes = note;
+      return;
+    }
+    if (field === "nonBillable") {
+      if (/non[- ]?billable|not billable|no charge/i.test(utterance)) s.nonBillable = true;
+      else if (/\bbillable\b/i.test(utterance)) s.nonBillable = false;
+      else { const a = (await ask("Billable or non-billable?", (x) => x)) ?? ""; s.nonBillable = /non[- ]?billable|not billable|no charge/i.test(a); }
+      return;
+    }
+    const which = (await ask("No problem — what would you like to change? You can say the matter, the time, the category, the note, or whether it's billable.", (x) => x, true)) ?? "";
+    if (cancelRef.current) return;
+    if (detectEditField(which)) await applyEdit(s, which);
   }
 
   async function run() {
@@ -235,25 +324,34 @@ export function VoiceTimeEntry({
       if (cancelRef.current) return;
 
       const user = defaultUser;
-      const dateLabel = s.date && s.date !== todayISO() ? "yesterday" : "today";
-      const summary = `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"} on ${s.matter || "no matter"}${s.nonBillable ? ", non-billable" : ""}, dated ${dateLabel}. Is that correct?`;
-      const ans = (await ask(summary, (x) => x, true)) ?? "";
-      if (cancelRef.current) return;
-
-      if (isYes(ans)) {
-        const rate = activityUsers.find((u) => u.name === user)?.rate ?? 145;
-        const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
-        const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
-        onAdd({
-          matter: s.matter || "", entryDate: s.date || todayISO(), activityDescription: "", note,
-          price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
-        });
-        setSaved(true);
-        await speak("Saved to your board.");
-      } else {
-        await speak("Okay, discarded.");
-        setStatus("Discarded.");
+      let confirmed = false;
+      for (let i = 0; i < 6 && !cancelRef.current; i++) {
+        const ans = (await ask(`${summaryText(s)}. Is that correct?`, (x) => x, true)) ?? "";
+        if (cancelRef.current) return;
+        if (isYes(ans)) { confirmed = true; break; }
+        if (/\b(cancel|discard|delete it|throw it out|never mind|forget it|start over|scrap)\b/i.test(ans)) {
+          await speak("Okay, discarded.");
+          setStatus("Discarded.");
+          return;
+        }
+        // Anything else is treated as an edit request, not a discard.
+        await applyEdit(s, ans);
+        set(s);
       }
+      if (!confirmed) {
+        if (!cancelRef.current) { await speak("Let's stop here. Nothing was saved."); setStatus("Not saved."); }
+        return;
+      }
+
+      const rate = activityUsers.find((u) => u.name === user)?.rate ?? 145;
+      const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
+      const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
+      onAdd({
+        matter: s.matter || "", entryDate: s.date || todayISO(), activityDescription: "", note,
+        price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
+      });
+      setSaved(true);
+      await speak("Saved to your board.");
     } finally {
       runningRef.current = false; setListening(false);
     }
