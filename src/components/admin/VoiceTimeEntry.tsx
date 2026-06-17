@@ -96,19 +96,6 @@ export function VoiceTimeEntry({
     if ((m = t.match(/^\s*(\d+(?:\.\d+)?)\s*$/))) return parseFloat(m[1]);
     return undefined;
   }
-  function matchMatter(s: string, strict: boolean): string | undefined {
-    const t = s.toLowerCase().trim();
-    if (!t) return undefined;
-    let best: string | null = null, bestScore = 0;
-    for (const mt of matters) {
-      const words = mt.toLowerCase().split(/[\s\-_,/]+/).filter((w) => w.length > 2);
-      let score = 0;
-      for (const w of words) if (t.includes(w)) score++;
-      if (score > bestScore) { bestScore = score; best = mt; }
-    }
-    if (bestScore > 0) return best!;
-    return strict ? undefined : s.trim();
-  }
   function matchCategory(s: string, strict: boolean): string | undefined {
     const t = s.toLowerCase();
     let best: string | null = null, len = 0;
@@ -118,13 +105,70 @@ export function VoiceTimeEntry({
     return strict ? undefined : (s.trim() ? s.trim().toUpperCase() : undefined);
   }
   const isYes = (s: string) => /\b(yes|yeah|yep|yup|good|ok|okay|correct|right|sure|perfect|confirm|that's right|looks good)\b/i.test(s);
+  const isNo = (s: string) => /\b(no|nope|nah|negative|wrong|not it|incorrect)\b/i.test(s);
   const isSkip = (s: string) => !s.trim() || /\b(no|none|skip|nope|nothing|that's all)\b/i.test(s);
+
+  // ---- matter matching against the uploaded Clio matters ----
+  const STOP = new Set(["the", "and", "for", "matter", "client", "case", "file", "our"]);
+  const toks = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  const mToks = (m: string) => m.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+  /** Top candidate matters for spoken text, ranked, each with whether it covers
+   *  every spoken word (a strong/confident signal). */
+  function rankMatters(spoken: string): { matter: string; score: number; coversAll: boolean }[] {
+    const st = toks(spoken);
+    if (!st.length) return [];
+    return matters
+      .map((m) => {
+        const mt = mToks(m);
+        const hits = st.filter((t) => mt.some((w) => w.includes(t) || t.includes(w)));
+        return { matter: m, score: hits.length, coversAll: hits.length === st.length };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => Number(b.coversAll) - Number(a.coversAll) || b.score - a.score)
+      .slice(0, 5);
+  }
+
+  /** Confident only: exactly one matter covers all spoken words. */
+  function confidentMatter(spoken: string): string | undefined {
+    const covering = rankMatters(spoken).filter((r) => r.coversAll);
+    return covering.length === 1 ? covering[0].matter : undefined;
+  }
+
+  /** Resolve the matter conversationally: use a single sure hit; otherwise walk
+   *  the top candidates ("Did you mean …?"); if none fit, ask them to repeat. */
+  async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
+    if (cancelRef.current) return undefined;
+    const ranked = rankMatters(spoken);
+    if (ranked.length === 0) {
+      if (attempt >= 3) return spoken.trim() || undefined;
+      const again = await ask("I couldn't find that one. Please say the matter or client name again.", (x) => x.trim(), true);
+      return resolveMatter(again ?? "", attempt + 1);
+    }
+    const covering = ranked.filter((r) => r.coversAll);
+    if (covering.length === 1) return covering[0].matter; // 100% sure
+    const order = [...covering, ...ranked.filter((r) => !r.coversAll)].slice(0, 5);
+    for (const r of order) {
+      if (cancelRef.current) return undefined;
+      await speak(`Did you mean ${r.matter}?`);
+      const ans = await listen();
+      if (cancelRef.current) return undefined;
+      if (isYes(ans)) return r.matter;
+      if (!isNo(ans) && ans.trim() && !/\bnext\b/i.test(ans)) {
+        // They said a different name instead of yes/no — re-resolve on that.
+        return resolveMatter(ans, attempt + 1);
+      }
+    }
+    if (attempt >= 3) return spoken.trim() || undefined;
+    const again = await ask("None of those matched. Please say the matter or client name again.", (x) => x.trim(), true);
+    return resolveMatter(again ?? "", attempt + 1);
+  }
 
   function parseInitial(s: string): Slots {
     const out: Slots = {};
     const h = parseHours(s); if (h != null) out.hours = h;
     const cat = matchCategory(s, true); if (cat) out.category = cat;
-    const mt = matchMatter(s, true); if (mt) out.matter = mt;
+    const mt = confidentMatter(s); if (mt) out.matter = mt;
     if (/non[- ]?billable|no charge|not billable/i.test(s)) out.nonBillable = true;
     if (/yesterday/i.test(s)) out.date = yesterdayISO();
     const nm = s.match(/notes?\s+(?:that says\s+|saying\s+|is\s+|of\s+)?(.+)$/i);
@@ -143,7 +187,12 @@ export function VoiceTimeEntry({
       set(s);
       if (cancelRef.current) return;
 
-      if (!s.matter) { s.matter = matchMatter((await ask("Which matter or client?", (x) => x.trim())) ?? "", false); set(s); }
+      if (!s.matter) {
+        const spoken = (await ask("Which matter or client?", (x) => x.trim())) ?? "";
+        if (cancelRef.current) return;
+        s.matter = await resolveMatter(spoken);
+        set(s);
+      }
       if (cancelRef.current) return;
       if (s.hours == null) { s.hours = await ask("How long did it take?", parseHours); set(s); }
       if (cancelRef.current) return;
