@@ -2,27 +2,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, X, Loader2, Check, Volume2, VolumeX } from "lucide-react";
+import { Mic, X, Loader2, Check, Volume2, VolumeX, Info } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
 
 /**
- * Hands-free time entry. Tap the floating mic, describe the entry, and it fills
- * what it can, asks for anything missing, reads it back, and saves on a "yes".
- * Uses the browser's built-in speech recognition + synthesis (no server/API).
+ * Hands-free time entry in three spoken parts:
+ *   1) the case/client and the hourly rate,
+ *   2) the date, the time, and the category,
+ *   3) the activity note.
+ * You see the words appear live as you talk, then every field becomes an
+ * editable box so you can fix anything on the spot before saving. Uses the
+ * browser's built-in speech recognition + synthesis (no server/API).
  */
 
 const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) => `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
 const todayISO = () => new Date().toISOString().split("T")[0];
-const yesterdayISO = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split("T")[0]; };
 
-type Slots = { matter?: string; hours?: number; category?: string; notes?: string; nonBillable?: boolean; date?: string };
+type Matter = { displayNumber: string; description: string };
+type Slots = { matter?: string; rate?: number; hours?: number; category?: string; notes?: string; nonBillable?: boolean; date?: string };
 
 export function VoiceTimeEntry({
   matters, categories, activityUsers, defaultUser, onAdd,
 }: {
-  matters: string[];
+  matters: Matter[];
   categories: string[];
   activityUsers: { name: string; rate: number }[];
   defaultUser: string;
@@ -31,10 +35,13 @@ export function VoiceTimeEntry({
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [heard, setHeard] = useState("");
+  const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
   const [slots, setSlots] = useState<Slots>({});
+  const [review, setReview] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [candidates, setCandidates] = useState<string[]>([]);
+  const [candidates, setCandidates] = useState<Matter[]>([]);
+  const [openDesc, setOpenDesc] = useState<string | null>(null);
   const pickedRef = useRef<string | null>(null);
   const cancelRef = useRef(false);
   const recRef = useRef<any>(null);
@@ -43,15 +50,19 @@ export function VoiceTimeEntry({
   // page; it resets if the user leaves the tab and comes back.
   const [muted, setMuted] = useState(false);
   const muteRef = useRef(false);
-  // Per-step verification: while true, the Correct/Incorrect buttons are shown
-  // and verifyRef holds the resolver that a button (or voice) calls.
+  // Per-step verification: while true, the Correct/Incorrect buttons show and
+  // verifyRef holds the resolver a button (or voice) calls — tapping also cuts
+  // off the spoken voice so the user never has to wait for her to finish.
   const [verifying, setVerifying] = useState(false);
   const verifyRef = useRef<((ok: boolean) => void) | null>(null);
+
+  const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
+  const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
 
   const supported = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) && Boolean(window.speechSynthesis);
 
   // Reset the mute toggle whenever the user navigates away from this tab/page,
-  // so they don't have to un-mute, but also don't have to re-mute every entry.
+  // so they don't have to re-mute every entry but also don't get stuck muted.
   useEffect(() => {
     const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
     document.addEventListener("visibilitychange", onHide);
@@ -72,18 +83,28 @@ export function VoiceTimeEntry({
     });
   }
 
+  // Listen for a single utterance, showing the words live as they're spoken.
   function listen(): Promise<string> {
     return new Promise((res) => {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SR) return res("");
       const rec = new SR();
       recRef.current = rec;
-      rec.lang = "en-US"; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
-      let done = false;
-      setListening(true); setHeard("");
-      rec.onresult = (e: any) => { done = true; const t = e.results[0][0].transcript as string; setHeard(t); setListening(false); res(t); };
-      rec.onerror = () => { if (!done) { done = true; setListening(false); res(""); } };
-      rec.onend = () => { if (!done) { done = true; setListening(false); res(""); } };
+      rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
+      let done = false; let finalText = "";
+      const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
+      setListening(true); setHeard(""); setInterim("");
+      rec.onresult = (e: any) => {
+        let live = "";
+        for (let i = 0; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) finalText += r[0].transcript;
+          else live += r[0].transcript;
+        }
+        setInterim((finalText + live).trim()); // live view of what's being heard
+      };
+      rec.onerror = () => finish(finalText);
+      rec.onend = () => finish(finalText);
       try { rec.start(); } catch { setListening(false); res(""); }
     });
   }
@@ -111,17 +132,17 @@ export function VoiceTimeEntry({
     });
   }
 
-  /** A Correct/Incorrect button press (or a spoken yes/no) resolves the
-   *  pending verification step. */
+  /** Correct/Incorrect button (or a spoken yes/no) — cuts off the voice and
+   *  resolves the pending verification immediately. */
   function clickVerify(ok: boolean) {
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     verifyRef.current?.(ok);
   }
 
-  /** Read a captured value back and wait for confirmation. The user can tap the
-   *  green Correct / red Incorrect buttons, or just say yes/no. Resolves true to
-   *  advance, false to redo. */
+  /** Read a part back and wait for confirmation. The user can tap the green
+   *  Correct / red Incorrect buttons (interrupting the voice at any moment) or
+   *  just say yes/no. Resolves true to advance, false to redo this part. */
   function verifyStep(desc: string): Promise<boolean> {
     if (cancelRef.current) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
@@ -138,7 +159,6 @@ export function VoiceTimeEntry({
       setVerifying(true);
       (async () => {
         await speak(`I have ${desc}. Tap the green Correct button or the red Incorrect button — or just tell me.`);
-        // Listen for a spoken yes/no too; the buttons can interrupt at any time.
         for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
           const ans = await listen();
           if (settled || cancelRef.current) return;
@@ -163,16 +183,13 @@ export function VoiceTimeEntry({
     const round1 = (n: number) => Math.round(n * 10) / 10;
     let m: RegExpMatchArray | null;
 
-    // "N and a half hours", "an hour and a half"
     if (/\bhour(?:s)?\s+and\s+(?:a\s+)?half\b/.test(t)) return 1.5;
     if ((m = t.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine)\b\s*and\s+(?:a\s+)?half/))) return (W[m[1]] ?? parseInt(m[1])) + 0.5;
 
-    // Tenths: "2/10", "two tenths", "a tenth"
     if ((m = t.match(/\b(\d+)\s*\/\s*10\b/))) return round1(parseInt(m[1]) / 10);
     if ((m = t.match(/\b(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+tenths?\b/))) return round1((W[m[1]] ?? parseInt(m[1])) / 10);
     if (/\btenth\b/.test(t)) return 0.1;
 
-    // Spoken decimals: "point two", "point six", "point two five"
     if ((m = t.match(/\bpoint\s+(\w+)(?:\s+(\w+))?/))) {
       const d1 = digit(m[1]);
       if (d1 != null) {
@@ -181,10 +198,8 @@ export function VoiceTimeEntry({
       }
     }
 
-    // Written decimals: ".2", "0.2", "1.5", "2.5"
     if ((m = t.match(/(\d*\.\d+)/))) return parseFloat(m[1]);
 
-    // Hours / minutes / words
     if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/))) return parseFloat(m[1]);
     if ((m = t.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*hours?\b/))) return W[m[1]];
     if ((m = t.match(/(\d+)\s*(?:minutes?|mins?)\b/))) return round1(parseInt(m[1]) / 60);
@@ -192,10 +207,26 @@ export function VoiceTimeEntry({
     if (/\bquarter\b/.test(t)) return 0.25;
     if (/\b(?:an|one)\s+hour\b/.test(t)) return 1;
 
-    // Bare number
     if ((m = t.match(/^\s*(\d*\.?\d+)\s*$/))) return parseFloat(m[1]);
     return undefined;
   }
+
+  /** Hourly rate — only when there's a money cue, so a case number isn't mistaken for a rate. */
+  function parseRate(s: string): number | undefined {
+    const t = s.toLowerCase();
+    let m: RegExpMatchArray | null;
+    if ((m = t.match(/\$\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
+    if ((m = t.match(/\b(\d{1,4}(?:\.\d{1,2})?)\s*(?:dollars?|bucks?|per hour|an hour|\/\s*hour|\/\s*hr|hourly)\b/))) return parseFloat(m[1]);
+    if ((m = t.match(/\b(?:rate|charge|bill(?:ed)?)\b\s+(?:of\s+|is\s+|at\s+)?\$?\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
+    return undefined;
+  }
+  function stripRate(s: string): string {
+    return s
+      .replace(/\$\s*\d{1,4}(?:\.\d{1,2})?/g, " ")
+      .replace(/\b\d{1,4}(?:\.\d{1,2})?\s*(?:dollars?|bucks?|per hour|an hour|\/\s*hour|\/\s*hr|hourly)\b/gi, " ")
+      .replace(/\b(?:rate|charge|bill(?:ed)?)\b\s+(?:of\s+|is\s+|at\s+)?\$?\s*\d{1,4}(?:\.\d{1,2})?/gi, " ");
+  }
+
   function matchCategory(s: string, strict: boolean): string | undefined {
     const t = s.toLowerCase();
     let best: string | null = null, len = 0;
@@ -208,12 +239,13 @@ export function VoiceTimeEntry({
   const isNo = (s: string) => /\b(no|nope|nah|negative|wrong|not it|incorrect)\b/i.test(s);
 
   // ---- matter matching against the uploaded Clio matters ----
-  // Matters look like "0042 - Nelson, John". The speaker usually says just the
-  // name, so we match spoken words against the matter's words (ignoring the
-  // numbers) with a fuzzy comparison so near-misses ("Nelsen" → "Nelson") count.
+  // Matters look like "0042 - Nelson, John" and carry a case description. The
+  // speaker usually says a name or something about the case, so we match spoken
+  // words against BOTH the number/name and the description (fuzzy, so near-misses
+  // like "Nelsen" → "Nelson" still count).
   const STOP = new Set(["the", "and", "for", "matter", "client", "case", "file", "our"]);
   const toks = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
-  const mToks = (m: string) => m.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  const mToks = (m: Matter) => `${m.displayNumber} ${m.description}`.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
 
   function lev(a: string, b: string): number {
     const m = a.length, n = b.length;
@@ -229,22 +261,21 @@ export function VoiceTimeEntry({
     return prev[n];
   }
   function tokenMatch(st: string, mt: string): boolean {
-    if (/^\d+$/.test(mt)) return st === mt; // matter number only matches if said exactly
+    if (/^\d+$/.test(mt)) return st === mt; // a number only matches if said exactly
     if (mt.includes(st) || st.includes(mt)) return true;
     if (st.length >= 4 && mt.length >= 4) return lev(st, mt) <= Math.floor(Math.max(st.length, mt.length) / 4);
     return false;
   }
 
-  /** Top candidate matters for spoken text, ranked, each with whether it covers
-   *  every spoken word (a strong/confident signal). */
-  function rankMatters(spoken: string): { matter: string; score: number; coversAll: boolean }[] {
+  type Ranked = Matter & { score: number; coversAll: boolean };
+  function rankMatters(spoken: string): Ranked[] {
     const st = toks(spoken);
     if (!st.length) return [];
     return matters
       .map((m) => {
         const mt = mToks(m);
         const hits = st.filter((t) => mt.some((w) => tokenMatch(t, w)));
-        return { matter: m, score: hits.length, coversAll: hits.length === st.length };
+        return { ...m, score: hits.length, coversAll: hits.length === st.length };
       })
       .filter((x) => x.score > 0)
       .sort((a, b) => Number(b.coversAll) - Number(a.coversAll) || b.score - a.score)
@@ -254,19 +285,19 @@ export function VoiceTimeEntry({
   /** Confident only: exactly one matter covers all spoken words. */
   function confidentMatter(spoken: string): string | undefined {
     const covering = rankMatters(spoken).filter((r) => r.coversAll);
-    return covering.length === 1 ? covering[0].matter : undefined;
+    return covering.length === 1 ? covering[0].displayNumber : undefined;
   }
 
-  /** Tapping a shown candidate selects it immediately (and stops the voice walk). */
-  function tapCandidate(m: string) {
-    pickedRef.current = m;
+  /** Tapping the check on a shown candidate selects it (and stops the voice walk). */
+  function tapCandidate(displayNumber: string) {
+    pickedRef.current = displayNumber;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   }
 
   /** Resolve the matter: a single sure hit is used outright; otherwise the top
-   *  candidates (≤5) are shown as tappable buttons AND read aloud one by one —
-   *  the user can tap the right one or answer yes/no. If none fit, re-ask. */
+   *  candidates (≤5) are shown — tap a row to see its description, tap the check
+   *  to pick it — and read aloud one by one for a yes/no. If none fit, re-ask. */
   async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
     if (cancelRef.current) return undefined;
     const ranked = rankMatters(spoken);
@@ -276,20 +307,21 @@ export function VoiceTimeEntry({
       return resolveMatter(again ?? "", attempt + 1);
     }
     const covering = ranked.filter((r) => r.coversAll);
-    if (covering.length === 1) return covering[0].matter; // 100% sure → just use it
+    if (covering.length === 1) return covering[0].displayNumber; // 100% sure → just use it
 
-    const cands = [...covering, ...ranked.filter((r) => !r.coversAll)].slice(0, 5).map((r) => r.matter);
+    const cands: Matter[] = [...covering, ...ranked.filter((r) => !r.coversAll)].slice(0, 5).map((r) => ({ displayNumber: r.displayNumber, description: r.description }));
     pickedRef.current = null;
     setCandidates(cands);
-    await speak(cands.length === 1 ? "I found one possible match. Tap it, or say yes." : "I found a few. Tap the right one, or say yes when I read it.");
+    setOpenDesc(null);
+    await speak(cands.length === 1 ? "I found one possible match. Tap the check to use it, or say yes." : "I found a few. Tap a row to see the case, tap the check to pick it, or say yes when I read the right one.");
     for (const c of cands) {
       if (cancelRef.current) { setCandidates([]); return undefined; }
       if (pickedRef.current) break;
-      await speak(`Is it ${c}?`);
+      await speak(`Is it ${c.displayNumber}?`);
       if (pickedRef.current || cancelRef.current) break;
       const ans = await listen();
       if (pickedRef.current || cancelRef.current) break;
-      if (isYes(ans)) { setCandidates([]); return c; }
+      if (isYes(ans)) { setCandidates([]); return c.displayNumber; }
       if (!isNo(ans) && ans.trim() && !/\bnext\b/i.test(ans)) { setCandidates([]); return resolveMatter(ans, attempt + 1); }
     }
     setCandidates([]);
@@ -334,196 +366,80 @@ export function VoiceTimeEntry({
     return undefined;
   }
 
-  /** First-utterance parse: pull client/date/category/time in any order. The
-   *  note is captured separately on its own prompt (easier to recognize). */
-  function parseInitial(s: string): Slots {
-    const out: Slots = {};
-    const h = parseHours(s); if (h != null) out.hours = h;
-    const cat = matchCategory(s, true); if (cat) out.category = cat;
-    const mt = confidentMatter(s); if (mt) out.matter = mt;
-    if (/non[- ]?billable|no charge|not billable/i.test(s)) out.nonBillable = true;
-    const d = parseDate(stripTime(s)); if (d) out.date = d;
-    return out;
-  }
-
-  /** Pull a note value when the speaker explicitly flags it ("the note is …"). */
-  function extractNoteValue(t: string): string {
-    const m = t.match(/notes?\s+(?:should (?:be|say|read)|that says|saying|reads?|is|are|to be|to|of|:)\s*(.+)/i);
-    return m ? m[1].trim() : "";
-  }
-
-  function detectEditField(s: string): "matter" | "hours" | "category" | "note" | "nonBillable" | null {
-    const t = s.toLowerCase();
-    if (/\b(matter|client|case|file)\b/.test(t)) return "matter";
-    if (/\b(hours?|time|long|duration|minutes?)\b/.test(t)) return "hours";
-    if (/\b(category|type of work|activity)\b/.test(t)) return "category";
-    if (/\b(notes?|description|memo)\b/.test(t)) return "note";
-    if (/\b(billable|non[- ]?billable|charge)\b/.test(t)) return "nonBillable";
-    return null;
-  }
-
-  function dateLabel(d?: string): string {
-    if (!d || d === todayISO()) return "today";
-    if (d === yesterdayISO()) return "yesterday";
-    const [y, mo, da] = d.split("-");
-    return `${parseInt(mo)}/${parseInt(da)}/${y}`;
-  }
-  function summaryText(s: Slots): string {
-    const parts = [
-      `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`,
-      `of ${s.category || "no category"}`,
-      `on ${s.matter || "no matter"}`,
-    ];
-    if (s.notes) parts.push(`note: ${s.notes}`);
-    parts.push(s.nonBillable ? "non-billable" : "billable");
-    parts.push(`dated ${dateLabel(s.date)}`);
-    return parts.join(", ");
-  }
-
-  /** Apply a spoken edit at the confirmation step (instead of discarding). */
-  async function applyEdit(s: Slots, utterance: string): Promise<void> {
-    const field = detectEditField(utterance);
-    if (field === "hours") {
-      let h = parseHours(utterance);
-      if (h == null) h = await ask("What should the time be?", parseHours);
-      if (h != null) s.hours = h;
-      return;
-    }
-    if (field === "category") {
-      let c = matchCategory(utterance, true);
-      if (!c) c = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false);
-      if (c) s.category = c;
-      return;
-    }
-    if (field === "matter") {
-      const spoken = (await ask("Which matter or client?", (x) => x.trim())) ?? "";
-      if (cancelRef.current) return;
-      const r = await resolveMatter(spoken);
-      if (r) s.matter = r;
-      return;
-    }
-    if (field === "note") {
-      let note = extractNoteValue(utterance);
-      if (!note) note = (await ask("What should the note say?", (x) => x.trim())) ?? "";
-      s.notes = note;
-      return;
-    }
-    if (field === "nonBillable") {
-      if (/non[- ]?billable|not billable|no charge/i.test(utterance)) s.nonBillable = true;
-      else if (/\bbillable\b/i.test(utterance)) s.nonBillable = false;
-      else { const a = (await ask("Billable or non-billable?", (x) => x)) ?? ""; s.nonBillable = /non[- ]?billable|not billable|no charge/i.test(a); }
-      return;
-    }
-    const which = (await ask("No problem — what would you like to change? You can say the matter, the time, the category, the note, or whether it's billable.", (x) => x, true)) ?? "";
-    if (cancelRef.current) return;
-    if (detectEditField(which)) await applyEdit(s, which);
-  }
-
   async function run() {
     if (runningRef.current) return;
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
-    runningRef.current = true; cancelRef.current = false; setOpen(true); setSaved(false); setSlots({});
-    const set = (s: Slots) => setSlots({ ...s });
+    runningRef.current = true; cancelRef.current = false;
+    setOpen(true); setSaved(false); setReview(false); setCandidates([]); setHeard(""); setInterim("");
+    const s: Slots = { date: todayISO(), nonBillable: false, rate: defaultRate };
+    setSlots({ ...s });
+    const set = () => setSlots({ ...s });
     try {
-      // Step 1 — say the client, date, category, and time in any order.
-      await speak("Tell me the client, the date, the category, and how long it took.");
-      const s: Slots = parseInitial(await listen());
-      set(s);
-      if (cancelRef.current) return;
-
-      // Each field is captured (if not already heard) and then verified with the
-      // green Correct / red Incorrect buttons. Incorrect re-does that one step.
-
-      // Client / matter.
+      // Part 1 — the case/client and the hourly rate.
       while (!cancelRef.current) {
-        if (!s.matter) {
-          const spoken = (await ask("Which client or matter?", (x) => x.trim())) ?? "";
-          if (cancelRef.current) return;
-          s.matter = await resolveMatter(spoken);
-          set(s);
-        }
+        await speak("First, the case or client, and the hourly rate.");
+        const u0 = await listen();
         if (cancelRef.current) return;
-        if (await verifyStep(`the matter as ${s.matter || "no matter"}`)) break;
-        s.matter = undefined; set(s);
+        const r0 = parseRate(u0); if (r0 != null) s.rate = r0;
+        const matterText = stripRate(u0).trim();
+        const conf = confidentMatter(matterText);
+        s.matter = conf ?? (await resolveMatter(matterText || u0));
+        set();
+        if (cancelRef.current) return;
+        if (await verifyStep(`the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`)) break;
+        s.matter = undefined; s.rate = defaultRate; set();
       }
       if (cancelRef.current) return;
 
-      // Date.
+      // Part 2 — the date, the time, and the category.
       while (!cancelRef.current) {
-        if (!s.date) {
-          const d = (await ask("What date? Say today if it's for today.", (x) => x, true)) ?? "";
-          s.date = !d.trim() || /\btoday\b/i.test(d) ? todayISO() : (parseDate(d) || todayISO());
-          set(s);
-        }
+        await speak("Next, the date, how long it took, and the category.");
+        const u1 = await listen();
         if (cancelRef.current) return;
-        if (await verifyStep(`the date as ${dateLabel(s.date)}`)) break;
-        s.date = undefined; set(s);
+        const h = parseHours(u1); if (h != null) s.hours = h;
+        const cat = matchCategory(u1, true); if (cat) s.category = cat;
+        const d = parseDate(stripTime(u1)); if (d) s.date = d;
+        if (/non[- ]?billable|no charge|not billable/i.test(u1)) s.nonBillable = true;
+        set();
+        if (cancelRef.current) return;
+        if (await verifyStep(`${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${s.date || todayISO()}`)) break;
+        s.hours = undefined; s.category = undefined; s.date = todayISO(); set();
       }
       if (cancelRef.current) return;
 
-      // Category.
+      // Part 3 — the activity note.
       while (!cancelRef.current) {
-        if (!s.category) { s.category = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false); set(s); }
+        await speak("Last, the activity note.");
+        const u2 = await listen();
         if (cancelRef.current) return;
-        if (await verifyStep(`the category as ${s.category || "no category"}`)) break;
-        s.category = undefined; set(s);
-      }
-      if (cancelRef.current) return;
-
-      // Time.
-      while (!cancelRef.current) {
-        if (s.hours == null) { s.hours = await ask("How much time? For example, half an hour, point five, or forty-five minutes.", parseHours); set(s); }
-        if (cancelRef.current) return;
-        if (await verifyStep(`the time as ${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`)) break;
-        s.hours = undefined; set(s);
-      }
-      if (cancelRef.current) return;
-
-      // Step 2 — the activity note, on its own so it's easy to capture.
-      while (!cancelRef.current) {
-        const n = (await ask("Now, what is the activity note?", (x) => x, false)) ?? "";
-        const skip = !n.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(n.trim());
-        s.notes = skip ? "" : n.trim();
-        set(s);
+        const skip = !u2.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(u2.trim());
+        s.notes = skip ? "" : u2.trim();
+        set();
         if (cancelRef.current) return;
         if (await verifyStep(s.notes ? `the note as ${s.notes}` : "no note")) break;
       }
       if (cancelRef.current) return;
 
-      const user = defaultUser;
-      // Final read-back of the whole entry. Correct saves; Incorrect lets the
-      // user name a single piece to change.
-      let confirmed = false;
-      for (let i = 0; i < 6 && !cancelRef.current; i++) {
-        if (await verifyStep(summaryText(s))) { confirmed = true; break; }
-        if (cancelRef.current) return;
-        const which = (await ask("No problem — what would you like to change? You can say the matter, the time, the category, the note, or whether it's billable.", (x) => x, true)) ?? "";
-        if (cancelRef.current) return;
-        if (/\b(cancel|discard|delete it|throw it out|never mind|forget it|scrap)\b/i.test(which)) {
-          await speak("Okay, discarded.");
-          setStatus("Discarded.");
-          return;
-        }
-        await applyEdit(s, which);
-        set(s);
-      }
-      if (!confirmed) {
-        if (!cancelRef.current) { await speak("Let's stop here. Nothing was saved."); setStatus("Not saved."); }
-        return;
-      }
-
-      const rate = activityUsers.find((u) => u.name === user)?.rate ?? 145;
-      const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
-      const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
-      onAdd({
-        matter: s.matter || "", entryDate: s.date || todayISO(), activityDescription: "", note,
-        price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
-      });
-      setSaved(true);
-      await speak("Saved to your board.");
+      // Hand off to the on-the-spot editable review.
+      await speak("Here's what I have. You can edit anything, then tap Save.");
+      setReview(true);
     } finally {
       runningRef.current = false; setListening(false);
     }
+  }
+
+  function saveReview() {
+    if (!slots.matter || !slots.matter.trim()) { setStatus("Please choose a case before saving."); return; }
+    const user = defaultUser;
+    const rate = slots.rate ?? defaultRate;
+    const hoursR = fix(Math.ceil((slots.hours || 0) * 10) / 10, 1);
+    const note = slots.notes ? createDesc(slots.category || "", slots.notes, user) : `${slots.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
+    onAdd({
+      matter: slots.matter.trim(), entryDate: slots.date || todayISO(), activityDescription: "", note,
+      price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!slots.nonBillable,
+    });
+    setReview(false); setSaved(true);
+    speak("Saved to your board.");
   }
 
   function cancel() {
@@ -533,8 +449,13 @@ export function VoiceTimeEntry({
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     verifyRef.current?.(true); // release any pending verify so run() can unwind
     setVerifying(false);
-    runningRef.current = false; setListening(false); setOpen(false); setCandidates([]);
+    runningRef.current = false; setListening(false); setOpen(false);
+    setReview(false); setCandidates([]); setInterim("");
   }
+
+  const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));
+  const fieldClass = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] rounded-md px-2.5 py-1.5 text-sm focus:border-[var(--c-accent)] outline-none";
+  const labelClass = "block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1";
 
   return (
     <>
@@ -549,7 +470,7 @@ export function VoiceTimeEntry({
 
       {open && (
         <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) cancel(); }}>
-          <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-md p-6 shadow-2xl">
+          <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-md p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-[family-name:var(--font-display)] text-lg flex items-center gap-2"><Mic size={18} className="text-[var(--c-accent)]" /> Voice entry</h3>
               <div className="flex items-center gap-1.5">
@@ -569,32 +490,95 @@ export function VoiceTimeEntry({
                 <button onClick={cancel} aria-label="Close"><X size={18} className="text-[var(--c-ink-muted)]" /></button>
               </div>
             </div>
+
             <p className="text-sm min-h-[40px]">{status}</p>
-            <div className="mt-1 flex items-center gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
-              {listening ? <><Loader2 size={14} className="animate-spin" /> Listening…</> : heard ? `“${heard}”` : null}
+            <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
+              {listening
+                ? <><Loader2 size={14} className="animate-spin mt-0.5 shrink-0" /> <span>{interim ? `“${interim}”` : "Listening…"}</span></>
+                : heard ? `“${heard}”` : null}
             </div>
 
-            {candidates.length > 0 && (
+            {candidates.length > 0 && !review && (
               <div className="mt-3">
-                <p className="text-xs text-[var(--c-ink-muted)] mb-1.5">Tap the correct case (or say yes when I read it):</p>
+                <p className="text-xs text-[var(--c-ink-muted)] mb-1.5">Tap a row to see the case; tap the check to pick it (or say yes when I read it):</p>
                 <div className="space-y-1.5">
                   {candidates.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => tapCandidate(c)}
-                      className="w-full text-left rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm hover:border-[var(--c-accent)] hover:bg-[var(--c-surface2)]"
-                    >
-                      {c}
-                    </button>
+                    <div key={c.displayNumber} className="flex items-stretch rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] overflow-hidden hover:border-[var(--c-accent)]">
+                      <button
+                        onClick={() => setOpenDesc((o) => (o === c.displayNumber ? null : c.displayNumber))}
+                        className="flex-1 text-left px-3 py-2 text-sm hover:bg-[var(--c-surface2)]"
+                      >
+                        <span className="flex items-center gap-1.5">{c.displayNumber}<Info size={12} className="text-[var(--c-ink-muted)]" /></span>
+                        {openDesc === c.displayNumber && (
+                          <span className="mt-1 block text-xs text-[var(--c-ink-muted)] leading-relaxed">{c.description || "No description on file for this case."}</span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => tapCandidate(c.displayNumber)}
+                        aria-label={`Select ${c.displayNumber}`}
+                        title="Use this case"
+                        className="w-1/5 min-w-[46px] border-l border-[var(--c-border)] flex items-center justify-center text-[var(--c-ink-muted)] hover:bg-[var(--c-success)] hover:text-white"
+                      >
+                        <Check size={18} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              {([["Matter", slots.matter], ["Hours", slots.hours], ["Category", slots.category], ["Notes", slots.notes], ["Non-billable", slots.nonBillable ? "Yes" : ""]] as [string, unknown][])
-                .map(([k, v]) => (v ? <div key={k}><span className="text-[var(--c-ink-muted)]">{k}: </span>{String(v)}</div> : null))}
-            </div>
+            {review ? (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className={labelClass}>Case / client</label>
+                  <input list="vte-matters" value={slots.matter ?? ""} onChange={(e) => upd({ matter: e.target.value })} className={fieldClass} placeholder="Choose a case" />
+                  <datalist id="vte-matters">{matters.map((m) => <option key={m.displayNumber} value={m.displayNumber}>{m.description}</option>)}</datalist>
+                  {descOf(slots.matter) && <p className="mt-1 text-xs text-[var(--c-ink-muted)] leading-relaxed">{descOf(slots.matter)}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelClass}>Hourly rate</label>
+                    <input type="number" step="1" value={slots.rate ?? ""} onChange={(e) => upd({ rate: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Date</label>
+                    <input type="date" value={slots.date ?? todayISO()} onChange={(e) => upd({ date: e.target.value })} className={fieldClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Hours</label>
+                    <input type="number" step="0.1" value={slots.hours ?? ""} onChange={(e) => upd({ hours: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Category</label>
+                    <select value={slots.category ?? ""} onChange={(e) => upd({ category: e.target.value })} className={fieldClass}>
+                      <option value="">—</option>
+                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Activity note</label>
+                  <textarea rows={3} value={slots.notes ?? ""} onChange={(e) => upd({ notes: e.target.value })} className={fieldClass} placeholder="What was done" />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!slots.nonBillable} onChange={(e) => upd({ nonBillable: e.target.checked })} className="accent-[var(--c-accent)]" />
+                  Non-billable
+                </label>
+              </div>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                {([["Matter", slots.matter], ["Rate", slots.rate], ["Hours", slots.hours], ["Category", slots.category], ["Notes", slots.notes], ["Non-billable", slots.nonBillable ? "Yes" : ""]] as [string, unknown][])
+                  .map(([k, v]) => (v ? <div key={k}><span className="text-[var(--c-ink-muted)]">{k}: </span>{String(v)}</div> : null))}
+              </div>
+            )}
+
+            {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
+            {!review && !saved && (
+              <p className="mt-4 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
+                Say the client&apos;s name to find their case. Time can be &ldquo;half an hour&rdquo;, &ldquo;point five&rdquo;, or &ldquo;45 minutes&rdquo;.
+              </p>
+            )}
+
             {verifying && (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
@@ -611,13 +595,13 @@ export function VoiceTimeEntry({
                 </button>
               </div>
             )}
-            {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
-            {!saved && (
-              <p className="mt-4 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
-                Say the client&apos;s name to find their case. Time can be &ldquo;half an hour&rdquo;, &ldquo;point five&rdquo;, or &ldquo;45 minutes&rdquo;.
-              </p>
-            )}
-            <div className="mt-5 flex justify-end">
+
+            <div className="mt-5 flex justify-end gap-2">
+              {review && (
+                <button onClick={saveReview} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                  <Check size={16} /> Save entry
+                </button>
+              )}
               <button onClick={cancel} className="btn btn-outline text-sm py-2 px-4">{saved ? "Close" : "Cancel"}</button>
             </div>
           </div>

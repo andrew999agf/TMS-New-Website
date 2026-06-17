@@ -372,7 +372,7 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
       )}
 
       <VoiceTimeEntry
-        matters={matterList}
+        matters={matters}
         categories={categoryNames}
         activityUsers={activityUsers}
         defaultUser={defaultUser}
