@@ -1,8 +1,8 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useRef, useState } from "react";
-import { Mic, X, Loader2, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Mic, X, Loader2, Check, Volume2, VolumeX } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
 
 /**
@@ -39,11 +39,28 @@ export function VoiceTimeEntry({
   const cancelRef = useRef(false);
   const recRef = useRef<any>(null);
   const runningRef = useRef(false);
+  // Mute silences the spoken voice ("the lady") for the whole session on this
+  // page; it resets if the user leaves the tab and comes back.
+  const [muted, setMuted] = useState(false);
+  const muteRef = useRef(false);
+  // Per-step verification: while true, the Correct/Incorrect buttons are shown
+  // and verifyRef holds the resolver that a button (or voice) calls.
+  const [verifying, setVerifying] = useState(false);
+  const verifyRef = useRef<((ok: boolean) => void) | null>(null);
 
   const supported = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) && Boolean(window.speechSynthesis);
 
+  // Reset the mute toggle whenever the user navigates away from this tab/page,
+  // so they don't have to un-mute, but also don't have to re-mute every entry.
+  useEffect(() => {
+    const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
+
   function speak(text: string): Promise<void> {
     setStatus(text);
+    if (muteRef.current) return Promise.resolve();
     return new Promise((res) => {
       try {
         window.speechSynthesis.cancel();
@@ -83,6 +100,54 @@ export function VoiceTimeEntry({
       v = parse(await listen());
     }
     return v;
+  }
+
+  function toggleMute() {
+    setMuted((m) => {
+      const next = !m;
+      muteRef.current = next;
+      if (next) { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } }
+      return next;
+    });
+  }
+
+  /** A Correct/Incorrect button press (or a spoken yes/no) resolves the
+   *  pending verification step. */
+  function clickVerify(ok: boolean) {
+    try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    verifyRef.current?.(ok);
+  }
+
+  /** Read a captured value back and wait for confirmation. The user can tap the
+   *  green Correct / red Incorrect buttons, or just say yes/no. Resolves true to
+   *  advance, false to redo. */
+  function verifyStep(desc: string): Promise<boolean> {
+    if (cancelRef.current) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        verifyRef.current = null;
+        setVerifying(false);
+        try { recRef.current?.abort?.(); } catch { /* ignore */ }
+        resolve(ok);
+      };
+      verifyRef.current = finish;
+      setVerifying(true);
+      (async () => {
+        await speak(`I have ${desc}. Tap the green Correct button or the red Incorrect button — or just tell me.`);
+        // Listen for a spoken yes/no too; the buttons can interrupt at any time.
+        for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
+          const ans = await listen();
+          if (settled || cancelRef.current) return;
+          if (isNo(ans)) { finish(false); return; }
+          if (isYes(ans)) { finish(true); return; }
+          // Unclear — keep listening; the buttons remain available.
+        }
+      })();
+    });
   }
 
   /* ---- parsers ---- */
@@ -366,47 +431,80 @@ export function VoiceTimeEntry({
       set(s);
       if (cancelRef.current) return;
 
-      // Fill anything not caught — in order: client, date, category, time.
-      if (!s.matter) {
-        const spoken = (await ask("Which client or matter?", (x) => x.trim())) ?? "";
+      // Each field is captured (if not already heard) and then verified with the
+      // green Correct / red Incorrect buttons. Incorrect re-does that one step.
+
+      // Client / matter.
+      while (!cancelRef.current) {
+        if (!s.matter) {
+          const spoken = (await ask("Which client or matter?", (x) => x.trim())) ?? "";
+          if (cancelRef.current) return;
+          s.matter = await resolveMatter(spoken);
+          set(s);
+        }
         if (cancelRef.current) return;
-        s.matter = await resolveMatter(spoken);
-        set(s);
+        if (await verifyStep(`the matter as ${s.matter || "no matter"}`)) break;
+        s.matter = undefined; set(s);
       }
       if (cancelRef.current) return;
-      if (!s.date) {
-        const d = (await ask("What date? Say today if it's for today.", (x) => x, true)) ?? "";
-        s.date = !d.trim() || /\btoday\b/i.test(d) ? todayISO() : (parseDate(d) || todayISO());
-        set(s);
+
+      // Date.
+      while (!cancelRef.current) {
+        if (!s.date) {
+          const d = (await ask("What date? Say today if it's for today.", (x) => x, true)) ?? "";
+          s.date = !d.trim() || /\btoday\b/i.test(d) ? todayISO() : (parseDate(d) || todayISO());
+          set(s);
+        }
+        if (cancelRef.current) return;
+        if (await verifyStep(`the date as ${dateLabel(s.date)}`)) break;
+        s.date = undefined; set(s);
       }
       if (cancelRef.current) return;
-      if (!s.category) { s.category = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false); set(s); }
+
+      // Category.
+      while (!cancelRef.current) {
+        if (!s.category) { s.category = matchCategory((await ask("What category?", (x) => x.trim())) ?? "", false); set(s); }
+        if (cancelRef.current) return;
+        if (await verifyStep(`the category as ${s.category || "no category"}`)) break;
+        s.category = undefined; set(s);
+      }
       if (cancelRef.current) return;
-      if (s.hours == null) { s.hours = await ask("How much time? For example, half an hour, point five, or forty-five minutes.", parseHours); set(s); }
+
+      // Time.
+      while (!cancelRef.current) {
+        if (s.hours == null) { s.hours = await ask("How much time? For example, half an hour, point five, or forty-five minutes.", parseHours); set(s); }
+        if (cancelRef.current) return;
+        if (await verifyStep(`the time as ${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`)) break;
+        s.hours = undefined; set(s);
+      }
       if (cancelRef.current) return;
 
       // Step 2 — the activity note, on its own so it's easy to capture.
-      {
+      while (!cancelRef.current) {
         const n = (await ask("Now, what is the activity note?", (x) => x, false)) ?? "";
         const skip = !n.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(n.trim());
         s.notes = skip ? "" : n.trim();
         set(s);
+        if (cancelRef.current) return;
+        if (await verifyStep(s.notes ? `the note as ${s.notes}` : "no note")) break;
       }
       if (cancelRef.current) return;
 
       const user = defaultUser;
+      // Final read-back of the whole entry. Correct saves; Incorrect lets the
+      // user name a single piece to change.
       let confirmed = false;
       for (let i = 0; i < 6 && !cancelRef.current; i++) {
-        const ans = (await ask(`${summaryText(s)}. Is that correct?`, (x) => x, true)) ?? "";
+        if (await verifyStep(summaryText(s))) { confirmed = true; break; }
         if (cancelRef.current) return;
-        if (isYes(ans)) { confirmed = true; break; }
-        if (/\b(cancel|discard|delete it|throw it out|never mind|forget it|start over|scrap)\b/i.test(ans)) {
+        const which = (await ask("No problem — what would you like to change? You can say the matter, the time, the category, the note, or whether it's billable.", (x) => x, true)) ?? "";
+        if (cancelRef.current) return;
+        if (/\b(cancel|discard|delete it|throw it out|never mind|forget it|scrap)\b/i.test(which)) {
           await speak("Okay, discarded.");
           setStatus("Discarded.");
           return;
         }
-        // Anything else is treated as an edit request, not a discard.
-        await applyEdit(s, ans);
+        await applyEdit(s, which);
         set(s);
       }
       if (!confirmed) {
@@ -433,6 +531,8 @@ export function VoiceTimeEntry({
     pickedRef.current = null;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    verifyRef.current?.(true); // release any pending verify so run() can unwind
+    setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false); setCandidates([]);
   }
 
@@ -452,7 +552,22 @@ export function VoiceTimeEntry({
           <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-md p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-[family-name:var(--font-display)] text-lg flex items-center gap-2"><Mic size={18} className="text-[var(--c-accent)]" /> Voice entry</h3>
-              <button onClick={cancel} aria-label="Close"><X size={18} className="text-[var(--c-ink-muted)]" /></button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={toggleMute}
+                  aria-label={muted ? "Unmute the voice" : "Mute the voice"}
+                  title={muted ? "Voice is muted — tap to turn it back on" : "Mute the spoken voice for now"}
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                    muted
+                      ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]"
+                      : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"
+                  }`}
+                >
+                  {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  {muted ? "Muted" : "Mute"}
+                </button>
+                <button onClick={cancel} aria-label="Close"><X size={18} className="text-[var(--c-ink-muted)]" /></button>
+              </div>
             </div>
             <p className="text-sm min-h-[40px]">{status}</p>
             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
@@ -480,6 +595,22 @@ export function VoiceTimeEntry({
               {([["Matter", slots.matter], ["Hours", slots.hours], ["Category", slots.category], ["Notes", slots.notes], ["Non-billable", slots.nonBillable ? "Yes" : ""]] as [string, unknown][])
                 .map(([k, v]) => (v ? <div key={k}><span className="text-[var(--c-ink-muted)]">{k}: </span>{String(v)}</div> : null))}
             </div>
+            {verifying && (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => clickVerify(true)}
+                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <Check size={16} /> Correct
+                </button>
+                <button
+                  onClick={() => clickVerify(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <X size={16} /> Incorrect
+                </button>
+              </div>
+            )}
             {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
             {!saved && (
               <p className="mt-4 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
