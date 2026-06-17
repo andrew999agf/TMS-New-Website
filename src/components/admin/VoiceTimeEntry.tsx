@@ -38,7 +38,6 @@ export function VoiceTimeEntry({
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
   const [slots, setSlots] = useState<Slots>({});
-  const [review, setReview] = useState(false);
   const [saved, setSaved] = useState(false);
   const [candidates, setCandidates] = useState<Matter[]>([]);
   const [openDesc, setOpenDesc] = useState<string | null>(null);
@@ -50,11 +49,11 @@ export function VoiceTimeEntry({
   // page; it resets if the user leaves the tab and comes back.
   const [muted, setMuted] = useState(false);
   const muteRef = useRef(false);
-  // Per-step verification: while true, the Correct/Incorrect buttons show and
-  // verifyRef holds the resolver a button (or voice) calls — tapping also cuts
-  // off the spoken voice so the user never has to wait for her to finish.
+  // The green Correct / red Incorrect buttons stay visible for the whole of
+  // each part. decisionRef holds the resolver a button press feeds; tapping a
+  // button also cuts off the spoken voice so the user never waits for her.
   const [verifying, setVerifying] = useState(false);
-  const verifyRef = useRef<((ok: boolean) => void) | null>(null);
+  const decisionRef = useRef<((d: "next" | "redo") => void) | null>(null);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -92,9 +91,14 @@ export function VoiceTimeEntry({
       recRef.current = rec;
       rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
       let done = false; let finalText = "";
+      const hush = () => { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } };
       const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
       setListening(true); setHeard(""); setInterim("");
+      // The moment the user starts speaking, cut the voice off so she stops and
+      // we analyze the answer — the user never has to wait for her to finish.
+      rec.onspeechstart = hush;
       rec.onresult = (e: any) => {
+        hush();
         let live = "";
         for (let i = 0; i < e.results.length; i++) {
           const r = e.results[i];
@@ -132,33 +136,34 @@ export function VoiceTimeEntry({
     });
   }
 
-  /** Correct/Incorrect button (or a spoken yes/no) — cuts off the voice and
-   *  resolves the pending verification immediately. */
-  function clickVerify(ok: boolean) {
+  /** A green Correct (next) or red Incorrect (redo) press — cuts off the voice
+   *  and the microphone, then hands the decision to whatever part is waiting. */
+  function press(next: boolean) {
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
-    verifyRef.current?.(ok);
+    decisionRef.current?.(next ? "next" : "redo");
   }
 
   /** Read a part back and wait for confirmation. The user can tap the green
    *  Correct / red Incorrect buttons (interrupting the voice at any moment) or
    *  just say yes/no. Resolves true to advance, false to redo this part. */
-  function verifyStep(desc: string): Promise<boolean> {
+  function confirmPart(desc: string): Promise<boolean> {
     if (cancelRef.current) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = (ok: boolean) => {
         if (settled) return;
         settled = true;
-        verifyRef.current = null;
-        setVerifying(false);
+        decisionRef.current = null;
         try { recRef.current?.abort?.(); } catch { /* ignore */ }
         resolve(ok);
       };
-      verifyRef.current = finish;
+      decisionRef.current = (d) => finish(d === "next");
       setVerifying(true);
       (async () => {
-        await speak(`I have ${desc}. Tap the green Correct button or the red Incorrect button — or just tell me.`);
+        // Fire the read-back but DON'T wait for it — start the mic right away so
+        // the user can say yes/no while she's still talking and cut her off.
+        speak(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`);
         for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
           const ans = await listen();
           if (settled || cancelRef.current) return;
@@ -168,6 +173,44 @@ export function VoiceTimeEntry({
         }
       })();
     });
+  }
+
+  /** Run one part of the entry. The Correct/Incorrect buttons are live the whole
+   *  time: pressing Correct mid-sentence accepts and advances; Incorrect clears
+   *  this part and re-asks. If the user just speaks, we read it back to confirm. */
+  async function runPart(
+    prompt: string,
+    capture: (text: string) => void | Promise<void>,
+    clearPart: () => void,
+    readback: () => string,
+    set: () => void,
+  ): Promise<void> {
+    for (;;) {
+      if (cancelRef.current) return;
+      setVerifying(true);
+      const outcome = await new Promise<"next" | "redo" | "heard">((resolve) => {
+        let settled = false;
+        decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d); };
+        (async () => {
+          // Speak the prompt but start the mic immediately (don't wait for her
+          // to finish) — the user can answer the second the question appears.
+          speak(prompt);
+          if (settled || cancelRef.current) return;
+          const text = await listen();
+          if (settled || cancelRef.current) return;
+          await capture(text);
+          set();
+          if (settled) return;
+          settled = true; decisionRef.current = null; resolve("heard");
+        })();
+      });
+      if (cancelRef.current) return;
+      if (outcome === "redo") { clearPart(); set(); continue; }
+      if (outcome === "next") { setVerifying(false); return; }
+      // Heard the user out — read it back and let them confirm or redo.
+      if (await confirmPart(readback())) { setVerifying(false); return; }
+      clearPart(); set();
+    }
   }
 
   /* ---- parsers ---- */
@@ -244,8 +287,10 @@ export function VoiceTimeEntry({
   // words against BOTH the number/name and the description (fuzzy, so near-misses
   // like "Nelsen" → "Nelson" still count).
   const STOP = new Set(["the", "and", "for", "matter", "client", "case", "file", "our"]);
-  const toks = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
-  const mToks = (m: Matter) => `${m.displayNumber} ${m.description}`.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  // Keep any spoken word longer than two letters, plus any number (so a short or
+  // zero-padded case number like "42" or "1234" still counts as a token).
+  const toks = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => (w.length > 2 || /^\d+$/.test(w)) && !STOP.has(w));
+  const mToks = (m: Matter) => `${m.displayNumber} ${m.description}`.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 || /^\d$/.test(w));
 
   function lev(a: string, b: string): number {
     const m = a.length, n = b.length;
@@ -261,7 +306,9 @@ export function VoiceTimeEntry({
     return prev[n];
   }
   function tokenMatch(st: string, mt: string): boolean {
-    if (/^\d+$/.test(mt)) return st === mt; // a number only matches if said exactly
+    // A case number matches numerically, ignoring leading zeros, so the matter
+    // "01234" is found when the user just says "1234" (and "0042" when they say "42").
+    if (/^\d+$/.test(mt)) return /^\d+$/.test(st) && mt.replace(/^0+/, "") === st.replace(/^0+/, "");
     if (mt.includes(st) || st.includes(mt)) return true;
     if (st.length >= 4 && mt.length >= 4) return lev(st, mt) <= Math.floor(Math.max(st.length, mt.length) / 4);
     return false;
@@ -370,61 +417,58 @@ export function VoiceTimeEntry({
     if (runningRef.current) return;
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
     runningRef.current = true; cancelRef.current = false;
-    setOpen(true); setSaved(false); setReview(false); setCandidates([]); setHeard(""); setInterim("");
+    setOpen(true); setSaved(false); setCandidates([]); setHeard(""); setInterim("");
     const s: Slots = { date: todayISO(), nonBillable: false, rate: defaultRate };
     setSlots({ ...s });
     const set = () => setSlots({ ...s });
     try {
       // Part 1 — the case/client and the hourly rate.
-      while (!cancelRef.current) {
-        await speak("First, the case or client, and the hourly rate.");
-        const u0 = await listen();
-        if (cancelRef.current) return;
-        const r0 = parseRate(u0); if (r0 != null) s.rate = r0;
-        const matterText = stripRate(u0).trim();
-        const conf = confidentMatter(matterText);
-        s.matter = conf ?? (await resolveMatter(matterText || u0));
-        set();
-        if (cancelRef.current) return;
-        if (await verifyStep(`the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`)) break;
-        s.matter = undefined; s.rate = defaultRate; set();
-      }
+      await runPart(
+        "First, the case or client, and the hourly rate.",
+        async (text) => {
+          const r0 = parseRate(text); if (r0 != null) s.rate = r0;
+          const matterText = stripRate(text).trim();
+          const conf = confidentMatter(matterText);
+          s.matter = conf ?? (await resolveMatter(matterText || text));
+        },
+        () => { s.matter = undefined; s.rate = defaultRate; },
+        () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
+        set,
+      );
       if (cancelRef.current) return;
 
       // Part 2 — the date, the time, and the category.
-      while (!cancelRef.current) {
-        await speak("Next, the date, how long it took, and the category.");
-        const u1 = await listen();
-        if (cancelRef.current) return;
-        const h = parseHours(u1); if (h != null) s.hours = h;
-        const cat = matchCategory(u1, true); if (cat) s.category = cat;
-        const d = parseDate(stripTime(u1)); if (d) s.date = d;
-        if (/non[- ]?billable|no charge|not billable/i.test(u1)) s.nonBillable = true;
-        set();
-        if (cancelRef.current) return;
-        if (await verifyStep(`${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${s.date || todayISO()}`)) break;
-        s.hours = undefined; s.category = undefined; s.date = todayISO(); set();
-      }
+      await runPart(
+        "Next, the date, how long it took, and the category.",
+        (text) => {
+          const h = parseHours(text); if (h != null) s.hours = h;
+          const cat = matchCategory(text, true); if (cat) s.category = cat;
+          const d = parseDate(stripTime(text)); if (d) s.date = d;
+          if (/non[- ]?billable|no charge|not billable/i.test(text)) s.nonBillable = true;
+        },
+        () => { s.hours = undefined; s.category = undefined; s.date = todayISO(); },
+        () => `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${s.date || todayISO()}`,
+        set,
+      );
       if (cancelRef.current) return;
 
       // Part 3 — the activity note.
-      while (!cancelRef.current) {
-        await speak("Last, the activity note.");
-        const u2 = await listen();
-        if (cancelRef.current) return;
-        const skip = !u2.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(u2.trim());
-        s.notes = skip ? "" : u2.trim();
-        set();
-        if (cancelRef.current) return;
-        if (await verifyStep(s.notes ? `the note as ${s.notes}` : "no note")) break;
-      }
+      await runPart(
+        "Last, the activity note.",
+        (text) => {
+          const skip = !text.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(text.trim());
+          s.notes = skip ? "" : text.trim();
+        },
+        () => { s.notes = undefined; },
+        () => (s.notes ? `the note as ${s.notes}` : "no note"),
+        set,
+      );
       if (cancelRef.current) return;
 
-      // Hand off to the on-the-spot editable review.
-      await speak("Here's what I have. You can edit anything, then tap Save.");
-      setReview(true);
+      // Everything's editable on screen the whole time; just invite a final look.
+      speak("Here's what I have. Edit anything on screen, then tap Save.");
     } finally {
-      runningRef.current = false; setListening(false);
+      runningRef.current = false; setListening(false); setVerifying(false);
     }
   }
 
@@ -438,7 +482,7 @@ export function VoiceTimeEntry({
       matter: slots.matter.trim(), entryDate: slots.date || todayISO(), activityDescription: "", note,
       price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!slots.nonBillable,
     });
-    setReview(false); setSaved(true);
+    setSaved(true);
     speak("Saved to your board.");
   }
 
@@ -447,10 +491,10 @@ export function VoiceTimeEntry({
     pickedRef.current = null;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
-    verifyRef.current?.(true); // release any pending verify so run() can unwind
+    decisionRef.current?.("next"); // release any pending step so run() can unwind
     setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false);
-    setReview(false); setCandidates([]); setInterim("");
+    setCandidates([]); setInterim("");
   }
 
   const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));
@@ -498,7 +542,7 @@ export function VoiceTimeEntry({
                 : heard ? `“${heard}”` : null}
             </div>
 
-            {candidates.length > 0 && !review && (
+            {candidates.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs text-[var(--c-ink-muted)] mb-1.5">Tap a row to see the case; tap the check to pick it (or say yes when I read it):</p>
                 <div className="space-y-1.5">
@@ -527,77 +571,68 @@ export function VoiceTimeEntry({
               </div>
             )}
 
-            {review ? (
-              <div className="mt-4 space-y-3">
-                <div>
-                  <label className={labelClass}>Case / client</label>
-                  <input list="vte-matters" value={slots.matter ?? ""} onChange={(e) => upd({ matter: e.target.value })} className={fieldClass} placeholder="Choose a case" />
-                  <datalist id="vte-matters">{matters.map((m) => <option key={m.displayNumber} value={m.displayNumber}>{m.description}</option>)}</datalist>
-                  {descOf(slots.matter) && <p className="mt-1 text-xs text-[var(--c-ink-muted)] leading-relaxed">{descOf(slots.matter)}</p>}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Hourly rate</label>
-                    <input type="number" step="1" value={slots.rate ?? ""} onChange={(e) => upd({ rate: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Date</label>
-                    <input type="date" value={slots.date ?? todayISO()} onChange={(e) => upd({ date: e.target.value })} className={fieldClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Hours</label>
-                    <input type="number" step="0.1" value={slots.hours ?? ""} onChange={(e) => upd({ hours: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Category</label>
-                    <select value={slots.category ?? ""} onChange={(e) => upd({ category: e.target.value })} className={fieldClass}>
-                      <option value="">—</option>
-                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Activity note</label>
-                  <textarea rows={3} value={slots.notes ?? ""} onChange={(e) => upd({ notes: e.target.value })} className={fieldClass} placeholder="What was done" />
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={!!slots.nonBillable} onChange={(e) => upd({ nonBillable: e.target.checked })} className="accent-[var(--c-accent)]" />
-                  Non-billable
-                </label>
-              </div>
-            ) : (
-              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                {([["Matter", slots.matter], ["Rate", slots.rate], ["Hours", slots.hours], ["Category", slots.category], ["Notes", slots.notes], ["Non-billable", slots.nonBillable ? "Yes" : ""]] as [string, unknown][])
-                  .map(([k, v]) => (v ? <div key={k}><span className="text-[var(--c-ink-muted)]">{k}: </span>{String(v)}</div> : null))}
-              </div>
-            )}
-
-            {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
-            {!review && !saved && (
-              <p className="mt-4 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
-                Say the client&apos;s name to find their case. Time can be &ldquo;half an hour&rdquo;, &ldquo;point five&rdquo;, or &ldquo;45 minutes&rdquo;.
-              </p>
-            )}
-
-            {verifying && (
+            {/* The big green Correct / red Incorrect buttons stay up the whole
+                time a part is running — tap either to cut her off and move on. */}
+            {verifying && candidates.length === 0 && (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => clickVerify(true)}
-                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                  onClick={() => press(true)}
+                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
                 >
-                  <Check size={16} /> Correct
+                  <Check size={18} /> Correct
                 </button>
                 <button
-                  onClick={() => clickVerify(false)}
-                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                  onClick={() => press(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
                 >
-                  <X size={16} /> Incorrect
+                  <X size={18} /> Incorrect
                 </button>
               </div>
             )}
 
+            {/* Every field is editable on the spot, the whole time. */}
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className={labelClass}>Case / client</label>
+                <input list="vte-matters" value={slots.matter ?? ""} onChange={(e) => upd({ matter: e.target.value })} className={fieldClass} placeholder="Choose a case" />
+                <datalist id="vte-matters">{matters.map((m) => <option key={m.displayNumber} value={m.displayNumber}>{m.description}</option>)}</datalist>
+                {descOf(slots.matter) && <p className="mt-1 text-xs text-[var(--c-ink-muted)] leading-relaxed">{descOf(slots.matter)}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Hourly rate</label>
+                  <input type="number" step="1" value={slots.rate ?? ""} onChange={(e) => upd({ rate: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Date</label>
+                  <input type="date" value={slots.date ?? todayISO()} onChange={(e) => upd({ date: e.target.value })} className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Hours</label>
+                  <input type="number" step="0.1" value={slots.hours ?? ""} onChange={(e) => upd({ hours: e.target.value === "" ? undefined : parseFloat(e.target.value) })} className={fieldClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Category</label>
+                  <select value={slots.category ?? ""} onChange={(e) => upd({ category: e.target.value })} className={fieldClass}>
+                    <option value="">—</option>
+                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Activity note</label>
+                <textarea rows={3} value={slots.notes ?? ""} onChange={(e) => upd({ notes: e.target.value })} className={fieldClass} placeholder="What was done" />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!!slots.nonBillable} onChange={(e) => upd({ nonBillable: e.target.checked })} className="accent-[var(--c-accent)]" />
+                Non-billable
+              </label>
+            </div>
+
+            {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
+
             <div className="mt-5 flex justify-end gap-2">
-              {review && (
+              {!saved && (
                 <button onClick={saveReview} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
                   <Check size={16} /> Save entry
                 </button>
