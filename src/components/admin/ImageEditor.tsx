@@ -125,17 +125,8 @@ export function ImageEditor({
     setError(null);
     setRemoveProgress("Starting…");
     try {
-      const mod = await import("@imgly/background-removal");
-      const blob = await mod.removeBackground(src, {
-        // Quantized model: ~half the download of the default, faster inference.
-        model: "isnet_quint8",
-        output: { format: "image/png" },
-        progress: (key: string, current: number, total: number) => {
-          const pct = total ? Math.round((current / total) * 100) : 0;
-          if (key.startsWith("fetch")) setRemoveProgress(`Loading model… ${pct}% (one-time)`);
-          else setRemoveProgress(`Processing… ${pct}%`);
-        },
-      });
+      const { removeBackground: cutout } = await import("@/lib/background-removal");
+      const blob = await cutout(src, (msg) => setRemoveProgress(msg));
       const url = URL.createObjectURL(blob);
       const img = new Image();
       img.onload = () => {

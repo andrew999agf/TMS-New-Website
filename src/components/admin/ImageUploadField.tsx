@@ -91,15 +91,8 @@ export function ImageUploadField({
     setError(null);
     setBgProgress("Starting…");
     try {
-      const mod = await import("@imgly/background-removal");
-      const blob = await mod.removeBackground(value, {
-        model: "isnet_quint8",
-        output: { format: "image/png" },
-        progress: (key: string, current: number, total: number) => {
-          const pct = total ? Math.round((current / total) * 100) : 0;
-          setBgProgress(key.startsWith("fetch") ? `Loading model… ${pct}% (one-time)` : `Processing… ${pct}%`);
-        },
-      });
+      const { removeBackground } = await import("@/lib/background-removal");
+      const blob = await removeBackground(value, (msg) => setBgProgress(msg));
       const file = new File([blob], "cutout.png", { type: "image/png" });
       const url = await uploadToBlob(file, folder);
       onChange(url);

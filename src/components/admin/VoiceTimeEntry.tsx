@@ -19,6 +19,7 @@ const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10,
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) => `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
 const todayISO = () => new Date().toISOString().split("T")[0];
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type Matter = { displayNumber: string; description: string };
 type Slots = { matter?: string; rate?: number; hours?: number; category?: string; notes?: string; nonBillable?: boolean; date?: string };
@@ -91,18 +92,17 @@ export function VoiceTimeEntry({
       recRef.current = rec;
       rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
       let done = false; let finalText = "";
-      const hush = () => { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } };
       const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
       setListening(true); setHeard(""); setInterim("");
-      // The moment the user starts speaking, cut the voice off so she stops and
-      // we analyze the answer — the user never has to wait for her to finish.
-      rec.onspeechstart = hush;
       rec.onresult = (e: any) => {
-        hush();
         let live = "";
         for (let i = 0; i < e.results.length; i++) {
           const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript;
+          // Keep clear speech; drop low-confidence blips so background noise
+          // doesn't get treated as an answer. (Confidence is 0 in some browsers,
+          // so only filter when a real confidence value is provided.)
+          const conf = r[0]?.confidence ?? 0;
+          if (r.isFinal) { if (conf === 0 || conf >= 0.4) finalText += r[0].transcript; }
           else live += r[0].transcript;
         }
         setInterim((finalText + live).trim()); // live view of what's being heard
@@ -161,9 +161,12 @@ export function VoiceTimeEntry({
       decisionRef.current = (d) => finish(d === "next");
       setVerifying(true);
       (async () => {
-        // Fire the read-back but DON'T wait for it — start the mic right away so
-        // the user can say yes/no while she's still talking and cut her off.
-        speak(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`);
+        // Let her finish the read-back first, then open the mic — otherwise the
+        // mic hears her own voice and trips over itself. The buttons can still
+        // cut her off at any moment.
+        await speak(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`);
+        if (settled || cancelRef.current) return;
+        await wait(150);
         for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
           const ans = await listen();
           if (settled || cancelRef.current) return;
@@ -192,9 +195,12 @@ export function VoiceTimeEntry({
         let settled = false;
         decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d); };
         (async () => {
-          // Speak the prompt but start the mic immediately (don't wait for her
-          // to finish) — the user can answer the second the question appears.
-          speak(prompt);
+          // Let her finish asking, then open the mic. Listening while she talks
+          // makes the mic catch her own voice and skip ahead. The green/red
+          // buttons stay live so the user can still cut her off instantly.
+          await speak(prompt);
+          if (settled || cancelRef.current) return;
+          await wait(150);
           if (settled || cancelRef.current) return;
           const text = await listen();
           if (settled || cancelRef.current) return;
