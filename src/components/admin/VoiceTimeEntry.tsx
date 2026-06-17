@@ -86,14 +86,47 @@ export function VoiceTimeEntry({
   /* ---- parsers ---- */
   function parseHours(s: string): number | undefined {
     const t = s.toLowerCase();
+    const W: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    const digit = (w: string): number | null => {
+      const map: Record<string, number> = { zero: 0, oh: 0, o: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+      if (w in map) return map[w];
+      if (/^\d$/.test(w)) return parseInt(w);
+      return null;
+    };
+    const round1 = (n: number) => Math.round(n * 10) / 10;
     let m: RegExpMatchArray | null;
-    if ((m = t.match(/(\d+)\s*(?:and a half|½)\s*hours?/))) return parseInt(m[1]) + 0.5;
-    if (/(?:^|\s)(?:a |an )?half(?: an?)? hour/.test(t)) return 0.5;
-    if (/quarter (?:of an )?hour/.test(t)) return 0.25;
+
+    // "N and a half hours", "an hour and a half"
+    if (/\bhour(?:s)?\s+and\s+(?:a\s+)?half\b/.test(t)) return 1.5;
+    if ((m = t.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine)\b\s*and\s+(?:a\s+)?half/))) return (W[m[1]] ?? parseInt(m[1])) + 0.5;
+
+    // Tenths: "2/10", "two tenths", "a tenth"
+    if ((m = t.match(/\b(\d+)\s*\/\s*10\b/))) return round1(parseInt(m[1]) / 10);
+    if ((m = t.match(/\b(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+tenths?\b/))) return round1((W[m[1]] ?? parseInt(m[1])) / 10);
+    if (/\btenth\b/.test(t)) return 0.1;
+
+    // Spoken decimals: "point two", "point six", "point two five"
+    if ((m = t.match(/\bpoint\s+(\w+)(?:\s+(\w+))?/))) {
+      const d1 = digit(m[1]);
+      if (d1 != null) {
+        const d2 = m[2] ? digit(m[2]) : null;
+        return d2 != null ? Math.round((d1 * 10 + d2)) / 100 : round1(d1 / 10);
+      }
+    }
+
+    // Written decimals: ".2", "0.2", "1.5", "2.5"
+    if ((m = t.match(/(\d*\.\d+)/))) return parseFloat(m[1]);
+
+    // Hours / minutes / words
     if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/))) return parseFloat(m[1]);
-    if ((m = t.match(/(\d+)\s*(?:minutes?|mins?)\b/))) return parseInt(m[1]) / 60;
+    if ((m = t.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*hours?\b/))) return W[m[1]];
+    if ((m = t.match(/(\d+)\s*(?:minutes?|mins?)\b/))) return round1(parseInt(m[1]) / 60);
+    if (/\bhalf\b/.test(t)) return 0.5;
+    if (/\bquarter\b/.test(t)) return 0.25;
     if (/\b(?:an|one)\s+hour\b/.test(t)) return 1;
-    if ((m = t.match(/^\s*(\d+(?:\.\d+)?)\s*$/))) return parseFloat(m[1]);
+
+    // Bare number
+    if ((m = t.match(/^\s*(\d*\.?\d+)\s*$/))) return parseFloat(m[1]);
     return undefined;
   }
   function matchCategory(s: string, strict: boolean): string | undefined {
