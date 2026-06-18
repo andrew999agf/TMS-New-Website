@@ -19,6 +19,16 @@ import {
 } from "@/app/admin/(panel)/time-tracker/actions";
 import { VoiceTimeEntry } from "@/components/admin/VoiceTimeEntry";
 
+/** Shape of a voice-entry component (the floating mic + dialog). 2.0 swaps in a
+ *  different engine; the rest of the tracker is shared and identical. */
+type VoiceProps = {
+  matters: { displayNumber: string; description: string }[];
+  categories: string[];
+  activityUsers: { name: string; rate: number }[];
+  defaultUser: string;
+  onAdd: (input: TimeEntryInput) => void;
+};
+
 export type EntryView = {
   id: number; ownerId: number; ownerName: string; matter: string; entryDate: string;
   activityDescription: string; note: string; price: number; quantity: number;
@@ -45,9 +55,10 @@ function parseCSVLine(line: string): string[] {
   out.push(cur); return out;
 }
 
-export function TimeTracker({ entries, activityUsers, categories, matters, me, owners }: {
+export function TimeTracker({ entries, activityUsers, categories, matters, me, owners, VoiceComponent = VoiceTimeEntry }: {
   entries: EntryView[]; activityUsers: AUser[]; categories: { id: number; name: string }[];
   matters: { displayNumber: string; description: string }[]; me: Me; owners: { id: number; name: string }[];
+  VoiceComponent?: React.ComponentType<VoiceProps>;
 }) {
   const router = useRouter();
   const matterList = useMemo(() => matters.map((m) => m.displayNumber), [matters]);
@@ -371,7 +382,7 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
         </Modal>
       )}
 
-      <VoiceTimeEntry
+      <VoiceComponent
         matters={matters}
         categories={categoryNames}
         activityUsers={activityUsers}

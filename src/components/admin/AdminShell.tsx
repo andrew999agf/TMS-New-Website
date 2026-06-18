@@ -21,6 +21,7 @@ import {
   Users,
   Award,
   Clock,
+  Sparkles,
   KeyRound,
   PanelLeftClose,
   PanelLeftOpen,
@@ -42,6 +43,7 @@ const NAV = [
   { label: "Media", href: "/admin/media", icon: ImageIcon },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
+  { label: "Time Tracker 2.0", href: "/admin/time-tracker-2", icon: Sparkles },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },
   { label: "User Management", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
@@ -106,7 +108,7 @@ export function AdminShell({
             const active =
               item.href === "/admin"
                 ? pathname === "/admin"
-                : pathname.startsWith(item.href);
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <Link
