@@ -538,10 +538,47 @@ export function VoiceTimeEntry2({
       );
       if (cancelRef.current) return;
 
-      speak("Review and save.");
+      // Final decision point — finish entirely by voice. "Save" (green / "yes")
+      // commits it; "Edit" (red / "no") hands back to the form for tweaks. Both
+      // are also tappable.
+      const ok = await askDecision("Save?", { yes: "Save", no: "Edit", isAffirmative: isYes, isNegative: isNo });
+      if (cancelRef.current) return;
+      if (!ok) { setVerifying(false); setStatus("Edit any field, then tap Save."); return; }
+      await commit(s);
     } finally {
       runningRef.current = false; setListening(false); setVerifying(false);
     }
+  }
+
+  /** Persist an entry, then offer (by voice or tap) to make another. */
+  async function commit(s: Slots): Promise<void> {
+    const user = defaultUser;
+    const rate = s.rate ?? defaultRate;
+    const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
+    const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
+    onAdd({
+      matter: (s.matter || "").trim(), entryDate: s.date || todayISO(), activityDescription: "", note,
+      price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
+    });
+    const savedMatter = (s.matter || "").trim();
+    const savedRate = rate;
+    setSaved(true);
+    if (!supported) return;
+    await speak("Saved.");
+    if (cancelRef.current) return;
+    const again = await askDecision("Another entry?", { yes: "Yes", no: "No, done", isAffirmative: isYes, isNegative: isNo });
+    if (cancelRef.current) return;
+    if (!again) { setVerifying(false); setStatus("All set."); return; }
+    const sameCase = await askDecision("Same case?", {
+      yes: "Same case", no: "Another case",
+      isAffirmative: (x) => /\b(same|this|that|keep|yes|yeah|yep|yup)\b/i.test(x),
+      isNegative: (x) => /\b(another|different|new|other|no|nope|nah)\b/i.test(x),
+    });
+    if (cancelRef.current) return;
+    setVerifying(false);
+    runningRef.current = false; // captureFlow guards on this
+    if (sameCase) await captureFlow({ date: todayISO(), nonBillable: false, matter: savedMatter, rate: savedRate }, true);
+    else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
   function run() {
@@ -550,41 +587,12 @@ export function VoiceTimeEntry2({
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
+  /** Tap path for Save — same persistence + "another entry?" loop as voice. */
   async function saveReview() {
     if (!slots.matter || !slots.matter.trim()) { setStatus("Please choose a case before saving."); return; }
-    const user = defaultUser;
-    const rate = slots.rate ?? defaultRate;
-    const hoursR = fix(Math.ceil((slots.hours || 0) * 10) / 10, 1);
-    const note = slots.notes ? createDesc(slots.category || "", slots.notes, user) : `${slots.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
-    onAdd({
-      matter: slots.matter.trim(), entryDate: slots.date || todayISO(), activityDescription: "", note,
-      price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!slots.nonBillable,
-    });
-    const savedMatter = slots.matter.trim();
-    const savedRate = rate;
-    setSaved(true);
-
-    if (!supported) return;
+    if (runningRef.current) return; // a voice step is mid-run; its own Save covers it
     runningRef.current = true; cancelRef.current = false;
-    try {
-      await speak("Saved.");
-      if (cancelRef.current) return;
-      const again = await askDecision("Another entry?", { yes: "Yes", no: "No, done", isAffirmative: isYes, isNegative: isNo });
-      if (cancelRef.current) return;
-      if (!again) { setVerifying(false); setStatus("All set."); return; }
-      const sameCase = await askDecision("Same case?", {
-        yes: "Same case", no: "Another case",
-        isAffirmative: (x) => /\b(same|this|that|keep|yes|yeah|yep|yup)\b/i.test(x),
-        isNegative: (x) => /\b(another|different|new|other|no|nope|nah)\b/i.test(x),
-      });
-      if (cancelRef.current) return;
-      setVerifying(false);
-      runningRef.current = false;
-      if (sameCase) await captureFlow({ date: todayISO(), nonBillable: false, matter: savedMatter, rate: savedRate }, true);
-      else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
-    } finally {
-      runningRef.current = false;
-    }
+    try { await commit({ ...slots }); } finally { runningRef.current = false; }
   }
 
   function cancel() {
@@ -765,7 +773,7 @@ export function VoiceTimeEntry2({
             )}
 
             <div className="mt-5 flex justify-end gap-2">
-              {!saved && (
+              {!saved && !verifying && (
                 <button onClick={saveReview} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
                   <Check size={16} /> Save entry
                 </button>
