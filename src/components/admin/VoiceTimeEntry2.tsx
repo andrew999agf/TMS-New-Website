@@ -20,6 +20,7 @@ const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10,
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) => `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
 const todayISO = () => new Date().toISOString().split("T")[0];
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const yesterdayISO = () => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 type Matter = { displayNumber: string; description: string };
@@ -164,13 +165,20 @@ export function VoiceTimeEntry2({
         let live = "";
         for (let i = 0; i < e.results.length; i++) {
           const r = e.results[i];
-          const conf = r[0]?.confidence ?? 0;
-          if (r.isFinal) { if (conf === 0 || conf >= 0.4) finalText += r[0].transcript; }
+          if (r.isFinal) finalText += r[0].transcript;
           else live += r[0].transcript;
         }
         setInterim((finalText + live).trim());
       };
-      rec.onerror = () => finish(finalText);
+      rec.onerror = (e: any) => {
+        // Permission problems are the usual "nothing happens on desktop" cause —
+        // surface them clearly instead of silently looping.
+        if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+          cancelRef.current = true;
+          setStatus("Microphone is blocked. Click the microphone icon in your browser's address bar, allow access, then tap the mic and try again.");
+        }
+        finish(finalText);
+      };
       rec.onend = () => finish(finalText);
       try { rec.start(); } catch { setListening(false); res(""); }
     });
@@ -179,9 +187,10 @@ export function VoiceTimeEntry2({
   /** Listen for the user's actual answer; mic opens the instant the question
    *  starts (caller fires speak without awaiting). Words from her own prompt are
    *  stripped so speaker bleed isn't mistaken for the answer. */
-  async function listenForAnswer(prompt: string): Promise<string> {
+  async function listenForAnswer(prompt: string, tries = 2): Promise<string> {
     const ignore = new Set(prompt.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
-    for (let i = 0; i < 6 && !cancelRef.current; i++) {
+    for (let i = 0; i < tries && !cancelRef.current; i++) {
+      if (i > 0) await wait(150); // let the previous recognition fully release
       const raw = (await listen()).trim();
       if (cancelRef.current) return "";
       if (!raw) continue;
@@ -244,9 +253,12 @@ export function VoiceTimeEntry2({
       setLabels({ yes: opts.yes, no: opts.no });
       setVerifying(true);
       (async () => {
-        speak(speakText);
-        for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
-          const ans = await listenForAnswer(speakText);
+        // Let her finish, THEN open the mic — listening while she talks makes
+        // desktop speakers feed her voice back in and loop. (Muted = instant.)
+        await speak(speakText);
+        if (settled || cancelRef.current) return;
+        for (let i = 0; i < 6 && !settled && !cancelRef.current; i++) {
+          const ans = await listenForAnswer(speakText, 1);
           if (settled || cancelRef.current) return;
           if (noFn(ans)) { finish(false); return; }
           if (yesFn(ans)) { finish(true); return; }
@@ -275,8 +287,12 @@ export function VoiceTimeEntry2({
         let settled = false;
         decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d); };
         (async () => {
-          speak(prompt);
-          const text = await listenForAnswer(prompt);
+          // Speak the question fully, then open the mic. (When muted, speak
+          // returns instantly, so listening starts right away.) This is what
+          // makes it reliable on desktop Chrome, not just iPhone.
+          await speak(prompt);
+          if (settled || cancelRef.current) return;
+          const text = await listenForAnswer(prompt, 3);
           if (settled || cancelRef.current) return;
           await capture(text);
           set();
