@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, X, Loader2, Check, Volume2, VolumeX, Info } from "lucide-react";
+import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
 
 /**
@@ -66,8 +66,13 @@ export function VoiceTimeEntry2({
   const [verifying, setVerifying] = useState(false);
   const decisionRef = useRef<((d: "next" | "redo") => void) | null>(null);
   const [labels, setLabels] = useState<{ yes: string; no: string }>({ yes: "Correct", no: "Incorrect" });
-  // The most natural device voice, chosen once available.
+  // Voice + speed are user-pickable and remembered (device's own free voices).
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState("");
+  const [rate, setRate] = useState(1.06);
+  const rateRef = useRef(1.06);
+  const [showSettings, setShowSettings] = useState(false);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -80,24 +85,53 @@ export function VoiceTimeEntry2({
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
 
-  // Pick the nicest available English voice (Natural/Neural/Google/Siri voices
-  // beat the robotic default). getVoices() is often empty until the list loads,
-  // so we also listen for "voiceschanged".
+  // Build the list of English voices and choose one: the user's saved pick if
+  // any, otherwise the nicest available (Natural/Neural/Google/Siri beat the
+  // robotic default). getVoices() is often empty until the list loads, so we
+  // also listen for "voiceschanged".
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const pick = () => {
+    const best = (pool: SpeechSynthesisVoice[]) => {
+      const prefers = [/natural/i, /neural/i, /google us english/i, /\baria\b/i, /\bjenny\b/i, /\bava\b/i, /\bguy\b/i, /samantha/i, /siri/i, /premium/i, /enhanced/i, /\bzira\b/i, /google/i];
+      for (const re of prefers) { const v = pool.find((x) => re.test(x.name)); if (v) return v; }
+      return pool.find((v) => v.localService) ?? pool[0] ?? null;
+    };
+    const load = () => {
       const all = window.speechSynthesis.getVoices();
       if (!all.length) return;
       const en = all.filter((v) => /^en\b|^en[-_]/i.test(v.lang));
       const pool = en.length ? en : all;
-      const prefers = [/natural/i, /neural/i, /google us english/i, /\baria\b/i, /\bjenny\b/i, /\bguy\b/i, /samantha/i, /siri/i, /premium/i, /enhanced/i, /\bzira\b/i, /google/i];
-      for (const re of prefers) { const v = pool.find((x) => re.test(x.name)); if (v) { voiceRef.current = v; return; } }
-      voiceRef.current = pool.find((v) => v.localService) ?? pool[0] ?? null;
+      setVoices(pool);
+      const saved = localStorage.getItem("tms_tt2_voice");
+      const chosen = (saved && pool.find((v) => v.name === saved)) || best(pool);
+      voiceRef.current = chosen ?? null;
+      setVoiceName(chosen?.name ?? "");
     };
-    pick();
-    window.speechSynthesis.addEventListener("voiceschanged", pick);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", pick);
+    load();
+    const savedRate = parseFloat(localStorage.getItem("tms_tt2_rate") || "");
+    if (!Number.isNaN(savedRate)) { setRate(savedRate); rateRef.current = savedRate; }
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, []);
+
+  function chooseVoice(name: string) {
+    const v = voices.find((x) => x.name === name) ?? null;
+    voiceRef.current = v; setVoiceName(name);
+    try { localStorage.setItem("tms_tt2_voice", name); } catch { /* ignore */ }
+  }
+  function chooseRate(r: number) {
+    setRate(r); rateRef.current = r;
+    try { localStorage.setItem("tms_tt2_rate", String(r)); } catch { /* ignore */ }
+  }
+  function previewVoice() {
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance("Case and rate? Two hours, research, today.");
+      if (voiceRef.current) u.voice = voiceRef.current;
+      u.rate = rateRef.current; u.pitch = 1.0;
+      window.speechSynthesis.speak(u);
+    } catch { /* ignore */ }
+  }
 
   function speak(text: string): Promise<void> {
     setStatus(text);
@@ -107,7 +141,7 @@ export function VoiceTimeEntry2({
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         if (voiceRef.current) u.voice = voiceRef.current;
-        u.rate = 1.06; u.pitch = 1.0; // a touch quicker, natural pitch
+        u.rate = rateRef.current; u.pitch = 1.0;
         u.onend = () => res();
         u.onerror = () => res();
         window.speechSynthesis.speak(u);
@@ -570,6 +604,16 @@ export function VoiceTimeEntry2({
               <h3 className="font-[family-name:var(--font-display)] text-lg flex items-center gap-2"><Mic size={18} className="text-[var(--c-accent)]" /> Voice entry <span className="text-[10px] font-semibold text-[var(--c-accent)] border border-[var(--c-accent)] rounded px-1 py-0.5">2.0</span></h3>
               <div className="flex items-center gap-1.5">
                 <button
+                  onClick={() => setShowSettings((s) => !s)}
+                  aria-label="Voice settings"
+                  title="Choose the voice and speed"
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                    showSettings ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"
+                  }`}
+                >
+                  <Settings size={14} />
+                </button>
+                <button
                   onClick={toggleMute}
                   aria-label={muted ? "Unmute the voice" : "Mute the voice"}
                   title={muted ? "Voice is muted — tap to turn it back on" : "Mute the spoken voice for now"}
@@ -585,6 +629,26 @@ export function VoiceTimeEntry2({
                 <button onClick={cancel} aria-label="Close"><X size={18} className="text-[var(--c-ink-muted)]" /></button>
               </div>
             </div>
+
+            {showSettings && (
+              <div className="mb-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 space-y-3">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Voice</label>
+                  <div className="flex gap-2">
+                    <select value={voiceName} onChange={(e) => chooseVoice(e.target.value)} className="flex-1 border border-[var(--c-border)] bg-[var(--c-surface)] rounded-md px-2 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]">
+                      {voices.length === 0 && <option value="">Default voice</option>}
+                      {voices.map((v) => <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (online)"}</option>)}
+                    </select>
+                    <button onClick={previewVoice} title="Hear a sample" className="flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:border-[var(--c-accent)]"><Play size={13} /> Test</button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Tip: on iPhone, pick a Siri voice for the most natural sound.</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Speed — {rate.toFixed(2)}×</label>
+                  <input type="range" min="0.8" max="1.4" step="0.02" value={rate} onChange={(e) => chooseRate(parseFloat(e.target.value))} className="w-full accent-[var(--c-accent)]" />
+                </div>
+              </div>
+            )}
 
             <p className="text-sm min-h-[40px]">{status}</p>
             <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
@@ -678,6 +742,11 @@ export function VoiceTimeEntry2({
             </div>
 
             {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
+            {!saved && (
+              <p className="mt-3 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
+                Talk naturally — you can answer the moment it asks. Tap <span className="text-[var(--c-success)] font-medium">Correct</span> / <span className="text-[var(--c-error)] font-medium">Incorrect</span> to confirm or redo, edit any field above, then <span className="font-medium">Save</span>. <span className="text-[var(--c-accent)]">Mute</span> silences the voice; the gear changes it.
+              </p>
+            )}
 
             <div className="mt-5 flex justify-end gap-2">
               {!saved && (
