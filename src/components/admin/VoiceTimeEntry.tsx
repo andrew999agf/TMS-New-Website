@@ -19,7 +19,6 @@ const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10,
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) => `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
 const todayISO = () => new Date().toISOString().split("T")[0];
-const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type Matter = { displayNumber: string; description: string };
 type Slots = { matter?: string; rate?: number; hours?: number; category?: string; notes?: string; nonBillable?: boolean; date?: string };
@@ -116,6 +115,27 @@ export function VoiceTimeEntry({
     });
   }
 
+  /** Listen for the user's actual answer, with the mic opened the moment the
+   *  question starts (the caller fires `speak` without awaiting). Any words that
+   *  belong to her own prompt are stripped out, so if the speakers bleed into
+   *  the mic her voice isn't mistaken for the answer — we wait for real input.
+   *  (Cleanest with the Mute button or headphones, where there's no bleed.) */
+  async function listenForAnswer(prompt: string): Promise<string> {
+    const ignore = new Set(prompt.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+    for (let i = 0; i < 6 && !cancelRef.current; i++) {
+      const raw = (await listen()).trim();
+      if (cancelRef.current) return "";
+      if (!raw) continue;
+      const cleaned = raw
+        .split(/\s+/)
+        .filter((w) => { const k = w.toLowerCase().replace(/[^a-z0-9]/g, ""); return k && !ignore.has(k); })
+        .join(" ")
+        .trim();
+      if (cleaned) return cleaned; // got something that wasn't just her prompt
+    }
+    return "";
+  }
+
   async function ask<T>(prompt: string, parse: (s: string) => T, required = true): Promise<T | undefined> {
     if (cancelRef.current) return undefined;
     await speak(prompt);
@@ -170,14 +190,10 @@ export function VoiceTimeEntry({
       setLabels({ yes: opts.yes, no: opts.no });
       setVerifying(true);
       (async () => {
-        // Let her finish asking first, then open the mic — otherwise the mic
-        // hears her own voice and trips over itself. The buttons can still cut
-        // her off at any moment.
-        await speak(speakText);
-        if (settled || cancelRef.current) return;
-        await wait(150);
+        // Open the mic right as she starts asking; the user can answer over her.
+        speak(speakText);
         for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
-          const ans = await listen();
+          const ans = await listenForAnswer(speakText);
           if (settled || cancelRef.current) return;
           if (noFn(ans)) { finish(false); return; }
           if (yesFn(ans)) { finish(true); return; }
@@ -210,14 +226,11 @@ export function VoiceTimeEntry({
         let settled = false;
         decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d); };
         (async () => {
-          // Let her finish asking, then open the mic. Listening while she talks
-          // makes the mic catch her own voice and skip ahead. The green/red
-          // buttons stay live so the user can still cut her off instantly.
-          await speak(prompt);
-          if (settled || cancelRef.current) return;
-          await wait(150);
-          if (settled || cancelRef.current) return;
-          const text = await listen();
+          // Open the mic the instant the question starts, so the user can begin
+          // talking right away. She keeps asking; her own words are filtered out
+          // of the result, and we process as soon as the user stops.
+          speak(prompt);
+          const text = await listenForAnswer(prompt);
           if (settled || cancelRef.current) return;
           await capture(text);
           set();
@@ -275,13 +288,25 @@ export function VoiceTimeEntry({
     return undefined;
   }
 
-  /** Hourly rate — only when there's a money cue, so a case number isn't mistaken for a rate. */
+  /** Hourly rate when there's a money cue ($295, "295 dollars", "rate of 295"). */
   function parseRate(s: string): number | undefined {
     const t = s.toLowerCase();
     let m: RegExpMatchArray | null;
     if ((m = t.match(/\$\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
     if ((m = t.match(/\b(\d{1,4}(?:\.\d{1,2})?)\s*(?:dollars?|bucks?|per hour|an hour|\/\s*hour|\/\s*hr|hourly)\b/))) return parseFloat(m[1]);
     if ((m = t.match(/\b(?:rate|charge|bill(?:ed)?)\b\s+(?:of\s+|is\s+|at\s+)?\$?\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
+    return undefined;
+  }
+  /** A bare spoken number in a sensible hourly-rate range (e.g. "295", "125",
+   *  "425") taken as the rate — no "dollars" or "$" required. Returns the value
+   *  and the matched text so it can be removed before matching the case. */
+  function parseBareRate(s: string): { value: number; raw: string } | undefined {
+    const matches = [...s.matchAll(/\b(\d{2,4})(?:\.(\d{1,2}))?\b/g)];
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const mm = matches[i];
+      const v = parseFloat(mm[2] ? `${mm[1]}.${mm[2]}` : mm[1]);
+      if (v >= 50 && v <= 1500) return { value: v, raw: mm[0] };
+    }
     return undefined;
   }
   function stripRate(s: string): string {
@@ -450,8 +475,12 @@ export function VoiceTimeEntry({
         await runPart(
           "First, the case or client, and the hourly rate.",
           async (text) => {
-            const r0 = parseRate(text); if (r0 != null) s.rate = r0;
-            const matterText = stripRate(text).trim();
+            // Rate: a money cue first, otherwise a plain number like "295".
+            let work = text;
+            const r0 = parseRate(text);
+            if (r0 != null) { s.rate = r0; work = stripRate(text); }
+            else { const b = parseBareRate(text); if (b) { s.rate = b.value; work = text.replace(b.raw, " "); } }
+            const matterText = stripRate(work).trim();
             const conf = confidentMatter(matterText);
             s.matter = conf ?? (await resolveMatter(matterText || text));
           },
