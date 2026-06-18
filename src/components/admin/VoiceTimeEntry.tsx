@@ -55,6 +55,9 @@ export function VoiceTimeEntry({
   // button also cuts off the spoken voice so the user never waits for her.
   const [verifying, setVerifying] = useState(false);
   const decisionRef = useRef<((d: "next" | "redo") => void) | null>(null);
+  // Text on the green / red buttons — usually Correct / Incorrect, but the
+  // follow-up questions relabel them (Yes / No, Same case / Another case).
+  const [labels, setLabels] = useState<{ yes: string; no: string }>({ yes: "Correct", no: "Incorrect" });
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -144,11 +147,16 @@ export function VoiceTimeEntry({
     decisionRef.current?.(next ? "next" : "redo");
   }
 
-  /** Read a part back and wait for confirmation. The user can tap the green
-   *  Correct / red Incorrect buttons (interrupting the voice at any moment) or
-   *  just say yes/no. Resolves true to advance, false to redo this part. */
-  function confirmPart(desc: string): Promise<boolean> {
+  /** Ask a yes/no-style question. The user can tap the green / red buttons
+   *  (interrupting the voice at any moment) or just speak. Resolves true for the
+   *  green choice, false for the red. */
+  function askDecision(
+    speakText: string,
+    opts: { yes: string; no: string; isAffirmative?: (s: string) => boolean; isNegative?: (s: string) => boolean } = { yes: "Correct", no: "Incorrect" },
+  ): Promise<boolean> {
     if (cancelRef.current) return Promise.resolve(true);
+    const yesFn = opts.isAffirmative ?? isYes;
+    const noFn = opts.isNegative ?? isNo;
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = (ok: boolean) => {
@@ -159,23 +167,29 @@ export function VoiceTimeEntry({
         resolve(ok);
       };
       decisionRef.current = (d) => finish(d === "next");
+      setLabels({ yes: opts.yes, no: opts.no });
       setVerifying(true);
       (async () => {
-        // Let her finish the read-back first, then open the mic — otherwise the
-        // mic hears her own voice and trips over itself. The buttons can still
-        // cut her off at any moment.
-        await speak(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`);
+        // Let her finish asking first, then open the mic — otherwise the mic
+        // hears her own voice and trips over itself. The buttons can still cut
+        // her off at any moment.
+        await speak(speakText);
         if (settled || cancelRef.current) return;
         await wait(150);
         for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
           const ans = await listen();
           if (settled || cancelRef.current) return;
-          if (isNo(ans)) { finish(false); return; }
-          if (isYes(ans)) { finish(true); return; }
+          if (noFn(ans)) { finish(false); return; }
+          if (yesFn(ans)) { finish(true); return; }
           // Unclear — keep listening; the buttons remain available.
         }
       })();
     });
+  }
+
+  /** Read a part back and wait for Correct (advance) or Incorrect (redo). */
+  function confirmPart(desc: string): Promise<boolean> {
+    return askDecision(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`, { yes: "Correct", no: "Incorrect" });
   }
 
   /** Run one part of the entry. The Correct/Incorrect buttons are live the whole
@@ -190,6 +204,7 @@ export function VoiceTimeEntry({
   ): Promise<void> {
     for (;;) {
       if (cancelRef.current) return;
+      setLabels({ yes: "Correct", no: "Incorrect" });
       setVerifying(true);
       const outcome = await new Promise<"next" | "redo" | "heard">((resolve) => {
         let settled = false;
@@ -419,33 +434,40 @@ export function VoiceTimeEntry({
     return undefined;
   }
 
-  async function run() {
+  /** Run the spoken parts of one entry, starting from `initial`. When `skipCase`
+   *  is true (a repeat entry on the same case) we keep the case + rate and only
+   *  ask the date/time/category and the note. */
+  async function captureFlow(initial: Slots, skipCase: boolean): Promise<void> {
     if (runningRef.current) return;
-    if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
     runningRef.current = true; cancelRef.current = false;
     setOpen(true); setSaved(false); setCandidates([]); setHeard(""); setInterim("");
-    const s: Slots = { date: todayISO(), nonBillable: false, rate: defaultRate };
+    const s: Slots = { ...initial };
     setSlots({ ...s });
     const set = () => setSlots({ ...s });
     try {
-      // Part 1 — the case/client and the hourly rate.
-      await runPart(
-        "First, the case or client, and the hourly rate.",
-        async (text) => {
-          const r0 = parseRate(text); if (r0 != null) s.rate = r0;
-          const matterText = stripRate(text).trim();
-          const conf = confidentMatter(matterText);
-          s.matter = conf ?? (await resolveMatter(matterText || text));
-        },
-        () => { s.matter = undefined; s.rate = defaultRate; },
-        () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
-        set,
-      );
-      if (cancelRef.current) return;
+      // Part 1 — the case/client and the hourly rate (skipped on a repeat).
+      if (!skipCase) {
+        await runPart(
+          "First, the case or client, and the hourly rate.",
+          async (text) => {
+            const r0 = parseRate(text); if (r0 != null) s.rate = r0;
+            const matterText = stripRate(text).trim();
+            const conf = confidentMatter(matterText);
+            s.matter = conf ?? (await resolveMatter(matterText || text));
+          },
+          () => { s.matter = undefined; s.rate = defaultRate; },
+          () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
+          set,
+        );
+        if (cancelRef.current) return;
+      } else {
+        await speak(`Same case: ${s.matter}. Now the date, how long it took, and the category.`);
+        if (cancelRef.current) return;
+      }
 
       // Part 2 — the date, the time, and the category.
       await runPart(
-        "Next, the date, how long it took, and the category.",
+        skipCase ? "The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
         (text) => {
           const h = parseHours(text); if (h != null) s.hours = h;
           const cat = matchCategory(text, true); if (cat) s.category = cat;
@@ -478,7 +500,13 @@ export function VoiceTimeEntry({
     }
   }
 
-  function saveReview() {
+  function run() {
+    if (runningRef.current) return;
+    if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
+    captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
+  }
+
+  async function saveReview() {
     if (!slots.matter || !slots.matter.trim()) { setStatus("Please choose a case before saving."); return; }
     const user = defaultUser;
     const rate = slots.rate ?? defaultRate;
@@ -488,8 +516,32 @@ export function VoiceTimeEntry({
       matter: slots.matter.trim(), entryDate: slots.date || todayISO(), activityDescription: "", note,
       price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!slots.nonBillable,
     });
+    const savedMatter = slots.matter.trim();
+    const savedRate = rate;
     setSaved(true);
-    speak("Saved to your board.");
+
+    // Offer to keep going. Hold the floor for the spoken follow-up Q&A.
+    if (!supported) return;
+    runningRef.current = true; cancelRef.current = false;
+    try {
+      await speak("Saved to your board.");
+      if (cancelRef.current) return;
+      const again = await askDecision("Do you want to make another entry?", { yes: "Yes", no: "No, all done", isAffirmative: isYes, isNegative: isNo });
+      if (cancelRef.current) return;
+      if (!again) { setVerifying(false); await speak("All set."); setStatus("All set."); return; }
+      const sameCase = await askDecision("Is it the same case, or another case?", {
+        yes: "Same case", no: "Another case",
+        isAffirmative: (x) => /\b(same|this case|this one|that one|keep)\b/i.test(x),
+        isNegative: (x) => /\b(another|different|new case|other|new one)\b/i.test(x),
+      });
+      if (cancelRef.current) return;
+      setVerifying(false);
+      runningRef.current = false; // captureFlow takes the floor back
+      if (sameCase) await captureFlow({ date: todayISO(), nonBillable: false, matter: savedMatter, rate: savedRate }, true);
+      else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
+    } finally {
+      runningRef.current = false;
+    }
   }
 
   function cancel() {
@@ -585,13 +637,13 @@ export function VoiceTimeEntry({
                   onClick={() => press(true)}
                   className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
                 >
-                  <Check size={18} /> Correct
+                  <Check size={18} /> {labels.yes}
                 </button>
                 <button
                   onClick={() => press(false)}
                   className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
                 >
-                  <X size={18} /> Incorrect
+                  <X size={18} /> {labels.no}
                 </button>
               </div>
             )}
