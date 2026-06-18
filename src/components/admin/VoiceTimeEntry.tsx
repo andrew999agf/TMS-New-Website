@@ -205,7 +205,7 @@ export function VoiceTimeEntry({
 
   /** Read a part back and wait for Correct (advance) or Incorrect (redo). */
   function confirmPart(desc: string): Promise<boolean> {
-    return askDecision(`I have ${desc}. Tap Correct, tap Incorrect, or just tell me.`, { yes: "Correct", no: "Incorrect" });
+    return askDecision(`I have ${desc}.`, { yes: "Correct", no: "Incorrect" });
   }
 
   /** Run one part of the entry. The Correct/Incorrect buttons are live the whole
@@ -406,7 +406,7 @@ export function VoiceTimeEntry({
     pickedRef.current = null;
     setCandidates(cands);
     setOpenDesc(null);
-    await speak(cands.length === 1 ? "I found one possible match. Tap the check to use it, or say yes." : "I found a few. Tap a row to see the case, tap the check to pick it, or say yes when I read the right one.");
+    await speak(cands.length === 1 ? "I found one possible match." : "I found a few.");
     for (const c of cands) {
       if (cancelRef.current) { setCandidates([]); return undefined; }
       if (pickedRef.current) break;
@@ -489,14 +489,11 @@ export function VoiceTimeEntry({
           set,
         );
         if (cancelRef.current) return;
-      } else {
-        await speak(`Same case: ${s.matter}. Now the date, how long it took, and the category.`);
-        if (cancelRef.current) return;
       }
 
       // Part 2 — the date, the time, and the category.
       await runPart(
-        skipCase ? "The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
+        skipCase ? "Same case. The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
         (text) => {
           const h = parseHours(text); if (h != null) s.hours = h;
           const cat = matchCategory(text, true); if (cat) s.category = cat;
@@ -523,7 +520,7 @@ export function VoiceTimeEntry({
       if (cancelRef.current) return;
 
       // Everything's editable on screen the whole time; just invite a final look.
-      speak("Here's what I have. Edit anything on screen, then tap Save.");
+      speak("Here's what I have.");
     } finally {
       runningRef.current = false; setListening(false); setVerifying(false);
     }
