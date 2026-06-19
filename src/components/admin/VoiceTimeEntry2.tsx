@@ -80,6 +80,10 @@ export function VoiceTimeEntry2({
   // the phone. Audio is recorded and transcribed right here in the browser.
   const whisperReadyRef = useRef(false);
   const abortRecRef = useRef<{ aborted: boolean } | null>(null);
+  // A persistent audio session (mic + AudioContext) opened in a user gesture so
+  // it isn't suspended on mobile; reused for every spoken turn.
+  const sessionRef = useRef<any>(null);
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const [modelPhase, setModelPhase] = useState<"idle" | "downloading" | "installing" | "ready" | "error">("idle");
   const [modelPct, setModelPct] = useState(0);
   // Guided first-run setup: microphone + voice model, shown as a checklist.
@@ -109,8 +113,13 @@ export function VoiceTimeEntry2({
       await loadWhisper((p) => {
         if (p.status === "downloading") { setModelPhase("downloading"); setModelPct(p.pct); }
         else if (p.status === "installing") { setModelPhase("installing"); setModelPct(100); }
-        else if (p.status === "ready") { setModelPhase("ready"); setModelPct(100); }
       });
+      // Warm-up self-test: run one inference on silence. This catches WASM/init
+      // failures now (during setup) instead of on the user's first real entry,
+      // and makes that first entry fast.
+      setModelPhase("installing");
+      const { transcribe } = await import("@/lib/whisper");
+      await transcribe(new Float32Array(16000));
       whisperReadyRef.current = true;
       setModelPhase("ready"); setModelPct(100);
     } catch (e) {
@@ -236,25 +245,60 @@ export function VoiceTimeEntry2({
     });
   }
 
+  /** Open the mic + AudioContext. MUST be called from a tap so the context
+   *  isn't created suspended on mobile. The AudioContext is created synchronously
+   *  here; getUserMedia resolves the rest. Safe to call repeatedly. */
+  function openSession() {
+    if (sessionRef.current || sessionPromiseRef.current) return;
+    let ctx: AudioContext;
+    try {
+      const AC: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+      ctx = new AC();
+      ctx.resume?.();
+    } catch { return; }
+    sessionPromiseRef.current = navigator.mediaDevices
+      .getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } as MediaTrackConstraints })
+      .then((stream) => {
+        const source = ctx.createMediaStreamSource(stream);
+        const s = { ctx, stream, source };
+        sessionRef.current = s;
+        return s;
+      })
+      .catch((e) => { try { ctx.close(); } catch { /* ignore */ } sessionPromiseRef.current = null; setDiag("session: " + (e as Error).message); throw e; });
+  }
+  async function getSession(): Promise<any> {
+    if (sessionRef.current) return sessionRef.current;
+    if (!sessionPromiseRef.current) openSession();
+    try { return await sessionPromiseRef.current; } catch { return null; }
+  }
+  function closeSession() {
+    const s = sessionRef.current;
+    sessionRef.current = null; sessionPromiseRef.current = null;
+    if (s) { try { s.stream.getTracks().forEach((t: any) => t.stop()); } catch { /* ignore */ } try { s.ctx.close(); } catch { /* ignore */ } }
+  }
+
   /** Record a turn and transcribe it locally with Whisper — 100% on-device. */
   function listen(): Promise<string> {
     return listenWhisper();
   }
   async function listenWhisper(): Promise<string> {
     if (!whisperReadyRef.current) { await primeWhisper(); if (!whisperReadyRef.current) return ""; }
+    const session = await getSession();
+    if (!session || cancelRef.current) return "";
     setListening(true); setHeard(""); setInterim("");
     try {
       const { recordTurn, transcribe } = await import("@/lib/whisper");
       abortRecRef.current = { aborted: false };
-      const audio = await recordTurn({ signal: abortRecRef.current });
+      const audio = await recordTurn(session, { signal: abortRecRef.current });
       setListening(false);
       if (cancelRef.current || !audio.length) { setInterim(""); return ""; }
       setInterim("Transcribing…");
       const text = await transcribe(audio);
       setInterim(""); setHeard(text.trim());
       return text.trim();
-    } catch {
+    } catch (e) {
       setListening(false); setInterim("");
+      setDiag("record: " + (e as Error).message);
       return "";
     }
   }
@@ -686,6 +730,7 @@ export function VoiceTimeEntry2({
   /** Begin a fresh voice entry (mic + model already confirmed ready). */
   function startEntry() {
     setSetupMode(false);
+    openSession(); // create the AudioContext in this tap so it isn't suspended
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
@@ -707,6 +752,7 @@ export function VoiceTimeEntry2({
     setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false);
     setCandidates([]); setInterim("");
+    closeSession(); // release the mic when the dialog closes
   }
 
   const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));

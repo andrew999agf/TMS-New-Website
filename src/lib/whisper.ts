@@ -88,25 +88,43 @@ function resample(data: Float32Array, from: number, to: number): Float32Array {
 export type RecordSignal = { aborted: boolean };
 
 /**
- * Record one spoken turn as raw PCM (mono), ending ~1s after the user stops
- * talking (or after a max length, or if they never speak). Returns 16 kHz audio
- * ready for Whisper. Uses a ScriptProcessor for broad mobile support and routes
- * it through a muted gain node so nothing is played back.
+ * A live audio session: the mic stream + an AudioContext. MUST be opened from a
+ * user gesture (a tap) — on Android an AudioContext created outside a gesture
+ * starts suspended and records silence. Open once when the user starts, reuse
+ * for every turn.
  */
-export async function recordTurn(opts: { signal?: RecordSignal; onLevel?: (rms: number) => void } = {}): Promise<Float32Array> {
+export type AudioSession = { ctx: AudioContext; stream: MediaStream; source: MediaStreamAudioSourceNode };
+
+export async function openAudioSession(): Promise<AudioSession> {
+  const AC: typeof AudioContext = (window.AudioContext || (window as any).webkitAudioContext);
+  const ctx = new AC(); // created synchronously within the gesture
+  try { await ctx.resume(); } catch { /* ignore */ }
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } as MediaTrackConstraints,
   });
-  const AC: typeof AudioContext = (window.AudioContext || (window as any).webkitAudioContext);
-  const ctx = new AC();
-  try { await ctx.resume?.(); } catch { /* ignore */ }
+  const source = ctx.createMediaStreamSource(stream);
+  return { ctx, stream, source };
+}
 
+export function closeAudioSession(s: AudioSession | null): void {
+  if (!s) return;
+  try { s.stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+  try { s.ctx.close(); } catch { /* ignore */ }
+}
+
+/**
+ * Record one spoken turn from an already-open session, ending ~1s after the
+ * user stops talking (or a max length, or if they never speak). Returns 16 kHz
+ * mono audio. The capture node is muted (no playback) and detached when the
+ * turn ends; the session's mic + context stay alive for the next turn.
+ */
+export function recordTurn(session: AudioSession, opts: { signal?: RecordSignal; onLevel?: (rms: number) => void } = {}): Promise<Float32Array> {
+  const { ctx, source } = session;
   const sampleRate = ctx.sampleRate;
-  const src = ctx.createMediaStreamSource(stream);
   const processor = ctx.createScriptProcessor(4096, 1, 1);
   const mute = ctx.createGain();
   mute.gain.value = 0;
-  src.connect(processor);
+  source.connect(processor);
   processor.connect(mute);
   mute.connect(ctx.destination);
 
@@ -116,13 +134,11 @@ export async function recordTurn(opts: { signal?: RecordSignal; onLevel?: (rms: 
   const startAt = performance.now();
   let resolved = false;
 
-  return await new Promise<Float32Array>((resolve) => {
+  return new Promise<Float32Array>((resolve) => {
     const stop = () => {
       if (resolved) return;
       resolved = true;
-      try { processor.disconnect(); src.disconnect(); mute.disconnect(); } catch { /* ignore */ }
-      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-      try { ctx.close(); } catch { /* ignore */ }
+      try { processor.disconnect(); mute.disconnect(); } catch { /* ignore */ }
       const len = chunks.reduce((a, c) => a + c.length, 0);
       const merged = new Float32Array(len);
       let off = 0;
