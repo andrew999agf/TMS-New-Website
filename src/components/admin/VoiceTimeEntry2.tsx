@@ -86,6 +86,8 @@ export function VoiceTimeEntry2({
   const [setupMode, setSetupMode] = useState(false);
   const [micState, setMicState] = useState<"unknown" | "prompt" | "granted" | "denied" | "system">("unknown");
   const [micHint, setMicHint] = useState("");
+  const [diag, setDiag] = useState(""); // last technical error, for troubleshooting
+  const [showDiag, setShowDiag] = useState(false);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -112,8 +114,17 @@ export function VoiceTimeEntry2({
       whisperReadyRef.current = true;
       setModelPhase("ready"); setModelPct(100);
     } catch (e) {
+      const msg = (e as Error).message || String(e);
       setModelPhase("error");
-      setVoiceErr({ title: "Couldn't load the on-device voice model", detail: "The one-time download didn't finish. Check your internet connection and tap Retry. " + (e as Error).message, code: "whisper-load" });
+      setDiag(`model: ${(e as Error).name || "Error"}: ${msg}`);
+      const networky = /fetch|network|load|abort|timeout/i.test(msg);
+      setVoiceErr({
+        title: "Couldn't load the on-device voice model",
+        detail: networky
+          ? "The one-time model download couldn't complete — usually a weak/blocked connection. Try Wi-Fi (it's ~40–75 MB), then Retry."
+          : "The voice model failed to start on this device. Tap Retry; if it keeps failing, open the technical details below.",
+        code: "whisper-load",
+      });
     }
   }
 
@@ -129,6 +140,7 @@ export function VoiceTimeEntry2({
     } catch (e: any) {
       const name = e?.name || "Error";
       const msg = String(e?.message || "").toLowerCase();
+      setDiag(`mic: ${name}: ${e?.message || ""}`);
       // Only check hardware on failure (Android hides devices until permission).
       let hasMic = true;
       try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
@@ -843,6 +855,21 @@ export function VoiceTimeEntry2({
                   <Mic size={18} /> {setUp ? "Start talking" : "Finishing setup…"}
                 </button>
                 <p className="text-center text-[11px] text-[var(--c-ink-muted)]">100% on your device — nothing goes to Google or any server.</p>
+
+                <div className="border-t border-[var(--c-border)] pt-2">
+                  <button onClick={() => setShowDiag((s) => !s)} className="text-[11px] text-[var(--c-ink-muted)] underline">
+                    {showDiag ? "Hide" : "Show"} technical details
+                  </button>
+                  {showDiag && (
+                    <div className="mt-1 rounded bg-[var(--c-surface2)] p-2 text-[10px] text-[var(--c-ink-muted)] leading-relaxed break-words font-mono">
+                      <div>device: {detectPlatform().label}</div>
+                      <div>secure: {String(typeof window !== "undefined" && window.isSecureContext)}</div>
+                      <div>mic: {micState}</div>
+                      <div>model: {modelPhase}{modelPhase === "downloading" ? ` ${modelPct}%` : ""}</div>
+                      {diag && <div className="mt-1 text-[var(--c-error)]">{diag}</div>}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
             <>

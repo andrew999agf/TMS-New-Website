@@ -2,12 +2,15 @@
  * On-device speech recognition using OpenAI Whisper (MIT) via Hugging Face
  * Transformers.js (Apache-2.0). Everything runs in the browser: the model is
  * downloaded once and cached, then audio is recorded and transcribed locally —
- * no Google, no server, works offline. Fully permissive for commercial use.
+ * no Google, no server, works offline. Permissive for commercial use.
  *
- * Exposes:
- *   loadWhisper(onProgress) — download + initialize the model (progress 0–100)
- *   recordTurn(opts)        — record one spoken turn, ending on silence
- *   transcribe(audio)       — turn recorded audio into text
+ * Built to be robust on mobile (Android tablets/phones):
+ *  - forces single-threaded WASM (multi-threaded needs COOP/COEP headers we
+ *    don't set; without them it can fail to initialize — a common "model didn't
+ *    finish" cause on mobile);
+ *  - captures raw PCM with a ScriptProcessor instead of MediaRecorder, avoiding
+ *    Android codec/container differences (webm vs mp4 vs 3gpp) and the separate
+ *    decodeAudioData step.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -17,7 +20,7 @@ const MODEL_ID = "Xenova/whisper-tiny.en"; // small + fast; English
 let pipePromise: Promise<any> | null = null;
 let pipe: any = null;
 
-export type LoadProgress = { pct: number; status: string };
+export type LoadProgress = { pct: number; status: "downloading" | "installing" | "ready" };
 
 /** Download and initialize Whisper. Safe to call repeatedly; only loads once. */
 export async function loadWhisper(onProgress?: (p: LoadProgress) => void): Promise<void> {
@@ -25,8 +28,14 @@ export async function loadWhisper(onProgress?: (p: LoadProgress) => void): Promi
   if (!pipePromise) {
     pipePromise = (async () => {
       const TJS: any = await import("@huggingface/transformers");
-      try { TJS.env.allowLocalModels = false; } catch { /* ignore */ }
-      // Track per-file download bytes and report an aggregate percentage.
+      try {
+        TJS.env.allowLocalModels = false;
+        // Single-threaded WASM works everywhere without cross-origin isolation.
+        if (TJS.env.backends?.onnx?.wasm) {
+          TJS.env.backends.onnx.wasm.numThreads = 1;
+        }
+      } catch { /* ignore env quirks */ }
+
       const files: Record<string, { loaded: number; total: number }> = {};
       const cb = (e: any) => {
         if ((e.status === "progress" || e.status === "download" || e.status === "initiate") && e.file) {
@@ -37,8 +46,6 @@ export async function loadWhisper(onProgress?: (p: LoadProgress) => void): Promi
           const pct = total ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
           onProgress?.({ pct, status: "downloading" });
         } else if (e.status === "done") {
-          // Bytes are in; the model is being compiled/initialized (no byte
-          // progress for this part) — report it so the bar doesn't look stuck.
           onProgress?.({ pct: 100, status: "installing" });
         }
       };
@@ -56,7 +63,7 @@ export function whisperReady(): boolean {
 
 export async function transcribe(audio: Float32Array): Promise<string> {
   if (!pipe) throw new Error("Whisper model not loaded");
-  if (!audio.length) return "";
+  if (audio.length < 1600) return ""; // < 0.1s — nothing useful
   const out = await pipe(audio);
   const text = Array.isArray(out) ? out.map((o: any) => o.text).join(" ") : out?.text ?? "";
   return String(text).trim();
@@ -64,7 +71,7 @@ export async function transcribe(audio: Float32Array): Promise<string> {
 
 /** Linear resample to 16 kHz (Whisper's required rate). */
 function resample(data: Float32Array, from: number, to: number): Float32Array {
-  if (from === to) return data;
+  if (from === to || !data.length) return data;
   const ratio = from / to;
   const len = Math.round(data.length / ratio);
   const out = new Float32Array(len);
@@ -81,9 +88,10 @@ function resample(data: Float32Array, from: number, to: number): Float32Array {
 export type RecordSignal = { aborted: boolean };
 
 /**
- * Record one spoken turn from the microphone, stopping automatically ~0.9s
- * after the user stops talking (or after a max length, or if they never speak).
- * Returns mono 16 kHz audio ready for Whisper.
+ * Record one spoken turn as raw PCM (mono), ending ~1s after the user stops
+ * talking (or after a max length, or if they never speak). Returns 16 kHz audio
+ * ready for Whisper. Uses a ScriptProcessor for broad mobile support and routes
+ * it through a muted gain node so nothing is played back.
  */
 export async function recordTurn(opts: { signal?: RecordSignal; onLevel?: (rms: number) => void } = {}): Promise<Float32Array> {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -91,56 +99,50 @@ export async function recordTurn(opts: { signal?: RecordSignal; onLevel?: (rms: 
   });
   const AC: typeof AudioContext = (window.AudioContext || (window as any).webkitAudioContext);
   const ctx = new AC();
+  try { await ctx.resume?.(); } catch { /* ignore */ }
+
+  const sampleRate = ctx.sampleRate;
   const src = ctx.createMediaStreamSource(stream);
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 1024;
-  src.connect(analyser);
+  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  src.connect(processor);
+  processor.connect(mute);
+  mute.connect(ctx.destination);
 
-  const mime = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm")
-    ? "audio/webm"
-    : (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "");
-  const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-  const chunks: BlobPart[] = [];
-  rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  const chunks: Float32Array[] = [];
+  let started = false;
+  let lastVoice = performance.now();
+  const startAt = performance.now();
+  let resolved = false;
 
-  const buf = new Uint8Array(analyser.fftSize);
-  let started = false, lastVoice = Date.now(); const startAt = Date.now();
-  const cleanup = () => { try { stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ } };
-
-  return await new Promise<Float32Array>((resolve, reject) => {
-    const poll = setInterval(() => {
-      if (opts.signal?.aborted) { clearInterval(poll); try { if (rec.state !== "inactive") rec.stop(); } catch { /* ignore */ } return; }
-      analyser.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      const rms = Math.sqrt(sum / buf.length);
-      opts.onLevel?.(rms);
-      const now = Date.now();
-      if (rms > 0.025) { started = true; lastVoice = now; }
-      const endedBySilence = started && now - lastVoice > 900;
-      const endedByMax = now - startAt > 15000;
-      const endedByNoSpeech = !started && now - startAt > 7000;
-      if (endedBySilence || endedByMax || endedByNoSpeech) {
-        clearInterval(poll);
-        try { if (rec.state !== "inactive") rec.stop(); } catch { /* ignore */ }
-      }
-    }, 100);
-
-    rec.onstop = async () => {
-      clearInterval(poll);
-      cleanup();
-      try {
-        if (!chunks.length) { try { await ctx.close(); } catch { /* ignore */ } return resolve(new Float32Array(0)); }
-        const blob = new Blob(chunks, { type: mime || "audio/webm" });
-        const arr = await blob.arrayBuffer();
-        const audioBuf = await ctx.decodeAudioData(arr.slice(0));
-        const raw = Float32Array.from(audioBuf.getChannelData(0));
-        const copy = audioBuf.sampleRate !== 16000 ? resample(raw, audioBuf.sampleRate, 16000) : raw;
-        try { await ctx.close(); } catch { /* ignore */ }
-        resolve(copy);
-      } catch (e) { try { await ctx.close(); } catch { /* ignore */ } reject(e); }
+  return await new Promise<Float32Array>((resolve) => {
+    const stop = () => {
+      if (resolved) return;
+      resolved = true;
+      try { processor.disconnect(); src.disconnect(); mute.disconnect(); } catch { /* ignore */ }
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      try { ctx.close(); } catch { /* ignore */ }
+      const len = chunks.reduce((a, c) => a + c.length, 0);
+      const merged = new Float32Array(len);
+      let off = 0;
+      for (const c of chunks) { merged.set(c, off); off += c.length; }
+      resolve(resample(merged, sampleRate, 16000));
     };
-    rec.onerror = () => { clearInterval(poll); cleanup(); reject(new Error("Recording failed")); };
-    try { rec.start(100); } catch (e) { clearInterval(poll); cleanup(); reject(e); }
+    processor.onaudioprocess = (e: any) => {
+      if (opts.signal?.aborted) { stop(); return; }
+      const data: Float32Array = e.inputBuffer.getChannelData(0);
+      chunks.push(new Float32Array(data));
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      const rms = Math.sqrt(sum / data.length);
+      opts.onLevel?.(rms);
+      const now = performance.now();
+      if (rms > 0.012) { started = true; lastVoice = now; }
+      const endedBySilence = started && now - lastVoice > 1000;
+      const endedByMax = now - startAt > 15000;
+      const endedByNoSpeech = !started && now - startAt > 8000;
+      if (endedBySilence || endedByMax || endedByNoSpeech) stop();
+    };
   });
 }
