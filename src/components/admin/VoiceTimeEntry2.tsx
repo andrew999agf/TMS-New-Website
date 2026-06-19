@@ -131,15 +131,13 @@ export function VoiceTimeEntry2({
       // Only check hardware on failure (Android hides devices until permission).
       let hasMic = true;
       try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
-      const isAndroid = /android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
-      const allowWhere = isAndroid
-        ? "On a tablet/phone there's no address-bar icon: tap the lock or tune icon to the left of the web address ▸ Permissions ▸ Microphone ▸ Allow (or Chrome ⋮ ▸ Settings ▸ Site settings ▸ Microphone), then reload."
-        : "Click the microphone icon at the right of the address bar, choose Allow, then tap Try again.";
+      const { detectPlatform, micAllowSteps } = await import("@/lib/platform");
+      const steps = micAllowSteps(detectPlatform());
       if ((name === "NotFoundError" || name === "DevicesNotFoundError") && !hasMic) { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in or use a device with a built-in mic, then try again."); }
       else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is being used by another app (a call, camera, recorder…). Close it, then try again."); }
-      else if (msg.includes("system")) { setMicState("system"); setMicHint("Your device's system settings are blocking the browser's microphone. " + (isAndroid ? "Android: Settings ▸ Apps ▸ Chrome ▸ Permissions ▸ Microphone ▸ Allow." : "macOS: System Settings ▸ Privacy & Security ▸ Microphone ▸ turn this browser ON. Windows: Settings ▸ Privacy ▸ Microphone ▸ allow desktop apps.")); }
+      else if (msg.includes("system")) { setMicState("system"); setMicHint("Your device's system settings are blocking the browser's microphone. " + steps); }
       else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup before choosing. Tap “Allow microphone” again and choose Allow."); }
-      else { setMicState("denied"); setMicHint("Microphone permission is blocked for this site. " + allowWhere); }
+      else { setMicState("denied"); setMicHint("Microphone permission is blocked. " + steps); }
       return false;
     }
   }
