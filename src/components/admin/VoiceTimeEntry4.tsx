@@ -93,6 +93,10 @@ type Phase =
   | "edit_field"
   | "saved";
 
+/** Outcome of the final spoken review: save the entry, jump back to one of the
+ *  three parts, or cancel. */
+type ReviewAction = "save" | "part1" | "part2" | "part3" | "cancel";
+
 /* ----------------------------------------------------------------- component */
 export function VoiceTimeEntry4({
   matters, categories, activityUsers, defaultUser, onAdd,
@@ -129,6 +133,9 @@ export function VoiceTimeEntry4({
   const [verifying, setVerifying] = useState(false);
   const [labels, setLabels] = useState<{ yes: string; no: string }>({ yes: "Correct", no: "Incorrect" });
   const decisionRef = useRef<((d: "next" | "redo") => void) | null>(null);
+  // Resolver for the final "Here's what I have" review: voice ("approved" /
+  // "go back to the note") or the Save button both feed it.
+  const reviewResolveRef = useRef<((a: ReviewAction) => void) | null>(null);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -439,65 +446,127 @@ export function VoiceTimeEntry4({
     const s: Slots = { date: todayISO(), nonBillable: false, rate: defaultRate, user: defaultUser, ...initial };
     setSlots({ ...s });
     const set = () => setSlots({ ...s });
+
+    // The three grouped parts, as closures so the final review can re-run any one.
+    const part1 = () => step({
+      phase: "gather_core",
+      prompt: "First, the case or client, and the hourly rate.",
+      capture: async (text) => {
+        // Rate: a money cue first, otherwise a plain number like "295".
+        let work = text;
+        const r0 = parseRate(text);
+        if (r0 != null) { s.rate = r0; work = stripRate(text); }
+        else { const b = parseBareRate(text); if (b) { s.rate = b.value; work = text.replace(b.raw, " "); } }
+        const matterText = stripRate(work).trim();
+        s.matter = await resolveMatter(matterText || text);
+      },
+      clear: () => { s.matter = undefined; s.rate = defaultRate; },
+      readback: () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
+      sync: set,
+    });
+    const part2 = () => step({
+      phase: "fill_category",
+      prompt: skipCase ? "Same case. The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
+      capture: (text) => {
+        const h = parseHours(text); if (h != null) s.hours = h;
+        const cat = matchCategory(text, categories); if (cat) s.category = cat;
+        const d = parseDate(text); if (d) s.date = d;
+        if (/non[- ]?billable|no charge|not billable/i.test(text)) s.nonBillable = true;
+      },
+      clear: () => { s.hours = undefined; s.category = undefined; s.date = todayISO(); },
+      readback: () => `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${fullDate(s.date || todayISO())}`,
+      sync: set,
+    });
+    const part3 = () => step({
+      phase: "ask_note",
+      prompt: "Last, the activity note.",
+      capture: (text) => {
+        const skip = !text.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(text.trim());
+        s.notes = skip ? "" : text.trim();
+      },
+      clear: () => { s.notes = undefined; },
+      readback: () => (s.notes ? `the note as ${s.notes}` : "no note"),
+      sync: set,
+      longForm: true,
+    });
+
     try {
-      // Part 1 — the case/client and the hourly rate (skipped on a repeat).
-      if (!skipCase) {
-        await step({
-          phase: "gather_core",
-          prompt: "First, the case or client, and the hourly rate.",
-          capture: async (text) => {
-            // Rate: a money cue first, otherwise a plain number like "295".
-            let work = text;
-            const r0 = parseRate(text);
-            if (r0 != null) { s.rate = r0; work = stripRate(text); }
-            else { const b = parseBareRate(text); if (b) { s.rate = b.value; work = text.replace(b.raw, " "); } }
-            const matterText = stripRate(work).trim();
-            s.matter = await resolveMatter(matterText || text);
-          },
-          clear: () => { s.matter = undefined; s.rate = defaultRate; },
-          readback: () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
-          sync: set,
-        });
+      if (!skipCase) { await part1(); if (cancelRef.current) return; }
+      await part2(); if (cancelRef.current) return;
+      await part3(); if (cancelRef.current) return;
+
+      // Final review — say "approved" / "good" / "done" to save (or tap Save),
+      // or "go back to the case / the date / the note" to fix one part. Loops
+      // until the entry is saved or cancelled.
+      for (;;) {
         if (cancelRef.current) return;
+        setVerifying(false);
+        setPhase("confirm");
+        const action = await reviewListen();
+        if (cancelRef.current) return;
+        if (action === "save") { await saveReview(); return; }
+        if (action === "part1") await part1();
+        else if (action === "part2") await part2();
+        else if (action === "part3") await part3();
       }
-
-      // Part 2 — the date, how long it took, and the category.
-      await step({
-        phase: "fill_category",
-        prompt: skipCase ? "Same case. The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
-        capture: (text) => {
-          const h = parseHours(text); if (h != null) s.hours = h;
-          const cat = matchCategory(text, categories); if (cat) s.category = cat;
-          const d = parseDate(text); if (d) s.date = d;
-          if (/non[- ]?billable|no charge|not billable/i.test(text)) s.nonBillable = true;
-        },
-        clear: () => { s.hours = undefined; s.category = undefined; s.date = todayISO(); },
-        readback: () => `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${fullDate(s.date || todayISO())}`,
-        sync: set,
-      });
-      if (cancelRef.current) return;
-
-      // Part 3 — the activity note.
-      await step({
-        phase: "ask_note",
-        prompt: "Last, the activity note.",
-        capture: (text) => {
-          const skip = !text.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(text.trim());
-          s.notes = skip ? "" : text.trim();
-        },
-        clear: () => { s.notes = undefined; },
-        readback: () => (s.notes ? `the note as ${s.notes}` : "no note"),
-        sync: set,
-        longForm: true,
-      });
-      if (cancelRef.current) return;
-
-      // Everything's editable on screen; invite a final look, then they Save.
-      setPhase("confirm");
-      speak("Here's what I have.");
     } finally {
       runningRef.current = false; setListening(false); setVerifying(false);
     }
+  }
+
+  /** The final "Here's what I have" step. Speaks the options, then listens for an
+   *  approval ("approved", "good", "done", "save", "yes") or a jump ("go back to
+   *  the case / the date / the note"). The Save button and Cancel resolve it too.
+   *  We listen AFTER the prompt finishes so the part names it reads out can't be
+   *  mistaken for the user's answer. */
+  function reviewListen(): Promise<ReviewAction> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let rec: any = null;
+      let restart: ReturnType<typeof setTimeout> | null = null;
+      const deadline = Date.now() + 120000;
+      const stop = () => { if (restart) { clearTimeout(restart); restart = null; } try { rec?.abort?.(); } catch { /* ignore */ } rec = null; };
+      const finish = (a: ReviewAction) => {
+        if (settled) return;
+        settled = true; reviewResolveRef.current = null;
+        try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+        stop(); setListening(false);
+        resolve(a);
+      };
+      reviewResolveRef.current = (a) => finish(a); // Save button / cancel
+
+      const APPROVE = /\b(approved?|approve|good|done|save|saved|yes|yeah|yep|yup|correct|perfect|looks good|that'?s right|ok|okay|finish(?:ed)?|complete)\b/i;
+      const BACK = /\b(go back|back|change|fix|edit|redo|re-?do|revise|wrong|incorrect|return)\b/i;
+      const P1 = /\b(case|client|matter|rate|first|name)\b/i;
+      const P2 = /\b(date|time|hours?|category|second|day)\b/i;
+      const P3 = /\b(note|notes|third|description)\b/i;
+      const handle = (t: string) => {
+        const target: ReviewAction | null = P3.test(t) ? "part3" : P2.test(t) ? "part2" : P1.test(t) ? "part1" : null;
+        if (target && (BACK.test(t) || !APPROVE.test(t))) { finish(target); return; }
+        if (APPROVE.test(t)) finish("save");
+      };
+
+      const startRec = () => {
+        if (settled || cancelRef.current) return;
+        const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SR) return; // no recognizer → the Save button still works
+        try { rec = new SR(); } catch { return; }
+        recRef.current = rec;
+        rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+        setListening(true);
+        rec.onresult = (e: any) => {
+          let text = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
+          handle(text.toLowerCase());
+        };
+        rec.onerror = () => { /* keep listening */ };
+        rec.onend = () => { setListening(false); if (!settled && !cancelRef.current && Date.now() < deadline) restart = setTimeout(startRec, 200); };
+        try { rec.start(); } catch { if (Date.now() < deadline) restart = setTimeout(startRec, 300); }
+      };
+
+      if (cancelRef.current) { finish("cancel"); return; }
+      speak("Here's what I have. Say approved to save, or go back to the case, the date, or the note.").then(() => startRec());
+    });
   }
 
   /** Save the reviewed entry (the green Save button), then — like 1.0 — offer to
@@ -605,12 +674,21 @@ export function VoiceTimeEntry4({
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     decisionRef.current?.("next"); // release any pending step so the driver unwinds
     decisionRef.current = null;
+    reviewResolveRef.current?.("cancel"); // release a pending final-review listen
+    reviewResolveRef.current = null;
     setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false);
     setCandidates([]); setInterim(""); setPhase("idle");
   }
 
-  /* ----------------------------------------- manual save (typed fallback) */
+  /** The green Save button. During the final review it resolves the spoken
+   *  review (so voice and tap share one path); otherwise it saves directly. */
+  function onSaveClick() {
+    if (reviewResolveRef.current) reviewResolveRef.current("save");
+    else void saveReview();
+  }
+
+  /* ----------------------------------------- review labels / typed fallback */
   const PHASE_LABEL: Record<Phase, string> = {
     idle: "", gather_core: "Part 1 · case & rate", fill_client: "Part 1 · client",
     fill_date: "Part 2 · date", fill_category: "Part 2 · date, time & category", fill_time: "Part 2 · time",
@@ -780,7 +858,7 @@ export function VoiceTimeEntry4({
 
             <div className="mt-5 flex justify-end gap-2">
               {!saved && (
-                <button onClick={saveReview} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                <button onClick={onSaveClick} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
                   <Check size={16} /> Save entry
                 </button>
               )}
