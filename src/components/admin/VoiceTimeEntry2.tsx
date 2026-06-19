@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
-import { detectPlatform, micAllowSteps } from "@/lib/platform";
 
 /**
  * Voice time entry — 2.0. Uses the browser's built-in speech recognition +
@@ -558,26 +557,17 @@ export function VoiceTimeEntry2({
   async function run() {
     if (runningRef.current) return;
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome, Edge, or Safari on a recent device."); return; }
-    setOpen(true); setSaved(false); setStatus("Allow the microphone when your browser asks…");
-    // Request the mic in this tap. If permission is "ask", the browser shows its
-    // native Allow popup here (like every app). If it was previously blocked, the
-    // browser won't re-prompt — so we explain how to reset it for this device.
+    setOpen(true); setSaved(false); setStatus("Allow the microphone if your browser asks…");
+    // Request the mic in this tap. If the browser asks, the native popup shows.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
       setStatus("");
     } catch (e: any) {
-      const name = e?.name || "";
-      const msg = String(e?.message || "").toLowerCase();
-      if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        setStatus("No microphone was found on this device.");
-      } else if (name === "NotReadableError" || name === "TrackStartError") {
-        setStatus("The microphone is in use by another app. Close it, then tap the mic again.");
-      } else if (msg.includes("dismiss")) {
-        setStatus("You closed the popup. Tap the mic again and choose Allow.");
-      } else {
-        setStatus("Microphone is blocked for this site (probably from earlier). Turn it back on once: " + micAllowSteps(detectPlatform()) + " Then tap the mic again — after that it just works.");
-      }
+      // Show the real reason instead of guessing. The name in parentheses tells
+      // us exactly what's wrong (NotAllowedError, NotFoundError, etc.).
+      const name = e?.name || String(e);
+      setStatus(`The microphone didn't open — error: ${name}. If a permission popup appeared, choose Allow. Otherwise tap the mic to try again.`);
       return;
     }
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
