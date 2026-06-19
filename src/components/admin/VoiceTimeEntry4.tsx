@@ -630,7 +630,42 @@ export function VoiceTimeEntry4({
     setSlots({ date: undefined, nonBillable: false, rate: defaultRate, user: defaultUser });
   }
 
-  function start() {
+  /** Explicitly ASK for the microphone. Chrome's SpeechRecognition does not
+   *  reliably raise the standard "site wants to use your microphone" prompt, so
+   *  we call getUserMedia inside the user's tap — that is what actually shows
+   *  the prompt and, once granted, the page-level mic permission also covers
+   *  SpeechRecognition. We release the device immediately (recognition opens its
+   *  own), branch on the real DOMException name, and never dead-end: on any
+   *  failure the typed form is right there. Returns true if the mic is usable. */
+  async function primeMic(): Promise<boolean> {
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      setMicError("Voice needs a secure (https) connection. Open the site over https, or type the entry below — every field is editable.");
+      return false;
+    }
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    if (!md?.getUserMedia) return true; // very old browser — let SpeechRecognition try to self-manage
+    setStatus("Starting the microphone…");
+    try {
+      const stream = await md.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop()); // we only needed the grant + prompt
+      setMicError(null);
+      return true;
+    } catch (e) {
+      const name = (e as DOMException)?.name || "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setMicError("Microphone access is blocked for this site. Click the mic/camera icon in the address bar (or open Site settings) and set Microphone to “Allow,” then tap the mic again. You can also just type the entry below.");
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setMicError("No microphone was found on this device. Type the entry below — every field is editable.");
+      } else if (name === "NotReadableError" || name === "AbortError") {
+        setMicError("The microphone is being used by another app. Close anything else using it, then tap the mic again — or type the entry below.");
+      } else {
+        setMicError("Couldn't start the microphone. Tap the mic to try again, or type the entry below — every field is editable.");
+      }
+      return false;
+    }
+  }
+
+  async function start() {
     if (runningRef.current) return;
     if (!supported) {
       setOpen(true); setMicError("Voice input isn't supported in this browser. Use Chrome or Edge — or type the entry below; every field is editable and saves the same way.");
@@ -638,6 +673,10 @@ export function VoiceTimeEntry4({
       return;
     }
     resetEntryState();
+    setOpen(true);
+    // Ask for the mic with a real user gesture (this is the call that prompts).
+    const primed = await primeMic();
+    if (!primed) { setPhase("idle"); return; } // typed form stays fully usable
     runEntry({});
   }
 
