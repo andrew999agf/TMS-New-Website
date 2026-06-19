@@ -23,6 +23,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-2", label: "Time Tracker 2.0", href: "/admin/time-tracker-2", toggleable: false },
   { key: "time-tracker-3", label: "Time Tracker 3.0", href: "/admin/time-tracker-3", toggleable: false },
+  { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
   { key: "appearance", label: "Appearance", href: "/admin/appearance", toggleable: true },
   { key: "logins", label: "User Management", href: "/admin/logins", toggleable: false },
   { key: "settings", label: "Settings", href: "/admin/settings", toggleable: false },
@@ -38,8 +39,8 @@ export function isFullAdminRole(role?: string): boolean {
 /** All section keys a given account may access. */
 export function allowedSections(role?: string, permissions?: string[]): string[] {
   if (isFullAdminRole(role)) return ADMIN_SECTIONS.map((s) => s.key);
-  // Timekeepers get the original tracker plus 2.0 and 3.0 by default.
-  return ["time-tracker", "time-tracker-2", "time-tracker-3", ...(permissions ?? [])];
+  // Timekeepers get the original tracker plus 2.0, 3.0, and 4.0 by default.
+  return ["time-tracker", "time-tracker-2", "time-tracker-3", "time-tracker-4", ...(permissions ?? [])];
 }
 
 /** Which section key a pathname belongs to (longest matching href wins). */

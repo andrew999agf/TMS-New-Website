@@ -43,7 +43,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     name: "T. Maxwell Smith — Time Tracker",
     short_name: "TMS Time",
     description: "Time tracking for the office of T. Maxwell Smith, PLLC.",
-    start_url: "/admin/time-tracker-2",
+    start_url: "/admin/time-tracker-4",
     scope: "/admin/",
     display: "standalone",
     orientation: "portrait",
