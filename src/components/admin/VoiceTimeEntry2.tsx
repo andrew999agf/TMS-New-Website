@@ -75,17 +75,60 @@ export function VoiceTimeEntry2({
   const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
   const [voiceErr, setVoiceErr] = useState<{ title: string; detail: string; code: string } | null>(null);
+  // Recognition engine: "browser" (Chrome/Safari built-in) or "ondevice"
+  // (local Whisper — private, offline, downloads once).
+  const [engine, setEngine] = useState<"browser" | "ondevice">("browser");
+  const engineRef = useRef<"browser" | "ondevice">("browser");
+  const whisperReadyRef = useRef(false);
+  const abortRecRef = useRef<{ aborted: boolean } | null>(null);
+  const [modelPct, setModelPct] = useState<number | null>(null); // download bar
+  const [modelStatus, setModelStatus] = useState("");
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
 
-  const supported = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) && Boolean(window.speechSynthesis);
+  const browserSR = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  const hasSynth = typeof window !== "undefined" && Boolean(window.speechSynthesis);
+  const supported = (browserSR || engine === "ondevice") && hasSynth;
 
   useEffect(() => {
     const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
+
+  // Remember the user's engine choice between sessions.
+  useEffect(() => {
+    const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tms_tt2_engine")) as "browser" | "ondevice" | null;
+    if (saved === "ondevice" || saved === "browser") { setEngine(saved); engineRef.current = saved; }
+  }, []);
+
+  /** Download + initialize the local Whisper model, driving the progress bar.
+   *  Falls back to the browser recognizer if it can't load. */
+  async function primeWhisper(): Promise<void> {
+    if (whisperReadyRef.current) return;
+    try {
+      const { loadWhisper } = await import("@/lib/whisper");
+      setModelPct(0); setModelStatus("Preparing…");
+      await loadWhisper((p) => {
+        setModelPct(p.pct);
+        setModelStatus(p.status === "ready" ? "Ready" : p.status);
+      });
+      whisperReadyRef.current = true;
+      setModelPct(100); setModelStatus("Ready");
+      setTimeout(() => setModelPct(null), 1500);
+    } catch (e) {
+      setModelPct(null);
+      setEngine("browser"); engineRef.current = "browser";
+      setVoiceErr({ title: "Couldn't load the on-device voice", detail: "Switched back to the browser recognizer. " + (e as Error).message, code: "whisper-load" });
+    }
+  }
+
+  function chooseEngine(next: "browser" | "ondevice") {
+    setEngine(next); engineRef.current = next;
+    try { localStorage.setItem("tms_tt2_engine", next); } catch { /* ignore */ }
+    if (next === "ondevice" && !whisperReadyRef.current) primeWhisper();
+  }
 
   // Build the list of English voices and choose one: the user's saved pick if
   // any, otherwise the nicest available (Natural/Neural/Google/Siri beat the
@@ -151,8 +194,33 @@ export function VoiceTimeEntry2({
     });
   }
 
-  // Listen for a single utterance, showing the words live as they're spoken.
+  // Dispatch to the chosen engine: local Whisper when ready, else the browser.
   function listen(): Promise<string> {
+    if (engineRef.current === "ondevice" && whisperReadyRef.current) return listenWhisper();
+    return listenBrowser();
+  }
+
+  /** Record a turn and transcribe it locally with Whisper. */
+  async function listenWhisper(): Promise<string> {
+    setListening(true); setHeard(""); setInterim("");
+    try {
+      const { recordTurn, transcribe } = await import("@/lib/whisper");
+      abortRecRef.current = { aborted: false };
+      const audio = await recordTurn({ signal: abortRecRef.current });
+      setListening(false);
+      if (cancelRef.current || !audio.length) { setInterim(""); return ""; }
+      setInterim("Transcribing…");
+      const text = await transcribe(audio);
+      setInterim(""); setHeard(text.trim());
+      return text.trim();
+    } catch {
+      setListening(false); setInterim("");
+      return "";
+    }
+  }
+
+  // Listen for a single utterance with the browser recognizer (live words).
+  function listenBrowser(): Promise<string> {
     return new Promise((res) => {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SR) return res("");
@@ -239,6 +307,7 @@ export function VoiceTimeEntry2({
 
   function press(next: boolean) {
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     decisionRef.current?.(next ? "next" : "redo");
   }
@@ -420,6 +489,7 @@ export function VoiceTimeEntry2({
   function tapCandidate(displayNumber: string) {
     pickedRef.current = displayNumber;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   }
   async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
@@ -628,6 +698,11 @@ export function VoiceTimeEntry2({
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
     setVoiceErr(null);
     if (!(await ensureMic())) return;
+    // On-device: make sure the model is downloaded/ready first (shows the bar).
+    if (engineRef.current === "ondevice" && !whisperReadyRef.current) {
+      setOpen(true);
+      await primeWhisper();
+    }
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
@@ -651,6 +726,7 @@ export function VoiceTimeEntry2({
     cancelRef.current = true;
     pickedRef.current = null;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
+    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     decisionRef.current?.("next");
     setVerifying(false);
@@ -723,10 +799,32 @@ export function VoiceTimeEntry2({
                   <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Speed — {rate.toFixed(2)}×</label>
                   <input type="range" min="0.8" max="1.4" step="0.02" value={rate} onChange={(e) => chooseRate(parseFloat(e.target.value))} className="w-full accent-[var(--c-accent)]" />
                 </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Recognition</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => chooseEngine("browser")} className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${engine === "browser" ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}>Browser (Google)</button>
+                    <button onClick={() => chooseEngine("ondevice")} className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${engine === "ondevice" ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}>On-device (private)</button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">On-device runs Whisper right in your browser — no Google, works offline. Downloads once (~40–75 MB), then it&apos;s cached.</p>
+                </div>
               </div>
             )}
 
             <p className="text-sm min-h-[40px]">{status}</p>
+
+            {modelPct !== null && (
+              <div className="mb-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] p-3">
+                <div className="flex items-center justify-between text-[11px] text-[var(--c-ink-muted)] mb-1.5">
+                  <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {modelStatus || "Downloading voice model…"}</span>
+                  <span className="font-semibold text-[var(--c-ink)]">{modelPct}%</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-[var(--c-bg)] overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${modelPct}%` }} />
+                </div>
+                <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">One-time download (~40–75 MB). Please keep this open — it&apos;s saved for next time.</p>
+              </div>
+            )}
+
             {voiceErr && (
               <div className="mt-1 mb-2 rounded-md border border-[var(--c-error)] bg-[var(--c-surface2)] p-3 text-xs">
                 <p className="font-semibold text-[var(--c-error)]">{voiceErr.title}</p>
