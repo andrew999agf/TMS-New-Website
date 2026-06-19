@@ -4,24 +4,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
-import { detectPlatform, micAllowSteps } from "@/lib/platform";
 
 /**
- * Voice time entry — 2.0 engine. Same flow as the original (three short spoken
- * parts, green/red buttons, an editable review, an "another entry" loop), but:
- *   • it speaks with the most natural voice the device offers (not the robotic
- *     default), a touch faster, so it sounds less annoying;
- *   • it says far fewer words — terse prompts and read-backs — so entry is fast;
- *   • a light legal-vocabulary cleanup fixes common mishearings in the note.
- * Built on the browser's speech recognition + synthesis (no server/API), with
- * the same matter/rate/date parsing the firm relies on.
+ * Voice time entry — 2.0. Uses the browser's built-in speech recognition +
+ * synthesis (reliable, no downloads, no setup). Over the original it adds a
+ * natural device-voice picker, terser prompts, and a fully spoken flow (three
+ * short parts, green/red buttons, an editable review, verbal Save, and an
+ * "another entry" loop).
  */
 
 const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) => `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
 const todayISO = () => new Date().toISOString().split("T")[0];
-const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const yesterdayISO = () => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 type Matter = { displayNumber: string; description: string };
@@ -32,8 +27,6 @@ const NOTE_FIXES: [RegExp, string][] = [
   [/\b(?:vore?|war|where)\s+(?:deer|dear|dire)\b/gi, "voir dire"],
   [/\bsub\s?peen[ao]\b/gi, "subpoena"],
   [/\bday\s?position\b/gi, "deposition"],
-  [/\bvolndeer\b/gi, "voir dire"],
-  [/\bdiscoveryphase\b/gi, "discovery"],
 ];
 function applyNoteFixes(s: string): string {
   let out = s;
@@ -75,112 +68,24 @@ export function VoiceTimeEntry2({
   const [rate, setRate] = useState(1.06);
   const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
-  const [voiceErr, setVoiceErr] = useState<{ title: string; detail: string; code: string } | null>(null);
-  // Recognition is 100% on-device (local Whisper) — no Google, nothing leaves
-  // the phone. Audio is recorded and transcribed right here in the browser.
-  const whisperReadyRef = useRef(false);
-  const abortRecRef = useRef<{ aborted: boolean } | null>(null);
-  // A persistent audio session (mic + AudioContext) opened in a user gesture so
-  // it isn't suspended on mobile; reused for every spoken turn.
-  const sessionRef = useRef<any>(null);
-  const sessionPromiseRef = useRef<Promise<any> | null>(null);
-  const [modelPhase, setModelPhase] = useState<"idle" | "downloading" | "installing" | "ready" | "error">("idle");
-  const [modelPct, setModelPct] = useState(0);
-  // Guided first-run setup: microphone + voice model, shown as a checklist.
-  const [setupMode, setSetupMode] = useState(false);
-  const [micState, setMicState] = useState<"unknown" | "prompt" | "granted" | "denied" | "system">("unknown");
-  const [micHint, setMicHint] = useState("");
-  const [diag, setDiag] = useState(""); // last technical error, for troubleshooting
-  const [showDiag, setShowDiag] = useState(false);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
 
-  const supported = typeof window !== "undefined" && Boolean(navigator?.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
+  const supported = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) && Boolean(window.speechSynthesis);
 
+  // Reset mute when the user leaves the tab.
   useEffect(() => {
     const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
 
-  /** Download + initialize the local Whisper model, driving the progress bar. */
-  async function primeWhisper(): Promise<void> {
-    if (whisperReadyRef.current || modelPhase === "downloading" || modelPhase === "installing") return;
-    try {
-      const { loadWhisper } = await import("@/lib/whisper");
-      setModelPhase("downloading"); setModelPct(0);
-      await loadWhisper((p) => {
-        if (p.status === "downloading") { setModelPhase("downloading"); setModelPct(p.pct); }
-        else if (p.status === "installing") { setModelPhase("installing"); setModelPct(100); }
-      });
-      // Model is loaded — mark ready immediately so setup can't get stuck. Warm
-      // it up in the background (first real entry is then fast).
-      whisperReadyRef.current = true;
-      setModelPhase("ready"); setModelPct(100);
-      import("@/lib/whisper").then((m) => m.transcribe(new Float32Array(16000))).catch(() => {});
-    } catch (e) {
-      const msg = (e as Error).message || String(e);
-      setModelPhase("error");
-      setDiag(`model: ${(e as Error).name || "Error"}: ${msg}`);
-      const networky = /fetch|network|load|abort|timeout/i.test(msg);
-      setVoiceErr({
-        title: "Couldn't load the on-device voice model",
-        detail: networky
-          ? "The one-time model download couldn't complete — usually a weak/blocked connection. Try Wi-Fi (it's ~40–75 MB), then Retry."
-          : "The voice model failed to start on this device. Tap Retry; if it keeps failing, open the technical details below.",
-        code: "whisper-load",
-      });
-    }
-  }
-
-  /** Classify a getUserMedia failure into a friendly mic state + hint. */
-  async function classifyMicError(e: any) {
-    const name = e?.name || "Error";
-    const msg = String(e?.message || "").toLowerCase();
-    setDiag(`mic: ${name}: ${e?.message || ""}`);
-    let hasMic = true;
-    try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
-    const steps = micAllowSteps(detectPlatform());
-    if ((name === "NotFoundError" || name === "DevicesNotFoundError") && !hasMic) { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in (or use a phone), then try again."); }
-    else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is in use by another app (a call, camera…). Close it, then try again."); }
-    else if (msg.includes("system")) { setMicState("system"); setMicHint(steps); }
-    else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup. Tap “Turn on voice” again and choose Allow."); }
-    else { setMicState("denied"); setMicHint(steps); }
-  }
-
-  /** One tap: request the mic (native popup) AND start the model download. */
-  function beginSetup() {
-    setVoiceErr(null); setMicHint("");
-    openSession();      // creates the audio context in this gesture + asks for the mic
-    primeWhisper();     // download/init the model in parallel
-  }
-
-  // On open: detect the current microphone permission, and start downloading
-  // the on-device model in the background so it's ready by the time they begin.
-  useEffect(() => {
-    (async () => {
-      try {
-        const perms = (navigator as any).permissions;
-        if (perms?.query) {
-          const st = await perms.query({ name: "microphone" as PermissionName });
-          const apply = (v: string) => { setMicState(v as any); setMicHint(v === "denied" ? micAllowSteps(detectPlatform()) : ""); };
-          apply(st.state);
-          st.onchange = () => apply(st.state);
-        }
-      } catch { /* Safari etc. — no Permissions API; we'll learn on request */ }
-    })();
-    // Model download starts when the user taps "Turn on voice" (beginSetup).
-  }, []);
-
-  // Build the list of English voices and choose one: the user's saved pick if
-  // any, otherwise the nicest available (Natural/Neural/Google/Siri beat the
-  // robotic default). getVoices() is often empty until the list loads, so we
-  // also listen for "voiceschanged".
+  // Pick the nicest available English voice; allow the user to change it.
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const best = (pool: SpeechSynthesisVoice[]) => {
-      const prefers = [/natural/i, /neural/i, /google us english/i, /\baria\b/i, /\bjenny\b/i, /\bava\b/i, /\bguy\b/i, /samantha/i, /siri/i, /premium/i, /enhanced/i, /\bzira\b/i, /google/i];
+      const prefers = [/natural/i, /neural/i, /google us english/i, /\baria\b/i, /\bjenny\b/i, /\bava\b/i, /samantha/i, /siri/i, /premium/i, /enhanced/i, /\bzira\b/i, /google/i];
       for (const re of prefers) { const v = pool.find((x) => re.test(x.name)); if (v) return v; }
       return pool.find((v) => v.localService) ?? pool[0] ?? null;
     };
@@ -237,80 +142,46 @@ export function VoiceTimeEntry2({
     });
   }
 
-  /** Open the mic + AudioContext. MUST be called from a tap so the context
-   *  isn't created suspended on mobile. The AudioContext is created synchronously
-   *  here; getUserMedia resolves the rest. Safe to call repeatedly. */
-  function openSession() {
-    if (sessionRef.current || sessionPromiseRef.current) return;
-    let ctx: AudioContext;
-    try {
-      const AC: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-      ctx = new AC();
-      ctx.resume?.();
-    } catch { return; }
-    sessionPromiseRef.current = navigator.mediaDevices
-      .getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } as MediaTrackConstraints })
-      .then((stream) => {
-        const source = ctx.createMediaStreamSource(stream);
-        const s = { ctx, stream, source };
-        sessionRef.current = s;
-        setMicState("granted"); setMicHint("");
-        return s;
-      })
-      .catch(async (e) => { try { ctx.close(); } catch { /* ignore */ } sessionPromiseRef.current = null; await classifyMicError(e); throw e; });
-  }
-  async function getSession(): Promise<any> {
-    if (sessionRef.current) return sessionRef.current;
-    if (!sessionPromiseRef.current) openSession();
-    try { return await sessionPromiseRef.current; } catch { return null; }
-  }
-  function closeSession() {
-    const s = sessionRef.current;
-    sessionRef.current = null; sessionPromiseRef.current = null;
-    if (s) { try { s.stream.getTracks().forEach((t: any) => t.stop()); } catch { /* ignore */ } try { s.ctx.close(); } catch { /* ignore */ } }
-  }
-
-  /** Record a turn and transcribe it locally with Whisper — 100% on-device. */
+  // Listen for one utterance with the browser recognizer (shows words live).
   function listen(): Promise<string> {
-    return listenWhisper();
-  }
-  async function listenWhisper(): Promise<string> {
-    if (!whisperReadyRef.current) { await primeWhisper(); if (!whisperReadyRef.current) return ""; }
-    const session = await getSession();
-    if (!session || cancelRef.current) return "";
-    setListening(true); setHeard(""); setInterim("");
-    try {
-      const { recordTurn, transcribe } = await import("@/lib/whisper");
-      abortRecRef.current = { aborted: false };
-      const audio = await recordTurn(session, { signal: abortRecRef.current });
-      setListening(false);
-      if (cancelRef.current || !audio.length) { setInterim(""); return ""; }
-      setInterim("Transcribing…");
-      const text = await transcribe(audio);
-      setInterim(""); setHeard(text.trim());
-      return text.trim();
-    } catch (e) {
-      setListening(false); setInterim("");
-      setDiag("record: " + (e as Error).message);
-      return "";
-    }
+    return new Promise((res) => {
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SR) return res("");
+      const rec = new SR();
+      recRef.current = rec;
+      rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
+      let done = false; let finalText = "";
+      const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
+      setListening(true); setHeard(""); setInterim("");
+      rec.onresult = (e: any) => {
+        let live = "";
+        for (let i = 0; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) finalText += r[0].transcript;
+          else live += r[0].transcript;
+        }
+        setInterim((finalText + live).trim());
+      };
+      rec.onerror = (e: any) => {
+        if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+          cancelRef.current = true;
+          setStatus("Microphone is off for this site. Allow it in your browser, then tap the mic again.");
+        }
+        finish(finalText);
+      };
+      rec.onend = () => finish(finalText);
+      try { rec.start(); } catch { setListening(false); res(""); }
+    });
   }
 
-  /** Listen for the user's actual answer; mic opens the instant the question
-   *  starts (caller fires speak without awaiting). Words from her own prompt are
-   *  stripped so speaker bleed isn't mistaken for the answer. */
+  /** Listen for the user's answer; her own prompt words are filtered out. */
   async function listenForAnswer(prompt: string, tries = 2): Promise<string> {
     const ignore = new Set(prompt.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
     for (let i = 0; i < tries && !cancelRef.current; i++) {
-      if (i > 0) await wait(150); // let the previous recognition fully release
       const raw = (await listen()).trim();
       if (cancelRef.current) return "";
       if (!raw) continue;
-      const cleaned = raw
-        .split(/\s+/)
-        .filter((w) => { const k = w.toLowerCase().replace(/[^a-z0-9]/g, ""); return k && !ignore.has(k); })
-        .join(" ")
-        .trim();
+      const cleaned = raw.split(/\s+/).filter((w) => { const k = w.toLowerCase().replace(/[^a-z0-9]/g, ""); return k && !ignore.has(k); }).join(" ").trim();
       if (cleaned) return cleaned;
     }
     return "";
@@ -341,7 +212,6 @@ export function VoiceTimeEntry2({
 
   function press(next: boolean) {
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     decisionRef.current?.(next ? "next" : "redo");
   }
@@ -366,8 +236,6 @@ export function VoiceTimeEntry2({
       setLabels({ yes: opts.yes, no: opts.no });
       setVerifying(true);
       (async () => {
-        // Let her finish, THEN open the mic — listening while she talks makes
-        // desktop speakers feed her voice back in and loop. (Muted = instant.)
         await speak(speakText);
         if (settled || cancelRef.current) return;
         for (let i = 0; i < 6 && !settled && !cancelRef.current; i++) {
@@ -380,7 +248,6 @@ export function VoiceTimeEntry2({
     });
   }
 
-  /** Read a part back (concisely) and wait for Correct or Incorrect. */
   function confirmPart(desc: string): Promise<boolean> {
     return askDecision(desc, { yes: "Correct", no: "Incorrect" });
   }
@@ -400,9 +267,6 @@ export function VoiceTimeEntry2({
         let settled = false;
         decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d); };
         (async () => {
-          // Speak the question fully, then open the mic. (When muted, speak
-          // returns instantly, so listening starts right away.) This is what
-          // makes it reliable on desktop Chrome, not just iPhone.
           await speak(prompt);
           if (settled || cancelRef.current) return;
           const text = await listenForAnswer(prompt, 3);
@@ -421,7 +285,7 @@ export function VoiceTimeEntry2({
     }
   }
 
-  /* ---- parsers (same logic the firm relies on) ---- */
+  /* ---- parsers ---- */
   function parseHours(s: string): number | undefined {
     const t = s.toLowerCase();
     const W: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
@@ -523,7 +387,6 @@ export function VoiceTimeEntry2({
   function tapCandidate(displayNumber: string) {
     pickedRef.current = displayNumber;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
   }
   async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
@@ -652,9 +515,6 @@ export function VoiceTimeEntry2({
       );
       if (cancelRef.current) return;
 
-      // Final decision point — finish entirely by voice. "Save" (green / "yes")
-      // commits it; "Edit" (red / "no") hands back to the form for tweaks. Both
-      // are also tappable.
       const ok = await askDecision("Save?", { yes: "Save", no: "Edit", isAffirmative: isYes, isNegative: isNo });
       if (cancelRef.current) return;
       if (!ok) { setVerifying(false); setStatus("Edit any field, then tap Save."); return; }
@@ -664,7 +524,6 @@ export function VoiceTimeEntry2({
     }
   }
 
-  /** Persist an entry, then offer (by voice or tap) to make another. */
   async function commit(s: Slots): Promise<void> {
     const user = defaultUser;
     const rate = s.rate ?? defaultRate;
@@ -690,49 +549,29 @@ export function VoiceTimeEntry2({
     });
     if (cancelRef.current) return;
     setVerifying(false);
-    runningRef.current = false; // captureFlow guards on this
+    runningRef.current = false;
     if (sameCase) await captureFlow({ date: todayISO(), nonBillable: false, matter: savedMatter, rate: savedRate }, true);
     else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
-  /** Ask the browser for microphone access *in the click gesture*. Chrome only
-   *  shows its Allow prompt (and remembers the grant) when the request happens
-   *  in a user gesture — our recognition starts after the voice talks, which is
-   *  too late, so we prime it here. Returns true if the mic is usable. */
-  const isSetUp = () => micState === "granted" && whisperReadyRef.current;
-
-  function run() {
+  async function run() {
     if (runningRef.current) return;
-    if (!supported) { alert("This browser can't record audio. Try Chrome, Edge, or Safari on a recent device."); return; }
-    setVoiceErr(null);
-    if (typeof window !== "undefined" && window.isSecureContext === false) {
-      setOpen(true); setSetupMode(true);
-      setVoiceErr({ title: "Needs a secure (https) page", detail: "The microphone only works over https. Open the site at its https address.", code: "insecure-context" });
+    if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome, Edge, or Safari on a recent device."); return; }
+    setOpen(true); setSaved(false); setStatus("");
+    // Request the mic in this tap so the recognizer is allowed (esp. on Chrome).
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      setStatus("Microphone is off for this site. Allow it in your browser (the camera/mic icon by the address bar, or the lock menu on mobile), then tap the mic again.");
       return;
     }
-    // First run (or after clearing data): show the simple setup. Otherwise go.
-    if (!isSetUp()) {
-      setOpen(true); setSetupMode(true);
-      // Returning user whose mic is already allowed: load the (cached) model now,
-      // in this tap, so they don't have to press "Turn on voice" again.
-      if (micState === "granted") { openSession(); primeWhisper(); }
-      return;
-    }
-    setSetupMode(false);
-    startEntry();
-  }
-
-  /** Begin a fresh voice entry (mic + model already confirmed ready). */
-  function startEntry() {
-    setSetupMode(false);
-    openSession(); // create the AudioContext in this tap so it isn't suspended
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
-  /** Tap path for Save — same persistence + "another entry?" loop as voice. */
   async function saveReview() {
     if (!slots.matter || !slots.matter.trim()) { setStatus("Please choose a case before saving."); return; }
-    if (runningRef.current) return; // a voice step is mid-run; its own Save covers it
+    if (runningRef.current) return;
     runningRef.current = true; cancelRef.current = false;
     try { await commit({ ...slots }); } finally { runningRef.current = false; }
   }
@@ -741,17 +580,14 @@ export function VoiceTimeEntry2({
     cancelRef.current = true;
     pickedRef.current = null;
     try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    if (abortRecRef.current) abortRecRef.current.aborted = true;
     try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     decisionRef.current?.("next");
     setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false);
     setCandidates([]); setInterim("");
-    closeSession(); // release the mic when the dialog closes
   }
 
   const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));
-  const setUp = micState === "granted" && modelPhase === "ready"; // render-safe
   const fieldClass = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] rounded-md px-2.5 py-1.5 text-sm focus:border-[var(--c-accent)] outline-none";
   const labelClass = "block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1";
 
@@ -776,9 +612,7 @@ export function VoiceTimeEntry2({
                   onClick={() => setShowSettings((s) => !s)}
                   aria-label="Voice settings"
                   title="Choose the voice and speed"
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
-                    showSettings ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"
-                  }`}
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${showSettings ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"}`}
                 >
                   <Settings size={14} />
                 </button>
@@ -787,9 +621,7 @@ export function VoiceTimeEntry2({
                   aria-label={muted ? "Unmute the voice" : "Mute the voice"}
                   title={muted ? "Voice is muted — tap to turn it back on" : "Mute the spoken voice for now"}
                   className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
-                    muted
-                      ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]"
-                      : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"
+                    muted ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink)]"
                   }`}
                 >
                   {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -816,91 +648,9 @@ export function VoiceTimeEntry2({
                   <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Speed — {rate.toFixed(2)}×</label>
                   <input type="range" min="0.8" max="1.4" step="0.02" value={rate} onChange={(e) => chooseRate(parseFloat(e.target.value))} className="w-full accent-[var(--c-accent)]" />
                 </div>
-                <p className="text-[11px] text-[var(--c-ink-muted)] leading-relaxed border-t border-[var(--c-border)] pt-2">
-                  Recognition is <span className="font-medium text-[var(--c-ink)]">100% on this device</span> (local Whisper) — your voice never goes to Google or any server. The model downloads once (~40–75 MB), then works offline.
-                </p>
               </div>
             )}
 
-            {setupMode ? (
-              <div className="mt-1 py-3 text-center">
-                <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--c-surface2)] text-[var(--c-accent)]">
-                  <Mic size={30} />
-                </div>
-                {voiceErr?.code === "insecure-context" && (
-                  <p className="mb-2 text-xs text-[var(--c-error)] leading-relaxed">{voiceErr.detail}</p>
-                )}
-
-                {micState === "denied" || micState === "system" ? (
-                  // Mic turned off for the site — short message, with details tucked away.
-                  <>
-                    <h3 className="font-[family-name:var(--font-display)] text-lg">Turn on your microphone</h3>
-                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">It&apos;s currently off for this site. Turn it on, then tap below.</p>
-                    <button onClick={() => location.reload()} className="mt-4 w-full rounded-md bg-[var(--c-accent)] px-4 py-3 text-base font-semibold text-[var(--c-on-accent)] hover:opacity-90">
-                      I turned it on — reload
-                    </button>
-                    {micHint && (
-                      <details className="mt-3 text-left">
-                        <summary className="text-xs text-[var(--c-ink-muted)] cursor-pointer">How do I turn it on?</summary>
-                        <p className="mt-1 text-xs text-[var(--c-ink-muted)] leading-relaxed">{micHint}</p>
-                      </details>
-                    )}
-                  </>
-                ) : setUp ? (
-                  // Ready — one button to go.
-                  <>
-                    <h3 className="font-[family-name:var(--font-display)] text-lg">Ready</h3>
-                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">Microphone on, voice ready. Everything runs on this device.</p>
-                    <button onClick={startEntry} className="mt-4 w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90">
-                      <Mic size={18} /> Start talking
-                    </button>
-                  </>
-                ) : micState === "granted" || modelPhase !== "idle" ? (
-                  // In progress — they've tapped; show one simple status line.
-                  <>
-                    <h3 className="font-[family-name:var(--font-display)] text-lg">Getting ready…</h3>
-                    <p className="mt-2 flex items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
-                      <Loader2 size={15} className="animate-spin" />
-                      {modelPhase === "downloading" ? `Downloading the voice… ${modelPct}%` : modelPhase === "error" ? "Download didn't finish" : "Setting up the voice…"}
-                    </p>
-                    {modelPhase === "downloading" && (
-                      <div className="mt-2 h-2 w-full rounded-full bg-[var(--c-surface2)] overflow-hidden">
-                        <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${modelPct}%` }} />
-                      </div>
-                    )}
-                    <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">One-time, ~40–75 MB. Saved for next time.</p>
-                    {modelPhase === "error" && (
-                      <button onClick={primeWhisper} className="mt-3 w-full rounded-md bg-[var(--c-accent)] px-4 py-2.5 text-sm font-semibold text-[var(--c-on-accent)] hover:opacity-90">Try again</button>
-                    )}
-                  </>
-                ) : (
-                  // Fresh — one tap, native popup, like Zoom.
-                  <>
-                    <h3 className="font-[family-name:var(--font-display)] text-lg">Turn on voice entry</h3>
-                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">One tap. Choose <span className="font-medium text-[var(--c-ink)]">Allow</span> when asked. Your voice stays on this device — nothing goes to Google.</p>
-                    <button onClick={beginSetup} className="mt-4 w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-accent)] px-4 py-3 text-base font-semibold text-[var(--c-on-accent)] hover:opacity-90">
-                      <Mic size={18} /> Turn on voice
-                    </button>
-                  </>
-                )}
-
-                <div className="mt-3 border-t border-[var(--c-border)] pt-2 text-left">
-                  <button onClick={() => setShowDiag((s) => !s)} className="text-[11px] text-[var(--c-ink-muted)] underline">
-                    {showDiag ? "Hide" : "Show"} technical details
-                  </button>
-                  {showDiag && (
-                    <div className="mt-1 rounded bg-[var(--c-surface2)] p-2 text-[10px] text-[var(--c-ink-muted)] leading-relaxed break-words font-mono">
-                      <div>device: {detectPlatform().label}</div>
-                      <div>secure: {String(typeof window !== "undefined" && window.isSecureContext)}</div>
-                      <div>mic: {micState}</div>
-                      <div>model: {modelPhase}{modelPhase === "downloading" ? ` ${modelPct}%` : ""}</div>
-                      {diag && <div className="mt-1 text-[var(--c-error)]">{diag}</div>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-            <>
             <p className="text-sm min-h-[40px]">{status}</p>
             <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
               {listening
@@ -939,16 +689,10 @@ export function VoiceTimeEntry2({
 
             {verifying && candidates.length === 0 && (
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => press(true)}
-                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
-                >
+                <button onClick={() => press(true)} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90">
                   <Check size={18} /> {labels.yes}
                 </button>
-                <button
-                  onClick={() => press(false)}
-                  className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-3 text-base font-semibold text-white hover:opacity-90"
-                >
+                <button onClick={() => press(false)} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-error)] px-4 py-3 text-base font-semibold text-white hover:opacity-90">
                   <X size={18} /> {labels.no}
                 </button>
               </div>
@@ -995,7 +739,7 @@ export function VoiceTimeEntry2({
             {saved && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={15} /> Added to your board.</p>}
             {!saved && (
               <p className="mt-3 text-[11px] text-[var(--c-ink-muted)] leading-relaxed">
-                Talk naturally — you can answer the moment it asks. Tap <span className="text-[var(--c-success)] font-medium">Correct</span> / <span className="text-[var(--c-error)] font-medium">Incorrect</span> to confirm or redo, edit any field above, then <span className="font-medium">Save</span>. <span className="text-[var(--c-accent)]">Mute</span> silences the voice; the gear changes it.
+                Talk naturally. Tap <span className="text-[var(--c-success)] font-medium">Correct</span> / <span className="text-[var(--c-error)] font-medium">Incorrect</span> to confirm or redo, edit any field above, then <span className="font-medium">Save</span>. <span className="text-[var(--c-accent)]">Mute</span> silences the voice; the gear changes it.
               </p>
             )}
 
@@ -1007,8 +751,6 @@ export function VoiceTimeEntry2({
               )}
               <button onClick={cancel} className="btn btn-outline text-sm py-2 px-4">{saved ? "Close" : "Cancel"}</button>
             </div>
-            </>
-            )}
           </div>
         </div>
       )}
