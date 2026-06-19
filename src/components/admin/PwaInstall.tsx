@@ -64,17 +64,31 @@ export function PwaInstall() {
     );
   }
 
-  // iPhone / iPad Safari — Add to Home Screen is the only real path (accurate).
+  const card = "mx-3 mb-2 rounded-md border border-[var(--c-dark-border)] bg-[var(--c-dark-surface)] px-3 py-2 text-[11px] text-[var(--c-dark-ink-muted)] leading-relaxed relative";
+  const close = <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="absolute right-1.5 top-1.5 text-[var(--c-dark-ink-muted)]"><X size={12} /></button>;
+
+  // iPhone / iPad Safari — Add to Home Screen is the only path.
   if (os === "ios" && browser === "safari") {
     return (
-      <div className="mx-3 mb-2 rounded-md border border-[var(--c-dark-border)] bg-[var(--c-dark-surface)] px-3 py-2 text-[11px] text-[var(--c-dark-ink-muted)] leading-relaxed relative">
-        <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="absolute right-1.5 top-1.5 text-[var(--c-dark-ink-muted)]"><X size={12} /></button>
+      <div className={card}>
+        {close}
         <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Share size={12} /> Add to Home Screen</span>
         Tap the <b>Share</b> button, then <b>“Add to Home Screen.”</b>
       </div>
     );
   }
 
-  // Otherwise show nothing — never point at a button that may not exist.
+  // Android — no address-bar install icon; it's in the browser menu.
+  if (os === "android") {
+    return (
+      <div className={card}>
+        {close}
+        <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Download size={12} /> Add to your home screen</span>
+        Open the browser menu (the <b>⋮</b> at the top), then tap <b>“Add to Home screen”</b> (or <b>“Install app”</b>).
+      </div>
+    );
+  }
+
+  // Desktop without the install event yet — nothing (the address-bar icon covers it).
   return null;
 }
