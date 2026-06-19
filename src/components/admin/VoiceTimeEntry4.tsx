@@ -289,8 +289,12 @@ export function VoiceTimeEntry4({
     return askDecision(`I have ${desc}.`, { yes: "Correct", no: "Incorrect" });
   }
 
-  /** Yes/no-style question. Tap green/red (interrupting the voice) or speak.
-   *  Resolves true for green, false for red. */
+  /** Yes/no-style question with true barge-in. A continuous recognizer runs the
+   *  whole time the prompt is being spoken, so the user can cut in with "yes"
+   *  (green) or "no" (red) at any moment — even mid-sentence. The instant the
+   *  word lands we stop talking and resolve. Tapping green/red still works too.
+   *  The prompt's own words are stripped from what we hear, so the spoken
+   *  question coming back through the speaker can't be mistaken for the answer. */
   function askDecision(
     speakText: string,
     opts: { yes: string; no: string; isAffirmative?: (s: string) => boolean; isNegative?: (s: string) => boolean } = { yes: "Correct", no: "Incorrect" },
@@ -298,27 +302,61 @@ export function VoiceTimeEntry4({
     if (cancelRef.current) return Promise.resolve(true);
     const yesFn = opts.isAffirmative ?? isYes;
     const noFn = opts.isNegative ?? isNo;
+    // A bare "yes"/"no" always maps to the green/red button, even when the
+    // question carries custom labels (the user wants: say "yes" for green,
+    // "no" for red, on every yes/no question).
+    const plainYes = (s: string) => /\b(yes|yeah|yep|yup)\b/i.test(s);
+    const plainNo = (s: string) => /\b(no|nope|nah)\b/i.test(s);
+    const ignore = new Set(speakText.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+
     return new Promise<boolean>((resolve) => {
       let settled = false;
+      let rec: any = null;
+      let restart: ReturnType<typeof setTimeout> | null = null;
+      const deadline = Date.now() + 60000; // stop re-listening after a minute (buttons remain)
+      const stop = () => {
+        if (restart) { clearTimeout(restart); restart = null; }
+        try { rec?.abort?.(); } catch { /* ignore */ }
+        rec = null;
+      };
       const finish = (ok: boolean) => {
         if (settled) return;
         settled = true; decisionRef.current = null;
-        try { recRef.current?.abort?.(); } catch { /* ignore */ }
+        try { window.speechSynthesis.cancel(); } catch { /* ignore */ } // stop talking immediately
+        stop();
+        setListening(false);
         resolve(ok);
       };
-      decisionRef.current = (d) => finish(d === "next");
+      decisionRef.current = (d) => finish(d === "next"); // green/red buttons
       setLabels({ yes: opts.yes, no: opts.no });
       setVerifying(true);
-      (async () => {
-        speak(speakText);
-        for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
-          const ans = await listenForAnswer(speakText);
-          if (settled || cancelRef.current) return;
-          if (noFn(ans)) { finish(false); return; }
-          if (yesFn(ans)) { finish(true); return; }
-          // Unclear — keep listening; the buttons stay live.
-        }
-      })();
+
+      const listenLoop = () => {
+        if (settled || cancelRef.current) return;
+        const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SR) return; // no recognizer → rely on the buttons
+        try { rec = new SR(); } catch { return; }
+        recRef.current = rec; // let press()/cancel() abort this one too
+        rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+        setListening(true);
+        rec.onresult = (e: any) => {
+          // Only the newly-updated results (this utterance), not the whole history.
+          let text = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
+          const said = text.toLowerCase().split(/\s+/)
+            .filter((w) => { const k = w.replace(/[^a-z0-9]/g, ""); return k && !ignore.has(k); })
+            .join(" ");
+          if (!said.trim()) return;
+          if (plainNo(said) || noFn(said)) { finish(false); return; }
+          if (plainYes(said) || yesFn(said)) { finish(true); return; }
+        };
+        rec.onerror = () => { /* keep listening */ };
+        rec.onend = () => { setListening(false); if (!settled && !cancelRef.current && Date.now() < deadline) restart = setTimeout(listenLoop, 200); };
+        try { rec.start(); } catch { if (Date.now() < deadline) restart = setTimeout(listenLoop, 300); }
+      };
+
+      speak(speakText); // fire the prompt; the mic is already open so they can butt in
+      listenLoop();
     });
   }
 
