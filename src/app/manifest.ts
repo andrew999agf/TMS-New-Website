@@ -1,12 +1,44 @@
 import type { MetadataRoute } from "next";
+import { getBlocks } from "@/lib/content";
 
 /**
- * PWA manifest. Scoped to /admin so "install" makes the admin/Time Tracker into
- * a home-screen app; the public marketing site is unaffected (it has no service
- * worker and isn't in this scope). Inert metadata — linked site-wide but only
- * actionable inside /admin.
+ * PWA manifest. The app icon reuses the website's favicon (admin-managed,
+ * stored as global.favicon); bundled icons are kept as a fallback so the app
+ * stays installable even if the favicon can't be fetched. Scoped to /admin so
+ * "install" makes the admin/Time Tracker a home-screen app; the public site is
+ * unaffected (no service worker, not in scope).
  */
-export default function manifest(): MetadataRoute.Manifest {
+export const dynamic = "force-dynamic";
+
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  let favicon = "";
+  try {
+    const blocks = await getBlocks("global");
+    favicon = (blocks["global.favicon"] || "").trim();
+  } catch { /* fall back to bundled icons */ }
+
+  const type = /\.svg($|\?)/i.test(favicon)
+    ? "image/svg+xml"
+    : /\.(jpe?g)($|\?)/i.test(favicon)
+    ? "image/jpeg"
+    : "image/png";
+
+  const fallback = [
+    { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" as const },
+    { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" as const },
+    { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" as const },
+  ];
+
+  const icons = favicon
+    ? [
+        { src: favicon, sizes: "any", type, purpose: "any" as const },
+        { src: favicon, sizes: "192x192", type, purpose: "any" as const },
+        { src: favicon, sizes: "512x512", type, purpose: "any" as const },
+        { src: favicon, sizes: "512x512", type, purpose: "maskable" as const },
+        ...fallback, // guarantees installability if the favicon can't load
+      ]
+    : fallback;
+
   return {
     name: "T. Maxwell Smith — Time Tracker",
     short_name: "TMS Time",
@@ -17,10 +49,6 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     background_color: "#14110F",
     theme_color: "#14110F",
-    icons: [
-      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-    ],
+    icons,
   };
 }

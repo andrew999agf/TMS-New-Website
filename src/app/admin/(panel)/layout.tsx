@@ -4,10 +4,10 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { hasDb } from "@/db";
 
 // Makes the admin installable as a home-screen app on iOS (Android uses the
-// site manifest). Scoped to the admin panel; the public site is unaffected.
+// site manifest). The home-screen icon inherits the site favicon from the root
+// layout. Scoped to the admin panel; the public site is unaffected.
 export const metadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "TMS Time" },
-  icons: { apple: "/apple-icon.png" },
 };
 
 export default async function AdminPanelLayout({
