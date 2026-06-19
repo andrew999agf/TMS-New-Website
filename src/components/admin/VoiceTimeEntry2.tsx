@@ -114,14 +114,11 @@ export function VoiceTimeEntry2({
         if (p.status === "downloading") { setModelPhase("downloading"); setModelPct(p.pct); }
         else if (p.status === "installing") { setModelPhase("installing"); setModelPct(100); }
       });
-      // Warm-up self-test: run one inference on silence. This catches WASM/init
-      // failures now (during setup) instead of on the user's first real entry,
-      // and makes that first entry fast.
-      setModelPhase("installing");
-      const { transcribe } = await import("@/lib/whisper");
-      await transcribe(new Float32Array(16000));
+      // Model is loaded — mark ready immediately so setup can't get stuck. Warm
+      // it up in the background (first real entry is then fast).
       whisperReadyRef.current = true;
       setModelPhase("ready"); setModelPct(100);
+      import("@/lib/whisper").then((m) => m.transcribe(new Float32Array(16000))).catch(() => {});
     } catch (e) {
       const msg = (e as Error).message || String(e);
       setModelPhase("error");
@@ -137,30 +134,26 @@ export function VoiceTimeEntry2({
     }
   }
 
-  /** Ask for the mic in the setup step; classify the failure precisely. */
-  async function requestMic(): Promise<boolean> {
+  /** Classify a getUserMedia failure into a friendly mic state + hint. */
+  async function classifyMicError(e: any) {
+    const name = e?.name || "Error";
+    const msg = String(e?.message || "").toLowerCase();
+    setDiag(`mic: ${name}: ${e?.message || ""}`);
+    let hasMic = true;
+    try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
+    const steps = micAllowSteps(detectPlatform());
+    if ((name === "NotFoundError" || name === "DevicesNotFoundError") && !hasMic) { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in (or use a phone), then try again."); }
+    else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is in use by another app (a call, camera…). Close it, then try again."); }
+    else if (msg.includes("system")) { setMicState("system"); setMicHint(steps); }
+    else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup. Tap “Turn on voice” again and choose Allow."); }
+    else { setMicState("denied"); setMicHint(steps); }
+  }
+
+  /** One tap: request the mic (native popup) AND start the model download. */
+  function beginSetup() {
     setVoiceErr(null); setMicHint("");
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) { setMicState("denied"); setMicHint("This browser can't access a microphone."); return false; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-      setMicState("granted");
-      return true;
-    } catch (e: any) {
-      const name = e?.name || "Error";
-      const msg = String(e?.message || "").toLowerCase();
-      setDiag(`mic: ${name}: ${e?.message || ""}`);
-      // Only check hardware on failure (Android hides devices until permission).
-      let hasMic = true;
-      try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
-      const steps = micAllowSteps(detectPlatform());
-      if ((name === "NotFoundError" || name === "DevicesNotFoundError") && !hasMic) { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in or use a device with a built-in mic, then try again."); }
-      else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is being used by another app (a call, camera, recorder…). Close it, then try again."); }
-      else if (msg.includes("system")) { setMicState("system"); setMicHint("Your device's system settings are blocking the browser's microphone. " + steps); }
-      else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup before choosing. Tap “Allow microphone” again and choose Allow."); }
-      else { setMicState("denied"); setMicHint("Microphone permission is blocked. " + steps); }
-      return false;
-    }
+    openSession();      // creates the audio context in this gesture + asks for the mic
+    primeWhisper();     // download/init the model in parallel
   }
 
   // On open: detect the current microphone permission, and start downloading
@@ -177,8 +170,7 @@ export function VoiceTimeEntry2({
         }
       } catch { /* Safari etc. — no Permissions API; we'll learn on request */ }
     })();
-    primeWhisper();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Model download starts when the user taps "Turn on voice" (beginSetup).
   }, []);
 
   // Build the list of English voices and choose one: the user's saved pick if
@@ -262,9 +254,10 @@ export function VoiceTimeEntry2({
         const source = ctx.createMediaStreamSource(stream);
         const s = { ctx, stream, source };
         sessionRef.current = s;
+        setMicState("granted"); setMicHint("");
         return s;
       })
-      .catch((e) => { try { ctx.close(); } catch { /* ignore */ } sessionPromiseRef.current = null; setDiag("session: " + (e as Error).message); throw e; });
+      .catch(async (e) => { try { ctx.close(); } catch { /* ignore */ } sessionPromiseRef.current = null; await classifyMicError(e); throw e; });
   }
   async function getSession(): Promise<any> {
     if (sessionRef.current) return sessionRef.current;
@@ -717,10 +710,12 @@ export function VoiceTimeEntry2({
       setVoiceErr({ title: "Needs a secure (https) page", detail: "The microphone only works over https. Open the site at its https address.", code: "insecure-context" });
       return;
     }
-    // First run (or after clearing data): walk the guided setup. Otherwise go.
+    // First run (or after clearing data): show the simple setup. Otherwise go.
     if (!isSetUp()) {
       setOpen(true); setSetupMode(true);
-      if (modelPhase === "idle" || modelPhase === "error") primeWhisper();
+      // Returning user whose mic is already allowed: load the (cached) model now,
+      // in this tap, so they don't have to press "Turn on voice" again.
+      if (micState === "granted") { openSession(); primeWhisper(); }
       return;
     }
     setSetupMode(false);
@@ -828,81 +823,68 @@ export function VoiceTimeEntry2({
             )}
 
             {setupMode ? (
-              <div className="mt-1 space-y-3">
-                <p className="text-sm font-medium">Quick one-time setup</p>
-                {voiceErr && voiceErr.code !== "whisper-load" && (
-                  <p className="rounded-md border border-[var(--c-error)] bg-[var(--c-surface2)] p-2.5 text-xs text-[var(--c-error)] leading-relaxed">{voiceErr.detail}</p>
+              <div className="mt-1 py-3 text-center">
+                <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--c-surface2)] text-[var(--c-accent)]">
+                  <Mic size={30} />
+                </div>
+                {voiceErr?.code === "insecure-context" && (
+                  <p className="mb-2 text-xs text-[var(--c-error)] leading-relaxed">{voiceErr.detail}</p>
                 )}
 
-                {/* Step 1 — Microphone */}
-                <div className="flex items-start gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
-                  <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${micState === "granted" ? "bg-[var(--c-success)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink-muted)]"}`}>
-                    {micState === "granted" ? <Check size={15} /> : "1"}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Microphone</p>
-                    {micState === "granted" ? (
-                      <p className="text-xs text-[var(--c-ink-muted)]">Allowed. Your voice stays on this device.</p>
-                    ) : micState === "denied" || micState === "system" ? (
-                      // Already blocked — the one-tap popup won't show; guide to reset.
-                      <>
-                        <p className="text-xs text-[var(--c-error)] leading-relaxed">{micHint || "Microphone is blocked for this site."}</p>
-                        <button onClick={() => location.reload()} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">
-                          <Check size={13} /> I&apos;ve allowed it — reload
-                        </button>
-                      </>
-                    ) : (
-                      // Fresh: one tap fires the browser's native Allow popup (like Zoom).
-                      <>
-                        <p className="text-xs text-[var(--c-ink-muted)] leading-relaxed">Tap below and choose <span className="font-medium">Allow</span> in the popup. It only asks once. Nothing is uploaded — recognition runs on your device.</p>
-                        <button onClick={requestMic} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">
-                          <Mic size={13} /> Allow microphone
-                        </button>
-                        {micHint && <p className="mt-2 text-xs text-[var(--c-error)] leading-relaxed">{micHint}</p>}
-                      </>
+                {micState === "denied" || micState === "system" ? (
+                  // Mic turned off for the site — short message, with details tucked away.
+                  <>
+                    <h3 className="font-[family-name:var(--font-display)] text-lg">Turn on your microphone</h3>
+                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">It&apos;s currently off for this site. Turn it on, then tap below.</p>
+                    <button onClick={() => location.reload()} className="mt-4 w-full rounded-md bg-[var(--c-accent)] px-4 py-3 text-base font-semibold text-[var(--c-on-accent)] hover:opacity-90">
+                      I turned it on — reload
+                    </button>
+                    {micHint && (
+                      <details className="mt-3 text-left">
+                        <summary className="text-xs text-[var(--c-ink-muted)] cursor-pointer">How do I turn it on?</summary>
+                        <p className="mt-1 text-xs text-[var(--c-ink-muted)] leading-relaxed">{micHint}</p>
+                      </details>
                     )}
-                  </div>
-                </div>
-
-                {/* Step 2 — Voice files */}
-                <div className="flex items-start gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
-                  <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${modelPhase === "ready" ? "bg-[var(--c-success)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink-muted)]"}`}>
-                    {modelPhase === "ready" ? <Check size={15} /> : (modelPhase === "downloading" || modelPhase === "installing") ? <Loader2 size={14} className="animate-spin" /> : "2"}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Voice files</p>
-                    {modelPhase === "ready" ? (
-                      <p className="text-xs text-[var(--c-ink-muted)]">Ready — works offline from now on.</p>
-                    ) : modelPhase === "error" ? (
-                      <>
-                        <p className="text-xs text-[var(--c-error)] leading-relaxed">The one-time download didn&apos;t finish. Check your internet, then retry.</p>
-                        <button onClick={primeWhisper} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">Retry download</button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--c-ink-muted)] mb-1">
-                          <span>{modelPhase === "installing" ? "Installing… almost ready" : "Downloading…"}</span>
-                          <span className="font-semibold text-[var(--c-ink)]">{modelPhase === "installing" ? "" : `${modelPct}%`}</span>
-                        </div>
-                        <div className="h-2.5 rounded-full bg-[var(--c-surface2)] overflow-hidden">
-                          <div className={`h-full rounded-full bg-[var(--c-accent)] ${modelPhase === "installing" ? "w-full animate-pulse" : "transition-[width] duration-300"}`} style={modelPhase === "installing" ? undefined : { width: `${modelPct}%` }} />
-                        </div>
-                        <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">One-time, ~40–75 MB. Keep this open — it&apos;s saved for next time.</p>
-                      </>
+                  </>
+                ) : setUp ? (
+                  // Ready — one button to go.
+                  <>
+                    <h3 className="font-[family-name:var(--font-display)] text-lg">Ready</h3>
+                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">Microphone on, voice ready. Everything runs on this device.</p>
+                    <button onClick={startEntry} className="mt-4 w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90">
+                      <Mic size={18} /> Start talking
+                    </button>
+                  </>
+                ) : micState === "granted" || modelPhase !== "idle" ? (
+                  // In progress — they've tapped; show one simple status line.
+                  <>
+                    <h3 className="font-[family-name:var(--font-display)] text-lg">Getting ready…</h3>
+                    <p className="mt-2 flex items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
+                      <Loader2 size={15} className="animate-spin" />
+                      {modelPhase === "downloading" ? `Downloading the voice… ${modelPct}%` : modelPhase === "error" ? "Download didn't finish" : "Setting up the voice…"}
+                    </p>
+                    {modelPhase === "downloading" && (
+                      <div className="mt-2 h-2 w-full rounded-full bg-[var(--c-surface2)] overflow-hidden">
+                        <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${modelPct}%` }} />
+                      </div>
                     )}
-                  </div>
-                </div>
+                    <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">One-time, ~40–75 MB. Saved for next time.</p>
+                    {modelPhase === "error" && (
+                      <button onClick={primeWhisper} className="mt-3 w-full rounded-md bg-[var(--c-accent)] px-4 py-2.5 text-sm font-semibold text-[var(--c-on-accent)] hover:opacity-90">Try again</button>
+                    )}
+                  </>
+                ) : (
+                  // Fresh — one tap, native popup, like Zoom.
+                  <>
+                    <h3 className="font-[family-name:var(--font-display)] text-lg">Turn on voice entry</h3>
+                    <p className="mt-1 text-sm text-[var(--c-ink-muted)]">One tap. Choose <span className="font-medium text-[var(--c-ink)]">Allow</span> when asked. Your voice stays on this device — nothing goes to Google.</p>
+                    <button onClick={beginSetup} className="mt-4 w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-accent)] px-4 py-3 text-base font-semibold text-[var(--c-on-accent)] hover:opacity-90">
+                      <Mic size={18} /> Turn on voice
+                    </button>
+                  </>
+                )}
 
-                <button
-                  onClick={startEntry}
-                  disabled={!setUp}
-                  className="w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Mic size={18} /> {setUp ? "Start talking" : "Finishing setup…"}
-                </button>
-                <p className="text-center text-[11px] text-[var(--c-ink-muted)]">100% on your device — nothing goes to Google or any server.</p>
-
-                <div className="border-t border-[var(--c-border)] pt-2">
+                <div className="mt-3 border-t border-[var(--c-border)] pt-2 text-left">
                   <button onClick={() => setShowDiag((s) => !s)} className="text-[11px] text-[var(--c-ink-muted)] underline">
                     {showDiag ? "Hide" : "Show"} technical details
                   </button>
