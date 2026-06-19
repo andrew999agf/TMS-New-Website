@@ -18,7 +18,7 @@ import { Tts } from "./tts";
 
 export class OnDeviceEngine implements VoiceEngine {
   readonly name = "on-device";
-  readonly tts = new Tts();
+  readonly tts: Tts;
 
   onInterim?: (text: string) => void;
   onSpeechStart?: () => void;
@@ -35,9 +35,10 @@ export class OnDeviceEngine implements VoiceEngine {
   private buffered: string | null = null; // captured during a prompt (barge-in)
   private speaking = false;
 
-  constructor(opts: { backend: Backend; preferScriptProcessor?: boolean }) {
+  constructor(opts: { backend: Backend; preferScriptProcessor?: boolean; tts?: Tts }) {
     this.backend = opts.backend;
     this.preferScriptProcessor = opts.preferScriptProcessor ?? false;
+    this.tts = opts.tts ?? new Tts();
   }
 
   /** Which capture path the VAD actually selected (for telemetry). */

@@ -2,21 +2,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play, AlertTriangle } from "lucide-react";
+import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play, AlertTriangle, ShieldCheck } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
 import { detectPlatform } from "@/lib/platform";
 import {
-  type MicState, type Group, engineGroup, hasSpeechRecognition, hasTTS, isSecure, isStandalone,
-  queryMic, watchMic, requestMic, failGuidance, unsupportedGuidance,
+  type MicState, engineGroup, isSecure, isStandalone,
+  queryMic, watchMic, requestMic, failGuidance, unsupportedGuidance, iosStandaloneMicBlocked,
 } from "@/lib/voice-mic";
+import { probeCapability, type Capability } from "@/lib/voice/backend";
+import { OnDeviceEngine } from "@/lib/voice/onDeviceEngine";
+import { Tts } from "@/lib/voice/tts";
+import type { LoadProgress } from "@/lib/voice/engine";
+import { reportDiag, type DiagRecord, type DiagStage } from "@/lib/voice/diag";
+import { APPROX_DOWNLOAD_MB } from "@/lib/voice/models";
 
 /**
- * Voice time entry — 3.0. Same proven capture flow as 2.0, but the microphone
- * permission is driven by a real state machine (see VOICE-ARCHITECTURE.md): it
- * KNOWS the permission state before acting, preserves the user gesture, gives
- * the exact reset steps for the device when blocked, and auto-recovers the
- * instant the permission is turned back on. The typed form always works, even
- * when voice can't.
+ * Voice time entry — 3.0. The microphone input is FULLY ON-DEVICE: our own
+ * capture → Silero VAD (knows when you start & stop) → Whisper transcription, all
+ * in the browser. Nothing the attorney says ever leaves the machine — no Google,
+ * no server. The prompts (which carry no client data) are spoken with the
+ * device voice. The typed form always works, even when voice can't.
  */
 
 const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
@@ -61,25 +66,28 @@ export function VoiceTimeEntry3({
   const [openDesc, setOpenDesc] = useState<string | null>(null);
   const pickedRef = useRef<string | null>(null);
   const cancelRef = useRef(false);
-  const recRef = useRef<any>(null);
   const runningRef = useRef(false);
   const [muted, setMuted] = useState(false);
   const muteRef = useRef(false);
   const [verifying, setVerifying] = useState(false);
   const decisionRef = useRef<((d: "next" | "redo") => void) | null>(null);
   const [labels, setLabels] = useState<{ yes: string; no: string }>({ yes: "Correct", no: "Incorrect" });
-  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+  // --- on-device voice engine ---
+  const ttsRef = useRef<Tts | null>(null);
+  const engineRef = useRef<OnDeviceEngine | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState("");
   const [rate, setRate] = useState(1.06);
-  const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
+  const [load, setLoad] = useState<LoadProgress | null>(null);
 
-  // --- mic permission state machine ---
+  // --- capability + mic permission state machine ---
+  const capRef = useRef<Capability | null>(null);
+  const [cap, setCap] = useState<Capability | null>(null);
   const micRef = useRef<MicState>("unknown");
   const [micState, setMicState] = useState<MicState>("unknown");
-  const [group, setGroup] = useState<Group>("chromium");
   const [gate, setGate] = useState<Gate>(null);
   const gateRef = useRef<Gate>(null);
   useEffect(() => { gateRef.current = gate; }, [gate]);
@@ -88,127 +96,99 @@ export function VoiceTimeEntry3({
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
 
-  // Detect engine + permission on mount; watch for live permission changes.
+  /** Merge per-attempt diagnostics with device context and ship it. No PII. */
+  function diag(stage: DiagStage, extra: Partial<DiagRecord> = {}) {
+    const c = capRef.current;
+    reportDiag({
+      platformLabel: c?.platform.label,
+      os: c?.platform.os,
+      browser: c?.platform.browser,
+      engineGroup: c ? engineGroup(c.platform) : undefined,
+      capture: c?.capture,
+      backend: c?.backend,
+      permission: micRef.current,
+      secure: c?.secure,
+      standalone: c?.standalone,
+      stage,
+      ...extra,
+    });
+  }
+
+  // Load device voices into the picker (no init needed — speechSynthesis is
+  // available immediately). Prompts carry no client data.
+  function loadVoices() {
+    const tts = ttsRef.current;
+    if (!tts) return;
+    const apply = () => {
+      const pool = tts.listVoices();
+      if (!pool.length) return;
+      setVoices(pool);
+      const savedName = localStorage.getItem("tms_tt3_voice");
+      const chosen = (savedName && pool.find((v) => v.name === savedName)) || tts.pickBest(pool);
+      tts.setVoice(chosen ?? null);
+      setVoiceName(chosen?.name ?? "");
+    };
+    apply();
+    const savedRate = parseFloat(localStorage.getItem("tms_tt3_rate") || "");
+    if (!Number.isNaN(savedRate)) { setRate(savedRate); tts.setRate(savedRate); }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.addEventListener("voiceschanged", apply);
+    }
+  }
+
+  // Probe capability + permission on mount; watch for live permission changes.
   useEffect(() => {
-    const p = detectPlatform();
-    const g = engineGroup(p);
-    setGroup(g);
-    if (g === "none" || !hasTTS()) { micRef.current = "unsupported"; setMicState("unsupported"); return; }
     let unsub = () => {};
     (async () => {
+      const probed = await probeCapability();
+      capRef.current = probed;
+      setCap(probed);
+      ttsRef.current = new Tts();
+      loadVoices();
+      const voiceOk = probed.hasGetUserMedia && probed.capture !== "none" && probed.hasWasm;
+      if (!voiceOk) { micRef.current = "unsupported"; setMicState("unsupported"); diag("capability", { success: false, reason: "unsupported" }); return; }
+      diag("capability", { success: true });
       const s = await queryMic();
       micRef.current = s; setMicState(s);
       unsub = await watchMic((ns) => {
         micRef.current = ns; setMicState(ns);
-        // Auto-recover: if we were blocked and the user just allowed it, clear.
         if ((ns === "granted" || ns === "prompt") && gateRef.current?.kind === "denied") {
-          setGate({ kind: "ready", msg: "Microphone is on. Tap the mic to start." });
+          setGate({ kind: "ready", msg: "Microphone is on. Tap Start to begin." });
         }
       });
     })();
-    return () => unsub();
+    return () => { unsub(); engineRef.current?.dispose(); };
   }, []);
 
   // Reset mute when the user leaves the tab.
   useEffect(() => {
-    const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
+    const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; engineRef.current?.setMuted(false); } };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
 
-  // Natural device-voice picker.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const best = (pool: SpeechSynthesisVoice[]) => {
-      const prefers = [/natural/i, /neural/i, /google us english/i, /\baria\b/i, /\bjenny\b/i, /\bava\b/i, /samantha/i, /siri/i, /premium/i, /enhanced/i, /\bzira\b/i, /google/i];
-      for (const re of prefers) { const v = pool.find((x) => re.test(x.name)); if (v) return v; }
-      return pool.find((v) => v.localService) ?? pool[0] ?? null;
-    };
-    const load = () => {
-      const all = window.speechSynthesis.getVoices();
-      if (!all.length) return;
-      const en = all.filter((v) => /^en\b|^en[-_]/i.test(v.lang));
-      const pool = en.length ? en : all;
-      setVoices(pool);
-      const saved = localStorage.getItem("tms_tt3_voice");
-      const chosen = (saved && pool.find((v) => v.name === saved)) || best(pool);
-      voiceRef.current = chosen ?? null;
-      setVoiceName(chosen?.name ?? "");
-    };
-    load();
-    const savedRate = parseFloat(localStorage.getItem("tms_tt3_rate") || "");
-    if (!Number.isNaN(savedRate)) { setRate(savedRate); rateRef.current = savedRate; }
-    window.speechSynthesis.addEventListener("voiceschanged", load);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-  }, []);
-
+  /* ---- TTS voice picker (device voices; prompts carry no client data) ---- */
   function chooseVoice(name: string) {
-    const v = voices.find((x) => x.name === name) ?? null;
-    voiceRef.current = v; setVoiceName(name);
+    ttsRef.current?.setVoiceByName(name); setVoiceName(name);
     try { localStorage.setItem("tms_tt3_voice", name); } catch { /* ignore */ }
   }
   function chooseRate(r: number) {
-    setRate(r); rateRef.current = r;
+    setRate(r); ttsRef.current?.setRate(r);
     try { localStorage.setItem("tms_tt3_rate", String(r)); } catch { /* ignore */ }
   }
-  function previewVoice() {
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance("Case and rate? Two hours, research, today.");
-      if (voiceRef.current) u.voice = voiceRef.current;
-      u.rate = rateRef.current; u.pitch = 1.0;
-      window.speechSynthesis.speak(u);
-    } catch { /* ignore */ }
-  }
+  function previewVoice() { ttsRef.current?.speak("Case and rate? Two hours, research, today."); }
 
+  /* ---- engine I/O wrappers (the conversation logic talks only to these) ---- */
   function speak(text: string): Promise<void> {
     setStatus(text);
-    if (muteRef.current) return Promise.resolve();
-    return new Promise((res) => {
-      try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        if (voiceRef.current) u.voice = voiceRef.current;
-        u.rate = rateRef.current; u.pitch = 1.0;
-        u.onend = () => res();
-        u.onerror = () => res();
-        window.speechSynthesis.speak(u);
-      } catch { res(); }
-    });
+    return engineRef.current?.speak(text) ?? Promise.resolve();
   }
-
-  function listen(): Promise<string> {
-    return new Promise((res) => {
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SR) return res("");
-      const rec = new SR();
-      recRef.current = rec;
-      rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
-      let done = false; let finalText = "";
-      const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
-      setListening(true); setHeard(""); setInterim("");
-      rec.onresult = (e: any) => {
-        let live = "";
-        for (let i = 0; i < e.results.length; i++) {
-          const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript;
-          else live += r[0].transcript;
-        }
-        setInterim((finalText + live).trim());
-      };
-      rec.onerror = (e: any) => {
-        const code = e?.error || "error";
-        setLastErr(`recognition: ${code}`);
-        if (code === "not-allowed" || code === "service-not-allowed") {
-          cancelRef.current = true;
-          micRef.current = "denied"; setMicState("denied");
-          setGate({ kind: "denied", msg: failGuidance("denied", detectPlatform()) });
-        }
-        finish(finalText);
-      };
-      rec.onend = () => finish(finalText);
-      try { rec.start(); } catch { setListening(false); res(""); }
-    });
+  function listen(timeoutMs?: number): Promise<string> {
+    return engineRef.current?.listen({ timeoutMs }) ?? Promise.resolve("");
+  }
+  function stopIO() {
+    engineRef.current?.stopSpeaking();
+    engineRef.current?.abortListen();
   }
 
   async function listenForAnswer(prompt: string, tries = 2): Promise<string> {
@@ -241,14 +221,13 @@ export function VoiceTimeEntry3({
     setMuted((m) => {
       const next = !m;
       muteRef.current = next;
-      if (next) { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } }
+      engineRef.current?.setMuted(next);
       return next;
     });
   }
 
   function press(next: boolean) {
-    try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    stopIO();
     decisionRef.current?.(next ? "next" : "redo");
   }
 
@@ -265,7 +244,7 @@ export function VoiceTimeEntry3({
         if (settled) return;
         settled = true;
         decisionRef.current = null;
-        try { recRef.current?.abort?.(); } catch { /* ignore */ }
+        engineRef.current?.abortListen();
         resolve(ok);
       };
       decisionRef.current = (d) => finish(d === "next");
@@ -422,8 +401,7 @@ export function VoiceTimeEntry3({
   }
   function tapCandidate(displayNumber: string) {
     pickedRef.current = displayNumber;
-    try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    stopIO();
   }
   async function resolveMatter(spoken: string, attempt = 1): Promise<string | undefined> {
     if (cancelRef.current) return undefined;
@@ -559,15 +537,16 @@ export function VoiceTimeEntry3({
 
   async function commit(s: Slots): Promise<void> {
     const user = defaultUser;
-    const rate = s.rate ?? defaultRate;
+    const rateV = s.rate ?? defaultRate;
     const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
     const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
     onAdd({
       matter: (s.matter || "").trim(), entryDate: s.date || todayISO(), activityDescription: "", note,
-      price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
+      price: fix(rateV, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable,
     });
+    diag("done", { success: true });
     const savedMatter = (s.matter || "").trim();
-    const savedRate = rate;
+    const savedRate = rateV;
     setSaved(true);
     await speak("Saved.");
     if (cancelRef.current) return;
@@ -586,33 +565,78 @@ export function VoiceTimeEntry3({
     else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
+  /** Build + initialise the on-device engine (downloads models on first run),
+   *  wiring its live callbacks into the UI. */
+  async function ensureEngine(): Promise<boolean> {
+    if (engineRef.current) return true;
+    const c = capRef.current;
+    if (!c) return false;
+    const engine = new OnDeviceEngine({ backend: c.backend, preferScriptProcessor: c.capture === "scriptprocessor", tts: ttsRef.current ?? undefined });
+    engine.onListeningChange = (l) => { setListening(l); if (l) { setHeard(""); setInterim(""); } };
+    engine.onInterim = (t) => { setHeard(t); setInterim(""); };
+    engine.setMuted(muteRef.current);
+    engineRef.current = engine;
+    try {
+      await engine.init((p) => setLoad(p));
+      setLoad(null);
+      const updated = { ...c, capture: engine.captureKind };
+      capRef.current = updated;
+      setCap(updated);
+      diag("stt", { success: true, capture: engine.captureKind });
+      return true;
+    } catch (e: any) {
+      const msg = String(e?.message ?? e).slice(0, 200);
+      setLastErr(`engine: ${msg}`);
+      setLoad({ phase: "error", ratio: null, label: "Couldn't start voice." });
+      diag("stt", { success: false, reason: "engine-init", message: msg });
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      return false;
+    }
+  }
+
   /**
-   * The gate. This handler must branch on the CACHED permission state (read
-   * synchronously) and call requestMic with no await before it, to keep the
-   * user gesture alive (see VOICE-ARCHITECTURE.md §2).
+   * The gate. Branch on the CACHED permission state (read synchronously) and call
+   * requestMic with no await before it, to keep the user gesture alive (see
+   * VOICE-ARCHITECTURE.md §2).
    */
   async function run() {
     if (runningRef.current) return;
     setOpen(true); setSaved(false); setStatus(""); setGate(null);
     const p = detectPlatform();
+    const cap = capRef.current;
 
-    if (!hasSpeechRecognition() || !hasTTS()) { setGate({ kind: "unsupported", msg: unsupportedGuidance(p) }); return; }
-    if (!isSecure()) { setGate({ kind: "error", msg: failGuidance("insecure", p) }); return; }
+    if (!cap || micRef.current === "unsupported") { setGate({ kind: "unsupported", msg: unsupportedGuidance(p) }); return; }
+    if (!cap.secure) { setGate({ kind: "error", msg: failGuidance("insecure", p) }); return; }
+    if (iosStandaloneMicBlocked(p)) {
+      setGate({ kind: "error", msg: "On an installed app, iOS blocks the mic below iOS 16.4. Open this site in Safari, or update iOS." });
+      diag("permission", { success: false, reason: "ios-standalone" });
+      return;
+    }
 
     const state = micRef.current; // read synchronously — DO NOT await before requestMic
-    if (state === "granted") { captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false); return; }
-    if (state === "denied") { setGate({ kind: "denied", msg: failGuidance("denied", p) }); return; }
+    if (state === "granted") { void startConversation(); return; }
+    if (state === "denied") { setGate({ kind: "denied", msg: failGuidance("denied", p) }); diag("permission", { success: false, reason: "denied" }); return; }
 
     // prompt / unknown → request in this gesture
     const res = await requestMic();
     if (res.ok) {
       micRef.current = "granted"; setMicState("granted");
-      captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
+      diag("permission", { success: true });
+      void startConversation();
     } else {
       setLastErr(`getUserMedia: ${res.error}`);
       if (res.reason === "denied") { micRef.current = "denied"; setMicState("denied"); }
+      diag("permission", { success: false, reason: res.reason });
       setGate({ kind: res.reason === "denied" ? "denied" : "error", msg: failGuidance(res.reason, p) });
     }
+  }
+
+  async function startConversation() {
+    ttsRef.current?.unlock(); // iOS: unlock audio inside the gesture
+    const ok = await ensureEngine();
+    if (!ok) { setGate({ kind: "error", msg: "Voice couldn't start on this device. You can type the entry below." }); return; }
+    void captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
   async function saveReview() {
@@ -625,15 +649,14 @@ export function VoiceTimeEntry3({
   function cancel() {
     cancelRef.current = true;
     pickedRef.current = null;
-    try { recRef.current?.abort?.(); } catch { /* ignore */ }
-    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    stopIO();
     decisionRef.current?.("next");
     setVerifying(false);
     runningRef.current = false; setListening(false); setOpen(false);
     setCandidates([]); setInterim("");
   }
 
-  const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));
+  const upd = (patch: Partial<Slots>) => setSlots((prev) => ({ ...prev, ...patch }));
   const fieldClass = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] rounded-md px-2.5 py-1.5 text-sm focus:border-[var(--c-accent)] outline-none";
   const labelClass = "block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1";
 
@@ -666,6 +689,8 @@ export function VoiceTimeEntry3({
               </div>
             </div>
 
+            <p className="mb-3 flex items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]"><ShieldCheck size={13} className="text-[var(--c-success)]" /> Your voice is transcribed on this device — it never leaves.</p>
+
             {showSettings && (
               <div className="mb-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 space-y-3">
                 <div>
@@ -682,6 +707,16 @@ export function VoiceTimeEntry3({
                   <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Speed — {rate.toFixed(2)}×</label>
                   <input type="range" min="0.8" max="1.4" step="0.02" value={rate} onChange={(e) => chooseRate(parseFloat(e.target.value))} className="w-full accent-[var(--c-accent)]" />
                 </div>
+              </div>
+            )}
+
+            {load && (load.phase === "loading" || load.phase === "warming") && (
+              <div className="mb-3 rounded-md border border-[var(--c-accent)] bg-[var(--c-surface2)] p-3 text-xs">
+                <p className="flex items-center gap-1.5 text-[var(--c-ink)]"><Loader2 size={14} className="animate-spin" /> {load.label || "Preparing voice…"}</p>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--c-border)]">
+                  <div className="h-full bg-[var(--c-accent)] transition-[width]" style={{ width: load.ratio != null ? `${Math.round(load.ratio * 100)}%` : "40%" }} />
+                </div>
+                <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">First run downloads the on-device speech model (~{APPROX_DOWNLOAD_MB.vad + APPROX_DOWNLOAD_MB.stt} MB). It&apos;s cached after this.</p>
               </div>
             )}
 
@@ -762,7 +797,7 @@ export function VoiceTimeEntry3({
               {showDiag && (
                 <div className="mt-1 rounded bg-[var(--c-surface2)] p-2 text-[10px] text-[var(--c-ink-muted)] leading-relaxed break-words font-mono">
                   <div>device: {detectPlatform().label}{isStandalone() ? " · installed app" : ""}</div>
-                  <div>engine: {group}{hasSpeechRecognition() ? " · recognition ✓" : " · no recognition"}</div>
+                  <div>capture: {cap?.capture ?? "?"} · backend: {cap?.backend ?? "?"}</div>
                   <div>permission: {micState}</div>
                   <div>secure: {String(isSecure())}</div>
                   {lastErr && <div className="mt-1 text-[var(--c-error)]">{lastErr}</div>}

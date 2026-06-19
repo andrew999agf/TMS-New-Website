@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored, minified static assets (e.g. the Silero VAD AudioWorklet).
+    "public/**",
   ]),
   {
     rules: {
