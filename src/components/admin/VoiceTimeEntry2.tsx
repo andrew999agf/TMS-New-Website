@@ -75,10 +75,8 @@ export function VoiceTimeEntry2({
   const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
   const [voiceErr, setVoiceErr] = useState<{ title: string; detail: string; code: string } | null>(null);
-  // Recognition engine: "browser" (Chrome/Safari built-in) or "ondevice"
-  // (local Whisper — private, offline, downloads once).
-  const [engine, setEngine] = useState<"browser" | "ondevice">("browser");
-  const engineRef = useRef<"browser" | "ondevice">("browser");
+  // Recognition is 100% on-device (local Whisper) — no Google, nothing leaves
+  // the phone. Audio is recorded and transcribed right here in the browser.
   const whisperReadyRef = useRef(false);
   const abortRecRef = useRef<{ aborted: boolean } | null>(null);
   const [modelPct, setModelPct] = useState<number | null>(null); // download bar
@@ -87,9 +85,7 @@ export function VoiceTimeEntry2({
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
 
-  const browserSR = typeof window !== "undefined" && Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-  const hasSynth = typeof window !== "undefined" && Boolean(window.speechSynthesis);
-  const supported = (browserSR || engine === "ondevice") && hasSynth;
+  const supported = typeof window !== "undefined" && Boolean(navigator?.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
 
   useEffect(() => {
     const onHide = () => { if (document.hidden) { setMuted(false); muteRef.current = false; } };
@@ -99,12 +95,12 @@ export function VoiceTimeEntry2({
 
   // Remember the user's engine choice between sessions.
   useEffect(() => {
-    const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tms_tt2_engine")) as "browser" | "ondevice" | null;
-    if (saved === "ondevice" || saved === "browser") { setEngine(saved); engineRef.current = saved; }
+    // Prime the on-device model as soon as the page is open so the first entry
+    // isn't waiting on a download (shows the progress bar if it isn't cached).
+    primeWhisper();
   }, []);
 
-  /** Download + initialize the local Whisper model, driving the progress bar.
-   *  Falls back to the browser recognizer if it can't load. */
+  /** Download + initialize the local Whisper model, driving the progress bar. */
   async function primeWhisper(): Promise<void> {
     if (whisperReadyRef.current) return;
     try {
@@ -119,15 +115,8 @@ export function VoiceTimeEntry2({
       setTimeout(() => setModelPct(null), 1500);
     } catch (e) {
       setModelPct(null);
-      setEngine("browser"); engineRef.current = "browser";
-      setVoiceErr({ title: "Couldn't load the on-device voice", detail: "Switched back to the browser recognizer. " + (e as Error).message, code: "whisper-load" });
+      setVoiceErr({ title: "Couldn't load the on-device voice model", detail: "The local speech model didn't finish loading. Check your connection for the one-time download, then tap Try again. " + (e as Error).message, code: "whisper-load" });
     }
-  }
-
-  function chooseEngine(next: "browser" | "ondevice") {
-    setEngine(next); engineRef.current = next;
-    try { localStorage.setItem("tms_tt2_engine", next); } catch { /* ignore */ }
-    if (next === "ondevice" && !whisperReadyRef.current) primeWhisper();
   }
 
   // Build the list of English voices and choose one: the user's saved pick if
@@ -194,14 +183,12 @@ export function VoiceTimeEntry2({
     });
   }
 
-  // Dispatch to the chosen engine: local Whisper when ready, else the browser.
+  /** Record a turn and transcribe it locally with Whisper — 100% on-device. */
   function listen(): Promise<string> {
-    if (engineRef.current === "ondevice" && whisperReadyRef.current) return listenWhisper();
-    return listenBrowser();
+    return listenWhisper();
   }
-
-  /** Record a turn and transcribe it locally with Whisper. */
   async function listenWhisper(): Promise<string> {
+    if (!whisperReadyRef.current) { await primeWhisper(); if (!whisperReadyRef.current) return ""; }
     setListening(true); setHeard(""); setInterim("");
     try {
       const { recordTurn, transcribe } = await import("@/lib/whisper");
@@ -217,49 +204,6 @@ export function VoiceTimeEntry2({
       setListening(false); setInterim("");
       return "";
     }
-  }
-
-  // Listen for a single utterance with the browser recognizer (live words).
-  function listenBrowser(): Promise<string> {
-    return new Promise((res) => {
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SR) return res("");
-      const rec = new SR();
-      recRef.current = rec;
-      rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
-      let done = false; let finalText = "";
-      const finish = (t: string) => { if (done) return; done = true; setListening(false); setHeard(t.trim()); setInterim(""); res(t.trim()); };
-      setListening(true); setHeard(""); setInterim("");
-      rec.onresult = (e: any) => {
-        let live = "";
-        for (let i = 0; i < e.results.length; i++) {
-          const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript;
-          else live += r[0].transcript;
-        }
-        setInterim((finalText + live).trim());
-      };
-      rec.onerror = (e: any) => {
-        const code = e?.error || "error";
-        // Silence/abort aren't real failures — just end this listen.
-        if (code === "no-speech" || code === "aborted") { finish(finalText); return; }
-        cancelRef.current = true;
-        const detail =
-          code === "not-allowed" || code === "service-not-allowed"
-            ? "Chrome blocked the microphone for speech. Allow it via the microphone icon in the address bar AND your computer's privacy settings (System Settings/Settings ▸ Microphone ▸ Chrome), and make sure you're not in Incognito or Guest mode."
-          : code === "network"
-            ? "Chrome couldn't reach its speech service. Live recognition sends audio to Google's servers, so this is usually a VPN, firewall, or offline issue. Try a different network, turn off a VPN, or disable extensions — then tap Try again."
-          : code === "audio-capture"
-            ? "No microphone was detected. Check your audio input device and try again."
-          : code === "language-not-supported"
-            ? "The speech language isn't available in this browser."
-          : "Speech recognition stopped unexpectedly.";
-        setVoiceErr({ title: "Voice recognition stopped", detail, code });
-        finish(finalText);
-      };
-      rec.onend = () => finish(finalText);
-      try { rec.start(); } catch { setListening(false); res(""); }
-    });
   }
 
   /** Listen for the user's actual answer; mic opens the instant the question
@@ -695,13 +639,14 @@ export function VoiceTimeEntry2({
 
   async function run() {
     if (runningRef.current) return;
-    if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
+    if (!supported) { alert("This browser can't record audio. Try Chrome, Edge, or Safari."); return; }
     setVoiceErr(null);
     if (!(await ensureMic())) return;
-    // On-device: make sure the model is downloaded/ready first (shows the bar).
-    if (engineRef.current === "ondevice" && !whisperReadyRef.current) {
+    // Make sure the on-device model is downloaded/ready first (shows the bar).
+    if (!whisperReadyRef.current) {
       setOpen(true);
       await primeWhisper();
+      if (!whisperReadyRef.current) return; // load failed; error shown
     }
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
@@ -799,14 +744,9 @@ export function VoiceTimeEntry2({
                   <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Speed — {rate.toFixed(2)}×</label>
                   <input type="range" min="0.8" max="1.4" step="0.02" value={rate} onChange={(e) => chooseRate(parseFloat(e.target.value))} className="w-full accent-[var(--c-accent)]" />
                 </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1">Recognition</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => chooseEngine("browser")} className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${engine === "browser" ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}>Browser (Google)</button>
-                    <button onClick={() => chooseEngine("ondevice")} className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${engine === "ondevice" ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}>On-device (private)</button>
-                  </div>
-                  <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">On-device runs Whisper right in your browser — no Google, works offline. Downloads once (~40–75 MB), then it&apos;s cached.</p>
-                </div>
+                <p className="text-[11px] text-[var(--c-ink-muted)] leading-relaxed border-t border-[var(--c-border)] pt-2">
+                  Recognition is <span className="font-medium text-[var(--c-ink)]">100% on this device</span> (local Whisper) — your voice never goes to Google or any server. The model downloads once (~40–75 MB), then works offline.
+                </p>
               </div>
             )}
 
