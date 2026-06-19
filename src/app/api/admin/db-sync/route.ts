@@ -121,6 +121,30 @@ const DDL = [
   )`,
   // Allow the new "focal" content-block type used for page-banner positions.
   `ALTER TYPE block_type ADD VALUE IF NOT EXISTS 'focal'`,
+  // Voice-entry diagnostics (Time Tracker 3.0). No audio/transcript/PII.
+  `CREATE TABLE IF NOT EXISTS voice_diagnostics (
+    id serial PRIMARY KEY,
+    day varchar(10) NOT NULL,
+    platform_label varchar(128),
+    os varchar(16),
+    browser varchar(16),
+    engine_group varchar(16),
+    capture varchar(24),
+    backend varchar(16),
+    permission varchar(16),
+    secure boolean,
+    standalone boolean,
+    stage varchar(24),
+    success boolean NOT NULL DEFAULT false,
+    reason varchar(32),
+    message varchar(256),
+    sample_rate integer,
+    capture_ms integer,
+    transcribe_ms integer,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
+  `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
 ];
 
 export async function POST() {

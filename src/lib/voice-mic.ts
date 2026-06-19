@@ -108,3 +108,27 @@ export function unsupportedGuidance(p: Platform = detectPlatform()): string {
   if (p.os === "ios") return "On iPhone/iPad, voice works in Safari. Open this site in Safari — or just type the entry below.";
   return "This browser doesn't support voice typing. Use Chrome, Edge, or Safari — or just type the entry below.";
 }
+
+/** Does the device actually have a microphone input? (Labels are hidden until
+ *  permission, but the presence of an audioinput device is visible.) Used to
+ *  give a clean "no microphone" message instead of a confusing NotFoundError. */
+export async function enumerateAudioInputs(): Promise<number> {
+  try {
+    if (!navigator.mediaDevices?.enumerateDevices) return -1; // unknown
+    const ds = await navigator.mediaDevices.enumerateDevices();
+    return ds.filter((d) => d.kind === "audioinput").length;
+  } catch {
+    return -1;
+  }
+}
+
+/** iOS standalone (Add-to-Home-Screen) PWAs below iOS 16.4 silently block
+ *  getUserMedia. Detect that specific trap so we can guide the user. */
+export function iosStandaloneMicBlocked(p: Platform = detectPlatform()): boolean {
+  if (p.os !== "ios" || !isStandalone()) return false;
+  const m = typeof navigator !== "undefined" ? navigator.userAgent.match(/OS (\d+)_(\d+)/) : null;
+  if (!m) return false;
+  const major = parseInt(m[1], 10);
+  const minor = parseInt(m[2], 10);
+  return major < 16 || (major === 16 && minor < 4);
+}

@@ -522,6 +522,41 @@ export const pageViews = pgTable(
   }),
 );
 
+/**
+ * Voice-entry diagnostics (Time Tracker 3.0). One row per voice attempt so we
+ * can SEE what happens on real staff devices instead of guessing. Deliberately
+ * carries NO audio, NO transcript, NO email, NO IP — only device capability and
+ * which pipeline stage succeeded/failed.
+ */
+export const voiceDiagnostics = pgTable(
+  "voice_diagnostics",
+  {
+    id: serial("id").primaryKey(),
+    day: varchar("day", { length: 10 }).notNull(), // YYYY-MM-DD
+    platformLabel: varchar("platform_label", { length: 128 }), // "Chrome on Android"
+    os: varchar("os", { length: 16 }),
+    browser: varchar("browser", { length: 16 }),
+    engineGroup: varchar("engine_group", { length: 16 }), // chromium | safari | none
+    capture: varchar("capture", { length: 24 }), // audioworklet | scriptprocessor | none
+    backend: varchar("backend", { length: 16 }), // webgpu | wasm | none
+    permission: varchar("permission", { length: 16 }), // granted|prompt|denied|unknown|unsupported
+    secure: boolean("secure"),
+    standalone: boolean("standalone"),
+    stage: varchar("stage", { length: 24 }), // capability|permission|capture|vad|stt|tts|done
+    success: boolean("success").notNull().default(false),
+    reason: varchar("reason", { length: 32 }), // failure reason enum
+    message: varchar("message", { length: 256 }), // raw error, truncated
+    sampleRate: integer("sample_rate"),
+    captureMs: integer("capture_ms"),
+    transcribeMs: integer("transcribe_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    dayIdx: index("voice_diag_day_idx").on(t.day),
+    browserIdx: index("voice_diag_browser_idx").on(t.browser),
+  }),
+);
+
 export type Admin = typeof admins.$inferSelect;
 export type ContentBlock = typeof contentBlocks.$inferSelect;
 export type PracticeArea = typeof practiceAreas.$inferSelect;
