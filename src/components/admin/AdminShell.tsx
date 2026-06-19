@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
 import { allowedSections, sectionForPath } from "@/lib/admin-sections";
+import { PwaInstall } from "@/components/admin/PwaInstall";
 
 const NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -129,6 +130,8 @@ export function AdminShell({
             );
           })}
         </nav>
+
+        {!collapsed && <PwaInstall />}
 
         <div className={`border-t border-[var(--c-dark-border)] ${collapsed ? "p-2" : "p-4"}`}>
           <Link

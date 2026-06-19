@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { hasDb } from "@/db";
+
+// Makes the admin installable as a home-screen app on iOS (Android uses the
+// site manifest). Scoped to the admin panel; the public site is unaffected.
+export const metadata: Metadata = {
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "TMS Time" },
+  icons: { apple: "/apple-icon.png" },
+};
 
 export default async function AdminPanelLayout({
   children,
