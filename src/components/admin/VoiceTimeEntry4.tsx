@@ -165,6 +165,8 @@ export function VoiceTimeEntry4({
         finish(finalText);
       };
       rec.onend = () => finish(finalText);
+      // The mic actually opened → clear any stale "blocked" banner from earlier.
+      rec.onstart = () => setMicError(null);
       try { rec.start(); } catch { setListening(false); res(""); }
     });
   }

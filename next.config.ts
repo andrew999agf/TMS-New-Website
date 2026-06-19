@@ -4,7 +4,12 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // Allow the microphone for our OWN origin only (the Time Tracker voice entry
+  // needs it); still deny camera/geolocation and deny the mic to any third-party
+  // iframe. `microphone=()` here previously blocked our own pages too, which
+  // made SpeechRecognition / getUserMedia throw "not-allowed" no matter what the
+  // user's browser or OS mic setting was.
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
   { key: "X-DNS-Prefetch-Control", value: "on" },
 ];
 
