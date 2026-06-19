@@ -154,6 +154,9 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
   const isNB = (e: EntryView) => e.nonBillable;
   const billable = activeShown.reduce((s, e) => s + (isNB(e) ? 0 : e.quantity), 0);
   const totalHours = activeShown.reduce((s, e) => s + e.quantity, 0);
+  // Total billing = sum of (each entry's own rate × its hours) for billable entries.
+  const billingAmount = activeShown.reduce((s, e) => s + (isNB(e) ? 0 : e.price * e.quantity), 0);
+  const billingDisplay = `$${(Math.round(billingAmount * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   /* CSV */
   function buildCsv(list: EntryView[]) {
@@ -223,8 +226,8 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
           </div>
           {me.admin && <button onClick={() => setSettingsOpen(true)} className="btn btn-outline text-sm py-2 px-3"><Settings size={15} /> Settings</button>}
         </div>
-        <div className="grid grid-cols-3 gap-4 mt-6">
-          {[{ v: fix(totalHours, 1), l: "Hours on Board" }, { v: activeShown.length, l: "Active Entries" }, { v: fix(billable, 1), l: "Billable Hours" }].map((s) => (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+          {[{ v: fix(totalHours, 1), l: "Hours on Board" }, { v: activeShown.length, l: "Active Entries" }, { v: fix(billable, 1), l: "Billable Hours" }, { v: billingDisplay, l: "Total Billing" }].map((s) => (
             <div key={s.l} className="rounded-lg bg-[var(--c-surface2)] p-4 text-center">
               <div className="font-[family-name:var(--font-display)] text-3xl text-[var(--c-accent)] leading-none">{s.v}</div>
               <div className="text-xs text-[var(--c-ink-muted)] mt-1">{s.l}</div>
