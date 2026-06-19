@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from "react";
-import { Download, Share, X, MoreVertical } from "lucide-react";
+import { Download, Share, X } from "lucide-react";
 import { detectPlatform } from "@/lib/platform";
 
 /**
@@ -52,12 +52,7 @@ export function PwaInstall() {
 
   if (installed || dismissed) return null;
 
-  const card = "mx-3 mb-2 rounded-md border border-[var(--c-dark-border)] bg-[var(--c-dark-surface)] px-3 py-2 text-[11px] text-[var(--c-dark-ink-muted)] leading-relaxed relative";
-  const close = (
-    <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="absolute right-1.5 top-1.5 text-[var(--c-dark-ink-muted)]"><X size={12} /></button>
-  );
-
-  // One-tap install (Chrome/Edge, Android + desktop) when available.
+  // One-tap install — only shown when the browser is actually offering it.
   if (deferred) {
     return (
       <button
@@ -69,36 +64,17 @@ export function PwaInstall() {
     );
   }
 
-  // iPhone / iPad — Safari only supports Add to Home Screen.
-  if (os === "ios") {
+  // iPhone / iPad Safari — Add to Home Screen is the only real path (accurate).
+  if (os === "ios" && browser === "safari") {
     return (
-      <div className={card}>
-        {close}
-        <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Share size={12} /> Install on iPhone/iPad</span>
-        {browser === "safari"
-          ? <>Tap the <b>Share</b> button, then <b>“Add to Home Screen.”</b></>
-          : <>Open this page in <b>Safari</b>, tap <b>Share</b>, then <b>“Add to Home Screen.”</b></>}
+      <div className="mx-3 mb-2 rounded-md border border-[var(--c-dark-border)] bg-[var(--c-dark-surface)] px-3 py-2 text-[11px] text-[var(--c-dark-ink-muted)] leading-relaxed relative">
+        <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="absolute right-1.5 top-1.5 text-[var(--c-dark-ink-muted)]"><X size={12} /></button>
+        <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Share size={12} /> Add to Home Screen</span>
+        Tap the <b>Share</b> button, then <b>“Add to Home Screen.”</b>
       </div>
     );
   }
 
-  // Android — the install event is flaky; always show the menu path.
-  if (os === "android") {
-    return (
-      <div className={card}>
-        {close}
-        <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Download size={12} /> Install as an app</span>
-        Tap the browser menu <MoreVertical size={11} className="inline align-text-bottom" /> and choose <b>“Install app”</b> (or <b>“Add to Home screen”</b>). If you don&apos;t see it, it may already be installed.
-      </div>
-    );
-  }
-
-  // Desktop without an install event yet — point to the address-bar install icon.
-  return (
-    <div className={card}>
-      {close}
-      <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><Download size={12} /> Install as an app</span>
-      Click the install icon in the address bar (or the browser menu ▸ <b>Install</b>).
-    </div>
-  );
+  // Otherwise show nothing — never point at a button that may not exist.
+  return null;
 }
