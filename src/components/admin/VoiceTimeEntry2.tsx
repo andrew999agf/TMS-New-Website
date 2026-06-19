@@ -74,7 +74,7 @@ export function VoiceTimeEntry2({
   const [rate, setRate] = useState(1.06);
   const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
-  const [micError, setMicError] = useState(false);
+  const [voiceErr, setVoiceErr] = useState<{ title: string; detail: string; code: string } | null>(null);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -172,13 +172,21 @@ export function VoiceTimeEntry2({
         setInterim((finalText + live).trim());
       };
       rec.onerror = (e: any) => {
-        // Permission problems are the usual "nothing happens on desktop" cause —
-        // surface them clearly instead of silently looping.
-        if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
-          cancelRef.current = true;
-          setMicError(true);
-          setStatus("Chrome wouldn't start the microphone. Click the microphone icon at the right end of the address bar, choose Allow, then tap “Enable microphone & retry”.");
-        }
+        const code = e?.error || "error";
+        // Silence/abort aren't real failures — just end this listen.
+        if (code === "no-speech" || code === "aborted") { finish(finalText); return; }
+        cancelRef.current = true;
+        const detail =
+          code === "not-allowed" || code === "service-not-allowed"
+            ? "Chrome blocked the microphone for speech. Allow it via the microphone icon in the address bar AND your computer's privacy settings (System Settings/Settings ▸ Microphone ▸ Chrome), and make sure you're not in Incognito or Guest mode."
+          : code === "network"
+            ? "Chrome couldn't reach its speech service. Live recognition sends audio to Google's servers, so this is usually a VPN, firewall, or offline issue. Try a different network, turn off a VPN, or disable extensions — then tap Try again."
+          : code === "audio-capture"
+            ? "No microphone was detected. Check your audio input device and try again."
+          : code === "language-not-supported"
+            ? "The speech language isn't available in this browser."
+          : "Speech recognition stopped unexpectedly.";
+        setVoiceErr({ title: "Voice recognition stopped", detail, code });
         finish(finalText);
       };
       rec.onend = () => finish(finalText);
@@ -588,16 +596,29 @@ export function VoiceTimeEntry2({
    *  in a user gesture — our recognition starts after the voice talks, which is
    *  too late, so we prime it here. Returns true if the mic is usable. */
   async function ensureMic(): Promise<boolean> {
-    setMicError(false);
+    setVoiceErr(null);
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      setOpen(true);
+      setVoiceErr({ title: "Needs a secure (https) page", detail: "The microphone only works over https. Open the site at its https address and try again.", code: "insecure-context" });
+      return false;
+    }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop()); // we only needed the grant
       return true;
-    } catch {
+    } catch (e: any) {
+      const name = e?.name || "Error";
+      const detail =
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "Microphone permission is denied. Two places must both allow it: (1) the microphone icon at the right of Chrome's address bar → Allow, and (2) your computer's privacy settings — macOS: System Settings ▸ Privacy & Security ▸ Microphone ▸ turn on Chrome; Windows: Settings ▸ Privacy & security ▸ Microphone ▸ allow apps/desktop apps."
+        : name === "NotFoundError" || name === "DevicesNotFoundError"
+          ? "No microphone was found on this computer. Plug one in (or check your audio input) and try again."
+        : name === "NotReadableError" || name === "TrackStartError"
+          ? "The microphone is in use by another app (Zoom, Teams, etc.). Close it, then try again."
+        : "Couldn't open the microphone.";
       setOpen(true);
-      setMicError(true);
-      setStatus("Microphone access is needed. Click Allow when Chrome asks — or click the microphone icon at the right end of the address bar, choose Allow, then tap the mic again.");
+      setVoiceErr({ title: "Microphone unavailable", detail, code: name });
       return false;
     }
   }
@@ -605,8 +626,17 @@ export function VoiceTimeEntry2({
   async function run() {
     if (runningRef.current) return;
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
+    setVoiceErr(null);
     if (!(await ensureMic())) return;
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
+  }
+
+  /** Reset and start over after an error (used by the Try again button). */
+  function retry() {
+    setVoiceErr(null);
+    runningRef.current = false;
+    cancelRef.current = false;
+    run();
   }
 
   /** Tap path for Save — same persistence + "another entry?" loop as voice. */
@@ -697,13 +727,20 @@ export function VoiceTimeEntry2({
             )}
 
             <p className="text-sm min-h-[40px]">{status}</p>
-            {micError && (
-              <button
-                onClick={() => { setMicError(false); run(); }}
-                className="mt-1 mb-1 flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-accent)] px-4 py-2 text-sm font-semibold text-[var(--c-on-accent)] hover:opacity-90 w-full"
-              >
-                <Mic size={15} /> Enable microphone &amp; retry
-              </button>
+            {voiceErr && (
+              <div className="mt-1 mb-2 rounded-md border border-[var(--c-error)] bg-[var(--c-surface2)] p-3 text-xs">
+                <p className="font-semibold text-[var(--c-error)]">{voiceErr.title}</p>
+                <p className="mt-1 text-[var(--c-ink-muted)] leading-relaxed">{voiceErr.detail}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <button
+                    onClick={retry}
+                    className="flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90"
+                  >
+                    <Mic size={13} /> Try again
+                  </button>
+                  <span className="text-[10px] text-[var(--c-ink-muted)]">code: {voiceErr.code}</span>
+                </div>
+              </div>
             )}
             <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
               {listening
