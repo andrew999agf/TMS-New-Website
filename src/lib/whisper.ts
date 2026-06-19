@@ -35,7 +35,11 @@ export async function loadWhisper(onProgress?: (p: LoadProgress) => void): Promi
           const total = Object.values(files).reduce((a, f) => a + (f.total || 0), 0);
           const loaded = Object.values(files).reduce((a, f) => a + (f.loaded || 0), 0);
           const pct = total ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
-          onProgress?.({ pct, status: "Downloading voice model…" });
+          onProgress?.({ pct, status: "downloading" });
+        } else if (e.status === "done") {
+          // Bytes are in; the model is being compiled/initialized (no byte
+          // progress for this part) — report it so the bar doesn't look stuck.
+          onProgress?.({ pct: 100, status: "installing" });
         }
       };
       const p = await TJS.pipeline("automatic-speech-recognition", MODEL_ID, { dtype: "q8", progress_callback: cb });

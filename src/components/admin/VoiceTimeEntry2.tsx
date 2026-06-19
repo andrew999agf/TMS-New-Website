@@ -79,8 +79,12 @@ export function VoiceTimeEntry2({
   // the phone. Audio is recorded and transcribed right here in the browser.
   const whisperReadyRef = useRef(false);
   const abortRecRef = useRef<{ aborted: boolean } | null>(null);
-  const [modelPct, setModelPct] = useState<number | null>(null); // download bar
-  const [modelStatus, setModelStatus] = useState("");
+  const [modelPhase, setModelPhase] = useState<"idle" | "downloading" | "installing" | "ready" | "error">("idle");
+  const [modelPct, setModelPct] = useState(0);
+  // Guided first-run setup: microphone + voice model, shown as a checklist.
+  const [setupMode, setSetupMode] = useState(false);
+  const [micState, setMicState] = useState<"unknown" | "prompt" | "granted" | "denied" | "system">("unknown");
+  const [micHint, setMicHint] = useState("");
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -93,31 +97,62 @@ export function VoiceTimeEntry2({
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
 
-  // Remember the user's engine choice between sessions.
-  useEffect(() => {
-    // Prime the on-device model as soon as the page is open so the first entry
-    // isn't waiting on a download (shows the progress bar if it isn't cached).
-    primeWhisper();
-  }, []);
-
   /** Download + initialize the local Whisper model, driving the progress bar. */
   async function primeWhisper(): Promise<void> {
-    if (whisperReadyRef.current) return;
+    if (whisperReadyRef.current || modelPhase === "downloading" || modelPhase === "installing") return;
     try {
       const { loadWhisper } = await import("@/lib/whisper");
-      setModelPct(0); setModelStatus("Preparing…");
+      setModelPhase("downloading"); setModelPct(0);
       await loadWhisper((p) => {
-        setModelPct(p.pct);
-        setModelStatus(p.status === "ready" ? "Ready" : p.status);
+        if (p.status === "downloading") { setModelPhase("downloading"); setModelPct(p.pct); }
+        else if (p.status === "installing") { setModelPhase("installing"); setModelPct(100); }
+        else if (p.status === "ready") { setModelPhase("ready"); setModelPct(100); }
       });
       whisperReadyRef.current = true;
-      setModelPct(100); setModelStatus("Ready");
-      setTimeout(() => setModelPct(null), 1500);
+      setModelPhase("ready"); setModelPct(100);
     } catch (e) {
-      setModelPct(null);
-      setVoiceErr({ title: "Couldn't load the on-device voice model", detail: "The local speech model didn't finish loading. Check your connection for the one-time download, then tap Try again. " + (e as Error).message, code: "whisper-load" });
+      setModelPhase("error");
+      setVoiceErr({ title: "Couldn't load the on-device voice model", detail: "The one-time download didn't finish. Check your internet connection and tap Retry. " + (e as Error).message, code: "whisper-load" });
     }
   }
+
+  /** Ask for the mic in the setup step; classify the failure precisely. */
+  async function requestMic(): Promise<boolean> {
+    setVoiceErr(null); setMicHint("");
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) { setMicState("denied"); setMicHint("This browser can't access a microphone."); return false; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setMicState("granted");
+      return true;
+    } catch (e: any) {
+      const name = e?.name || "Error";
+      const msg = String(e?.message || "").toLowerCase();
+      if (name === "NotFoundError" || name === "DevicesNotFoundError") { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in or check your audio input, then try again."); }
+      else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is being used by another app (Zoom, Teams, FaceTime…). Close it, then try again."); }
+      else if (msg.includes("system")) { setMicState("system"); setMicHint("Your computer is blocking the browser from using the microphone. macOS: System Settings ▸ Privacy & Security ▸ Microphone ▸ turn this browser ON (then reopen it). Windows: Settings ▸ Privacy & security ▸ Microphone ▸ allow desktop apps."); }
+      else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup before choosing. Tap “Allow microphone” again and choose Allow."); }
+      else { setMicState("denied"); setMicHint("Permission was blocked for this site. Click the microphone icon at the right of the address bar, choose Allow, then tap Try again."); }
+      return false;
+    }
+  }
+
+  // On open: detect the current microphone permission, and start downloading
+  // the on-device model in the background so it's ready by the time they begin.
+  useEffect(() => {
+    (async () => {
+      try {
+        const perms = (navigator as any).permissions;
+        if (perms?.query) {
+          const st = await perms.query({ name: "microphone" as PermissionName });
+          setMicState(st.state as any);
+          st.onchange = () => setMicState(st.state as any);
+        }
+      } catch { /* Safari etc. — no Permissions API; we'll learn on request */ }
+    })();
+    primeWhisper();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Build the list of English voices and choose one: the user's saved pick if
   // any, otherwise the nicest available (Natural/Neural/Google/Siri beat the
@@ -609,54 +644,31 @@ export function VoiceTimeEntry2({
    *  shows its Allow prompt (and remembers the grant) when the request happens
    *  in a user gesture — our recognition starts after the voice talks, which is
    *  too late, so we prime it here. Returns true if the mic is usable. */
-  async function ensureMic(): Promise<boolean> {
+  const isSetUp = () => micState === "granted" && whisperReadyRef.current;
+
+  function run() {
+    if (runningRef.current) return;
+    if (!supported) { alert("This browser can't record audio. Try Chrome, Edge, or Safari on a recent device."); return; }
     setVoiceErr(null);
     if (typeof window !== "undefined" && window.isSecureContext === false) {
-      setOpen(true);
-      setVoiceErr({ title: "Needs a secure (https) page", detail: "The microphone only works over https. Open the site at its https address and try again.", code: "insecure-context" });
-      return false;
+      setOpen(true); setSetupMode(true);
+      setVoiceErr({ title: "Needs a secure (https) page", detail: "The microphone only works over https. Open the site at its https address.", code: "insecure-context" });
+      return;
     }
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return true;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop()); // we only needed the grant
-      return true;
-    } catch (e: any) {
-      const name = e?.name || "Error";
-      const detail =
-        name === "NotAllowedError" || name === "SecurityError"
-          ? "Microphone permission is denied. Two places must both allow it: (1) the microphone icon at the right of Chrome's address bar → Allow, and (2) your computer's privacy settings — macOS: System Settings ▸ Privacy & Security ▸ Microphone ▸ turn on Chrome; Windows: Settings ▸ Privacy & security ▸ Microphone ▸ allow apps/desktop apps."
-        : name === "NotFoundError" || name === "DevicesNotFoundError"
-          ? "No microphone was found on this computer. Plug one in (or check your audio input) and try again."
-        : name === "NotReadableError" || name === "TrackStartError"
-          ? "The microphone is in use by another app (Zoom, Teams, etc.). Close it, then try again."
-        : "Couldn't open the microphone.";
-      setOpen(true);
-      setVoiceErr({ title: "Microphone unavailable", detail, code: name });
-      return false;
+    // First run (or after clearing data): walk the guided setup. Otherwise go.
+    if (!isSetUp()) {
+      setOpen(true); setSetupMode(true);
+      if (modelPhase === "idle" || modelPhase === "error") primeWhisper();
+      return;
     }
+    setSetupMode(false);
+    startEntry();
   }
 
-  async function run() {
-    if (runningRef.current) return;
-    if (!supported) { alert("This browser can't record audio. Try Chrome, Edge, or Safari."); return; }
-    setVoiceErr(null);
-    if (!(await ensureMic())) return;
-    // Make sure the on-device model is downloaded/ready first (shows the bar).
-    if (!whisperReadyRef.current) {
-      setOpen(true);
-      await primeWhisper();
-      if (!whisperReadyRef.current) return; // load failed; error shown
-    }
+  /** Begin a fresh voice entry (mic + model already confirmed ready). */
+  function startEntry() {
+    setSetupMode(false);
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
-  }
-
-  /** Reset and start over after an error (used by the Try again button). */
-  function retry() {
-    setVoiceErr(null);
-    runningRef.current = false;
-    cancelRef.current = false;
-    run();
   }
 
   /** Tap path for Save — same persistence + "another entry?" loop as voice. */
@@ -680,6 +692,7 @@ export function VoiceTimeEntry2({
   }
 
   const upd = (patch: Partial<Slots>) => setSlots((p) => ({ ...p, ...patch }));
+  const setUp = micState === "granted" && modelPhase === "ready"; // render-safe
   const fieldClass = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] rounded-md px-2.5 py-1.5 text-sm focus:border-[var(--c-accent)] outline-none";
   const labelClass = "block text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)] mb-1";
 
@@ -750,36 +763,75 @@ export function VoiceTimeEntry2({
               </div>
             )}
 
+            {setupMode ? (
+              <div className="mt-1 space-y-3">
+                <p className="text-sm font-medium">Quick one-time setup</p>
+                {voiceErr && voiceErr.code !== "whisper-load" && (
+                  <p className="rounded-md border border-[var(--c-error)] bg-[var(--c-surface2)] p-2.5 text-xs text-[var(--c-error)] leading-relaxed">{voiceErr.detail}</p>
+                )}
+
+                {/* Step 1 — Microphone */}
+                <div className="flex items-start gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+                  <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${micState === "granted" ? "bg-[var(--c-success)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink-muted)]"}`}>
+                    {micState === "granted" ? <Check size={15} /> : "1"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Microphone</p>
+                    {micState === "granted" ? (
+                      <p className="text-xs text-[var(--c-ink-muted)]">Allowed. Your voice stays on this device.</p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-[var(--c-ink-muted)] leading-relaxed">We need the mic to hear you. Nothing is uploaded — recognition runs here on your device.</p>
+                        <button onClick={requestMic} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">
+                          <Mic size={13} /> Allow microphone
+                        </button>
+                        {micHint && <p className="mt-2 text-xs text-[var(--c-error)] leading-relaxed">{micHint}</p>}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 2 — Voice files */}
+                <div className="flex items-start gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+                  <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${modelPhase === "ready" ? "bg-[var(--c-success)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink-muted)]"}`}>
+                    {modelPhase === "ready" ? <Check size={15} /> : (modelPhase === "downloading" || modelPhase === "installing") ? <Loader2 size={14} className="animate-spin" /> : "2"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Voice files</p>
+                    {modelPhase === "ready" ? (
+                      <p className="text-xs text-[var(--c-ink-muted)]">Ready — works offline from now on.</p>
+                    ) : modelPhase === "error" ? (
+                      <>
+                        <p className="text-xs text-[var(--c-error)] leading-relaxed">The one-time download didn&apos;t finish. Check your internet, then retry.</p>
+                        <button onClick={primeWhisper} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">Retry download</button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--c-ink-muted)] mb-1">
+                          <span>{modelPhase === "installing" ? "Installing… almost ready" : "Downloading…"}</span>
+                          <span className="font-semibold text-[var(--c-ink)]">{modelPhase === "installing" ? "" : `${modelPct}%`}</span>
+                        </div>
+                        <div className="h-2.5 rounded-full bg-[var(--c-surface2)] overflow-hidden">
+                          <div className={`h-full rounded-full bg-[var(--c-accent)] ${modelPhase === "installing" ? "w-full animate-pulse" : "transition-[width] duration-300"}`} style={modelPhase === "installing" ? undefined : { width: `${modelPct}%` }} />
+                        </div>
+                        <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">One-time, ~40–75 MB. Keep this open — it&apos;s saved for next time.</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={startEntry}
+                  disabled={!setUp}
+                  className="w-full flex items-center justify-center gap-2 rounded-md bg-[var(--c-success)] px-4 py-3 text-base font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Mic size={18} /> {setUp ? "Start talking" : "Finishing setup…"}
+                </button>
+                <p className="text-center text-[11px] text-[var(--c-ink-muted)]">100% on your device — nothing goes to Google or any server.</p>
+              </div>
+            ) : (
+            <>
             <p className="text-sm min-h-[40px]">{status}</p>
-
-            {modelPct !== null && (
-              <div className="mb-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] p-3">
-                <div className="flex items-center justify-between text-[11px] text-[var(--c-ink-muted)] mb-1.5">
-                  <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {modelStatus || "Downloading voice model…"}</span>
-                  <span className="font-semibold text-[var(--c-ink)]">{modelPct}%</span>
-                </div>
-                <div className="h-2.5 rounded-full bg-[var(--c-bg)] overflow-hidden">
-                  <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${modelPct}%` }} />
-                </div>
-                <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">One-time download (~40–75 MB). Please keep this open — it&apos;s saved for next time.</p>
-              </div>
-            )}
-
-            {voiceErr && (
-              <div className="mt-1 mb-2 rounded-md border border-[var(--c-error)] bg-[var(--c-surface2)] p-3 text-xs">
-                <p className="font-semibold text-[var(--c-error)]">{voiceErr.title}</p>
-                <p className="mt-1 text-[var(--c-ink-muted)] leading-relaxed">{voiceErr.detail}</p>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <button
-                    onClick={retry}
-                    className="flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90"
-                  >
-                    <Mic size={13} /> Try again
-                  </button>
-                  <span className="text-[10px] text-[var(--c-ink-muted)]">code: {voiceErr.code}</span>
-                </div>
-              </div>
-            )}
             <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
               {listening
                 ? <><Loader2 size={14} className="animate-spin mt-0.5 shrink-0" /> <span>{interim ? `“${interim}”` : "Listening…"}</span></>
@@ -885,6 +937,8 @@ export function VoiceTimeEntry2({
               )}
               <button onClick={cancel} className="btn btn-outline text-sm py-2 px-4">{saved ? "Close" : "Cancel"}</button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
