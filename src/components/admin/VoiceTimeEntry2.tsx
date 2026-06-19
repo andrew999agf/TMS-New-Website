@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Settings, Play } from "lucide-react";
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
+import { detectPlatform, micAllowSteps } from "@/lib/platform";
 
 /**
  * Voice time entry — 2.0 engine. Same flow as the original (three short spoken
@@ -131,7 +132,6 @@ export function VoiceTimeEntry2({
       // Only check hardware on failure (Android hides devices until permission).
       let hasMic = true;
       try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
-      const { detectPlatform, micAllowSteps } = await import("@/lib/platform");
       const steps = micAllowSteps(detectPlatform());
       if ((name === "NotFoundError" || name === "DevicesNotFoundError") && !hasMic) { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in or use a device with a built-in mic, then try again."); }
       else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is being used by another app (a call, camera, recorder…). Close it, then try again."); }
@@ -150,8 +150,9 @@ export function VoiceTimeEntry2({
         const perms = (navigator as any).permissions;
         if (perms?.query) {
           const st = await perms.query({ name: "microphone" as PermissionName });
-          setMicState(st.state as any);
-          st.onchange = () => setMicState(st.state as any);
+          const apply = (v: string) => { setMicState(v as any); setMicHint(v === "denied" ? micAllowSteps(detectPlatform()) : ""); };
+          apply(st.state);
+          st.onchange = () => apply(st.state);
         }
       } catch { /* Safari etc. — no Permissions API; we'll learn on request */ }
     })();
@@ -784,9 +785,18 @@ export function VoiceTimeEntry2({
                     <p className="text-sm font-medium">Microphone</p>
                     {micState === "granted" ? (
                       <p className="text-xs text-[var(--c-ink-muted)]">Allowed. Your voice stays on this device.</p>
-                    ) : (
+                    ) : micState === "denied" || micState === "system" ? (
+                      // Already blocked — the one-tap popup won't show; guide to reset.
                       <>
-                        <p className="text-xs text-[var(--c-ink-muted)] leading-relaxed">We need the mic to hear you. Nothing is uploaded — recognition runs here on your device.</p>
+                        <p className="text-xs text-[var(--c-error)] leading-relaxed">{micHint || "Microphone is blocked for this site."}</p>
+                        <button onClick={() => location.reload()} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">
+                          <Check size={13} /> I&apos;ve allowed it — reload
+                        </button>
+                      </>
+                    ) : (
+                      // Fresh: one tap fires the browser's native Allow popup (like Zoom).
+                      <>
+                        <p className="text-xs text-[var(--c-ink-muted)] leading-relaxed">Tap below and choose <span className="font-medium">Allow</span> in the popup. It only asks once. Nothing is uploaded — recognition runs on your device.</p>
                         <button onClick={requestMic} className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] hover:opacity-90">
                           <Mic size={13} /> Allow microphone
                         </button>
