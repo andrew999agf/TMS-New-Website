@@ -6,8 +6,8 @@ import { Mic, X, Loader2, Check, Volume2, VolumeX, Info, Pencil } from "lucide-r
 import type { TimeEntryInput } from "@/app/admin/(panel)/time-tracker/actions";
 import {
   type Matter,
-  todayISO, parseHours, parseDate, parseBillable, fullDate,
-  matchCategory, rankMatters, extractCore, isYes, isNo, isDiscard,
+  todayISO, parseHours, parseDate, fullDate,
+  matchCategory, rankMatters, isYes, isNo,
 } from "@/lib/voice/match4";
 
 /**
@@ -35,6 +35,36 @@ const fix = (n: number, d = 1) => Math.round(n * Math.pow(10, d)) / Math.pow(10,
 const getUserRole = (u: string) => (u.includes("Attorney") ? "Attorney" : "Legal Assistant");
 const createDesc = (cat: string, notes: string, user: string) =>
   `${cat} - ${user.split(" (")[0]} (${getUserRole(user)}) - ${notes}`;
+
+/* ----- hourly-rate parsing (ported verbatim from Time Tracker 1.0 so Part 1 —
+   "the case or client, and the hourly rate" — behaves exactly the same) ----- */
+/** Hourly rate when there's a money cue ($295, "295 dollars", "rate of 295"). */
+function parseRate(s: string): number | undefined {
+  const t = s.toLowerCase();
+  let m: RegExpMatchArray | null;
+  if ((m = t.match(/\$\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
+  if ((m = t.match(/\b(\d{1,4}(?:\.\d{1,2})?)\s*(?:dollars?|bucks?|per hour|an hour|\/\s*hour|\/\s*hr|hourly)\b/))) return parseFloat(m[1]);
+  if ((m = t.match(/\b(?:rate|charge|bill(?:ed)?)\b\s+(?:of\s+|is\s+|at\s+)?\$?\s*(\d{1,4}(?:\.\d{1,2})?)/))) return parseFloat(m[1]);
+  return undefined;
+}
+/** A bare spoken number in a sensible hourly-rate range (e.g. "295") taken as the
+ *  rate. Returns the value and the matched text so it can be removed before
+ *  matching the case. */
+function parseBareRate(s: string): { value: number; raw: string } | undefined {
+  const matches = [...s.matchAll(/\b(\d{2,4})(?:\.(\d{1,2}))?\b/g)];
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const mm = matches[i];
+    const v = parseFloat(mm[2] ? `${mm[1]}.${mm[2]}` : mm[1]);
+    if (v >= 50 && v <= 1500) return { value: v, raw: mm[0] };
+  }
+  return undefined;
+}
+function stripRate(s: string): string {
+  return s
+    .replace(/\$\s*\d{1,4}(?:\.\d{1,2})?/g, " ")
+    .replace(/\b\d{1,4}(?:\.\d{1,2})?\s*(?:dollars?|bucks?|per hour|an hour|\/\s*hour|\/\s*hr|hourly)\b/gi, " ")
+    .replace(/\b(?:rate|charge|bill(?:ed)?)\b\s+(?:of\s+|is\s+|at\s+)?\$?\s*\d{1,4}(?:\.\d{1,2})?/gi, " ");
+}
 
 type Slots = {
   rawClient?: string; // what the user said for the client, before resolving
@@ -220,6 +250,7 @@ export function VoiceTimeEntry4({
     capture: (text: string) => void | Promise<void>;
     clear: () => void;
     readback: () => string;
+    sync?: () => void; // mirror the in-progress entry object onto the on-screen fields
     longForm?: boolean;
     confirm?: boolean; // when false, advance as soon as something is captured
   }): Promise<void> {
@@ -236,20 +267,20 @@ export function VoiceTimeEntry4({
           const text = await listenForAnswer(opts.prompt, opts.longForm);
           if (settled || cancelRef.current) return;
           await opts.capture(text);
-          setSlots((s) => ({ ...s }));
+          if (opts.sync) opts.sync(); else setSlots((s) => ({ ...s }));
           if (settled) return;
           settled = true; decisionRef.current = null; resolve("heard");
         })();
       });
       if (cancelRef.current) return;
-      if (outcome === "redo") { opts.clear(); setSlots((s) => ({ ...s })); continue; }
+      if (outcome === "redo") { opts.clear(); if (opts.sync) opts.sync(); else setSlots((s) => ({ ...s })); continue; }
       if (outcome === "next") { setVerifying(false); return; }
       // Heard the user — read the value back and let them confirm or redo.
       if (opts.confirm === false) { setVerifying(false); return; }
       const ok = await confirmValue(opts.readback());
       if (cancelRef.current) return;
       if (ok) { setVerifying(false); return; }
-      opts.clear(); setSlots((s) => ({ ...s }));
+      opts.clear(); if (opts.sync) opts.sync(); else setSlots((s) => ({ ...s }));
     }
   }
 
@@ -358,270 +389,119 @@ export function VoiceTimeEntry4({
     return await listenForAnswer(prompt);
   }
 
-  /* --------------------------------------------------------- the main flow */
-  async function runEntry(initial: Slots) {
+  /* --------------------------------------------------------- the main flow
+   * The spoken workflow mirrors Time Tracker 1.0 exactly: three grouped parts —
+   * (1) case/client + hourly rate, (2) date + time + category, (3) the note —
+   * each read back with Correct/Incorrect, then an on-screen review the user
+   * saves by hand. On a repeat "same case" entry, part 1 is skipped. */
+  async function runEntry(initial: Slots, skipCase = false) {
     if (runningRef.current) return;
     runningRef.current = true; cancelRef.current = false;
-    setOpen(true); setSaved(false); setMicError(null); setCandidates([]); setHeard(""); setInterim("");
-    const s: Slots = { date: undefined, nonBillable: false, rate: defaultRate, user: defaultUser, ...initial };
+    setOpen(true); setSaved(false); setCandidates([]); setHeard(""); setInterim("");
+    const s: Slots = { date: todayISO(), nonBillable: false, rate: defaultRate, user: defaultUser, ...initial };
     setSlots({ ...s });
-
+    const set = () => setSlots({ ...s });
     try {
-      // ── GATHER_CORE ─────────────────────────────────────────────────────
+      // Part 1 — the case/client and the hourly rate (skipped on a repeat).
+      if (!skipCase) {
+        await step({
+          phase: "gather_core",
+          prompt: "First, the case or client, and the hourly rate.",
+          capture: async (text) => {
+            // Rate: a money cue first, otherwise a plain number like "295".
+            let work = text;
+            const r0 = parseRate(text);
+            if (r0 != null) { s.rate = r0; work = stripRate(text); }
+            else { const b = parseBareRate(text); if (b) { s.rate = b.value; work = text.replace(b.raw, " "); } }
+            const matterText = stripRate(work).trim();
+            s.matter = await resolveMatter(matterText || text);
+          },
+          clear: () => { s.matter = undefined; s.rate = defaultRate; },
+          readback: () => `the case as ${s.matter || "no case"}, at ${s.rate ?? defaultRate} dollars an hour`,
+          sync: set,
+        });
+        if (cancelRef.current) return;
+      }
+
+      // Part 2 — the date, how long it took, and the category.
       await step({
-        phase: "gather_core",
-        prompt: "Tell me the client, the date, the category, and how long it took.",
-        capture: (text) => { Object.assign(s, extractCore(text, categories)); },
-        clear: () => { s.rawClient = undefined; s.category = undefined; s.hours = undefined; s.date = undefined; s.nonBillable = false; },
-        readback: () => coreReadback(s),
+        phase: "fill_category",
+        prompt: skipCase ? "Same case. The date, how long it took, and the category." : "Next, the date, how long it took, and the category.",
+        capture: (text) => {
+          const h = parseHours(text); if (h != null) s.hours = h;
+          const cat = matchCategory(text, categories); if (cat) s.category = cat;
+          const d = parseDate(text); if (d) s.date = d;
+          if (/non[- ]?billable|no charge|not billable/i.test(text)) s.nonBillable = true;
+        },
+        clear: () => { s.hours = undefined; s.category = undefined; s.date = todayISO(); },
+        readback: () => `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"} of ${s.category || "no category"}, dated ${fullDate(s.date || todayISO())}`,
+        sync: set,
       });
       if (cancelRef.current) return;
 
-      // ── FILL the missing core fields, in order: client → date → category → time
-      if (!s.rawClient && !s.matter) {
-        await step({
-          phase: "fill_client",
-          prompt: "Whose matter is this? Say the client's name.",
-          capture: (text) => { s.rawClient = text.trim(); },
-          clear: () => { s.rawClient = undefined; },
-          readback: () => `the client as ${s.rawClient || "no name"}`,
-        });
-        if (cancelRef.current) return;
-      }
-      if (!s.date) {
-        await step({
-          phase: "fill_date",
-          prompt: "What date? You can say today, yesterday, a weekday, or a date like June 5th.",
-          capture: (text) => { s.date = parseDate(text) ?? todayISO(); }, // default today if skipped (§5)
-          clear: () => { s.date = undefined; },
-          readback: () => `the date as ${fullDate(s.date)}`,
-        });
-        if (cancelRef.current) return;
-      }
-      if (!s.category) {
-        await step({
-          phase: "fill_category",
-          prompt: "What category? For example, telephone call, email, or research.",
-          capture: (text) => { s.category = matchCategory(text, categories) ?? (text.trim() ? text.trim().toUpperCase() : undefined); },
-          clear: () => { s.category = undefined; },
-          readback: () => `the category as ${s.category || "none"}`,
-        });
-        if (cancelRef.current) return;
-      }
-      if (s.hours == null) {
-        await step({
-          phase: "fill_time",
-          prompt: "How long did it take? You can say half an hour, point five, or 45 minutes.",
-          capture: (text) => { const h = parseHours(text); if (h != null) s.hours = h; },
-          clear: () => { s.hours = undefined; },
-          readback: () => `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`,
-        });
-        if (cancelRef.current) return;
-      }
-
-      // ── RESOLVE_MATTER ──────────────────────────────────────────────────
-      if (!s.matter) {
-        const resolved = await resolveMatter(s.rawClient || "");
-        if (cancelRef.current) return;
-        s.matter = resolved;
-        setSlots({ ...s });
-      }
-
-      // ── ASK_NOTE (verbatim, isolated) ───────────────────────────────────
+      // Part 3 — the activity note.
       await step({
         phase: "ask_note",
-        prompt: "Now, what is the activity note?",
-        capture: (text) => { s.notes = text.trim(); }, // verbatim — a leading "no" is note text, not a cancel
+        prompt: "Last, the activity note.",
+        capture: (text) => {
+          const skip = !text.trim() || /^(?:no|none|skip|nope|nothing|that's all|no notes?)\.?$/i.test(text.trim());
+          s.notes = skip ? "" : text.trim();
+        },
         clear: () => { s.notes = undefined; },
         readback: () => (s.notes ? `the note as ${s.notes}` : "no note"),
+        sync: set,
         longForm: true,
       });
       if (cancelRef.current) return;
 
-      // ── CONFIRM (edit loop, never deletes except on cancel words) ───────
-      await confirmLoop(s);
+      // Everything's editable on screen; invite a final look, then they Save.
+      setPhase("confirm");
+      speak("Here's what I have.");
     } finally {
       runningRef.current = false; setListening(false); setVerifying(false);
     }
   }
 
-  function coreReadback(s: Slots): string {
-    const parts: string[] = [];
-    if (s.rawClient) parts.push(`the client as ${s.rawClient}`);
-    if (s.category) parts.push(s.category.toLowerCase());
-    if (s.hours != null) parts.push(`${s.hours} hour${s.hours === 1 ? "" : "s"}`);
-    if (s.date) parts.push(fullDate(s.date));
-    if (s.nonBillable) parts.push("non-billable");
-    return parts.length ? parts.join(", ") : "nothing yet";
-  }
-
-  /** Full read-back, then the edit loop. Only explicit cancel words discard. */
-  async function confirmLoop(s: Slots) {
-    for (;;) {
-      if (cancelRef.current) return;
-      setPhase("confirm");
-      const summary = entrySummary(s);
-      setLabels({ yes: "Save", no: "Change something" });
-      setVerifying(true);
-      const decision = await new Promise<"save" | "change" | string>((resolve) => {
-        let settled = false;
-        decisionRef.current = (d) => { if (settled) return; settled = true; decisionRef.current = null; resolve(d === "next" ? "save" : "change"); };
-        (async () => {
-          speak(`${summary}. Is that correct?`);
-          for (let i = 0; i < 8 && !settled && !cancelRef.current; i++) {
-            const ans = await listenForAnswer("Is that correct?");
-            if (settled || cancelRef.current) return;
-            if (!ans) continue;
-            settled = true; decisionRef.current = null; resolve(ans); return;
-          }
-        })();
-      });
-      if (cancelRef.current) return;
-
-      if (decision === "save") { await doSave(s); return; }
-      if (decision === "change") { await editMenu(s); continue; }
-
-      // Spoken answer at confirm.
-      const ans = decision as string;
-      if (isDiscard(ans)) { cancel(); return; }
-      if (isYes(ans)) { await doSave(s); return; }
-
-      const handled = await applyEdit(ans, s);
-      if (cancelRef.current) return;
-      if (!handled) {
-        // Vague "no" or unclear → the change menu.
-        if (isNo(ans)) await editMenu(s);
-        else { setVerifying(false); await speak("Sorry, I didn't catch that."); }
-      }
-      // loop re-reads the full entry and asks again
-    }
-  }
-
-  /** Ask which field, then capture just that value (vague-no path / "Change"). */
-  async function editMenu(s: Slots) {
-    setPhase("edit_field");
-    const ans = await askField("What would you like to change — the matter, the time, the category, the note, or billable?");
-    if (cancelRef.current) return;
-    if (!ans) { setVerifying(false); return; }
-    const handled = await applyEdit(ans, s, true);
-    if (!handled) {
-      // They named a field but no value — ask for the value directly.
-      const field = detectField(ans);
-      if (field) await editField(field, s);
-    }
-  }
-
-  type FieldName = "matter" | "time" | "category" | "note" | "billable" | "date";
-  function detectField(text: string): FieldName | undefined {
-    const t = text.toLowerCase();
-    if (/\b(matter|case|client|name)\b/.test(t)) return "matter";
-    if (/\b(time|hours?|long|duration)\b/.test(t)) return "time";
-    if (/\b(category|kind|type of work)\b/.test(t)) return "category";
-    if (/\b(note|description|activity)\b/.test(t)) return "note";
-    if (/\b(billable|bill|charge)\b/.test(t)) return "billable";
-    if (/\b(date|day|when)\b/.test(t)) return "date";
-    return undefined;
-  }
-
-  /** Apply a "field + value" edit from one utterance. Returns true if a value
-   *  was actually applied. When `fieldHint` we accept value-only utterances. */
-  async function applyEdit(text: string, s: Slots, valueOnlyOk = false): Promise<boolean> {
-    const field = detectField(text);
-    let applied = false;
-
-    // matter / case — only when the field is explicitly named, so a stray name
-    // in (say) a note correction doesn't hijack the matter.
-    if (field === "matter") {
-      const after = text.replace(/.*\b(matter|case|client|name|is|should be|to)\b/i, "").trim() || text;
-      const resolved = await resolveMatter(after);
-      if (resolved) { s.matter = resolved; setSlots({ ...s }); return true; }
-    }
-    // time
-    {
-      const h = parseHours(text);
-      if (h != null && (field === "time" || /\b(time|hours?|long)\b/i.test(text) || valueOnlyOk)) { s.hours = h; applied = true; }
-    }
-    // category
-    {
-      const cat = matchCategory(text, categories);
-      if (cat && (field === "category" || /\b(category|it'?s actually|change)\b/i.test(text) || valueOnlyOk)) { s.category = cat; applied = true; }
-    }
-    // billable
-    {
-      const nb = parseBillable(text);
-      if (nb != null) { s.nonBillable = nb; applied = true; }
-    }
-    // date
-    {
-      const d = parseDate(text);
-      if (d && (field === "date" || /\b(date|day)\b/i.test(text) || valueOnlyOk)) { s.date = d; applied = true; }
-    }
-    // note (field-only → ask; field+value rarely spoken inline, handled via editField)
-    if (field === "note" && !applied) { await editField("note", s); return true; }
-
-    if (applied) { setSlots({ ...s }); }
-    return applied;
-  }
-
-  /** Targeted re-ask for one field, then return to the confirm loop. */
-  async function editField(field: FieldName, s: Slots) {
-    setPhase("edit_field");
-    if (field === "note") {
-      await step({ phase: "edit_field", prompt: "What should the note say?", capture: (t) => { s.notes = t.trim(); }, clear: () => { s.notes = undefined; }, readback: () => (s.notes ? `the note as ${s.notes}` : "no note"), longForm: true });
-    } else if (field === "matter") {
-      const r = await resolveMatter(await askField("Say the client's name."));
-      if (r) s.matter = r;
-    } else if (field === "time") {
-      await step({ phase: "edit_field", prompt: "How long did it take?", capture: (t) => { const h = parseHours(t); if (h != null) s.hours = h; }, clear: () => { s.hours = undefined; }, readback: () => `${s.hours ?? 0} hours` });
-    } else if (field === "category") {
-      await step({ phase: "edit_field", prompt: "What category?", capture: (t) => { s.category = matchCategory(t, categories) ?? t.trim().toUpperCase(); }, clear: () => { s.category = undefined; }, readback: () => `the category as ${s.category}` });
-    } else if (field === "date") {
-      await step({ phase: "edit_field", prompt: "What date?", capture: (t) => { s.date = parseDate(t) ?? s.date; }, clear: () => { s.date = undefined; }, readback: () => `the date as ${fullDate(s.date)}` });
-    } else if (field === "billable") {
-      const nb = await askDecision("Should this be billable?", { yes: "Billable", no: "Non-billable", isAffirmative: (x) => /\bbillable|bill it|yes\b/i.test(x), isNegative: (x) => /\bnon|no charge|no\b/i.test(x) });
-      s.nonBillable = !nb;
-    }
-    setSlots({ ...s });
-  }
-
-  function entrySummary(s: Slots): string {
-    const name = s.matter || s.rawClient || "no case";
-    const cat = s.category || "no category";
-    const hrs = `${s.hours ?? 0} hour${s.hours === 1 ? "" : "s"}`;
-    const bill = s.nonBillable ? "non-billable" : "billable";
-    const note = s.notes ? `, note: ${s.notes}` : "";
-    return `${name}, ${fullDate(s.date)}, ${cat}, ${hrs}, ${bill}${note}`;
-  }
-
-  async function doSave(s: Slots) {
-    setVerifying(false);
-    if (!s.matter || !s.matter.trim()) { setPhase("confirm"); await speak("Please choose a case before saving."); return; }
-    const user = s.user || defaultUser;
-    const rate = s.rate ?? defaultRate;
-    const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
-    const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
+  /** Save the reviewed entry (the green Save button), then — like 1.0 — offer to
+   *  keep going: "another entry?" and, if so, "same case or another case?" */
+  async function saveReview() {
+    if (!slots.matter || !slots.matter.trim()) { setStatus("Please choose a case before saving."); return; }
+    const user = slots.user || defaultUser;
+    const rate = slots.rate ?? defaultRate;
+    const hoursR = fix(Math.ceil((slots.hours || 0) * 10) / 10, 1);
+    const note = slots.notes ? createDesc(slots.category || "", slots.notes, user) : `${slots.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
     onAdd({
-      matter: s.matter.trim(),
-      entryDate: s.date || todayISO(),
-      activityDescription: "",
-      note,
-      price: fix(rate, 2),
-      quantity: hoursR,
-      activityUserName: user,
-      nonBillable: !!s.nonBillable,
+      matter: slots.matter.trim(), entryDate: slots.date || todayISO(), activityDescription: "", note,
+      price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!slots.nonBillable,
     });
+    const savedMatter = slots.matter.trim();
+    const savedRate = rate;
     setSaved(true);
     setPhase("saved");
-    await speak("Saved to your board.");
-    if (cancelRef.current) return;
-    // Offer another entry; resets per-entry + candidate state, keeps mute.
-    const again = await askDecision("Do you want to make another entry?", { yes: "Yes", no: "All done", isAffirmative: isYes, isNegative: isNo });
-    if (cancelRef.current) return;
-    setVerifying(false);
-    if (!again) { await speak("All set."); return; }
-    runningRef.current = false;
-    resetEntryState();
-    await runEntry({});
+
+    // Offer to keep going. Hold the floor for the spoken follow-up Q&A.
+    if (!supported) return;
+    runningRef.current = true; cancelRef.current = false;
+    try {
+      await speak("Saved to your board.");
+      if (cancelRef.current) return;
+      const again = await askDecision("Do you want to make another entry?", { yes: "Yes", no: "No, all done", isAffirmative: isYes, isNegative: isNo });
+      if (cancelRef.current) return;
+      if (!again) { setVerifying(false); await speak("All set."); setStatus("All set."); return; }
+      const sameCase = await askDecision("Is it the same case, or another case?", {
+        yes: "Same case", no: "Another case",
+        isAffirmative: (x) => /\b(same|this case|this one|that one|keep)\b/i.test(x),
+        isNegative: (x) => /\b(another|different|new case|other|new one)\b/i.test(x),
+      });
+      if (cancelRef.current) return;
+      setVerifying(false);
+      runningRef.current = false; // runEntry takes the floor back
+      resetEntryState();
+      if (sameCase) await runEntry({ date: todayISO(), nonBillable: false, matter: savedMatter, rate: savedRate, user }, true);
+      else await runEntry({ date: todayISO(), nonBillable: false, rate: defaultRate, user }, false);
+    } finally {
+      runningRef.current = false;
+    }
   }
 
   function resetEntryState() {
@@ -693,26 +573,10 @@ export function VoiceTimeEntry4({
   }
 
   /* ----------------------------------------- manual save (typed fallback) */
-  function manualSave() {
-    setSlots((s) => {
-      if (!s.matter || !s.matter.trim()) { setStatus("Please choose a case before saving."); return s; }
-      const user = s.user || defaultUser;
-      const rate = s.rate ?? defaultRate;
-      const hoursR = fix(Math.ceil((s.hours || 0) * 10) / 10, 1);
-      const note = s.notes ? createDesc(s.category || "", s.notes, user) : `${s.category || ""} - ${user.split(" (")[0]} (${getUserRole(user)})`;
-      onAdd({ matter: s.matter.trim(), entryDate: s.date || todayISO(), activityDescription: "", note, price: fix(rate, 2), quantity: hoursR, activityUserName: user, nonBillable: !!s.nonBillable });
-      cancelRef.current = true;
-      try { recRef.current?.abort?.(); } catch { /* ignore */ }
-      try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
-      setSaved(true);
-      return s;
-    });
-  }
-
   const PHASE_LABEL: Record<Phase, string> = {
-    idle: "", gather_core: "Step 1 · the basics", fill_client: "Step 1 · client",
-    fill_date: "Step 1 · date", fill_category: "Step 1 · category", fill_time: "Step 1 · time",
-    resolve_matter: "Step 1 · finding the case", ask_note: "Step 2 · the note",
+    idle: "", gather_core: "Part 1 · case & rate", fill_client: "Part 1 · client",
+    fill_date: "Part 2 · date", fill_category: "Part 2 · date, time & category", fill_time: "Part 2 · time",
+    resolve_matter: "Finding the case", ask_note: "Part 3 · the note",
     confirm: "Review", edit_field: "Editing", saved: "Saved",
   };
 
@@ -878,7 +742,7 @@ export function VoiceTimeEntry4({
 
             <div className="mt-5 flex justify-end gap-2">
               {!saved && (
-                <button onClick={manualSave} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                <button onClick={saveReview} className="flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-success)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
                   <Check size={16} /> Save entry
                 </button>
               )}
