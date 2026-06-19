@@ -120,6 +120,14 @@ export function VoiceTimeEntry2({
   async function requestMic(): Promise<boolean> {
     setVoiceErr(null); setMicHint("");
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) { setMicState("denied"); setMicHint("This browser can't access a microphone."); return false; }
+    // Is there actually a microphone on this device?
+    let hasMic = true;
+    try { const ds = await navigator.mediaDevices.enumerateDevices(); hasMic = ds.some((d) => d.kind === "audioinput"); } catch { /* keep true */ }
+    if (!hasMic) {
+      setMicState("denied");
+      setMicHint("No microphone is connected to this computer, so there's no mic icon to allow. Plug in a microphone/headset — or just use Time Tracker 2.0 on your phone, which has one built in.");
+      return false;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
@@ -128,11 +136,11 @@ export function VoiceTimeEntry2({
     } catch (e: any) {
       const name = e?.name || "Error";
       const msg = String(e?.message || "").toLowerCase();
-      if (name === "NotFoundError" || name === "DevicesNotFoundError") { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in or check your audio input, then try again."); }
+      if (name === "NotFoundError" || name === "DevicesNotFoundError") { setMicState("denied"); setMicHint("No microphone was found on this device. Plug one in (or use your phone), then try again."); }
       else if (name === "NotReadableError" || name === "TrackStartError") { setMicState("denied"); setMicHint("The microphone is being used by another app (Zoom, Teams, FaceTime…). Close it, then try again."); }
       else if (msg.includes("system")) { setMicState("system"); setMicHint("Your computer is blocking the browser from using the microphone. macOS: System Settings ▸ Privacy & Security ▸ Microphone ▸ turn this browser ON (then reopen it). Windows: Settings ▸ Privacy & security ▸ Microphone ▸ allow desktop apps."); }
       else if (msg.includes("dismiss")) { setMicState("prompt"); setMicHint("You closed the popup before choosing. Tap “Allow microphone” again and choose Allow."); }
-      else { setMicState("denied"); setMicHint("Permission was blocked for this site. Click the microphone icon at the right of the address bar, choose Allow, then tap Try again."); }
+      else { setMicState("denied"); setMicHint("The microphone couldn't start. If no mic icon appears in the address bar, this computer likely has no microphone — use your phone, or plug in a mic/headset. Otherwise click that icon and choose Allow."); }
       return false;
     }
   }
