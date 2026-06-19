@@ -74,6 +74,7 @@ export function VoiceTimeEntry2({
   const [rate, setRate] = useState(1.06);
   const rateRef = useRef(1.06);
   const [showSettings, setShowSettings] = useState(false);
+  const [micError, setMicError] = useState(false);
 
   const defaultRate = activityUsers.find((u) => u.name === defaultUser)?.rate ?? 145;
   const descOf = (displayNumber?: string) => matters.find((m) => m.displayNumber === displayNumber)?.description ?? "";
@@ -175,7 +176,8 @@ export function VoiceTimeEntry2({
         // surface them clearly instead of silently looping.
         if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
           cancelRef.current = true;
-          setStatus("Microphone is blocked. Click the microphone icon in your browser's address bar, allow access, then tap the mic and try again.");
+          setMicError(true);
+          setStatus("Chrome wouldn't start the microphone. Click the microphone icon at the right end of the address bar, choose Allow, then tap “Enable microphone & retry”.");
         }
         finish(finalText);
       };
@@ -581,9 +583,29 @@ export function VoiceTimeEntry2({
     else await captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
-  function run() {
+  /** Ask the browser for microphone access *in the click gesture*. Chrome only
+   *  shows its Allow prompt (and remembers the grant) when the request happens
+   *  in a user gesture — our recognition starts after the voice talks, which is
+   *  too late, so we prime it here. Returns true if the mic is usable. */
+  async function ensureMic(): Promise<boolean> {
+    setMicError(false);
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop()); // we only needed the grant
+      return true;
+    } catch {
+      setOpen(true);
+      setMicError(true);
+      setStatus("Microphone access is needed. Click Allow when Chrome asks — or click the microphone icon at the right end of the address bar, choose Allow, then tap the mic again.");
+      return false;
+    }
+  }
+
+  async function run() {
     if (runningRef.current) return;
     if (!supported) { alert("Voice input isn't supported in this browser. Try Chrome or Edge on a computer."); return; }
+    if (!(await ensureMic())) return;
     captureFlow({ date: todayISO(), nonBillable: false, rate: defaultRate }, false);
   }
 
@@ -675,6 +697,14 @@ export function VoiceTimeEntry2({
             )}
 
             <p className="text-sm min-h-[40px]">{status}</p>
+            {micError && (
+              <button
+                onClick={() => { setMicError(false); run(); }}
+                className="mt-1 mb-1 flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-accent)] px-4 py-2 text-sm font-semibold text-[var(--c-on-accent)] hover:opacity-90 w-full"
+              >
+                <Mic size={15} /> Enable microphone &amp; retry
+              </button>
+            )}
             <div className="mt-1 flex items-start gap-2 text-xs text-[var(--c-ink-muted)] min-h-[18px]">
               {listening
                 ? <><Loader2 size={14} className="animate-spin mt-0.5 shrink-0" /> <span>{interim ? `“${interim}”` : "Listening…"}</span></>
