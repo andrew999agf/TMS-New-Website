@@ -19,7 +19,7 @@
   50% { opacity: 0.35; transform: scale(0.85); }
 }
 
-/* Sponsor logo ticker */
+/* Tournament Teams logo ticker */
 .marquee {
   overflow: hidden;
   position: relative;

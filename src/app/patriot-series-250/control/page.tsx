@@ -48,7 +48,7 @@ export default async function OperatorConsolePage() {
             <Lock size={20} className="text-blue-300" />
           </div>
           <h1 className="mt-4 font-[family-name:var(--font-display)] text-xl font-bold">Operator sign-in required</h1>
-          <p className="mt-1 text-xs text-white/45">Sign in to control the live broadcast.</p>
+          <p className="mt-1 text-xs text-white/60">Sign in to control the live broadcast.</p>
           <Link
             href="/admin/login"
             className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110"

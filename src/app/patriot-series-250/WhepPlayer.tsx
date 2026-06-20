@@ -101,10 +101,10 @@ export function WhepPlayer({ url }: { url: string }) {
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/5">
-            <Tv size={28} className="text-white/40" />
+            <Tv size={28} className="text-white/60" />
           </div>
-          <p className="mt-4 text-sm font-medium text-white/60">Video feed will appear here</p>
-          <p className="mt-1 max-w-sm px-6 text-[11px] leading-relaxed text-white/35">
+          <p className="mt-4 text-sm font-medium text-white/70">Video feed will appear here</p>
+          <p className="mt-1 max-w-sm px-6 text-[11px] leading-relaxed text-white/60">
             16:9 · source 1920×1080. Waiting for the operator&apos;s WHIP publish via Cloudflare Stream Live.
           </p>
         </div>

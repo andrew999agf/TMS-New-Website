@@ -19,7 +19,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
     <div>
-      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-white/45">{label}</p>
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-white/60">{label}</p>
       <div className="flex items-stretch gap-2">
         <code className="min-w-0 flex-1 truncate rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-xs text-white/70">{value}</code>
         <button
@@ -81,10 +81,10 @@ export function OperatorConsole({
     <div className="space-y-5">
       {/* Connection status */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/12 bg-white/[0.04] p-4">
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${status === "connected" ? "bg-green-500/15 text-green-300" : "bg-white/10 text-white/50"}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${status === "connected" ? "bg-green-500/15 text-green-300" : "bg-white/10 text-white/60"}`}>
           {status === "connected" ? <Wifi size={13} /> : <WifiOff size={13} />} Hub: {status}
         </span>
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${switcherOnline ? "bg-blue-500/15 text-blue-300" : "bg-white/10 text-white/50"}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${switcherOnline ? "bg-blue-500/15 text-blue-300" : "bg-white/10 text-white/60"}`}>
           <Radio size={13} /> Switcher: {switcherOnline ? "online" : "offline"}
         </span>
       </div>
@@ -94,7 +94,7 @@ export function OperatorConsole({
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <div>
             <p className="font-semibold">Channel B isn&apos;t wired up yet.</p>
-            <p className="mt-1 text-amber-100/60">
+            <p className="mt-1 text-amber-100/70">
               Deploy the control worker and set <code>PATRIOT_WS_URL</code> + <code>CONTROL_SECRET</code> in the
               website environment. This console will connect automatically once they&apos;re set.
             </p>
@@ -105,11 +105,11 @@ export function OperatorConsole({
       {/* Hand-off credentials for the desktop switcher */}
       <div className="space-y-3 rounded-xl border border-white/12 bg-white/[0.04] p-4">
         <p className="text-sm font-semibold text-white/80">Switcher hand-off</p>
-        <p className="text-[11px] text-white/45">Paste these into the desktop switcher app to go live.</p>
+        <p className="text-[11px] text-white/60">Paste these into the desktop switcher app to go live.</p>
         <CopyRow label="WHIP publish URL (video out)" value={whipUrl} />
         <CopyRow label="Switcher control token" value={switcherToken} />
         {!whipUrl && (
-          <p className="text-[11px] text-white/40">WHIP URL appears here once <code>PATRIOT_WHIP_URL</code> is set from your Cloudflare Stream Live input.</p>
+          <p className="text-[11px] text-white/60">WHIP URL appears here once <code>PATRIOT_WHIP_URL</code> is set from your Cloudflare Stream Live input.</p>
         )}
       </div>
 
@@ -121,9 +121,9 @@ export function OperatorConsole({
             {JSON.stringify(snapshot, null, 2)}
           </pre>
         ) : (
-          <p className="text-[11px] text-white/40">Waiting for the first state snapshot from the switcher…</p>
+          <p className="text-[11px] text-white/60">Waiting for the first state snapshot from the switcher…</p>
         )}
-        <p className="mt-2 text-[11px] text-white/35">
+        <p className="mt-2 text-[11px] text-white/60">
           The full control panel (camera takes, scoreboard, graphics) renders here once the switcher&apos;s
           INTEGRATION_SPEC.md is wired in.
         </p>

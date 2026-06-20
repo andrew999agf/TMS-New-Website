@@ -7,13 +7,13 @@ import { WhepPlayer } from "./WhepPlayer";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Patriot Series 250 — Whiffle Ball Tournament · Live Feed",
-  description: "Live feed for the Patriot Series 250 Whiffle Ball Tournament.",
+  title: "Patriot Series 250 — Wiffle Ball Tournament · Live Feed",
+  description: "Live feed for the Patriot Series 250 Wiffle Ball Tournament.",
   robots: { index: false, follow: false },
 };
 
 /**
- * Patriot Series 250 — Whiffle Ball Tournament · Live Feed (placeholder).
+ * Patriot Series 250 — Wiffle Ball Tournament · Live Feed (placeholder).
  *
  * Standalone page (intentionally outside the (public) group, so it does NOT
  * inherit the firm's nav/footer). Pure placeholder for now.
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
  * To go live, set STREAM_EMBED_URL to the player/embed URL (or swap in the
  * WHEP <video>). Empty = show the placeholder.
  */
-const SPONSOR_SLOTS = Array.from({ length: 8 }, (_, i) => i + 1);
+const TEAM_SLOTS = Array.from({ length: 8 }, (_, i) => i + 1);
 
 export default function PatriotSeries250Page() {
   const whepUrl = process.env.PATRIOT_WHEP_URL ?? "";
@@ -46,7 +46,7 @@ export default function PatriotSeries250Page() {
             <ArrowLeft size={14} /> Back
           </Link>
           <span className="text-center text-[11px] font-semibold uppercase tracking-[0.25em] text-white/60 sm:text-xs">
-            Patriot Series 250 · Whiffle Ball
+            Patriot Series 250 · Wiffle Ball
           </span>
           <div className="flex items-center gap-2.5">
             <Link
@@ -67,7 +67,7 @@ export default function PatriotSeries250Page() {
         <section className="pt-10 text-center sm:pt-14">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300/80">Patriot Series 250</p>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-bold sm:text-5xl">
-            Whiffle Ball Tournament
+            Wiffle Ball Tournament
           </h1>
           <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium uppercase tracking-[0.3em] text-white/50">
             <Radio size={15} className="text-red-400" /> Live Feed
@@ -76,10 +76,10 @@ export default function PatriotSeries250Page() {
 
         {/* Centered logo slot */}
         <section className="mt-10 flex justify-center">
-          <div className="flex h-[220px] w-full max-w-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] text-center text-white/40">
+          <div className="flex h-[220px] w-full max-w-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] text-center text-white/60">
             <ImageIcon size={34} strokeWidth={1.5} />
-            <p className="mt-2 text-sm font-medium text-white/60">Tournament logo</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+            <p className="mt-2 text-sm font-medium text-white/70">Tournament logo</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-white/60">
               Transparent PNG or SVG · square works best
               <br />
               displays up to 420×220 — export at 2× (≈840×440)
@@ -95,30 +95,30 @@ export default function PatriotSeries250Page() {
           <WhepPlayer url={whepUrl} />
         </section>
 
-        {/* Sponsor ticker */}
+        {/* Tournament Teams ticker */}
         <section className="mt-14">
-          <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-[0.3em] text-white/40">
-            Our Sponsors
+          <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-[0.3em] text-white/60">
+            Tournament Teams
           </p>
           <div className={`${styles.marquee} rounded-2xl border border-white/10 bg-white/[0.03] py-6`}>
             <div className={styles.track}>
               {/* Two identical sets for a seamless loop */}
               {[0, 1].map((set) => (
                 <div key={set} className="flex items-center gap-14" aria-hidden={set === 1}>
-                  {SPONSOR_SLOTS.map((n) => (
+                  {TEAM_SLOTS.map((n) => (
                     <div
                       key={`${set}-${n}`}
-                      className="flex h-14 w-36 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.04] text-[11px] font-medium text-white/35"
+                      className="flex h-14 w-36 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.04] text-[11px] font-medium text-white/60"
                     >
-                      Sponsor {n}
+                      Team {n}
                     </div>
                   ))}
                 </div>
               ))}
             </div>
           </div>
-          <p className="mt-3 text-center text-[11px] text-white/30">
-            Sponsor logos: transparent PNG · ~56px tall (any width). They scroll slowly and pause on hover.
+          <p className="mt-3 text-center text-[11px] text-white/60">
+            Team logos: transparent PNG · ~56px tall (any width). They scroll slowly and pause on hover.
           </p>
         </section>
 
@@ -126,7 +126,7 @@ export default function PatriotSeries250Page() {
         <footer className="mt-16 border-t border-white/10 pt-6 text-center">
           <Link
             href="/patriot-series-250/control"
-            className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40 transition-colors hover:text-white/80"
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60 transition-colors hover:text-white/80"
           >
             <Lock size={12} /> Switchboard operator login
           </Link>
