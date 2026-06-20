@@ -11,7 +11,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const tagline = blocks["global.tagline"] ?? "Generally trained for your specific legal matter.";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
   const socialImage = blocks["global.socialImage"] || "";
-  const favicon = blocks["global.favicon"] || "";
+  // Favicon: the admin-managed upload when present, otherwise the bundled firm
+  // icon (the same graphic the PWA manifest uses). Always emit ONE concrete icon
+  // so the public site and the admin portal show the identical favicon.
+  const favicon = blocks["global.favicon"] || "/icon-512.png";
   return {
     metadataBase: new URL(baseUrl),
     title: {
@@ -20,9 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description:
       "A Texas trial firm. Hundreds of matters — jury trials, bench trials, and appeals. Preparing for trial from day one.",
-    ...(favicon
-      ? { icons: { icon: [{ url: favicon }], shortcut: [{ url: favicon }], apple: [{ url: favicon }] } }
-      : {}),
+    icons: { icon: [{ url: favicon }], shortcut: [{ url: favicon }], apple: [{ url: favicon }] },
     openGraph: {
       type: "website",
       siteName: name,
