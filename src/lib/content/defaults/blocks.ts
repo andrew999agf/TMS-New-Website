@@ -27,6 +27,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.logoLight", page: "global", section: "logo", label: "Logo — white/light version (optional; only needed if you don't want the auto-white)", type: "image", value: "" },
   { key: "global.socialImage", page: "global", section: "logo", label: "Social share image (shown when pages are texted or posted to social media — 1200×630px)", type: "image", value: "" },
   { key: "global.favicon", page: "global", section: "logo", label: "Favicon (browser tab icon — square PNG, 512×512px)", type: "image", value: "" },
+  { key: "global.adminFavicon", page: "global", section: "logo", label: "Admin panel favicon (tab icon for the admin & login area only — square PNG, 512×512px; falls back to the site favicon if left blank)", type: "image", value: "" },
 
   // ---- Global: Social media links (icons in the footer) ----
   { key: "global.social.facebook", page: "global", section: "social", label: "Facebook URL", type: "url", value: "" },
