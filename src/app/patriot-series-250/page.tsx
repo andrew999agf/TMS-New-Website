@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Radio, Tv, ImageIcon, ArrowLeft, Lock } from "lucide-react";
 import styles from "./patriot.module.css";
 import { WhepPlayer } from "./WhepPlayer";
+import { ScoreboardOverlay } from "./ScoreboardOverlay";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ const TEAM_SLOTS = Array.from({ length: 8 }, (_, i) => i + 1);
 
 export default function PatriotSeries250Page() {
   const whepUrl = process.env.PATRIOT_WHEP_URL ?? "";
+  const wsUrl = process.env.PATRIOT_WS_URL ?? "";
   return (
     <div className={styles.page}>
       {/* Top bar */}
@@ -92,7 +94,10 @@ export default function PatriotSeries250Page() {
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/70">
             <Tv size={16} className="text-blue-300" /> Live Video Feed
           </div>
-          <WhepPlayer url={whepUrl} />
+          <div className="relative">
+            <WhepPlayer url={whepUrl} />
+            <ScoreboardOverlay wsUrl={wsUrl} />
+          </div>
         </section>
 
         {/* Tournament Teams ticker */}
