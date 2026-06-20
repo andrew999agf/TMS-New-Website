@@ -59,20 +59,6 @@ export default async function OurTeamPage() {
         </section>
       )}
 
-      {/* Patriot Series 250 — placeholder entry point */}
-      <section className="container-page py-12">
-        <Link
-          href="/patriot-series-250"
-          className="group inline-flex items-center gap-3 rounded-full border border-blue-500/30 bg-gradient-to-r from-blue-700 via-blue-600 to-red-600 px-7 py-3.5 font-semibold text-white shadow-lg shadow-blue-900/30 transition-all hover:shadow-xl hover:shadow-red-900/30 hover:brightness-110"
-        >
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
-          </span>
-          Patriot Series 250 Whiffle Ball Tournament
-          <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
-        </Link>
-      </section>
     </>
   );
 }
