@@ -234,7 +234,7 @@ export function OperatorConsole({
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Btn tone="red" onClick={() => send({ action: "take" })} className="flex items-center gap-1.5"><ArrowRightLeft size={14} /> TAKE</Btn>
               <Btn tone={snap?.transition === "cut" ? "blue" : "default"} active={snap?.transition === "cut"} onClick={() => send({ action: "transition", type: "cut" })}><Scissors size={13} className="mr-1 inline" />Cut</Btn>
-              <Btn tone={snap?.transition === "dissolve" ? "blue" : "default"} active={snap?.transition === "dissolve"} onClick={() => send({ action: "transition", type: "dissolve" })}>Dissolve</Btn>
+              <Btn tone={snap?.transition === "fade" ? "blue" : "default"} active={snap?.transition === "fade"} onClick={() => send({ action: "transition", type: "fade" })}>Fade</Btn>
               <span className="mx-1 h-5 w-px bg-white/10" />
               <Btn tone={snap?.pip ? "blue" : "default"} active={!!snap?.pip} onClick={() => send({ action: "pip", enabled: !snap?.pip })}>PIP {snap?.pip ? "on" : "off"}</Btn>
               <Btn tone={snap?.audio ? "green" : "amber"} onClick={() => send({ action: "audio", enabled: !snap?.audio })}>Audio {snap?.audio ? "on" : "off"}</Btn>
@@ -275,6 +275,7 @@ export function OperatorConsole({
               <Btn onClick={() => send({ action: "count", which: "ball" })}>Ball</Btn>
               <Btn onClick={() => send({ action: "count", which: "strike" })}>Strike</Btn>
               <Btn tone="amber" onClick={() => send({ action: "count", which: "out" })}>Out</Btn>
+              <Btn onClick={() => send({ action: "count", which: "reset" })}>Reset count</Btn>
               <span className="mx-1 h-5 w-px bg-white/10" />
               <Btn onClick={() => send({ action: "inning", dir: "prev" })}>− Inning</Btn>
               <Btn onClick={() => send({ action: "inning", dir: "next" })}>+ Inning</Btn>
@@ -287,6 +288,8 @@ export function OperatorConsole({
               <Btn onClick={() => send({ action: "bases.clear" })}>Clear</Btn>
               <span className="mx-1 h-5 w-px bg-white/10" />
               <Btn tone="green" onClick={() => send({ action: "game", lifecycle: "start" })}>Start</Btn>
+              <Btn onClick={() => send({ action: "game", lifecycle: "pause" })}>Pause</Btn>
+              <Btn onClick={() => send({ action: "game", lifecycle: "resume" })}>Resume</Btn>
               <Btn tone="amber" onClick={() => send({ action: "game", lifecycle: "end" })}>End</Btn>
               <Btn onClick={() => send({ action: "game", lifecycle: "reset" })}>Reset</Btn>
             </div>
@@ -297,7 +300,7 @@ export function OperatorConsole({
             <LowerThirdControls send={send} />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-[11px] uppercase tracking-wide text-white/55">Show</span>
-              {(["standings", "other-games", "replay", "commercial"] as const).map((k) => (
+              {(["standings", "other-games", "commercial"] as const).map((k) => (
                 <Btn key={k} onClick={() => send({ action: "graphic.show", kind: k })}>{k}</Btn>
               ))}
               <Btn tone="amber" onClick={() => send({ action: "graphic.clear" })}>Clear graphic</Btn>

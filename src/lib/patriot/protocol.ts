@@ -14,7 +14,7 @@
 
 export type Team = "home" | "away";
 export type BaseKey = "first" | "second" | "third";
-export type TransitionType = "cut" | "dissolve";
+export type TransitionType = "cut" | "fade";
 export type OverlayLayout = "topbar" | "lowerthird" | "sidebar";
 export type GraphicKind =
   | "none"
@@ -23,6 +23,11 @@ export type GraphicKind =
   | "lower-third"
   | "replay"
   | "commercial";
+
+/** Kinds the operator may trigger via graphic.show — "replay" is local-only
+ * (it drains the switcher's capture buffer), so it's excluded here even though
+ * it's a valid snapshot graphic.kind. */
+export type GraphicShowKind = "standings" | "other-games" | "lower-third" | "commercial";
 
 /* ---- State snapshot (pushed by the switcher) ----------------------------- */
 
@@ -134,9 +139,9 @@ export interface PresenceMessage {
 }
 
 /* ---- Commands (operator → switcher) -------------------------------------- *
- * Exact param keys confirmed by the switcher. The few value enums marked
- * "inferred" (count.which, inning.dir, game.lifecycle, transition.type) are our
- * best read of their vocab; a wrong value just returns ok:false and reconciles.
+ * Param keys and value enums confirmed by the switcher: transition is
+ * "cut" | "fade"; count adds "reset"; game adds "pause" | "resume";
+ * graphic.show excludes "replay" (local-only). Each command may carry an `id`.
  */
 export type Command =
   | { action: "take" }
@@ -145,17 +150,17 @@ export type Command =
   | { action: "cut"; slot: number }
   | { action: "drop-camera"; slot: number }
   | { action: "drop-all" }
-  | { action: "transition"; type: TransitionType } // inferred values
+  | { action: "transition"; type: TransitionType }
   | { action: "pip"; enabled: boolean }
   | { action: "audio"; enabled: boolean }
   | { action: "score.add"; team: Team; n: number }
   | { action: "score.set"; team: Team; n: number }
-  | { action: "count"; which: "ball" | "strike" | "out" } // inferred values
-  | { action: "inning"; dir: "next" | "prev" } // inferred values
+  | { action: "count"; which: "ball" | "strike" | "out" | "reset" }
+  | { action: "inning"; dir: "next" | "prev" }
   | { action: "bases.toggle"; base: BaseKey }
   | { action: "bases.clear" }
-  | { action: "game"; lifecycle: "start" | "end" | "reset" } // inferred values
-  | { action: "graphic.show"; kind: GraphicKind; data?: unknown; durationSec?: number }
+  | { action: "game"; lifecycle: "start" | "pause" | "resume" | "end" | "reset" }
+  | { action: "graphic.show"; kind: GraphicShowKind; data?: unknown; durationSec?: number }
   | { action: "graphic.clear" }
   | { action: "overlay.layout"; layout: OverlayLayout }
   | { action: "overlay.visible"; visible: boolean }
