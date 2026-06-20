@@ -1,0 +1,52 @@
+# MediaMTX — Patriot Series 250 home server (WHIP in / WHEP out).
+# Only non-default settings are listed. The public host is injected from .env
+# via the MTX_WEBRTCADDITIONALHOSTS override in docker-compose.yml.
+
+###############################################
+# Authentication
+###############################################
+authMethod: internal
+authInternalUsers:
+  # Public viewers: anonymous read, so anyone can watch the broadcast.
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path: patriot
+  # Operator's switcher: publish only. Credentials travel in the WHIP URL
+  # (?user=publisher&pass=...). >>> CHANGE THIS PASSWORD <<<
+  - user: publisher
+    pass: CHANGE_ME_PUBLISH_SECRET
+    ips: []
+    permissions:
+      - action: publish
+        path: patriot
+
+###############################################
+# WebRTC (WHIP ingest + WHEP playback)
+###############################################
+webrtc: yes
+webrtcAddress: :8889
+# TLS is handled by Cloudflare Tunnel in front, so MediaMTX speaks plain HTTP.
+webrtcEncryption: no
+webrtcAllowOrigin: "*"
+# Single ICE media port — this is the one you port-forward (UDP + TCP) on the
+# router. webrtcAdditionalHosts (your public IP) is set from .env in compose.
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+
+###############################################
+# Other protocols (kept minimal)
+###############################################
+rtmp: no
+# HLS off for now. It can ride the tunnel with no port-forward (useful behind
+# CGNAT); flip to `yes` and add a second tunnel hostname for :8888 if needed.
+hls: no
+
+###############################################
+# Paths
+###############################################
+paths:
+  # Single broadcast path: published via WHIP, read via WHEP.
+  patriot:

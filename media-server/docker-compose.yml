@@ -1,0 +1,26 @@
+# Patriot Series 250 home media server: MediaMTX (video) + cloudflared (tunnel).
+# Host networking keeps WebRTC ICE simple. Linux/WSL2/Docker Desktop all work.
+#
+#   cp .env.example .env   # then fill it in
+#   docker compose up -d
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Advertise your public IP in WebRTC ICE candidates so browsers can reach
+      # the media via the forwarded UDP/TCP 8189 port. Set PUBLIC_IP in .env.
+      MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_IP}
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel --no-autoupdate run
+    environment:
+      # Tunnel token from the Cloudflare Zero Trust dashboard. Set in .env.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
