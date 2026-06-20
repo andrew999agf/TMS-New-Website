@@ -1,0 +1,45 @@
+/* Scoped styles for the Patriot Series 250 live-feed page only. Self-contained
+   so nothing here can affect the rest of the site. */
+
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(37, 99, 235, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(220, 38, 38, 0.18), transparent 60%),
+    #0a0e1a;
+  color: #f8fafc;
+}
+
+/* Pulsing LIVE dot */
+.liveDot {
+  animation: ps-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ps-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+/* Sponsor logo ticker */
+.marquee {
+  overflow: hidden;
+  position: relative;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.track {
+  display: flex;
+  align-items: center;
+  gap: 3.5rem;
+  width: max-content;
+  animation: ps-scroll 45s linear infinite;
+}
+.marquee:hover .track {
+  animation-play-state: paused;
+}
+@keyframes ps-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .track { animation: none; }
+}
