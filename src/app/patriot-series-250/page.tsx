@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Radio, Tv, ImageIcon, ArrowLeft } from "lucide-react";
+import { Radio, Tv, ImageIcon, ArrowLeft, Lock } from "lucide-react";
 import styles from "./patriot.module.css";
 
 export const metadata: Metadata = {
@@ -46,9 +46,17 @@ export default function PatriotSeries250Page() {
           <span className="text-center text-[11px] font-semibold uppercase tracking-[0.25em] text-white/60 sm:text-xs">
             Patriot Series 250 · Whiffle Ball
           </span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-red-300">
-            <span className={`h-2 w-2 rounded-full bg-red-500 ${styles.liveDot}`} /> Live
-          </span>
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/patriot-series-250/control"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-[11px] font-medium text-white/55 transition-colors hover:border-white/35 hover:text-white"
+            >
+              <Lock size={12} /> <span className="hidden sm:inline">Operator</span>
+            </Link>
+            <span className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-red-300">
+              <span className={`h-2 w-2 rounded-full bg-red-500 ${styles.liveDot}`} /> Live
+            </span>
+          </div>
         </div>
       </header>
 
@@ -132,6 +140,16 @@ export default function PatriotSeries250Page() {
             Sponsor logos: transparent PNG · ~56px tall (any width). They scroll slowly and pause on hover.
           </p>
         </section>
+
+        {/* Operator entry point */}
+        <footer className="mt-16 border-t border-white/10 pt-6 text-center">
+          <Link
+            href="/patriot-series-250/control"
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40 transition-colors hover:text-white/80"
+          >
+            <Lock size={12} /> Switchboard operator login
+          </Link>
+        </footer>
       </main>
     </div>
   );
