@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Radio, Tv, ImageIcon, ArrowLeft, Lock } from "lucide-react";
 import styles from "./patriot.module.css";
+import { WhepPlayer } from "./WhepPlayer";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Patriot Series 250 — Whiffle Ball Tournament · Live Feed",
@@ -30,11 +33,10 @@ export const metadata: Metadata = {
  * To go live, set STREAM_EMBED_URL to the player/embed URL (or swap in the
  * WHEP <video>). Empty = show the placeholder.
  */
-const STREAM_EMBED_URL = "";
-
 const SPONSOR_SLOTS = Array.from({ length: 8 }, (_, i) => i + 1);
 
 export default function PatriotSeries250Page() {
+  const whepUrl = process.env.PATRIOT_WHEP_URL ?? "";
   return (
     <div className={styles.page}>
       {/* Top bar */}
@@ -90,28 +92,7 @@ export default function PatriotSeries250Page() {
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-white/70">
             <Tv size={16} className="text-blue-300" /> Live Video Feed
           </div>
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/12 bg-black shadow-2xl">
-            {STREAM_EMBED_URL ? (
-              <iframe
-                src={STREAM_EMBED_URL}
-                title="Patriot Series 250 live feed"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
-                className="absolute inset-0 h-full w-full"
-              />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/5">
-                  <Tv size={28} className="text-white/40" />
-                </div>
-                <p className="mt-4 text-sm font-medium text-white/60">Video feed will appear here</p>
-                <p className="mt-1 max-w-sm px-6 text-[11px] leading-relaxed text-white/35">
-                  16:9 · source 1920×1080 (or 1280×720). The switcher connects via WebRTC
-                  (WHIP/WHEP) for low latency, or RTMP→HLS for large audiences.
-                </p>
-              </div>
-            )}
-          </div>
+          <WhepPlayer url={whepUrl} />
         </section>
 
         {/* Sponsor ticker */}
