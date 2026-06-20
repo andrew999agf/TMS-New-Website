@@ -1,0 +1,12 @@
+# Caddy terminates HTTPS for the media server and proxies WHIP/WHEP signaling to
+# MediaMTX. (WebRTC media itself flows direct to the host on UDP/TCP 8189.)
+#
+# >>> Replace the domain and email below. <<<
+
+{
+	email you@example.com
+}
+
+live.example.com {
+	reverse_proxy localhost:8889
+}
