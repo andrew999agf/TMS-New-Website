@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Loader2, Radio, Volume2 } from "lucide-react";
 import { Room, RoomEvent, Track, type RemoteTrack, type RemoteParticipant } from "livekit-client";
 import { PatriotOverlay, type PatriotSnapshot } from "./PatriotOverlay";
+import { useSetLive } from "./PatriotLive";
 
 /**
  * The live broadcast stage: one read-only connection to the control hub (as a
@@ -108,6 +109,10 @@ export function BroadcastStage({ wsUrl }: { wsUrl: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const status = useProgramVideo(room, videoRef);
   const [needsUnmute, setNeedsUnmute] = useState(true);
+  const setLive = useSetLive();
+  useEffect(() => {
+    setLive(status === "live");
+  }, [status, setLive]);
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/12 bg-black shadow-2xl">

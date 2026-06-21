@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Radio, Tv, ImageIcon, Lock } from "lucide-react";
+import { Tv, ImageIcon, Lock } from "lucide-react";
 import { PatriotHeader } from "./PatriotHeader";
+import { PatriotLiveProvider, LiveFeedTag } from "./PatriotLive";
 import styles from "./patriot.module.css";
 import { BroadcastStage } from "./BroadcastStage";
 import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
@@ -33,6 +34,7 @@ export default async function PatriotSeries250Page() {
   const ticker = [...teams, ...teams]; // duplicate for a seamless marquee loop
 
   return (
+    <PatriotLiveProvider>
     <div className={styles.page}>
       {/* Broadcast overlay fonts (Bebas Neue + Roboto Condensed/Mono) */}
       <link rel="stylesheet" href={PATRIOT_OVERLAY_FONTS_LINK} />
@@ -52,9 +54,7 @@ export default async function PatriotSeries250Page() {
               <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--psx-faint)]">Upload your tournament logo in the admin panel.</p>
             </div>
           )}
-          <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium uppercase tracking-[0.3em] text-[color:var(--psx-muted)]">
-            <Radio size={15} className="text-[color:var(--psx-live)]" /> Live Feed
-          </p>
+          <LiveFeedTag />
         </section>
 
         {/* Live video feed */}
@@ -104,5 +104,6 @@ export default async function PatriotSeries250Page() {
         </footer>
       </main>
     </div>
+    </PatriotLiveProvider>
   );
 }
