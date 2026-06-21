@@ -7,6 +7,7 @@ const NAV = [
   { href: "/", label: "Watch" },
   { href: "/teams", label: "Teams" },
   { href: "/past-tournaments", label: "Past Tournaments" },
+  { href: "/records", label: "Records" },
   { href: "/stadium", label: "Stadium" },
 ];
 

@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Radio, ImageIcon, Users, ExternalLink } from "lucide-react";
+import { Radio, ImageIcon, Images, Users, UserRound, Building2, ExternalLink } from "lucide-react";
 
 const ITEMS = [
   { key: "switchboard", label: "Switchboard", href: "/admin", icon: Radio },
   { key: "branding", label: "Branding & Media", href: "/admin/branding", icon: ImageIcon },
+  { key: "banners", label: "Banners", href: "/admin/banners", icon: Images },
   { key: "teams", label: "Teams", href: "/admin/teams", icon: Users },
+  { key: "players", label: "Players", href: "/admin/players", icon: UserRound },
+  { key: "stadium", label: "Stadium", href: "/admin/stadium", icon: Building2 },
 ];
 
 function activeKey(pathname: string): string {
   if (pathname.includes("/branding")) return "branding";
+  if (pathname.includes("/banners")) return "banners";
+  if (pathname.includes("/players")) return "players";
+  if (pathname.includes("/stadium")) return "stadium";
   if (pathname.includes("/teams")) return "teams";
   return "switchboard";
 }

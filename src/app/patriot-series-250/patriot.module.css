@@ -12,6 +12,22 @@
   filter: var(--psx-logo-filter);
 }
 
+/* Ken Burns: slow zoom/pan for hero banner images. */
+.kenburns {
+  position: absolute;
+  inset: -6%;
+  background-size: cover;
+  background-position: center;
+  animation: ps-kenburns 20s ease-in-out infinite alternate;
+}
+@keyframes ps-kenburns {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.14) translate(-2.5%, -2%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kenburns { animation: none; }
+}
+
 /* Pulsing LIVE dot */
 .liveDot {
   animation: ps-pulse 1.4s ease-in-out infinite;

@@ -47,3 +47,16 @@ export const DEFAULT_PATRIOT_TEAMS: PatriotTeam[] = [
   { id: "spartans", abbreviation: "SPA", name: "Spartans" },
   { id: "rangers", abbreviation: "RNG", name: "Rangers" },
 ];
+
+/* Image collections + people, edited from the admin and shown across the site. */
+export const PATRIOT_BANNERS_KEY = "patriot.banners"; // string[] — hero banner images (Ken Burns)
+export const PATRIOT_STADIUM_KEY = "patriot.stadium"; // string[] — stadium gallery photos
+
+export interface PatriotPlayer {
+  id: string;
+  name: string;
+  team?: string; // org / where they play now
+  note?: string; // short blurb
+  photo?: string;
+}
+export const PATRIOT_PLAYERS_KEY = "patriot.players"; // PatriotPlayer[] — players in the pros

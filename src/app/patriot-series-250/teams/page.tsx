@@ -8,7 +8,7 @@ import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/li
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Teams · Patriot Series 250",
+  title: "Teams · Patriot Series",
   description: "The teams of the Patriot Series Wiffle Ball Tournament.",
   robots: { index: false, follow: false },
 };
@@ -18,18 +18,12 @@ export default async function TeamsPage() {
   const teams = saved.length > 0 ? saved : DEFAULT_PATRIOT_TEAMS;
 
   return (
-    <PatriotShell active="/teams">
-      <header className="text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[color:var(--psx-accent)]">Patriot Series</p>
-        <h1 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-bold sm:text-5xl">Teams</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-[color:var(--psx-muted)]">The {teams.length} clubs of the Patriot Series.</p>
-      </header>
-
-      <div className="mx-auto mt-12 max-w-2xl overflow-hidden rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)]">
+    <PatriotShell active="/teams" title="Teams" subtitle={`The ${teams.length} clubs of the Patriot Series.`}>
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)]">
         {teams.map((t, i) => (
           <div key={t.id} className="flex items-center gap-4 border-t border-[color:var(--psx-border)] px-4 py-3 first:border-t-0 sm:px-5">
             <span className="w-5 text-right text-xs tabular-nums text-[color:var(--psx-faint)]">{i + 1}</span>
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]">
               {t.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={t.logo} alt={t.name} className={`h-full w-full object-contain ${styles.logo}`} />
@@ -44,8 +38,7 @@ export default async function TeamsPage() {
           </div>
         ))}
       </div>
-
-      <p className="mt-8 text-center text-[11px] text-[color:var(--psx-faint)]">Team logos can be uploaded from the admin panel.</p>
+      <p className="mt-8 text-center text-[11px] text-[color:var(--psx-faint)]">Team logos can be uploaded from the admin panel — square PNG/SVG, ~512×512.</p>
     </PatriotShell>
   );
 }
