@@ -197,7 +197,7 @@ export function OperatorConsole({
       <Section title="Switcher hand-off">
         <p className="mb-3 text-[11px] text-white/60">Paste these into the desktop switcher app to go live.</p>
         <div className="space-y-3">
-          <CopyRow label="Control WebSocket URL" value={wsUrl} />
+          <CopyRow label="Control WebSocket URL" value={wsUrl ? `${wsUrl}${wsUrl.includes("?") ? "&" : "?"}role=switcher` : ""} />
           <CopyRow label="Switcher control token" value={switcherToken} />
           <CopyRow label="WHIP publish URL (video out)" value={whipUrl} />
           {!whipUrl && (
