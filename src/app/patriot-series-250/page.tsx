@@ -4,6 +4,7 @@ import { Radio, Tv, ImageIcon, ArrowLeft, Lock } from "lucide-react";
 import styles from "./patriot.module.css";
 import { WhepPlayer } from "./WhepPlayer";
 import { ScoreboardOverlay } from "./ScoreboardOverlay";
+import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export default function PatriotSeries250Page() {
   const wsUrl = process.env.PATRIOT_WS_URL ?? "";
   return (
     <div className={styles.page}>
+      {/* Broadcast overlay fonts (Bebas Neue + Roboto Condensed/Mono) */}
+      <link rel="stylesheet" href={PATRIOT_OVERLAY_FONTS_LINK} />
       {/* Top bar */}
       <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0e1a]/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
