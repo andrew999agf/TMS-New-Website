@@ -40,19 +40,8 @@ export default async function PatriotSeries250Page() {
       <PatriotHeader active="/" />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
-        {/* Title */}
-        <section className="pt-10 text-center sm:pt-14">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[color:var(--psx-accent)]">Patriot Series 250</p>
-          <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-bold sm:text-5xl">
-            Wiffle Ball Tournament
-          </h1>
-          <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium uppercase tracking-[0.3em] text-[color:var(--psx-muted)]">
-            <Radio size={15} className="text-[color:var(--psx-live)]" /> Live Feed
-          </p>
-        </section>
-
-        {/* Centered logo slot */}
-        <section className="mt-10 flex justify-center">
+        {/* Logo + live indicator */}
+        <section className="flex flex-col items-center pt-4">
           {branding.tournamentLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={branding.tournamentLogo} alt="Patriot Series 250" className={`h-[440px] w-auto max-w-full object-contain ${styles.logo}`} />
@@ -63,10 +52,13 @@ export default async function PatriotSeries250Page() {
               <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--psx-faint)]">Upload your tournament logo in the admin panel.</p>
             </div>
           )}
+          <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium uppercase tracking-[0.3em] text-[color:var(--psx-muted)]">
+            <Radio size={15} className="text-[color:var(--psx-live)]" /> Live Feed
+          </p>
         </section>
 
         {/* Live video feed */}
-        <section className="mt-12">
+        <section className="mt-8">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">
             <Tv size={16} className="text-[color:var(--psx-accent)]" /> Live Video Feed
           </div>
