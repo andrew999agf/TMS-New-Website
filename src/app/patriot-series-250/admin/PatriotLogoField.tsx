@@ -3,15 +3,18 @@
 import { useRef, useState } from "react";
 import { Upload, Loader2, X, Pencil, Scissors, Replace as ReplaceIcon } from "lucide-react";
 import { uploadToBlob } from "@/lib/upload-client";
+import { keyOutBackground } from "@/lib/patriot/color-key";
 
 /**
- * Patriot admin logo field with an explicit "Edit" button that reveals the
- * background tools — Remove background (make transparent) and Make white (for
- * the dark-mode silhouette). Reuses the firm's blob upload + ML background
- * removal. The preview sits on a checkerboard so transparency is obvious.
+ * Patriot admin logo field. Upload, then an explicit "Edit" button reveals:
+ *  - Remove background colour — a flat-colour key (samples the border colour
+ *    and erases only that one colour within an adjustable tolerance). It always
+ *    keys from the ORIGINAL upload, so the strength slider can be re-tuned.
+ *  - Make white — recolours the (transparent) logo to a white silhouette.
+ * Preview sits on a checkerboard so transparency is obvious.
  */
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
     const el = new Image();
     el.crossOrigin = "anonymous";
     el.onload = () => resolve(el);
@@ -39,10 +42,12 @@ export function PatriotLogoField({
   folder?: string;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // The un-keyed source we re-process from, so the slider can be re-tuned.
+  const [original, setOriginal] = useState<string | undefined>(value || undefined);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [working, setWorking] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
+  const [tolerance, setTolerance] = useState(55);
   const [error, setError] = useState<string | null>(null);
 
   async function handleFile(file?: File) {
@@ -51,6 +56,7 @@ export function PatriotLogoField({
     setError(null);
     try {
       const url = await uploadToBlob(file, folder);
+      setOriginal(url);
       onChange(url);
       setEditing(true);
     } catch (e) {
@@ -61,20 +67,18 @@ export function PatriotLogoField({
   }
 
   async function removeBg() {
-    if (!value) return;
+    const src = original || value;
+    if (!src) return;
     setWorking(true);
     setError(null);
-    setProgress("Loading…");
     try {
-      const { removeBackground } = await import("@/lib/background-removal");
-      const blob = await removeBackground(value, (m: string) => setProgress(m));
-      const url = await uploadToBlob(new File([blob], "cutout.png", { type: "image/png" }), folder);
+      const blob = await keyOutBackground(src, tolerance);
+      const url = await uploadToBlob(new File([blob], "keyed.png", { type: "image/png" }), folder);
       onChange(url);
     } catch (e) {
-      setError("Background removal failed. " + (e as Error).message);
+      setError("Couldn't remove the background colour. " + (e as Error).message);
     } finally {
       setWorking(false);
-      setProgress(null);
     }
   }
 
@@ -82,7 +86,6 @@ export function PatriotLogoField({
     if (!value) return;
     setWorking(true);
     setError(null);
-    setProgress("Recoloring…");
     try {
       const img = await loadImage(value);
       const canvas = document.createElement("canvas");
@@ -99,10 +102,9 @@ export function PatriotLogoField({
       const url = await uploadToBlob(new File([blob], "white.png", { type: "image/png" }), folder);
       onChange(url);
     } catch (e) {
-      setError("Could not recolor — remove the background first. " + (e as Error).message);
+      setError("Could not recolour — remove the background first. " + (e as Error).message);
     } finally {
       setWorking(false);
-      setProgress(null);
     }
   }
 
@@ -141,16 +143,35 @@ export function PatriotLogoField({
                   <X size={12} /> Remove
                 </button>
               </div>
+
               {editing && (
-                <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-black/30 p-3">
+                <div className="mt-3 space-y-3 rounded-lg border border-white/10 bg-black/30 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Edit logo</p>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] text-white/65">
+                      <span>Background match strength</span>
+                      <span className="tabular-nums">{tolerance}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10}
+                      max={120}
+                      value={tolerance}
+                      onChange={(e) => setTolerance(Number(e.target.value))}
+                      className="mt-1 w-full accent-blue-500"
+                    />
+                    <p className="mt-0.5 text-[10px] leading-relaxed text-white/40">
+                      Higher removes more shades of the one background colour. Re-tunes from the original each time.
+                    </p>
+                  </div>
+
                   <button type="button" onClick={removeBg} disabled={working} className={`${btn} w-full justify-start`}>
-                    {working ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />} Remove background (make transparent)
+                    {working ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />} Remove background colour
                   </button>
                   <button type="button" onClick={makeWhite} disabled={working} className={`${btn} w-full justify-start`}>
                     <span className="inline-block h-3 w-3 rounded-full border border-white/30 bg-white" /> Make white (dark-mode silhouette)
                   </button>
-                  {progress && <p className="text-[10px] text-white/50">{progress}</p>}
                 </div>
               )}
             </div>
