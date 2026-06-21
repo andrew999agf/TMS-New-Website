@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getSetting } from "@/lib/content";
 import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
-import { PATRIOT_TEAMS_KEY, type PatriotTeam } from "@/lib/patriot/settings";
+import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
 import { PatriotTeamsManager } from "./PatriotTeamsManager";
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function TeamsAdmin() {
-  const teams = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, []);
+  const teams = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -27,7 +27,7 @@ export default async function TeamsAdmin() {
       )}
 
       <div className="mt-6">
-        <PatriotTeamsManager initial={teams ?? []} />
+        <PatriotTeamsManager initial={teams.length > 0 ? teams : DEFAULT_PATRIOT_TEAMS} />
       </div>
     </div>
   );
