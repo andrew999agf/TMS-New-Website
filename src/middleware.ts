@@ -44,6 +44,15 @@ function patriotRouting(req: NextRequest): NextResponse {
   if (pathname.startsWith("/admin/login") || pathname.startsWith("/admin/reset")) {
     return NextResponse.next();
   }
+  // Public content pages → their /patriot-series-250/* equivalents.
+  const PUBLIC_PAGES: Record<string, string> = {
+    "/teams": "/patriot-series-250/teams",
+    "/past-tournaments": "/patriot-series-250/past-tournaments",
+    "/stadium": "/patriot-series-250/stadium",
+  };
+  const dest = PUBLIC_PAGES[pathname];
+  if (dest) return NextResponse.rewrite(new URL(dest, req.url));
+
   // The real Patriot pages and everything else just pass through.
   return NextResponse.next();
 }
@@ -97,5 +106,5 @@ export const config = {
   // "/" is matched so the Patriot host can serve the watch page at the root;
   // for the firm host it's a cheap pass-through. "/admin/:path*" keeps the
   // firm's admin guard (and powers the Patriot "/admin" → console rewrite).
-  matcher: ["/", "/admin/:path*"],
+  matcher: ["/", "/admin/:path*", "/teams", "/past-tournaments", "/stadium"],
 };

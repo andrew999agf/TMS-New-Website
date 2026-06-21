@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Loader2, Radio } from "lucide-react";
+import { Loader2, Radio, Volume2 } from "lucide-react";
 import { Room, RoomEvent, Track, type RemoteTrack, type RemoteParticipant } from "livekit-client";
 import { PatriotOverlay, type PatriotSnapshot } from "./PatriotOverlay";
 
@@ -102,6 +102,7 @@ export function BroadcastStage({ wsUrl }: { wsUrl: string }) {
   const room = snap?.livekitRoom ?? "";
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const status = useProgramVideo(room, videoRef);
+  const [needsUnmute, setNeedsUnmute] = useState(true);
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/12 bg-black shadow-2xl">
@@ -128,6 +129,18 @@ export function BroadcastStage({ wsUrl }: { wsUrl: string }) {
             </>
           )}
         </div>
+      )}
+      {status === "live" && needsUnmute && (
+        <button
+          onClick={() => {
+            const v = videoRef.current;
+            if (v) { v.muted = false; v.play?.().catch(() => {}); }
+            setNeedsUnmute(false);
+          }}
+          className="absolute right-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur transition-colors hover:bg-black/90"
+        >
+          <Volume2 size={14} /> Tap for sound
+        </button>
       )}
       <PatriotOverlay snapshot={snap} />
     </div>

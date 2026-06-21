@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Radio, Tv, ImageIcon, ArrowLeft, Lock } from "lucide-react";
+import { Radio, Tv, ImageIcon, Lock } from "lucide-react";
+import { PatriotHeader } from "./PatriotHeader";
 import styles from "./patriot.module.css";
 import { BroadcastStage } from "./BroadcastStage";
 import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
@@ -43,27 +44,7 @@ export default function PatriotSeries250Page() {
       {/* Broadcast overlay fonts (Bebas Neue + Roboto Condensed/Mono) */}
       <link rel="stylesheet" href={PATRIOT_OVERLAY_FONTS_LINK} />
       {/* Top bar */}
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0e1a]/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
-          <Link href="/about" className="flex items-center gap-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white">
-            <ArrowLeft size={14} /> Back
-          </Link>
-          <span className="text-center text-[11px] font-semibold uppercase tracking-[0.25em] text-white/60 sm:text-xs">
-            Patriot Series 250 · Wiffle Ball
-          </span>
-          <div className="flex items-center gap-2.5">
-            <Link
-              href="/patriot-series-250/control"
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-[11px] font-medium text-white/55 transition-colors hover:border-white/35 hover:text-white"
-            >
-              <Lock size={12} /> <span className="hidden sm:inline">Operator</span>
-            </Link>
-            <span className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-red-300">
-              <span className={`h-2 w-2 rounded-full bg-red-500 ${styles.liveDot}`} /> Live
-            </span>
-          </div>
-        </div>
-      </header>
+      <PatriotHeader active="/" />
 
       <main className="mx-auto max-w-6xl px-5 pb-20">
         {/* Title */}
