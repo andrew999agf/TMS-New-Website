@@ -74,8 +74,13 @@ function useProgramVideo(room: string, videoRef: RefObject<HTMLVideoElement | nu
         const { token, url } = (await res.json()) as { token?: string; url?: string };
         if (cancelled || !token || !url) { if (!cancelled) setStatus("offline"); return; }
 
-        lkRoom = new Room({ adaptiveStream: true });
+        // adaptiveStream off → always pull the full published quality (this is a
+        // single broadcast player, not a grid, so we don't want auto-downscaling).
+        lkRoom = new Room({ adaptiveStream: false });
         lkRoom.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => attach(track, participant));
+        lkRoom.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+          if (participant.identity === "program" && track.kind === Track.Kind.Video && !cancelled) setStatus("connecting");
+        });
         lkRoom.on(RoomEvent.Disconnected, () => { if (!cancelled) setStatus("offline"); });
         await lkRoom.connect(url, token);
         if (cancelled) { lkRoom.disconnect(); return; }
