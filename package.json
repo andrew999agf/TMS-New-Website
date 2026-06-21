@@ -31,6 +31,8 @@
     "fuse.js": "^7.0.0",
     "heic2any": "^0.0.4",
     "jose": "^5.9.6",
+    "livekit-client": "^2.19.2",
+    "livekit-server-sdk": "^2.15.5",
     "lucide-react": "^0.469.0",
     "next": "16.2.9",
     "nodemailer": "^9.0.0",
