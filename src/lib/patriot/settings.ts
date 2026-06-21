@@ -60,3 +60,19 @@ export interface PatriotPlayer {
   photo?: string;
 }
 export const PATRIOT_PLAYERS_KEY = "patriot.players"; // PatriotPlayer[] — players in the pros
+
+/* Per-page public visibility, toggled from the admin Visibility tab. Watch (/)
+ * is always shown. Records starts hidden (personal stats kept "in the background"). */
+export const PATRIOT_PAGES_KEY = "patriot.pages";
+export type PatriotPageKey = "teams" | "past-tournaments" | "records" | "stadium";
+export const DEFAULT_PAGE_VISIBILITY: Record<PatriotPageKey, boolean> = {
+  teams: true,
+  "past-tournaments": true,
+  records: false,
+  stadium: true,
+};
+
+/* Per-venue photo galleries (the "photo book" on the Stadium page). */
+export const PATRIOT_PHOTOS_LAKESIDE_KEY = "patriot.photos.lakeside";
+export const PATRIOT_PHOTOS_STIHL_KEY = "patriot.photos.stihl";
+export const PATRIOT_PHOTOS_ALLEY_KEY = "patriot.photos.alley";

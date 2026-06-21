@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ImageIcon } from "lucide-react";
 import { PatriotShell } from "../PatriotShell";
 import styles from "../patriot.module.css";
 import { getSetting } from "@/lib/content";
+import { getPageVisibility } from "@/lib/patriot/visibility";
 import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +16,8 @@ export const metadata: Metadata = {
 };
 
 export default async function TeamsPage() {
+  const vis = await getPageVisibility();
+  if (!vis.teams) redirect("/");
   const saved = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS);
   const teams = saved.length > 0 ? saved : DEFAULT_PATRIOT_TEAMS;
 

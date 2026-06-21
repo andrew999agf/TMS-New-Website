@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Trophy } from "lucide-react";
 import { PatriotShell } from "../PatriotShell";
 import { getSetting } from "@/lib/content";
+import { getPageVisibility } from "@/lib/patriot/visibility";
 import { PATRIOT_PLAYERS_KEY, type PatriotPlayer } from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +55,8 @@ const PROS_DEFAULT: PatriotPlayer[] = [
 ];
 
 export default async function RecordsPage() {
+  const vis = await getPageVisibility();
+  if (!vis.records) redirect("/");
   const savedPros = await getSetting<PatriotPlayer[]>(PATRIOT_PLAYERS_KEY, []);
   const pros = savedPros.length > 0 ? savedPros : PROS_DEFAULT;
 
