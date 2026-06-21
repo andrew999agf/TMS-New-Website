@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Lock, LogIn } from "lucide-react";
+import { ArrowLeft, Lock, LogIn, ExternalLink } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { mintControlToken } from "@/lib/patriot/token";
 import { OperatorConsole } from "./OperatorConsole";
@@ -70,6 +70,14 @@ export default async function OperatorConsolePage() {
       <div className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">Switchboard Operator</h1>
         <p className="mt-1 text-sm text-white/50">Signed in as {session.name}. Control channel below.</p>
+        <a
+          href="https://patriot-series-scoreboard-webbased.vercel.app/switchboard"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-[filter] hover:brightness-110"
+        >
+          <ExternalLink size={15} /> Open Switchboard
+        </a>
       </div>
       <OperatorConsole wsUrl={wsUrl} operatorToken={operatorToken} switcherToken={switcherToken} whipUrl={whipUrl} />
     </Frame>
