@@ -88,9 +88,10 @@ export default async function PatriotSeries250Page() {
                 >
                   {t.logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.logo} alt="" className={`h-8 w-8 object-contain ${styles.logo}`} />
-                  ) : null}
-                  {t.abbreviation || t.name}
+                    <img src={t.logo} alt={t.name} className={`h-9 w-auto max-w-[7rem] object-contain ${styles.logo}`} />
+                  ) : (
+                    <span>{t.name}</span>
+                  )}
                 </div>
               ))}
             </div>
