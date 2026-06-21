@@ -5,14 +5,23 @@ import { PatriotHeader } from "./PatriotHeader";
 import styles from "./patriot.module.css";
 import { BroadcastStage } from "./BroadcastStage";
 import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
+import { getSetting } from "@/lib/content";
+import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Patriot Series 250 — Wiffle Ball Tournament · Live Feed",
-  description: "Live feed for the Patriot Series 250 Wiffle Ball Tournament.",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const b = await getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {});
+  return {
+    title: "Patriot Series 250 — Wiffle Ball Tournament · Live Feed",
+    description: "Live feed for the Patriot Series 250 Wiffle Ball Tournament.",
+    robots: { index: false, follow: false },
+    ...(b.favicon ? { icons: { icon: b.favicon } } : {}),
+    ...(b.socialShare
+      ? { openGraph: { images: [b.socialShare] }, twitter: { card: "summary_large_image", images: [b.socialShare] } }
+      : {}),
+  };
+}
 
 /**
  * Patriot Series 250 — Wiffle Ball Tournament · Live Feed (placeholder).
@@ -37,8 +46,9 @@ export const metadata: Metadata = {
  */
 const TEAM_SLOTS = Array.from({ length: 8 }, (_, i) => i + 1);
 
-export default function PatriotSeries250Page() {
+export default async function PatriotSeries250Page() {
   const wsUrl = process.env.PATRIOT_WS_URL ?? "";
+  const branding = await getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {});
   return (
     <div className={styles.page}>
       {/* Broadcast overlay fonts (Bebas Neue + Roboto Condensed/Mono) */}
@@ -60,15 +70,16 @@ export default function PatriotSeries250Page() {
 
         {/* Centered logo slot */}
         <section className="mt-10 flex justify-center">
-          <div className="flex h-[220px] w-full max-w-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] text-center text-white/60">
-            <ImageIcon size={34} strokeWidth={1.5} />
-            <p className="mt-2 text-sm font-medium text-white/70">Tournament logo</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-white/60">
-              Transparent PNG or SVG · square works best
-              <br />
-              displays up to 420×220 — export at 2× (≈840×440)
-            </p>
-          </div>
+          {branding.tournamentLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.tournamentLogo} alt="Patriot Series 250" className="h-[220px] w-auto max-w-full object-contain" />
+          ) : (
+            <div className="flex h-[220px] w-full max-w-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.03] text-center text-white/60">
+              <ImageIcon size={34} strokeWidth={1.5} />
+              <p className="mt-2 text-sm font-medium text-white/70">Tournament logo</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/60">Upload your tournament logo in the admin panel.</p>
+            </div>
+          )}
         </section>
 
         {/* Live video feed */}
@@ -109,7 +120,7 @@ export default function PatriotSeries250Page() {
         {/* Operator entry point */}
         <footer className="mt-16 border-t border-white/10 pt-6 text-center">
           <Link
-            href="/patriot-series-250/control"
+            href="/admin"
             className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-white/60 transition-colors hover:text-white/80"
           >
             <Lock size={12} /> Switchboard operator login

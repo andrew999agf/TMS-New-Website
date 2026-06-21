@@ -35,7 +35,7 @@ export function PatriotHeader({ active = "/" }: { active?: string }) {
         </nav>
         <div className="flex shrink-0 items-center gap-2.5">
           <Link
-            href="/patriot-series-250/control"
+            href="/admin"
             className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-[11px] font-medium text-white/60 transition-colors hover:border-white/35 hover:text-white"
           >
             <Lock size={12} /> <span className="hidden sm:inline">Operator</span>

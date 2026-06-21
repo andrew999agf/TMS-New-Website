@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ImageIcon } from "lucide-react";
 import { PatriotShell } from "../PatriotShell";
+import { getSetting } from "@/lib/content";
+import { PATRIOT_TEAMS_KEY, type PatriotTeam } from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +12,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Placeholder roster — team names + logos become editable from the admin panel.
-const TEAMS = Array.from({ length: 8 }, (_, i) => `Team ${i + 1}`);
+const PLACEHOLDERS: PatriotTeam[] = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, name: `Team ${i + 1}` }));
 
-export default function TeamsPage() {
+export default async function TeamsPage() {
+  const teams = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, []);
+  const hasTeams = teams.length > 0;
+  const display = hasTeams ? teams : PLACEHOLDERS;
+
   return (
     <PatriotShell active="/teams">
       <header className="text-center">
@@ -23,18 +28,23 @@ export default function TeamsPage() {
       </header>
 
       <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {TEAMS.map((t) => (
-          <div key={t} className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/20 bg-white/[0.04] text-white/40">
-              <ImageIcon size={28} strokeWidth={1.5} />
+        {display.map((t) => (
+          <div key={t.id} className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-dashed border-white/20 bg-white/[0.04] text-white/40">
+              {t.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.logo} alt={t.name} className="h-full w-full object-contain" />
+              ) : (
+                <ImageIcon size={28} strokeWidth={1.5} />
+              )}
             </div>
-            <p className="mt-4 text-sm font-semibold text-white/85">{t}</p>
-            <p className="mt-1 text-[11px] uppercase tracking-wider text-white/45">Roster TBA</p>
+            <p className="mt-4 text-sm font-semibold text-white/85">{t.name}</p>
+            <p className="mt-1 text-[11px] uppercase tracking-wider text-white/45">{t.abbreviation || (hasTeams ? "" : "Roster TBA")}</p>
           </div>
         ))}
       </div>
 
-      <p className="mt-10 text-center text-[11px] text-white/45">Team names, logos, and rosters can be managed from the admin panel.</p>
+      {!hasTeams && <p className="mt-10 text-center text-[11px] text-white/45">Team names and logos can be added from the admin panel.</p>}
     </PatriotShell>
   );
 }

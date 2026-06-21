@@ -37,12 +37,16 @@ function patriotRouting(req: NextRequest): NextResponse {
   if (pathname === "/") {
     return NextResponse.rewrite(new URL("/patriot-series-250", req.url));
   }
-  if (pathname === "/admin" || pathname === "/admin/") {
-    return NextResponse.rewrite(new URL("/patriot-series-250/control", req.url));
-  }
   // Shared auth pages (operator signs in here) — let them render as-is.
   if (pathname.startsWith("/admin/login") || pathname.startsWith("/admin/reset")) {
     return NextResponse.next();
+  }
+  // Admin area (operator console + media manager): /admin/* → /patriot-series-250/admin/*
+  if (pathname === "/admin" || pathname === "/admin/") {
+    return NextResponse.rewrite(new URL("/patriot-series-250/admin", req.url));
+  }
+  if (pathname.startsWith("/admin/")) {
+    return NextResponse.rewrite(new URL(`/patriot-series-250${pathname}`, req.url));
   }
   // Public content pages → their /patriot-series-250/* equivalents.
   const PUBLIC_PAGES: Record<string, string> = {

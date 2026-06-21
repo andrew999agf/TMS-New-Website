@@ -1,0 +1,50 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Radio, ImageIcon, Users, ExternalLink } from "lucide-react";
+
+const ITEMS = [
+  { key: "switchboard", label: "Switchboard", href: "/admin", icon: Radio },
+  { key: "branding", label: "Branding & Media", href: "/admin/branding", icon: ImageIcon },
+  { key: "teams", label: "Teams", href: "/admin/teams", icon: Users },
+];
+
+function activeKey(pathname: string): string {
+  if (pathname.includes("/branding")) return "branding";
+  if (pathname.includes("/teams")) return "teams";
+  return "switchboard";
+}
+
+export function PatriotAdminSidebar({ name }: { name: string }) {
+  const active = activeKey(usePathname() ?? "");
+  return (
+    <aside className="shrink-0 border-b border-white/10 bg-black/20 lg:w-60 lg:border-b-0 lg:border-r">
+      <div className="px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/80">Patriot Series</p>
+        <p className="text-[11px] text-white/45">Admin</p>
+      </div>
+      <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible">
+        {ITEMS.map((it) => {
+          const Icon = it.icon;
+          const on = active === it.key;
+          return (
+            <Link
+              key={it.key}
+              href={it.href}
+              className={`flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${on ? "bg-white/10 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
+            >
+              <Icon size={16} /> {it.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="hidden border-t border-white/10 px-3 py-3 lg:block">
+        <Link href="/" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/50 transition-colors hover:text-white">
+          <ExternalLink size={14} /> View site
+        </Link>
+        <p className="mt-2 px-3 text-[11px] text-white/40">Signed in as {name}</p>
+      </div>
+    </aside>
+  );
+}
