@@ -55,7 +55,7 @@ export default async function PatriotSeries250Page() {
         <section className="mt-10 flex justify-center">
           {branding.tournamentLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={branding.tournamentLogo} alt="Patriot Series 250" className={`h-[220px] w-auto max-w-full object-contain ${styles.logo}`} />
+            <img src={branding.tournamentLogo} alt="Patriot Series 250" className={`h-[440px] w-auto max-w-full object-contain ${styles.logo}`} />
           ) : (
             <div className="flex h-[220px] w-full max-w-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-[color:var(--psx-border)] bg-[var(--psx-surface)] text-center text-[color:var(--psx-muted)]">
               <ImageIcon size={34} strokeWidth={1.5} />
