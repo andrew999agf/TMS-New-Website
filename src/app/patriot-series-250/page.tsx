@@ -84,13 +84,13 @@ export default async function PatriotSeries250Page() {
                 <div
                   key={`${t.id}-${i}`}
                   aria-hidden={i >= teams.length}
-                  className="flex h-14 min-w-[9rem] shrink-0 items-center justify-center gap-2 rounded-lg border border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] px-4 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--psx-muted)]"
+                  className="flex shrink-0 items-center justify-center"
                 >
                   {t.logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.logo} alt={t.name} className={`h-9 w-auto max-w-[7rem] object-contain ${styles.logo}`} />
+                    <img src={t.logo} alt={t.name} className={`h-24 w-auto max-w-[11rem] object-contain ${styles.logo}`} />
                   ) : (
-                    <span>{t.name}</span>
+                    <span className="text-base font-semibold uppercase tracking-wide text-[color:var(--psx-muted)]">{t.name}</span>
                   )}
                 </div>
               ))}
