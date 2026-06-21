@@ -16,13 +16,19 @@ function activeKey(pathname: string): string {
   return "switchboard";
 }
 
-export function PatriotAdminSidebar({ name }: { name: string }) {
+export function PatriotAdminSidebar({ name, logo }: { name: string; logo?: string }) {
   const active = activeKey(usePathname() ?? "");
   return (
     <aside className="shrink-0 border-b border-white/10 bg-black/20 lg:w-60 lg:border-b-0 lg:border-r">
-      <div className="px-5 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/80">Patriot Series</p>
-        <p className="text-[11px] text-white/45">Admin</p>
+      <div className="flex items-center gap-2.5 px-5 py-4">
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" className="h-9 w-9 shrink-0 rounded-md object-contain" />
+        ) : null}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/80">Patriot Series</p>
+          <p className="text-[11px] text-white/45">Admin</p>
+        </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible">
         {ITEMS.map((it) => {

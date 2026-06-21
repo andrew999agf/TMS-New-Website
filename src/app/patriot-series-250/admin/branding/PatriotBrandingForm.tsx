@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
-import { ImageUploadField } from "@/components/admin/ImageUploadField";
+import { PatriotLogoField } from "../PatriotLogoField";
 import { savePatriotSetting } from "../actions";
 import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 
@@ -27,15 +27,15 @@ export function PatriotBrandingForm({ initial }: { initial: PatriotBranding }) {
     <div className="space-y-8">
       <div className="grid max-w-3xl gap-6 sm:grid-cols-2">
         <div className="sm:col-span-2 max-w-md">
-          <ImageUploadField label="Tournament logo" value={b.tournamentLogo ?? ""} onChange={set("tournamentLogo")} folder="patriot/branding" />
+          <PatriotLogoField label="Tournament logo" value={b.tournamentLogo ?? ""} onChange={set("tournamentLogo")} folder="patriot/branding" />
           <p className="mt-1.5 text-[11px] text-white/50">Shown on the watch page. Use <b>Remove background</b> for a clean cut-out — it auto-shows as a white silhouette in dark mode.</p>
         </div>
         <div className="max-w-md">
-          <ImageUploadField label="Favicon" value={b.favicon ?? ""} onChange={set("favicon")} folder="patriot/branding" />
+          <PatriotLogoField label="Favicon" value={b.favicon ?? ""} onChange={set("favicon")} folder="patriot/branding" />
           <p className="mt-1.5 text-[11px] text-white/50">Browser-tab icon. Square, ~512×512.</p>
         </div>
         <div className="max-w-md">
-          <ImageUploadField label="Social share image" value={b.socialShare ?? ""} onChange={set("socialShare")} folder="patriot/branding" />
+          <PatriotLogoField label="Social share image" value={b.socialShare ?? ""} onChange={set("socialShare")} folder="patriot/branding" />
           <p className="mt-1.5 text-[11px] text-white/50">Used when shared on social media. 1200×630.</p>
         </div>
       </div>

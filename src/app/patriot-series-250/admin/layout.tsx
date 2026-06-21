@@ -2,6 +2,8 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { Lock, LogIn } from "lucide-react";
 import { getSession } from "@/lib/auth";
+import { getSetting } from "@/lib/content";
+import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 import { PatriotAdminSidebar } from "./PatriotAdminSidebar";
 import styles from "../patriot.module.css";
 
@@ -47,9 +49,11 @@ export default async function PatriotAdminLayout({ children }: { children: React
     );
   }
 
+  const branding = await getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {});
+
   return (
     <div data-psx-theme="dark" style={ADMIN_DARK_VARS} className={`${styles.page} flex min-h-screen flex-col lg:flex-row`}>
-      <PatriotAdminSidebar name={session.name} />
+      <PatriotAdminSidebar name={session.name} logo={branding.favicon || branding.tournamentLogo} />
       <main className="min-w-0 flex-1 px-5 py-8 sm:px-8">{children}</main>
     </div>
   );

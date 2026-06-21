@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
-import { ImageUploadField } from "@/components/admin/ImageUploadField";
+import { PatriotLogoField } from "../PatriotLogoField";
 import { savePatriotSetting } from "../actions";
 import { PATRIOT_TEAMS_KEY, type PatriotTeam } from "@/lib/patriot/settings";
 
@@ -60,7 +60,7 @@ export function PatriotTeamsManager({ initial }: { initial: PatriotTeam[] }) {
               </button>
             </div>
             <div className="mt-3 max-w-md">
-              <ImageUploadField label="Logo" value={t.logo ?? ""} onChange={(url) => update(t.id, { logo: url || undefined })} folder="patriot/teams" />
+              <PatriotLogoField label="Logo" value={t.logo ?? ""} onChange={(url) => update(t.id, { logo: url || undefined })} folder="patriot/teams" />
             </div>
           </div>
         ))}
