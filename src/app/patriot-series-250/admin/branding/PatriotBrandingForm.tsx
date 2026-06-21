@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
-import { PatriotImageUpload } from "../PatriotImageUpload";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { savePatriotSetting } from "../actions";
 import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 
@@ -25,29 +25,19 @@ export function PatriotBrandingForm({ initial }: { initial: PatriotBranding }) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap gap-8">
-        <PatriotImageUpload
-          label="Tournament logo"
-          hint="Shown on the watch page. Transparent PNG or SVG — square works best."
-          value={b.tournamentLogo}
-          onChange={set("tournamentLogo")}
-          folder="patriot/branding"
-        />
-        <PatriotImageUpload
-          label="Favicon"
-          hint="The little browser-tab icon. Square PNG / ICO / SVG, ~512×512."
-          value={b.favicon}
-          onChange={set("favicon")}
-          folder="patriot/branding"
-        />
-        <PatriotImageUpload
-          label="Social share image"
-          aspect="wide"
-          hint="Used when the site is shared on social media. 1200×630 recommended."
-          value={b.socialShare}
-          onChange={set("socialShare")}
-          folder="patriot/branding"
-        />
+      <div className="grid max-w-3xl gap-6 sm:grid-cols-2">
+        <div className="sm:col-span-2 max-w-md">
+          <ImageUploadField label="Tournament logo" value={b.tournamentLogo ?? ""} onChange={set("tournamentLogo")} folder="patriot/branding" />
+          <p className="mt-1.5 text-[11px] text-white/50">Shown on the watch page. Use <b>Remove background</b> for a clean cut-out — it auto-shows as a white silhouette in dark mode.</p>
+        </div>
+        <div className="max-w-md">
+          <ImageUploadField label="Favicon" value={b.favicon ?? ""} onChange={set("favicon")} folder="patriot/branding" />
+          <p className="mt-1.5 text-[11px] text-white/50">Browser-tab icon. Square, ~512×512.</p>
+        </div>
+        <div className="max-w-md">
+          <ImageUploadField label="Social share image" value={b.socialShare ?? ""} onChange={set("socialShare")} folder="patriot/branding" />
+          <p className="mt-1.5 text-[11px] text-white/50">Used when shared on social media. 1200×630.</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

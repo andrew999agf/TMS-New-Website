@@ -304,3 +304,42 @@
   animation-iteration-count: infinite;
 }
 .group:hover .badge-marquee { animation-play-state: paused; }
+
+/* ---------------------------------------------------------------------------
+ * Patriot Series light/dark theme. Scoped entirely to --psx-* variables that
+ * only the /patriot-series-250 pages consume, so the firm site is untouched.
+ * Default is LIGHT; [data-psx-theme="dark"] (set on <html> by the toggle, or
+ * forced on the admin root) flips to dark + turns logos into white silhouettes.
+ * ------------------------------------------------------------------------- */
+:root {
+  --psx-page-bg:
+    radial-gradient(1200px 600px at 50% -10%, rgba(37, 99, 235, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(220, 38, 38, 0.06), transparent 60%),
+    #eef1f7;
+  --psx-fg: #0b1220;
+  --psx-muted: rgba(11, 18, 32, 0.62);
+  --psx-faint: rgba(11, 18, 32, 0.45);
+  --psx-surface: rgba(11, 18, 32, 0.04);
+  --psx-surface-2: rgba(11, 18, 32, 0.07);
+  --psx-border: rgba(11, 18, 32, 0.12);
+  --psx-header: rgba(238, 241, 247, 0.85);
+  --psx-accent: #1d4ed8;
+  --psx-live: #dc2626;
+  --psx-logo-filter: none;
+}
+[data-psx-theme="dark"] {
+  --psx-page-bg:
+    radial-gradient(1200px 600px at 50% -10%, rgba(37, 99, 235, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(220, 38, 38, 0.18), transparent 60%),
+    #0a0e1a;
+  --psx-fg: #f8fafc;
+  --psx-muted: rgba(255, 255, 255, 0.62);
+  --psx-faint: rgba(255, 255, 255, 0.45);
+  --psx-surface: rgba(255, 255, 255, 0.04);
+  --psx-surface-2: rgba(255, 255, 255, 0.07);
+  --psx-border: rgba(255, 255, 255, 0.12);
+  --psx-header: rgba(10, 14, 26, 0.85);
+  --psx-accent: #93c5fd;
+  --psx-live: #fca5a5;
+  --psx-logo-filter: brightness(0) invert(1);
+}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
-import { PatriotImageUpload } from "../PatriotImageUpload";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { savePatriotSetting } from "../actions";
 import { PATRIOT_TEAMS_KEY, type PatriotTeam } from "@/lib/patriot/settings";
 
@@ -34,30 +34,34 @@ export function PatriotTeamsManager({ initial }: { initial: PatriotTeam[] }) {
 
   return (
     <div className="space-y-4">
-      {teams.length === 0 && <p className="text-sm text-white/45">No teams yet — add your first team below.</p>}
+      {teams.length === 0 && <p className="text-sm text-white/50">No teams yet — add your first below.</p>}
 
       <div className="space-y-3">
         {teams.map((t) => (
-          <div key={t.id} className="flex flex-wrap items-start gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <PatriotImageUpload value={t.logo} onChange={(url) => update(t.id, { logo: url || undefined })} folder="patriot/teams" />
-            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
-              <input
-                value={t.name}
-                onChange={(e) => update(t.id, { name: e.target.value })}
-                placeholder="Team name"
-                className="rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/40 focus:outline-none"
-              />
-              <input
-                value={t.abbreviation ?? ""}
-                onChange={(e) => update(t.id, { abbreviation: e.target.value.toUpperCase() })}
-                placeholder="Abbreviation (e.g. MIN)"
-                maxLength={5}
-                className="rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm uppercase text-white placeholder:text-white/40 focus:border-white/40 focus:outline-none"
-              />
+          <div key={t.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+                <input
+                  value={t.name}
+                  onChange={(e) => update(t.id, { name: e.target.value })}
+                  placeholder="Team name"
+                  className="flex-1 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/40 focus:outline-none"
+                />
+                <input
+                  value={t.abbreviation ?? ""}
+                  onChange={(e) => update(t.id, { abbreviation: e.target.value.toUpperCase() })}
+                  placeholder="Abbr (MIN)"
+                  maxLength={5}
+                  className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm uppercase text-white placeholder:text-white/40 focus:border-white/40 focus:outline-none sm:w-32"
+                />
+              </div>
+              <button onClick={() => remove(t.id)} className="rounded-lg border border-white/15 p-2 text-white/50 transition-colors hover:border-red-400/40 hover:text-red-300">
+                <Trash2 size={15} />
+              </button>
             </div>
-            <button onClick={() => remove(t.id)} className="rounded-lg border border-white/15 p-2 text-white/50 transition-colors hover:border-red-400/40 hover:text-red-300">
-              <Trash2 size={15} />
-            </button>
+            <div className="mt-3 max-w-md">
+              <ImageUploadField label="Logo" value={t.logo ?? ""} onChange={(url) => update(t.id, { logo: url || undefined })} folder="patriot/teams" />
+            </div>
           </div>
         ))}
       </div>

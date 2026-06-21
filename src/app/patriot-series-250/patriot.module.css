@@ -3,11 +3,13 @@
 
 .page {
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(37, 99, 235, 0.25), transparent 60%),
-    radial-gradient(900px 500px at 100% 110%, rgba(220, 38, 38, 0.18), transparent 60%),
-    #0a0e1a;
-  color: #f8fafc;
+  background: var(--psx-page-bg);
+  color: var(--psx-fg);
+}
+
+/* Logos: full colour in light mode, white silhouette in dark mode. */
+.logo {
+  filter: var(--psx-logo-filter);
 }
 
 /* Pulsing LIVE dot */
