@@ -34,14 +34,18 @@ export type SearchDoc = {
   subtitle?: string;
   url: string;
   keywords: string;
+  /** Direct PDF download (Texas Rules only). */
+  pdfUrl?: string;
 };
 
 /** Inclusive [start, end] character ranges in the title that matched the query. */
 export type MatchRange = [number, number];
 
-export type SearchResult = Pick<SearchDoc, "type" | "title" | "subtitle" | "url"> & {
+export type SearchResult = Pick<SearchDoc, "type" | "title" | "subtitle" | "url" | "pdfUrl"> & {
   /** Highlight ranges for the title, so the UI can emphasize what matched. */
   matches?: MatchRange[];
+  /** Fuse relevance score (lower is better); used to float the best group up. */
+  score?: number;
 };
 
 const stripHtml = (s?: string) => (s ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -152,6 +156,7 @@ async function buildDocs(): Promise<SearchDoc[]> {
       subtitle: r.lastAmended ? `Last amended ${r.lastAmended}` : "Statewide rule",
       url: "/texas-rules",
       keywords: clip([r.title, "texas rule statewide", r.lastAmended ?? ""].join(" ")),
+      pdfUrl: r.pdfUrl,
     });
   }
 
@@ -178,6 +183,8 @@ export async function searchSite(query: string, limit = 12): Promise<SearchResul
       title: r.item.title,
       subtitle: r.item.subtitle,
       url: r.item.url,
+      pdfUrl: r.item.pdfUrl,
+      score: r.score,
       matches: titleMatch ? titleMatch.indices.map(([s, e]) => [s, e] as MatchRange) : undefined,
     };
   });

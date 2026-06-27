@@ -13,6 +13,7 @@ import {
   Gavel,
   Trophy,
   FileText,
+  FileDown,
   Clock,
   CornerDownLeft,
   ArrowUp,
@@ -21,7 +22,15 @@ import {
 } from "lucide-react";
 
 type MatchRange = [number, number];
-type Result = { type: string; title: string; subtitle?: string; url: string; matches?: MatchRange[] };
+type Result = {
+  type: string;
+  title: string;
+  subtitle?: string;
+  url: string;
+  pdfUrl?: string;
+  score?: number;
+  matches?: MatchRange[];
+};
 
 const TYPE_ORDER = ["Practice Area", "Insight", "Team", "Glossary", "Texas Rule", "Result", "Page"];
 
@@ -90,11 +99,21 @@ export function SiteSearch({ className }: { className?: string }) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const term = q.trim();
-  // Flatten results into render/keyboard order so the active index maps 1:1.
-  const ordered = useMemo(
-    () => TYPE_ORDER.flatMap((t) => results.filter((r) => r.type === t)),
-    [results],
-  );
+  // Group by type, then float the group with the best (lowest) relevance score
+  // to the top — so searching a rule name puts that rule first. Ties fall back
+  // to the editorial TYPE_ORDER. Items keep Fuse's relevance order within a group.
+  const groups = useMemo(() => {
+    const present = TYPE_ORDER.filter((t) => results.some((r) => r.type === t)).map((t) => {
+      const items = results.filter((r) => r.type === t);
+      const best = Math.min(...items.map((r) => r.score ?? 1));
+      return { type: t, items, best, order: TYPE_ORDER.indexOf(t) };
+    });
+    present.sort((a, b) => a.best - b.best || a.order - b.order);
+    return present;
+  }, [results]);
+
+  // Flat render/keyboard order so the active index maps 1:1 with what's shown.
+  const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -208,11 +227,6 @@ export function SiteSearch({ className }: { className?: string }) {
       close();
     }
   }
-
-  // Build display groups; each item's flat index comes from `ordered` (same refs).
-  const groups = TYPE_ORDER.map((t) => ({ type: t, items: ordered.filter((r) => r.type === t) })).filter(
-    (g) => g.items.length > 0,
-  );
 
   return (
     <div className={`flex items-center ${className ?? ""}`}>
@@ -336,32 +350,51 @@ export function SiteSearch({ className }: { className?: string }) {
                         {g.items.map((r) => {
                           const i = ordered.indexOf(r);
                           const isActive = i === active;
+                          const isRule = r.type === "Texas Rule";
                           return (
-                            <button
+                            <div
                               key={`${r.type}-${r.url}-${r.title}`}
                               id={`site-search-opt-${i}`}
                               data-idx={i}
                               role="option"
                               aria-selected={isActive}
                               onMouseMove={() => setActive(i)}
-                              onClick={() => go(r.url, term)}
-                              className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left ${
+                              className={`flex w-full items-center gap-2 rounded-md pr-1.5 ${
                                 isActive ? "bg-[var(--c-surface2)]" : ""
                               }`}
                             >
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--c-surface2)] text-[var(--c-ink-muted)]">
-                                <Icon size={16} />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium leading-snug text-[var(--c-ink)]">
-                                  <Highlighted text={r.title} ranges={r.matches} />
+                              <button
+                                onClick={() => go(r.url, term)}
+                                className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+                              >
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--c-surface2)] text-[var(--c-ink-muted)]">
+                                  <Icon size={16} />
                                 </span>
-                                {r.subtitle && (
-                                  <span className="block truncate text-xs text-[var(--c-ink-muted)]">{r.subtitle}</span>
-                                )}
-                              </span>
-                              {isActive && <CornerDownLeft size={14} className="shrink-0 text-[var(--c-ink-muted)]" />}
-                            </button>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium leading-snug text-[var(--c-ink)]">
+                                    <Highlighted text={r.title} ranges={r.matches} />
+                                  </span>
+                                  {r.subtitle && (
+                                    <span className="block truncate text-xs text-[var(--c-ink-muted)]">
+                                      {isRule ? `${r.subtitle} · View all rules` : r.subtitle}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                              {isRule && r.pdfUrl ? (
+                                <a
+                                  href={r.pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => remember(term)}
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-2.5 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                                >
+                                  <FileDown size={13} /> PDF
+                                </a>
+                              ) : (
+                                isActive && <CornerDownLeft size={14} className="shrink-0 text-[var(--c-ink-muted)]" />
+                              )}
+                            </div>
                           );
                         })}
                       </div>
