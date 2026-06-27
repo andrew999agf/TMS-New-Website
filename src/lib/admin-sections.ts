@@ -17,6 +17,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "results", label: "Results", href: "/admin/results", toggleable: true },
   { key: "blog", label: "Blog", href: "/admin/blog", toggleable: true },
   { key: "glossary", label: "Glossary", href: "/admin/glossary", toggleable: true },
+  { key: "texas-rules", label: "Texas Rules", href: "/admin/texas-rules", toggleable: true },
   { key: "testimonials", label: "Testimonials", href: "/admin/testimonials", toggleable: true },
   { key: "media", label: "Media", href: "/admin/media", toggleable: true },
   { key: "intake", label: "Intake", href: "/admin/intake", toggleable: true },

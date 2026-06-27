@@ -32,6 +32,7 @@ const NAV_COLUMNS: { title: string; links: { label: string; href: string }[] }[]
       { label: "Results", href: "/results" },
       { label: "Insights", href: "/blog" },
       { label: "Glossary", href: "/glossary" },
+      { label: "Texas Rules", href: "/texas-rules" },
       { label: "Contact", href: "/contact" },
     ],
   },
