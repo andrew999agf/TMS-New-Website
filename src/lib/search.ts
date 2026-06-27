@@ -6,7 +6,9 @@ import {
   getGlossaryTerms,
   getTeam,
   getResults,
+  getSetting,
 } from "@/lib/content";
+import { TEXAS_RULES_KEY, DEFAULT_TEXAS_RULES, type TexasRule } from "@/lib/texas-rules";
 
 /**
  * Site-wide search index. It is assembled from the same live content getters
@@ -16,7 +18,14 @@ import {
  * keystrokes don't rebuild it every time.
  */
 
-export type SearchType = "Practice Area" | "Insight" | "Team" | "Glossary" | "Result" | "Page";
+export type SearchType =
+  | "Practice Area"
+  | "Insight"
+  | "Team"
+  | "Glossary"
+  | "Texas Rule"
+  | "Result"
+  | "Page";
 
 export type SearchDoc = {
   id: string;
@@ -27,7 +36,13 @@ export type SearchDoc = {
   keywords: string;
 };
 
-export type SearchResult = Pick<SearchDoc, "type" | "title" | "subtitle" | "url">;
+/** Inclusive [start, end] character ranges in the title that matched the query. */
+export type MatchRange = [number, number];
+
+export type SearchResult = Pick<SearchDoc, "type" | "title" | "subtitle" | "url"> & {
+  /** Highlight ranges for the title, so the UI can emphasize what matched. */
+  matches?: MatchRange[];
+};
 
 const stripHtml = (s?: string) => (s ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 const clip = (s: string, n = 400) => (s.length > n ? s.slice(0, n) : s);
@@ -40,6 +55,7 @@ const STATIC_PAGES: SearchDoc[] = [
   { id: "page-results", type: "Page", title: "Results", url: "/results", keywords: "results record verdicts settlements appeals" },
   { id: "page-blog", type: "Page", title: "Insights", url: "/blog", keywords: "insights blog articles news" },
   { id: "page-glossary", type: "Page", title: "Glossary", url: "/glossary", keywords: "glossary terms definitions plain english" },
+  { id: "page-texas-rules", type: "Page", title: "Texas Rules", url: "/texas-rules", keywords: "texas rules civil procedure appellate evidence judicial conduct disciplinary guardianship download pdf statewide" },
   { id: "page-contact", type: "Page", title: "Contact", url: "/contact", keywords: "contact phone office locations fort worth bosque weatherford" },
   { id: "page-consult", type: "Page", title: "Request a Consultation", url: "/consultation", keywords: "consultation intake request appointment talk to a lawyer" },
   { id: "page-payment", type: "Page", title: "Make a Payment", url: "/payment", keywords: "payment pay bill invoice clio" },
@@ -54,18 +70,21 @@ const FUSE_OPTS = {
   threshold: 0.35,
   ignoreLocation: true,
   minMatchCharLength: 2,
+  includeMatches: true,
+  includeScore: true,
 };
 
 let cache: { at: number; fuse: Fuse<SearchDoc> } | null = null;
 const TTL = 60_000;
 
 async function buildDocs(): Promise<SearchDoc[]> {
-  const [practices, posts, glossary, team, results] = await Promise.all([
+  const [practices, posts, glossary, team, results, rules] = await Promise.all([
     getPracticeAreas(),
     getPublishedPosts(),
     getGlossaryTerms(),
     getTeam(),
     getResults(),
+    getSetting<TexasRule[]>(TEXAS_RULES_KEY, DEFAULT_TEXAS_RULES),
   ]);
 
   const docs: SearchDoc[] = [];
@@ -125,6 +144,17 @@ async function buildDocs(): Promise<SearchDoc[]> {
     });
   }
 
+  for (const r of rules) {
+    docs.push({
+      id: `rule-${r.id}`,
+      type: "Texas Rule",
+      title: r.title,
+      subtitle: r.lastAmended ? `Last amended ${r.lastAmended}` : "Statewide rule",
+      url: "/texas-rules",
+      keywords: clip([r.title, "texas rule statewide", r.lastAmended ?? ""].join(" ")),
+    });
+  }
+
   docs.push(...STATIC_PAGES);
   return docs;
 }
@@ -141,10 +171,14 @@ export async function searchSite(query: string, limit = 12): Promise<SearchResul
   const q = query.trim();
   if (q.length < 2) return [];
   const fuse = await getFuse();
-  return fuse.search(q, { limit }).map((r) => ({
-    type: r.item.type,
-    title: r.item.title,
-    subtitle: r.item.subtitle,
-    url: r.item.url,
-  }));
+  return fuse.search(q, { limit }).map((r) => {
+    const titleMatch = r.matches?.find((m) => m.key === "title");
+    return {
+      type: r.item.type,
+      title: r.item.title,
+      subtitle: r.item.subtitle,
+      url: r.item.url,
+      matches: titleMatch ? titleMatch.indices.map(([s, e]) => [s, e] as MatchRange) : undefined,
+    };
+  });
 }

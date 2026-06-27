@@ -264,6 +264,16 @@
   .search-grow { animation: none; }
 }
 
+/* Command-palette search: backdrop fade + panel rise. */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes paletteIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Home landing intro: navy overlay fades out, logo fades/scales in. */
 @keyframes homeIntroOverlay {
   0%, 72% { opacity: 1; }
