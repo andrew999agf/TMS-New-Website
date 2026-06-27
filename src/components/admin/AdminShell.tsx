@@ -46,8 +46,6 @@ const NAV = [
   { label: "Media", href: "/admin/media", icon: ImageIcon },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
-  { label: "Time Tracker 2.0", href: "/admin/time-tracker-2", icon: Sparkles },
-  { label: "Time Tracker 3.0", href: "/admin/time-tracker-3", icon: Sparkles },
   { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Sparkles },
   { label: "Appearance", href: "/admin/appearance", icon: Palette },
   { label: "User Management", href: "/admin/logins", icon: KeyRound },
