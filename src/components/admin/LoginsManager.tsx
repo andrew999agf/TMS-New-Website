@@ -11,7 +11,7 @@ import { TOGGLEABLE_SECTIONS, isFullAdminRole } from "@/lib/admin-sections";
 type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null };
 type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["timekeeper", "editor", "owner"];
-const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker only)", editor: "Editor (full access)", owner: "Owner (full access)" };
+const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (full access)", owner: "Owner (full access)" };
 
 export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: number }) {
   const [adding, setAdding] = useState(false);
@@ -115,7 +115,7 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
               {!fullAdmin && openAccess === u.id && (
                 <div className="px-4 pb-4 -mt-1">
                   <div className="rounded-md bg-[var(--c-surface2)] p-3">
-                    <p className="text-xs text-[var(--c-ink-muted)] mb-2">Time Tracker is always on. Toggle any extra sections this person can access:</p>
+                    <p className="text-xs text-[var(--c-ink-muted)] mb-2">Time Tracker and Training are always on. Toggle any extra sections this person can access:</p>
                     <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
                       {TOGGLEABLE_SECTIONS.map((s) => (
                         <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">

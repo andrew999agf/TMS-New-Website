@@ -30,7 +30,7 @@ export default async function LoginsPage() {
     <>
       <AdminHeader
         title="User Management"
-        description="Accounts &amp; access. Timekeeper logins get the Time Tracker only — use the access toggles to grant more. Owner/Editor have full access."
+        description="Accounts &amp; access. Timekeeper logins get the Time Tracker and Training — use the access toggles to grant more. Owner/Editor have full access."
       />
       <div className="p-8">
         <LoginsManager initial={rows} selfId={Number(session.sub)} />

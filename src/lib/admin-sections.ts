@@ -1,8 +1,9 @@
 /**
  * Canonical list of admin sections. Used by the sidebar, the middleware route
  * guard, and the per-user access toggles so they always agree. Full admins
- * (owner/editor) can access everything; other accounts get the Time Tracker
- * plus any sections explicitly toggled on for them in User Management.
+ * (owner/editor) can access everything; other accounts (timekeepers) get the
+ * Time Tracker and Training plus any sections explicitly toggled on for them in
+ * User Management.
  */
 
 export type AdminSection = { key: string; label: string; href: string; toggleable: boolean };
@@ -23,6 +24,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "intake", label: "Intake", href: "/admin/intake", toggleable: true },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
+  { key: "training", label: "Training", href: "/admin/training", toggleable: false },
   { key: "appearance", label: "Appearance", href: "/admin/appearance", toggleable: true },
   { key: "logins", label: "User Management", href: "/admin/logins", toggleable: false },
   { key: "settings", label: "Settings", href: "/admin/settings", toggleable: false },
@@ -38,8 +40,8 @@ export function isFullAdminRole(role?: string): boolean {
 /** All section keys a given account may access. */
 export function allowedSections(role?: string, permissions?: string[]): string[] {
   if (isFullAdminRole(role)) return ADMIN_SECTIONS.map((s) => s.key);
-  // Timekeepers get the original tracker plus 2.0, 3.0, and 4.0 by default.
-  return ["time-tracker", "time-tracker-4", ...(permissions ?? [])];
+  // Timekeepers get the Time Tracker (original + 4.0) and Training by default.
+  return ["time-tracker", "time-tracker-4", "training", ...(permissions ?? [])];
 }
 
 /** Which section key a pathname belongs to (longest matching href wins). */
