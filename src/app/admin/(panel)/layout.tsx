@@ -3,10 +3,12 @@ import { requireAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { hasDb } from "@/db";
 
-// Makes the admin installable as a home-screen app on iOS (Android uses the
-// site manifest). The home-screen icon inherits the site favicon from the root
-// layout. Scoped to the admin panel; the public site is unaffected.
+// Makes the admin installable as a home-screen app. The manifest is linked here
+// (only on admin pages) rather than via the root app/manifest.ts convention,
+// which Next injects on EVERY page — that's what made the browser's "Install"
+// prompt appear on the public site. Now it's offered only inside /admin.
 export const metadata: Metadata = {
+  manifest: "/admin/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "TMS Time" },
 };
 

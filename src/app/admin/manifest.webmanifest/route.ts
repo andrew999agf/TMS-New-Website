@@ -1,22 +1,27 @@
+import { NextResponse } from "next/server";
 import type { MetadataRoute } from "next";
 import { getBlocks } from "@/lib/content";
 
 /**
- * PWA manifest. The installed admin app icon reuses the admin-panel favicon
- * (global.adminFavicon), falling back to the site favicon (global.favicon);
- * bundled icons are kept as a fallback so the app stays installable even if the
- * favicon can't be fetched. Scoped to /admin so "install" makes the admin/Time
- * Tracker a home-screen app; the public site is unaffected (no service worker,
- * not in scope).
+ * PWA manifest for the admin app — served from /admin/manifest.webmanifest and
+ * linked ONLY from the admin panel layout (not the special root app/manifest.ts
+ * convention, which Next injects on every page). That keeps the browser's
+ * "Install app" prompt off the public site: it only appears inside /admin.
+ *
+ * The installed icon reuses the admin-panel favicon (global.adminFavicon),
+ * falling back to the site favicon (global.favicon); bundled icons stay as a
+ * fallback so the app is installable even if the favicon can't be fetched.
  */
 export const dynamic = "force-dynamic";
 
-export default async function manifest(): Promise<MetadataRoute.Manifest> {
+export async function GET() {
   let favicon = "";
   try {
     const blocks = await getBlocks("global");
     favicon = (blocks["global.adminFavicon"] || blocks["global.favicon"] || "").trim();
-  } catch { /* fall back to bundled icons */ }
+  } catch {
+    /* fall back to bundled icons */
+  }
 
   const type = /\.svg($|\?)/i.test(favicon)
     ? "image/svg+xml"
@@ -40,7 +45,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
       ]
     : fallback;
 
-  return {
+  const manifest: MetadataRoute.Manifest = {
     name: "T. Maxwell Smith — Time Tracker",
     short_name: "TMS Time",
     description: "Time tracking for the office of T. Maxwell Smith, PLLC.",
@@ -52,4 +57,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     theme_color: "#14110F",
     icons,
   };
+
+  return NextResponse.json(manifest, {
+    headers: { "Content-Type": "application/manifest+json" },
+  });
 }
