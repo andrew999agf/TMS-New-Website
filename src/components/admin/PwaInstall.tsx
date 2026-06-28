@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from "react";
-import { Download, Share, X } from "lucide-react";
+import { Download, Share, MonitorDown, X } from "lucide-react";
 import { detectPlatform } from "@/lib/platform";
 
 /**
@@ -20,7 +20,6 @@ export function PwaInstall() {
   const [installed, setInstalled] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [os, setOs] = useState<string>("other");
-  const [browser, setBrowser] = useState<string>("other");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -28,7 +27,7 @@ export function PwaInstall() {
       navigator.serviceWorker.register("/sw.js", { scope: "/admin/" }).catch(() => {});
     }
     const p = detectPlatform();
-    setOs(p.os); setBrowser(p.browser);
+    setOs(p.os);
 
     const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches || (navigator as any).standalone === true;
     if (standalone) { setInstalled(true); return; }
@@ -67,8 +66,9 @@ export function PwaInstall() {
   const card = "mx-3 mb-2 rounded-md border border-[var(--c-dark-border)] bg-[var(--c-dark-surface)] px-3 py-2 text-[11px] text-[var(--c-dark-ink-muted)] leading-relaxed relative";
   const close = <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="absolute right-1.5 top-1.5 text-[var(--c-dark-ink-muted)]"><X size={12} /></button>;
 
-  // iPhone / iPad Safari — Add to Home Screen is the only path.
-  if (os === "ios" && browser === "safari") {
+  // iPhone / iPad — every iOS browser is WebKit, so Add to Home Screen (from the
+  // Share sheet) is the only path on all of them.
+  if (os === "ios") {
     return (
       <div className={card}>
         {close}
@@ -89,6 +89,14 @@ export function PwaInstall() {
     );
   }
 
-  // Desktop without the install event yet — nothing (the address-bar icon covers it).
-  return null;
+  // Desktop (Chrome/Edge) when the one-tap event hasn't fired — e.g. already
+  // evaluated this session, or the browser just doesn't surface it. Point the
+  // user at the address-bar install icon / menu so there's always a clear path.
+  return (
+    <div className={card}>
+      {close}
+      <span className="flex items-center gap-1 font-medium text-[var(--c-dark-ink)] mb-0.5"><MonitorDown size={12} /> Install on your desktop</span>
+      In Chrome or Edge, click the <b>install icon</b> <MonitorDown size={11} className="inline -mt-0.5" /> at the right end of the address bar — or open the <b>⋮</b> menu and choose <b>“Install Time Tracker.”</b>
+    </div>
+  );
 }
