@@ -1,4 +1,5 @@
 import { FIELD_LABELS } from "./templates";
+import type { Person, Gift, ResiduaryValue } from "@/lib/intake/config";
 
 /**
  * Legal document engine. Each document is authored once as styled HTML through
@@ -26,8 +27,33 @@ export type DocBuildCtx = {
   b: (token: string, label?: string) => string;
   /** Raw value or "" (no placeholder) — for conditional text. */
   raw: (token: string) => string;
+  /** A party field (people) joined "A, of …, and B, of …"; placeholder if empty. */
+  party: (token: string, label?: string) => string;
+  /** A party field as an ordered list of alternates: "A, and then B." */
+  partyOrder: (token: string) => string;
+  /** A residuary field → "in equal shares to A and B" or "50% to A, 50% to B". */
+  residuary: (token: string) => string;
+  /** Specific gifts → one paragraph per gift; "" when there are none. */
+  gifts: (token: string) => string;
+  /** True if a party/gifts field has at least one entry. */
+  has: (token: string) => boolean;
   /** Included optional provision HTML, or "" when excluded. */
   opt: (id: string) => string;
+};
+
+const personStr = (p: Person, bold = true): string => {
+  const name = (p?.name ?? "").trim();
+  if (!name) return "";
+  const n = bold ? `<strong>${esc(name)}</strong>` : esc(name);
+  const addr = (p?.address ?? "").trim();
+  return addr ? `${n}, of ${esc(addr)}` : n;
+};
+
+const joinAnd = (parts: string[]): string => {
+  const xs = parts.filter(Boolean);
+  if (xs.length <= 1) return xs[0] ?? "";
+  if (xs.length === 2) return `${xs[0]} and ${xs[1]}`;
+  return `${xs.slice(0, -1).join(", ")}, and ${xs[xs.length - 1]}`;
 };
 
 export type DocSpec = {
@@ -88,15 +114,53 @@ export function renderDoc(
     const v = answers[token];
     return Array.isArray(v) ? v.filter(Boolean).join("; ") : v == null ? "" : String(v).trim();
   };
+  const peopleOf = (token: string): Person[] => {
+    const v = answers[token];
+    return Array.isArray(v) ? (v as Person[]).filter((p) => p && (p.name ?? "").trim()) : [];
+  };
+  const ph = (token: string, label?: string) => {
+    if (!missing.includes(token)) missing.push(token);
+    return `<span class="ph">[ ${esc(label ?? FIELD_LABELS[token] ?? token)} ]</span>`;
+  };
+
   const ctx: DocBuildCtx = {
     f: (token, label) => {
       const v = val(token);
       if (v) return nl2br(v);
-      if (!missing.includes(token)) missing.push(token);
-      return `<span class="ph">[ ${esc(label ?? FIELD_LABELS[token] ?? token)} ]</span>`;
+      return ph(token, label);
     },
     b: (token, label) => `<strong>${ctx.f(token, label)}</strong>`,
     raw: (token) => val(token),
+    has: (token) => {
+      const v = answers[token];
+      if (!Array.isArray(v)) return Boolean(val(token));
+      return v.some((x) => (x && typeof x === "object" && "name" in x ? (x as Person).name?.trim() : (x as Gift).item?.trim()));
+    },
+    party: (token, label) => {
+      const ppl = peopleOf(token);
+      if (!ppl.length) return ph(token, label);
+      return joinAnd(ppl.map((p) => personStr(p)));
+    },
+    partyOrder: (token) => {
+      const ppl = peopleOf(token);
+      if (!ppl.length) return ph(token);
+      return ppl.map((p) => personStr(p)).join(", and then ");
+    },
+    residuary: (token) => {
+      const v = answers[token] as ResiduaryValue | undefined;
+      const shares = v?.shares?.filter((s) => (s.person?.name ?? "").trim()) ?? [];
+      if (!shares.length) return ph(token);
+      if (v?.even) return `in equal shares to ${joinAnd(shares.map((s) => personStr(s.person)))}`;
+      return shares.map((s) => `${esc((s.percent || "").trim() || "[ % ]")}% to ${personStr(s.person)}`).join(", ");
+    },
+    gifts: (token) => {
+      const list = (answers[token] as Gift[] | undefined) ?? [];
+      const valid = list.filter((g) => (g.item ?? "").trim() && g.to?.some((p) => (p.name ?? "").trim()));
+      if (!valid.length) return "";
+      return valid
+        .map((g) => `<p class="body">I give ${esc(g.item.trim())} to ${joinAnd(g.to.filter((p) => (p.name ?? "").trim()).map((p) => personStr(p)))}.</p>`)
+        .join("");
+    },
     opt: (id) => {
       const def = spec.optionals.find((p) => p.id === id);
       if (!def) return "";

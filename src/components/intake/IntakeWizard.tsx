@@ -11,9 +11,49 @@ import {
   type Branch,
   type Field,
   type Step,
+  type Person,
+  type Gift,
+  type ResShare,
+  type ResiduaryValue,
 } from "@/lib/intake/config";
 
-type Answers = Record<string, string | string[]>;
+type Answers = Record<string, unknown>;
+
+const emptyPerson = (): Person => ({ name: "", phone: "", address: "" });
+const asPeople = (v: unknown): Person[] => (Array.isArray(v) ? (v as Person[]) : []);
+
+/** Every distinct person already entered anywhere in the flow — for autocomplete. */
+function collectPeople(answers: Answers): Person[] {
+  const out: Person[] = [];
+  const seen = new Set<string>();
+  const add = (p: Person | undefined) => {
+    if (!p || !p.name?.trim()) return;
+    const key = p.name.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(p);
+  };
+  for (const v of Object.values(answers)) {
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item && typeof item === "object") {
+          if ("name" in item) add(item as Person);
+          if ("to" in item && Array.isArray((item as Gift).to)) (item as Gift).to.forEach(add);
+          if ("person" in item) add((item as ResShare).person);
+        }
+      }
+    } else if (v && typeof v === "object" && "shares" in (v as object)) {
+      (v as ResiduaryValue).shares?.forEach((s) => add(s.person));
+    }
+  }
+  return out;
+}
+
+/** Sum of residuary percentages (when not splitting evenly). */
+function residuaryTotal(v: ResiduaryValue | undefined): number {
+  if (!v || v.even) return 100;
+  return v.shares.reduce((sum, s) => sum + (parseFloat(s.percent) || 0), 0);
+}
 
 const REP_NOTICE =
   "This firm does not represent you until you have signed a representation agreement issued by our firm and paid the applicable retainer fee.";
@@ -91,15 +131,26 @@ export function IntakeWizard({
   const safeIndex = Math.min(stepIndex, Math.max(0, totalSteps - 1));
   const currentStep = steps[safeIndex];
   const visibleFields = (step: Step) => step.fields.filter((f) => condMet(f.showIf, answers));
+  // People entered anywhere so far — powers the in-flow autocomplete.
+  const people = collectPeople(answers);
 
-  function setField(name: string, value: string | string[]) {
+  function setField(name: string, value: unknown) {
     setAnswers((a) => ({ ...a, [name]: value }));
   }
 
   function canAdvance(step: Step): boolean {
     return visibleFields(step).every((f) => {
+      // A residuary must total exactly 100% (when not split evenly) before moving on.
+      if (f.type === "residuary") {
+        const v = answers[f.name] as ResiduaryValue | undefined;
+        if (v && !v.even && v.shares.some((s) => s.person.name.trim() || s.percent.trim())) {
+          return Math.round(residuaryTotal(v)) === 100;
+        }
+        return true;
+      }
       if (!f.required) return true;
       const v = answers[f.name];
+      if (f.type === "party") return asPeople(v).some((p) => p.name.trim());
       if (Array.isArray(v)) return v.length > 0;
       return Boolean(v && String(v).trim());
     });
@@ -109,10 +160,20 @@ export function IntakeWizard({
     if (!branch) return;
     setSubmitting(true);
     setError(null);
-    // Drop empty entries from repeaters/checklists before sending.
-    const cleanAnswers: Answers = Object.fromEntries(
-      Object.entries(answers).map(([k, v]) => [k, Array.isArray(v) ? v.filter((s) => String(s).trim()) : v]),
-    );
+    // Drop empty entries from repeaters/parties/checklists before sending.
+    const clean = (v: unknown): unknown => {
+      if (Array.isArray(v)) {
+        return v
+          .filter((x) => {
+            if (x && typeof x === "object" && "name" in x) return Boolean((x as Person).name?.trim());
+            if (x && typeof x === "object" && "item" in x) return Boolean((x as Gift).item?.trim() || (x as Gift).to?.some((p) => p.name?.trim()));
+            return String(x ?? "").trim();
+          })
+          .map((x) => (x && typeof x === "object" && "to" in x ? { ...(x as Gift), to: (x as Gift).to.filter((p) => p.name?.trim()) } : x));
+      }
+      return v;
+    };
+    const cleanAnswers: Answers = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, clean(v)]));
     try {
       const res = await fetch("/api/intake", {
         method: "POST",
@@ -241,6 +302,7 @@ export function IntakeWizard({
             value={answers[f.name]}
             onChange={(v) => setField(f.name, v)}
             consentText={f.name === "consent" ? consentText : undefined}
+            people={people}
           />
         ))}
       </div>
@@ -309,11 +371,13 @@ function FieldInput({
   value,
   onChange,
   consentText,
+  people = [],
 }: {
   field: Field;
-  value: string | string[] | undefined;
-  onChange: (v: string | string[]) => void;
+  value: unknown;
+  onChange: (v: unknown) => void;
   consentText?: string;
+  people?: Person[];
 }) {
   const labelEl = (
     <div className="flex items-center gap-1.5 font-[family-name:var(--font-ui)] font-medium mb-2">
@@ -327,6 +391,31 @@ function FieldInput({
 
   const inputClass =
     "w-full border border-[var(--c-border)] bg-[var(--c-surface)] py-3 px-4 focus:border-[var(--c-accent)] outline-none";
+
+  if (field.type === "party") {
+    return (
+      <div>
+        {labelEl}
+        <PartyField value={asPeople(value)} onChange={onChange} people={people} addLabel={field.addLabel} max={field.max} />
+      </div>
+    );
+  }
+  if (field.type === "gifts") {
+    return (
+      <div>
+        {labelEl}
+        <GiftsField value={Array.isArray(value) ? (value as Gift[]) : []} onChange={onChange} people={people} addLabel={field.addLabel} />
+      </div>
+    );
+  }
+  if (field.type === "residuary") {
+    return (
+      <div>
+        {labelEl}
+        <ResiduaryField value={value as ResiduaryValue | undefined} onChange={onChange} people={people} />
+      </div>
+    );
+  }
 
   switch (field.type) {
     case "textarea":
@@ -489,6 +578,204 @@ function FieldInput({
         </div>
       );
   }
+}
+
+const ROW = "w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] py-2.5 px-3 text-sm outline-none focus:border-[var(--c-accent)]";
+const ADD = "inline-flex items-center gap-1.5 text-sm font-medium text-[var(--c-accent)] hover:opacity-80";
+
+/** A single person: name (with autocomplete over people already entered) + phone + address. */
+function PersonInput({ value, onChange, people }: { value: Person; onChange: (p: Person) => void; people: Person[] }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const matches = useMemo(() => {
+    const q = value.name.trim().toLowerCase();
+    const pool = people.filter((p) => p.name.trim().toLowerCase() !== q);
+    return (q ? pool.filter((p) => p.name.toLowerCase().includes(q)) : pool).slice(0, 8);
+  }, [value.name, people]);
+
+  function pick(p: Person) {
+    onChange({ name: p.name, phone: p.phone ?? "", address: p.address ?? "" });
+    setOpen(false);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <input
+          value={value.name}
+          onChange={(e) => { onChange({ ...value, name: e.target.value }); setOpen(true); setActive(0); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (!open || matches.length === 0) return;
+            if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => (a + 1) % matches.length); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => (a - 1 + matches.length) % matches.length); }
+            else if (e.key === "Enter") { e.preventDefault(); pick(matches[active]); }
+            else if (e.key === "Escape") setOpen(false);
+          }}
+          placeholder="Full name"
+          className={ROW}
+        />
+        {open && matches.length > 0 && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-y-auto rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] shadow-lg">
+            {matches.map((p, i) => (
+              <button
+                key={`${p.name}-${i}`}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); pick(p); }}
+                onMouseEnter={() => setActive(i)}
+                className={`block w-full px-3 py-2 text-left ${i === active ? "bg-[var(--c-surface2)]" : "hover:bg-[var(--c-surface2)]"}`}
+              >
+                <span className="text-sm font-medium">{p.name}</span>
+                {(p.phone || p.address) && (
+                  <span className="block truncate text-xs text-[var(--c-ink-muted)]">{[p.phone, p.address].filter(Boolean).join(" · ")}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input value={value.phone ?? ""} onChange={(e) => onChange({ ...value, phone: e.target.value })} placeholder="Phone" className={ROW} />
+        <input value={value.address ?? ""} onChange={(e) => onChange({ ...value, address: e.target.value })} placeholder="Address" className={ROW} />
+      </div>
+    </div>
+  );
+}
+
+function RemoveBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="Remove" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]">
+      <X size={15} />
+    </button>
+  );
+}
+
+/** Repeatable people with name/phone/address, +/remove, optional max. */
+function PartyField({ value, onChange, people, addLabel, max }: { value: Person[]; onChange: (v: Person[]) => void; people: Person[]; addLabel?: string; max?: number }) {
+  const list = value.length ? value : [emptyPerson()];
+  const setAt = (i: number, p: Person) => onChange(list.map((x, idx) => (idx === i ? p : x)));
+  const removeAt = (i: number) => onChange(list.length <= 1 ? [emptyPerson()] : list.filter((_, idx) => idx !== i));
+  const canAdd = !max || list.length < max;
+  return (
+    <div className="space-y-3">
+      {list.map((p, i) => (
+        <div key={i} className="rounded-md border border-[var(--c-border)] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-[var(--c-ink-muted)]">{i === 0 ? "Primary" : `#${i + 1}`}</span>
+            {list.length > 1 && <RemoveBtn onClick={() => removeAt(i)} />}
+          </div>
+          <PersonInput value={p} onChange={(np) => setAt(i, np)} people={people} />
+        </div>
+      ))}
+      {canAdd && (
+        <button type="button" onClick={() => onChange([...list, emptyPerson()])} className={ADD}>
+          <Plus size={15} /> {addLabel ?? "Add another"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Specific gifts: each an item + recipients (split with +), plus + for the next gift. */
+function GiftsField({ value, onChange, people, addLabel }: { value: Gift[]; onChange: (v: Gift[]) => void; people: Person[]; addLabel?: string }) {
+  const setGift = (i: number, g: Gift) => onChange(value.map((x, idx) => (idx === i ? g : x)));
+  return (
+    <div className="space-y-3">
+      {value.length === 0 && (
+        <p className="text-sm text-[var(--c-ink-muted)]">No specific gifts yet — add one if particular items should go to particular people.</p>
+      )}
+      {value.map((g, i) => {
+        const recips = g.to.length ? g.to : [emptyPerson()];
+        const setRecip = (ri: number, p: Person) => setGift(i, { ...g, to: recips.map((x, idx) => (idx === ri ? p : x)) });
+        return (
+          <div key={i} className="rounded-md border border-[var(--c-border)] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-[var(--c-ink-muted)]">Gift #{i + 1}</span>
+              <RemoveBtn onClick={() => onChange(value.filter((_, idx) => idx !== i))} />
+            </div>
+            <input value={g.item} onChange={(e) => setGift(i, { ...g, item: e.target.value })} placeholder="Item or amount — e.g., my truck, or $5,000" className={ROW} />
+            <p className="mb-1 mt-3 text-xs text-[var(--c-ink-muted)]">Goes to:</p>
+            <div className="space-y-2">
+              {recips.map((p, ri) => (
+                <div key={ri} className="rounded border border-[var(--c-border)] p-2.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--c-ink-muted)]">Recipient {ri + 1}</span>
+                    {recips.length > 1 && <RemoveBtn onClick={() => setGift(i, { ...g, to: recips.filter((_, idx) => idx !== ri) })} />}
+                  </div>
+                  <PersonInput value={p} onChange={(np) => setRecip(ri, np)} people={people} />
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={() => setGift(i, { ...g, to: [...recips, emptyPerson()] })} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--c-accent)]">
+              <Plus size={13} /> Split with another person
+            </button>
+          </div>
+        );
+      })}
+      <button type="button" onClick={() => onChange([...value, { item: "", to: [emptyPerson()] }])} className={ADD}>
+        <Plus size={15} /> {addLabel ?? "Add a specific gift"}
+      </button>
+    </div>
+  );
+}
+
+/** Residuary: even-split Y/N; when No, percentages with +; must total 100% to advance. */
+function ResiduaryField({ value, onChange, people }: { value: ResiduaryValue | undefined; onChange: (v: ResiduaryValue) => void; people: Person[] }) {
+  const v: ResiduaryValue = value ?? { even: true, shares: [{ person: emptyPerson(), percent: "" }] };
+  const shares = v.shares.length ? v.shares : [{ person: emptyPerson(), percent: "" }];
+  const setShare = (i: number, s: ResShare) => onChange({ ...v, shares: shares.map((x, idx) => (idx === i ? s : x)) });
+  const total = residuaryTotal(v);
+  const ok = Math.round(total) === 100;
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="mb-1.5 text-sm">Split the residuary evenly between all beneficiaries?</p>
+        <div className="flex gap-2">
+          {([["Yes", true], ["No", false]] as const).map(([label, val]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onChange({ ...v, shares, even: val })}
+              className={`px-6 py-2.5 text-sm rounded-md border transition-colors ${v.even === val ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-ink)]"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {shares.map((s, i) => (
+          <div key={i} className="rounded-md border border-[var(--c-border)] p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs text-[var(--c-ink-muted)]">Beneficiary {i + 1}</span>
+              <div className="flex items-center gap-2">
+                {!v.even && (
+                  <span className="flex items-center gap-1">
+                    <input value={s.percent} onChange={(e) => setShare(i, { ...s, percent: e.target.value })} inputMode="decimal" placeholder="0" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-right text-sm outline-none focus:border-[var(--c-accent)]" />
+                    <span className="text-sm">%</span>
+                  </span>
+                )}
+                {shares.length > 1 && <RemoveBtn onClick={() => onChange({ ...v, shares: shares.filter((_, idx) => idx !== i) })} />}
+              </div>
+            </div>
+            <PersonInput value={s.person} onChange={(np) => setShare(i, { ...s, person: np })} people={people} />
+          </div>
+        ))}
+      </div>
+
+      <button type="button" onClick={() => onChange({ ...v, shares: [...shares, { person: emptyPerson(), percent: "" }] })} className={ADD}>
+        <Plus size={15} /> Add a residuary beneficiary
+      </button>
+
+      {!v.even && (
+        <p className={`text-sm ${ok ? "text-[var(--c-ink-muted)]" : "text-[var(--c-error)]"}`}>
+          Total: {total}%{ok ? " ✓" : " — must equal 100% to continue"}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** Small info icon that reveals help text on hover (desktop) or tap (mobile). */

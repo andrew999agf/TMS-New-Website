@@ -20,7 +20,21 @@ export type FieldType =
   | "checklist"
   | "yesno"
   /** A repeatable single-line input: one blank, with a "+ add another" button. */
-  | "repeater";
+  | "repeater"
+  /** Repeatable people, each with name + phone + address, with autocomplete. */
+  | "party"
+  /** Specific gifts: each an item + recipients. */
+  | "gifts"
+  /** Residuary beneficiaries with an even-split toggle and percentage validation. */
+  | "residuary";
+
+/** A person captured in the flow — reused across fields with autocomplete. */
+export type Person = { name: string; phone?: string; address?: string };
+/** A specific gift: an item and the people who receive it. */
+export type Gift = { item: string; to: Person[] };
+/** A residuary beneficiary and (when not splitting evenly) their percentage. */
+export type ResShare = { person: Person; percent: string };
+export type ResiduaryValue = { even: boolean; shares: ResShare[] };
 
 export type Field = {
   name: string;
@@ -30,8 +44,10 @@ export type Field = {
   placeholder?: string;
   required?: boolean;
   help?: string;
-  /** Label for a repeater's add button (e.g. "Add another child"). */
+  /** Label for a repeater's/party's add button (e.g. "Add a co-executor"). */
   addLabel?: string;
+  /** Max entries for a party field (e.g. up to four co-agents). */
+  max?: number;
   /** Show this field only when the condition(s) are met (array = OR). */
   showIf?: Condition | Condition[];
 };
@@ -55,10 +71,10 @@ export type Step = {
  */
 export type Condition = { field: string; includesAny?: string[]; equals?: string };
 
-function oneCondMet(c: Condition, answers: Record<string, string | string[]>): boolean {
+function oneCondMet(c: Condition, answers: Record<string, unknown>): boolean {
   const v = answers[c.field];
   if (c.includesAny) {
-    const arr = Array.isArray(v) ? v : v ? [v] : [];
+    const arr = Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
     return c.includesAny.some((x) => arr.includes(x));
   }
   if (c.equals !== undefined) return v === c.equals;
@@ -68,7 +84,7 @@ function oneCondMet(c: Condition, answers: Record<string, string | string[]>): b
 /** True when the condition (or any condition in the array) is satisfied. */
 export function condMet(
   cond: Condition | Condition[] | undefined,
-  answers: Record<string, string | string[]>,
+  answers: Record<string, unknown>,
 ): boolean {
   if (!cond) return true;
   const list = Array.isArray(cond) ? cond : [cond];
@@ -573,20 +589,15 @@ export const BRANCHES: Branch[] = [
         subtitle: "Who carries it out, and who receives what.",
         showIf: NEEDS_WILL,
         fields: [
-          { name: "executor", label: "Executor (who administers your estate)", type: "text", required: true, help: "Full name and relationship to you." },
-          { name: "executorAlt1", label: "First alternate executor", type: "text" },
-          { name: "executorAlt2", label: "Second alternate executor", type: "text" },
-          { name: "guardianMinor", label: "Guardian for minor children", type: "text", help: "Co-guardians must be married. Leave blank if not applicable." },
-          { name: "guardianMinorAlt", label: "Alternate guardian for minor children", type: "text" },
-          {
-            name: "specificGifts",
-            label: "Specific gifts",
-            type: "textarea",
-            placeholder: "e.g., \"My truck to John Smith.\" One per line. Leave blank if none.",
-            help: "Particular items or dollar amounts to particular people.",
-          },
-          { name: "residuaryBeneficiary", label: "Who receives everything else (the residue)?", type: "textarea", placeholder: "e.g., \"All to my children who survive me, in equal shares.\"" },
-          { name: "residuaryAlternate", label: "If they don't survive you, then to whom?", type: "textarea" },
+          { name: "executors", label: "Executor", type: "party", required: true, max: 4, addLabel: "Add a co-executor", help: "Who administers your estate. Add a co-executor only if more than one will serve together." },
+          { name: "executorAlts", label: "Successor executor(s)", type: "party", max: 4, addLabel: "Add a successor executor", help: "Who serves, in order, if the executor above cannot." },
+          { name: "guardians", label: "Guardian of minor children", type: "party", max: 2, addLabel: "Add a co-guardian", help: "Co-guardians must be married.", showIf: { field: "minorChildren", equals: "Yes" } },
+          { name: "guardianAlts", label: "Alternate guardian(s)", type: "party", max: 2, addLabel: "Add an alternate guardian", showIf: { field: "minorChildren", equals: "Yes" } },
+          { name: "minorTrust", label: "Hold a minor child's inheritance in a trust until they're older?", type: "yesno", help: "Recommended so a young child doesn't receive everything outright.", showIf: { field: "minorChildren", equals: "Yes" } },
+          { name: "minorTrustees", label: "Trustee of the minor's trust", type: "party", max: 4, addLabel: "Add a co-trustee", showIf: { field: "minorTrust", equals: "Yes" } },
+          { name: "minorTrustAge", label: "When should the child receive the property?", type: "text", placeholder: "e.g., at 25; or 1/3 at 25, 1/2 at 30, balance at 35", showIf: { field: "minorTrust", equals: "Yes" } },
+          { name: "gifts", label: "Specific gifts (optional)", type: "gifts", addLabel: "Add a specific gift", help: "Particular items or amounts to particular people. Use the + on the right to split one gift between people." },
+          { name: "residuary", label: "Residuary estate — who receives everything else", type: "residuary" },
           { name: "funeralWishes", label: "Funeral / burial wishes (optional)", type: "textarea" },
         ],
       },
@@ -597,9 +608,9 @@ export const BRANCHES: Branch[] = [
         subtitle: "Who manages it and who benefits.",
         showIf: NEEDS_TRUST,
         fields: [
-          { name: "trustee", label: "Trustee (who manages the trust)", type: "text", help: "For a living trust this is often you, then a successor." },
-          { name: "successorTrustee", label: "Successor trustee", type: "text", required: true, help: "Who takes over on your incapacity or death." },
-          { name: "trustBeneficiaries", label: "Trust beneficiaries", type: "textarea", placeholder: "Who benefits, and in what shares." },
+          { name: "trustees", label: "Trustee", type: "party", max: 4, addLabel: "Add a co-trustee", help: "For a living trust this is often you, then a successor." },
+          { name: "trusteeAlts", label: "Successor trustee(s)", type: "party", required: true, max: 4, addLabel: "Add a successor trustee", help: "Who takes over on your incapacity or death." },
+          { name: "trustBeneficiaries", label: "Trust beneficiaries", type: "residuary" },
           {
             name: "trustDistribution",
             label: "How should beneficiaries receive their shares?",
@@ -621,15 +632,37 @@ export const BRANCHES: Branch[] = [
       {
         id: "financialPoa",
         title: "Financial power of attorney",
-        subtitle: "Who can handle your finances, and when.",
+        subtitle: "Who can handle your finances, and which powers they have.",
         showIf: { field: "docsPoa", includesAny: [EP.FIN_POA] },
         fields: [
-          { name: "finAgent", label: "Agent (attorney-in-fact)", type: "text", required: true, help: "The person who will handle your financial matters." },
-          { name: "finAgentAlt", label: "Alternate agent", type: "text" },
+          { name: "finAgents", label: "Agent (attorney-in-fact)", type: "party", required: true, max: 4, addLabel: "Add a co-agent", help: "Who handles your financial matters. You may name up to four co-agents." },
+          { name: "finActing", label: "If you name more than one agent, they may act:", type: "radio", options: ["Independently — any one alone", "Only by majority", "Only by unanimous agreement"] },
+          { name: "finAlts", label: "Successor agent(s)", type: "party", max: 4, addLabel: "Add a successor agent", help: "Who serves if your agent(s) cannot. Up to four." },
           { name: "finEffective", label: "When should it take effect?", type: "radio", options: ["Immediately", "Only if I become incapacitated (springing)"] },
-          { name: "finScope", label: "Scope of authority", type: "radio", options: ["All powers (general)", "Limited — I'll specify"] },
-          { name: "finScopeLimits", label: "If limited, which powers?", type: "textarea", showIf: { field: "finScope", equals: "Limited — I'll specify" } },
-          { name: "finGifts", label: "Gift-giving power", type: "radio", options: ["No gift power", "Limited to annual exclusion", "Broad gift power"] },
+          {
+            name: "finPowers",
+            label: "Powers granted (Texas statutory durable power of attorney)",
+            type: "checklist",
+            help: "Check \"All powers\" to grant everything, or check only the specific powers you want to grant.",
+            options: [
+              "ALL POWERS (a general grant of every power below)",
+              "Real property transactions",
+              "Tangible personal property transactions",
+              "Stock and bond transactions",
+              "Commodity and option transactions",
+              "Banking and other financial-institution transactions",
+              "Business operating transactions",
+              "Insurance and annuity transactions",
+              "Estate, trust, and other beneficiary transactions",
+              "Claims and litigation",
+              "Personal and family maintenance",
+              "Benefits from Social Security, Medicare, Medicaid, or other governmental programs",
+              "Retirement plan transactions",
+              "Tax matters",
+              "Digital assets and electronic communications",
+            ],
+          },
+          { name: "finGifts", label: "Gift-giving power", type: "radio", options: ["No gift power", "Limited to the annual gift-tax exclusion", "Broad gift power"] },
         ],
       },
       // 7) Medical POA / Directive / HIPAA.
@@ -639,8 +672,8 @@ export const BRANCHES: Branch[] = [
         subtitle: "Who speaks for your care, and your wishes.",
         showIf: { field: "docsPoa", includesAny: [EP.MED_POA, EP.DIRECTIVE, EP.HIPAA] },
         fields: [
-          { name: "medAgent", label: "Health-care agent", type: "text", help: "Who makes medical decisions if you cannot. Must be 18+.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
-          { name: "medAgentAlt", label: "Alternate health-care agent", type: "text", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medAgents", label: "Health-care agent", type: "party", max: 4, addLabel: "Add a co-agent", help: "Who makes medical decisions if you cannot. Must be 18+.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medAlts", label: "Successor health-care agent(s)", type: "party", max: 4, addLabel: "Add a successor agent", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           {
             name: "lifeSupport",
@@ -650,10 +683,11 @@ export const BRANCHES: Branch[] = [
             showIf: { field: "docsPoa", includesAny: [EP.DIRECTIVE] },
           },
           {
-            name: "hipaaRecipients",
+            name: "hipaaPeople",
             label: "Who may receive your medical information (HIPAA)?",
-            type: "textarea",
-            placeholder: "Family members or others who should be able to get your records.",
+            type: "party",
+            addLabel: "Add a person",
+            help: "Family members or others who should be able to get your records.",
             showIf: { field: "docsPoa", includesAny: [EP.HIPAA] },
           },
         ],
@@ -665,8 +699,8 @@ export const BRANCHES: Branch[] = [
         subtitle: "Who you'd want — and not want — if a guardianship ever became necessary.",
         showIf: { field: "docsOther", includesAny: [EP.GUARDIAN_DECL] },
         fields: [
-          { name: "guardianPreferred", label: "Preferred guardian(s), in order of choice", type: "textarea" },
-          { name: "guardianExcluded", label: "Anyone you do NOT want to serve as your guardian", type: "textarea", help: "A judge cannot appoint a person you exclude here." },
+          { name: "guardianPreferred", label: "Preferred guardian(s), in order of choice", type: "party", max: 4, addLabel: "Add another choice" },
+          { name: "guardianExcluded", label: "Anyone you do NOT want to serve as your guardian", type: "party", addLabel: "Add a person", help: "A judge cannot appoint a person you exclude here." },
         ],
       },
       // 9) Lady Bird / TOD deed.
@@ -677,7 +711,7 @@ export const BRANCHES: Branch[] = [
         showIf: { field: "docsOther", includesAny: [EP.LADYBIRD] },
         fields: [
           { name: "deedProperty", label: "Property address (and legal description if you have it)", type: "textarea", help: "We'll confirm the legal description from the prior deed." },
-          { name: "deedGrantee", label: "Who should receive the property at your death?", type: "text" },
+          { name: "deedGrantee", label: "Who should receive the property at your death?", type: "party", max: 4, addLabel: "Add another grantee" },
         ],
       },
       // 10) Asset inventory — for wills and trusts.

@@ -58,6 +58,24 @@ export const FIELD_LABELS: Record<string, string> = {
   guardianExcluded: "Persons excluded as guardian",
   deedProperty: "Property (address / legal description)",
   deedGrantee: "Grantee (who receives the property)",
+  // Structured party / gift / residuary tokens
+  executors: "Executor(s)",
+  executorAlts: "Successor executor(s)",
+  guardians: "Guardian(s) of minor children",
+  guardianAlts: "Alternate guardian(s)",
+  minorTrustees: "Trustee(s) of the minor's trust",
+  minorTrustAge: "Minor's trust distribution age",
+  gifts: "Specific gifts",
+  residuary: "Residuary beneficiaries",
+  trustees: "Trustee(s)",
+  trusteeAlts: "Successor trustee(s)",
+  finAgents: "Agent(s)",
+  finAlts: "Successor agent(s)",
+  finActing: "How co-agents act",
+  finPowers: "Powers granted",
+  medAgents: "Health-care agent(s)",
+  medAlts: "Successor health-care agent(s)",
+  hipaaPeople: "HIPAA recipients",
 };
 
 const WILL = `LAST WILL AND TESTAMENT OF {{testatorFullName}}
