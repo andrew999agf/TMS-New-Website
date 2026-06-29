@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   await requireAdmin();
 
-  let submissions: { id: number; name: string; createdAt: string; answers: Record<string, unknown> }[] = [];
+  let submissions: { id: number; name: string; email: string | null; createdAt: string; answers: Record<string, unknown> }[] = [];
   if (db) {
     try {
       const rows = await db
@@ -23,6 +23,7 @@ export default async function DocumentsPage() {
       submissions = rows.map((r) => ({
         id: r.id,
         name: r.name ?? "Unnamed",
+        email: r.email ?? null,
         createdAt: r.createdAt.toISOString(),
         answers: (r.answers as Record<string, unknown>) ?? {},
       }));

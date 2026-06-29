@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { FileSignature, FileText, Copy, Download, Check, Loader2, AlertCircle, User } from "lucide-react";
+import { FileSignature, FileText, Copy, Download, Check, Loader2, AlertCircle, User, Mail, PencilLine } from "lucide-react";
 import { renderDocument } from "@/app/admin/(panel)/documents/actions";
+import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 
 type DocMeta = { id: string; label: string; trigger: { field: string; value: string } };
-type Submission = { id: number; name: string; createdAt: string; answers: Record<string, unknown> };
+type Submission = { id: number; name: string; email: string | null; createdAt: string; answers: Record<string, unknown> };
 
 function requested(answers: Record<string, unknown>, trigger: DocMeta["trigger"]): boolean {
   const v = answers[trigger.field];
@@ -19,13 +20,19 @@ export function DocumentGenerator({ submissions, docMeta }: { submissions: Submi
   const [draft, setDraft] = useState<{ label: string; text: string; missing: string[] } | null>(null);
   const [pending, start] = useTransition();
   const [copied, setCopied] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
 
-  const available = selected ? docMeta.filter((d) => requested(selected.answers, d.trigger)) : [];
+  const requestedDocs = selected ? docMeta.filter((d) => requested(selected.answers, d.trigger)) : [];
+  // In manual mode (client didn't request any) the team can pick any document.
+  const shownDocs = manual ? docMeta : requestedDocs;
 
   function pickSubmission(s: Submission) {
     setSelected(s);
     setDocId(null);
     setDraft(null);
+    setManual(false);
+    setSendOpen(false);
   }
 
   function pickDoc(id: string) {
@@ -104,31 +111,60 @@ export function DocumentGenerator({ submissions, docMeta }: { submissions: Submi
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Document chips the client requested */}
+            {/* Document chips */}
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-ink-muted)]">
-                Documents requested by {selected.name}
+                {manual ? `Choose documents to draft for ${selected.name}` : `Documents requested by ${selected.name}`}
               </p>
-              {available.length === 0 ? (
-                <p className="text-sm text-[var(--c-ink-muted)]">
-                  This intake didn&apos;t check any specific documents. Open the intake record to review their answers.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {available.map((d) => (
+
+              {requestedDocs.length === 0 && !manual ? (
+                /* Client didn't check any documents — offer the two paths. */
+                <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
+                  <p className="text-sm text-[var(--c-ink-muted)]">
+                    This intake didn&apos;t check any documents{" "}
+                    {selected.answers["docsNotSure"] ? "(they asked us to recommend a plan). " : ". "}
+                    You can email them to complete it, or pick the documents yourself and draft now.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <button
-                      key={d.id}
-                      onClick={() => pickDoc(d.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
-                        docId === d.id
-                          ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-ink)]"
-                          : "border-[var(--c-border)] hover:bg-[var(--c-surface2)]"
-                      }`}
+                      onClick={() => setSendOpen(true)}
+                      disabled={!selected.email}
+                      title={selected.email ? "" : "No email on this submission"}
+                      className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50"
                     >
-                      <FileText size={14} /> {d.label}
+                      <Mail size={15} /> Email the client to fill it out
                     </button>
-                  ))}
+                    <button
+                      onClick={() => setManual(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]"
+                    >
+                      <PencilLine size={15} /> Enter the documents myself
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {manual && (
+                    <p className="mb-2 text-xs text-[var(--c-ink-muted)]">
+                      Manual mode — pick any document. Fields the client didn&apos;t provide appear as placeholders to complete.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {shownDocs.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => pickDoc(d.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+                          docId === d.id
+                            ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-ink)]"
+                            : "border-[var(--c-border)] hover:bg-[var(--c-surface2)]"
+                        }`}
+                      >
+                        <FileText size={14} /> {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
@@ -177,6 +213,16 @@ export function DocumentGenerator({ submissions, docMeta }: { submissions: Submi
           </div>
         )}
       </div>
+
+      {sendOpen && selected && (
+        <SendIntakeDialog
+          key={selected.id}
+          kind="estate"
+          presetName={selected.name ?? ""}
+          presetEmail={selected.email ?? ""}
+          onClose={() => setSendOpen(false)}
+        />
+      )}
     </div>
   );
 }
