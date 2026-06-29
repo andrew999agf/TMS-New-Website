@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Fuse from "fuse.js";
-import { ArrowLeft, ArrowRight, Check, Search, Info } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X } from "lucide-react";
 import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
@@ -109,6 +109,10 @@ export function IntakeWizard({
     if (!branch) return;
     setSubmitting(true);
     setError(null);
+    // Drop empty entries from repeaters/checklists before sending.
+    const cleanAnswers: Answers = Object.fromEntries(
+      Object.entries(answers).map(([k, v]) => [k, Array.isArray(v) ? v.filter((s) => String(s).trim()) : v]),
+    );
     try {
       const res = await fetch("/api/intake", {
         method: "POST",
@@ -116,7 +120,7 @@ export function IntakeWizard({
         body: JSON.stringify({
           branch: branch.id,
           practiceSlug: branch.practiceSlug,
-          answers,
+          answers: cleanAnswers,
           referrer: typeof document !== "undefined" ? document.referrer : "",
           turnstileToken: turnstileToken ?? undefined,
           company: honeypot,
@@ -428,6 +432,46 @@ function FieldInput({
               );
             })}
           </div>
+        </div>
+      );
+    }
+    case "repeater": {
+      const arr = (value as string[]) ?? [];
+      const list = arr.length ? arr : [""];
+      const setAt = (i: number, v: string) => onChange(list.map((x, idx) => (idx === i ? v : x)));
+      const removeAt = (i: number) => onChange(list.length <= 1 ? [""] : list.filter((_, idx) => idx !== i));
+      return (
+        <div>
+          {labelEl}
+          <div className="space-y-2">
+            {list.map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={item}
+                  onChange={(e) => setAt(i, e.target.value)}
+                  placeholder={field.placeholder}
+                  className={inputClass}
+                />
+                {list.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeAt(i)}
+                    aria-label="Remove"
+                    className="shrink-0 p-2 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange([...list, ""])}
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--c-accent)] hover:opacity-80"
+          >
+            <Plus size={15} /> {field.addLabel ?? "Add another"}
+          </button>
         </div>
       );
     }

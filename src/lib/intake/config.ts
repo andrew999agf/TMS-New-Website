@@ -18,7 +18,9 @@ export type FieldType =
   | "select"
   | "radio"
   | "checklist"
-  | "yesno";
+  | "yesno"
+  /** A repeatable single-line input: one blank, with a "+ add another" button. */
+  | "repeater";
 
 export type Field = {
   name: string;
@@ -28,6 +30,8 @@ export type Field = {
   placeholder?: string;
   required?: boolean;
   help?: string;
+  /** Label for a repeater's add button (e.g. "Add another child"). */
+  addLabel?: string;
   /** Show this field only when the condition(s) are met (array = OR). */
   showIf?: Condition | Condition[];
 };
@@ -547,16 +551,18 @@ export const BRANCHES: Branch[] = [
           {
             name: "children",
             label: "Children",
-            type: "textarea",
-            placeholder: "One per line: full name, date of birth, and note if from a prior relationship.",
-            help: "Include adopted children. Note any with special needs.",
+            type: "repeater",
+            placeholder: "Full name — and date of birth",
+            addLabel: "Add another child",
+            help: "One per person. Include adopted children; note any from a prior relationship or with special needs.",
           },
           { name: "minorChildren", label: "Do you have minor children (under 18)?", type: "yesno" },
           {
             name: "otherDependents",
             label: "Anyone else you support or want to provide for?",
-            type: "textarea",
-            placeholder: "e.g., a parent, grandchild, or other dependent",
+            type: "repeater",
+            placeholder: "Full name and relationship — e.g., a parent or grandchild",
+            addLabel: "Add another person",
           },
         ],
       },
