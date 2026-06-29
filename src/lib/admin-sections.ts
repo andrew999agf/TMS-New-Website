@@ -21,7 +21,8 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "texas-rules", label: "Texas Rules", href: "/admin/texas-rules", toggleable: true },
   { key: "testimonials", label: "Testimonials", href: "/admin/testimonials", toggleable: true },
   { key: "media", label: "Media", href: "/admin/media", toggleable: true },
-  { key: "intake", label: "Intake", href: "/admin/intake", toggleable: true },
+  { key: "intake", label: "Intake", href: "/admin/intake", toggleable: false },
+  { key: "documents", label: "Document Generator", href: "/admin/documents", toggleable: false },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
   { key: "training", label: "Training", href: "/admin/training", toggleable: false },
@@ -40,8 +41,9 @@ export function isFullAdminRole(role?: string): boolean {
 /** All section keys a given account may access. */
 export function allowedSections(role?: string, permissions?: string[]): string[] {
   if (isFullAdminRole(role)) return ADMIN_SECTIONS.map((s) => s.key);
-  // Timekeepers get the Time Tracker (original + 4.0) and Training by default.
-  return ["time-tracker", "time-tracker-4", "training", ...(permissions ?? [])];
+  // Every account (including interns/timekeepers) gets the Time Tracker, Training,
+  // Intake, and the Document Generator by default, plus any granted sections.
+  return ["time-tracker", "time-tracker-4", "training", "intake", "documents", ...(permissions ?? [])];
 }
 
 /** Which section key a pathname belongs to (longest matching href wins). */
