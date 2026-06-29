@@ -55,16 +55,36 @@ function parseCSVLine(line: string): string[] {
   out.push(cur); return out;
 }
 
-export function TimeTracker({ entries, activityUsers, categories, matters, me, owners, VoiceComponent = VoiceTimeEntry }: {
+export function TimeTracker({ entries, activityUsers, categories, matters, me, owners, defaultUserName, VoiceComponent = VoiceTimeEntry }: {
   entries: EntryView[]; activityUsers: AUser[]; categories: { id: number; name: string }[];
   matters: { displayNumber: string; description: string }[]; me: Me; owners: { id: number; name: string }[];
+  /** Explicit default activity user for the logged-in person (overrides the name match). */
+  defaultUserName?: string;
   VoiceComponent?: React.ComponentType<VoiceProps>;
 }) {
   const router = useRouter();
   const matterList = useMemo(() => matters.map((m) => m.displayNumber), [matters]);
   const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
   const matterDesc = useMemo(() => Object.fromEntries(matters.map((m) => [m.displayNumber, m.description])), [matters]);
-  const defaultUser = useMemo(() => activityUsers.find((u) => u.name.toLowerCase().startsWith(me.name.toLowerCase()))?.name ?? activityUsers[0]?.name ?? me.name, [activityUsers, me.name]);
+  // Default the activity user to the logged-in person: an explicit assignment
+  // first, then a tolerant name match (ignoring the "(Role)" suffix and word
+  // order), and only then the first user as a last resort.
+  const defaultUser = useMemo(() => {
+    if (defaultUserName && activityUsers.some((u) => u.name === defaultUserName)) return defaultUserName;
+    const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim();
+    const meNorm = norm(me.name);
+    if (meNorm) {
+      const exact = activityUsers.find((u) => norm(u.name) === meNorm);
+      if (exact) return exact.name;
+      const tokens = meNorm.split(" ").filter(Boolean);
+      const byTokens = activityUsers.find((u) => {
+        const n = norm(u.name);
+        return tokens.every((t) => n.split(" ").includes(t));
+      });
+      if (byTokens) return byTokens.name;
+    }
+    return activityUsers[0]?.name ?? me.name;
+  }, [activityUsers, me.name, defaultUserName]);
   const getRate = useCallback((name: string) => activityUsers.find((u) => u.name === name)?.rate ?? 145, [activityUsers]);
 
   const [pending, setPending] = useState(false);

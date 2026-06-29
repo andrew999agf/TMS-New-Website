@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Plus, Trash2, KeyRound, Check, Mail, SlidersHorizontal, GraduationCap } from "lucide-react";
 import {
   createLogin, resetLoginPassword, updateLoginRole, deleteLogin,
-  updateLoginPermissions, sendSetupLink,
+  updateLoginPermissions, sendSetupLink, setUserActivityDefault,
 } from "@/app/admin/(panel)/logins/actions";
 import { TOGGLEABLE_SECTIONS, isFullAdminRole } from "@/lib/admin-sections";
 import { UserTrainingPanel } from "@/components/admin/training/UserTrainingPanel";
@@ -14,7 +14,8 @@ type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["timekeeper", "editor", "owner"];
 const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (full access)", owner: "Owner (full access)" };
 
-export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: number }) {
+export function LoginsManager({ initial, selfId, activityUsers = [], ttDefaults = {} }: { initial: Login[]; selfId: number; activityUsers?: string[]; ttDefaults?: Record<string, string> }) {
+  const [ttMap, setTtMap] = useState<Record<string, string>>(ttDefaults);
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +54,11 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
   function togglePerm(u: Login, key: string, on: boolean) {
     const next = on ? [...new Set([...u.permissions, key])] : u.permissions.filter((p) => p !== key);
     startTransition(() => { void updateLoginPermissions(u.id, next); });
+  }
+
+  function setTtDefault(u: Login, name: string) {
+    setTtMap((m) => ({ ...m, [String(u.id)]: name }));
+    startTransition(() => { void setUserActivityDefault(u.id, name); });
   }
 
   return (
@@ -97,6 +103,21 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
                     </button>
                   </div>
                   <div className="text-xs text-[var(--c-ink-muted)] truncate">{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleDateString()}` : " · never signed in"}</div>
+                  {activityUsers.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="text-[11px] text-[var(--c-ink-muted)]">Time Tracker:</span>
+                      <select
+                        value={ttMap[String(u.id)] ?? ""}
+                        onChange={(e) => setTtDefault(u, e.target.value)}
+                        disabled={pending}
+                        title="Default Time Tracker activity user for this person"
+                        className="max-w-[15rem] rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs"
+                      >
+                        <option value="">Auto (match by name)</option>
+                        {activityUsers.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <select

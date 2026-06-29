@@ -5,6 +5,7 @@ import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { timeEntries, timeActivityUsers, timeCategories, timeMatters, admins } from "@/db/schema";
 import { eq, asc, desc } from "drizzle-orm";
+import { getSetting } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,8 @@ export default async function TimeTracker4Page() {
   const session = await requireAdmin();
   const me = Number(session.sub);
   const admin = isFullAdmin(session.role);
+  const ttDefaults = await getSetting<Record<string, string>>("tt.userDefaults", {});
+  const myDefaultUser = ttDefaults?.[String(me)];
 
   let entries: EntryView[] = [];
   let activityUsers: { id: number; name: string; rate: number }[] = [];
@@ -82,6 +85,7 @@ export default async function TimeTracker4Page() {
           matters={matters}
           me={{ id: me, name: session.name, admin }}
           owners={owners}
+          defaultUserName={myDefaultUser}
           VoiceComponent={VoiceTimeEntry4}
         />
       </div>

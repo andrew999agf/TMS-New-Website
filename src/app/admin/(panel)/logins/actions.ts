@@ -5,11 +5,33 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
-import { admins } from "@/db/schema";
+import { admins, settings } from "@/db/schema";
 import { requireFullAdmin, audit } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 import { TOGGLEABLE_SECTIONS } from "@/lib/admin-sections";
+
+/** Per-admin default Time Tracker activity user, keyed by admin id. */
+const TT_USER_DEFAULTS_KEY = "tt.userDefaults";
+
+/** Tie an admin login to a Time Tracker activity user (their default). */
+export async function setUserActivityDefault(adminId: number, activityUserName: string) {
+  const session = await requireFullAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const [row] = await db.select().from(settings).where(eq(settings.key, TT_USER_DEFAULTS_KEY));
+  const map: Record<string, string> = { ...((row?.value as Record<string, string>) ?? {}) };
+  const name = activityUserName.trim();
+  if (name) map[String(adminId)] = name;
+  else delete map[String(adminId)];
+  await db
+    .insert(settings)
+    .values({ key: TT_USER_DEFAULTS_KEY, value: map, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value: map, updatedAt: new Date() } });
+  await audit(session.email, "update", "tt-user-default", String(adminId), `Default activity user → ${name || "(name match)"}`);
+  revalidatePath("/admin/time-tracker-4");
+  revalidatePath("/admin/time-tracker");
+  return { ok: true };
+}
 
 type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["owner", "editor", "timekeeper"];
