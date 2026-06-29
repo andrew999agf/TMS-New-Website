@@ -748,8 +748,8 @@ export const TRAINING_MODULES: TrainingModule[] = [
     title: "Wills 3 — Gathering Client Information",
     category: "Estate Planning (Wills & Trusts)",
     audience: "Clerks & staff",
-    summary: "How to prepare for and run a wills intake — the conflicts check, the people and assets to capture, how to ask good questions, and how to document it all.",
-    estMinutes: 18,
+    summary: "How to run a wills intake using the firm's Will Preparation Questionnaire — the people, the assets, the will provisions, and the full document menu.",
+    estMinutes: 20,
     updated: "January 2025",
     lessons: [
       {
@@ -757,113 +757,155 @@ export const TRAINING_MODULES: TrainingModule[] = [
         title: "Preparing for the Interview",
         blocks: [
           {
-            type: "paragraph",
-            text: "Good drafting starts with good information. Before you ever sit down with the client, set the stage:",
+            type: "callout",
+            tone: "info",
+            title: "Use the firm's questionnaire",
+            text: "We collect intake on the firm's \"Client Will Preparation Questionnaire.\" Send it to the client ahead of the meeting; it is the backbone of everything below.",
           },
           {
             type: "list",
             ordered: true,
             items: [
-              "**Run the conflicts check first.** Confirm the firm has cleared conflicts before substantive work begins — especially when a couple is being represented together.",
-              "**Send the intake questionnaire ahead of time.** Ask the client to gather names, dates, and an asset list so the meeting is productive.",
-              "**Set expectations.** Let the client know roughly how long it will take, what to bring (prior will, deeds, account statements, beneficiary designations), and that the attorney will make the legal decisions.",
-              "**Choose a private setting.** Wills involve sensitive family and financial details — meet somewhere conversations can't be overheard.",
+              "**Run/confirm the conflicts check** before substantive work — especially when a married couple is represented together.",
+              "**Send the Will Preparation Questionnaire** in advance and ask the client to gather deeds, account statements, beneficiary designations, and any prior will.",
+              "**Set expectations** — the attorney makes the legal decisions; you are gathering information.",
+              "**Choose a private setting** — wills involve sensitive family and financial details.",
             ],
           },
         ],
       },
       {
-        id: "family-fiduciaries",
-        title: "The People: Family & Fiduciaries",
+        id: "the-people",
+        title: "The People: Client & Family",
         blocks: [
-          { type: "heading", text: "Personal & family information" },
+          { type: "heading", text: "Client information" },
           {
             type: "list",
             items: [
-              "Testator's **full legal name** (and any other names used), address, and date of birth.",
-              "**Marital status and history** — current spouse, prior marriages, and any divorce decrees or premarital agreements.",
-              "**Children** — full names and ages, noting any who are **minors**, have special needs, or are from a prior relationship (blended families need extra care).",
-              "Whether anyone is to be **intentionally left out**, so the attorney can address it deliberately.",
+              "Full legal **name** and **address**, and **phone numbers** (home/office/fax).",
+              "**Ever lived in a state other than Texas?** Note where and when — it can raise community-property questions for the attorney.",
             ],
           },
-          { type: "heading", text: "Fiduciaries — the people who will act" },
+          { type: "heading", text: "Marital history" },
           {
             type: "list",
             items: [
-              "**Executor** (and at least one **alternate**) — who will administer the estate.",
-              "**Guardian** for minor children (and an alternate), if applicable.",
-              "**Trustee**, if any trusts for minors or others will be created.",
+              "**Currently married** — spouse's name and date of marriage.",
+              "**Widowed** — deceased spouse's name, date of death, residence at death, and whether they left a will (get a copy).",
+              "**Divorced** — ex-spouse's name, date and place of divorce (the decree can matter).",
             ],
           },
+          { type: "heading", text: "Children & dependents" },
           {
-            type: "callout",
-            tone: "info",
-            title: "Always capture alternates",
-            text: "For every fiduciary role, ask for a backup. Plans fail when the first choice can't or won't serve and no alternate was named.",
+            type: "list",
+            items: [
+              "List each child (born or adopted): **name, date of birth, address, and whether living**.",
+              "Note **which children are from a prior marriage** (blended families need care).",
+              "Note **anyone else the client supports** financially (e.g., a grandchild or parent).",
+            ],
           },
         ],
       },
       {
-        id: "assets",
-        title: "The Assets: Building the Inventory",
+        id: "the-assets",
+        title: "The Assets",
         blocks: [
           {
             type: "paragraph",
-            text: "Capture a working inventory of what the client owns and roughly what it's worth. You're not appraising — you're making sure nothing important is missed.",
+            text: "Work through the questionnaire's asset categories. You're building a working inventory, not appraising.",
           },
           {
             type: "list",
             items: [
-              "**Real property** — homes, land, mineral interests (with addresses/legal descriptions where possible).",
-              "**Financial accounts** — bank, brokerage, retirement.",
-              "**Business interests** — ownership in any company or partnership.",
-              "**Personal property** — vehicles, valuables, heirlooms, collections.",
-              "**Digital assets** — online accounts, cryptocurrency, photos.",
+              "**Real property** — residence and any other property: address, date acquired, and mortgage balance.",
+              "**Cash** — on hand, plus savings/bank accounts (institution, amount, name on account).",
+              "**Business interests** — describe any ownership.",
+              "**Life insurance** — company, policy number, insured, and face amount.",
+              "**Retirement plans / IRAs** — institution, amount, name on account, and **beneficiary**.",
+              "**Vehicles** (including boats and trailers) — make, ID number, owner, amount owing.",
+              "**Furniture, household goods, personal effects** — list items of particular sentimental or economic value.",
             ],
           },
           {
             type: "callout",
             tone: "warning",
-            title: "Watch for non-probate assets",
-            text: "Some assets pass OUTSIDE the will by their own beneficiary designation or title — life insurance, retirement accounts (IRA/401(k)), payable-on-death accounts, and joint-with-survivorship property. Flag these for the attorney; a will does not override a beneficiary designation.",
+            title: "Flag non-probate assets",
+            text: "Life insurance and retirement accounts with a named beneficiary pass OUTSIDE the will. Capture the beneficiary and flag these for the attorney — a will does not override a beneficiary designation.",
           },
         ],
       },
       {
-        id: "interview-technique",
-        title: "How to Ask: Interview Technique",
+        id: "will-provisions",
+        title: "Will Provisions",
+        blocks: [
+          { type: "heading", text: "Fiduciaries" },
+          {
+            type: "list",
+            items: [
+              "**Executor** — primary plus **first and second alternates** (name, address, relationship).",
+              "**Guardian** for minor children — primary plus an alternate (name, address, relationship). **Co-guardians must be married.**",
+            ],
+          },
+          { type: "heading", text: "Beneficiaries" },
+          {
+            type: "list",
+            items: [
+              "**Personal property** — who receives which items; for a clean plan, use a class gift (e.g., \"all to my children who survive me in equal shares\") rather than itemizing.",
+              "**Other assets** — specific gifts of other property.",
+              "**Rest of estate (residue)** — who receives everything else; always give **alternates**.",
+            ],
+          },
+          {
+            type: "paragraph",
+            text: "Also capture any **funeral / burial instructions** (and remind the client to tell next of kin).",
+          },
+        ],
+      },
+      {
+        id: "document-menu",
+        title: "The Estate-Planning Document Menu",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Most clients should consider these companion documents at the same time as the will. Note the client's choices and route them to the attorney:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Statutory Durable Power of Attorney** — agent handles finances/property; effective immediately or on incapacity.",
+              "**Medical (Health Care) Power of Attorney** — agent makes health-care decisions on certified incapacity.",
+              "**Directive to Physicians (living will)** — instructions on life support if terminally ill; may appoint an agent (optional).",
+              "**Appointment of Agent to Control Disposition of Remains** — who controls the remains (and is financially responsible).",
+              "**Declaration of Guardian** — names who should (and should NOT) serve if a guardianship ever arises.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Default order if no declaration",
+            text: "Without a Declaration of Guardian, a court appoints a guardian in this order: (1) spouse, (2) parent, (3) adult child, (4) adult sibling, (5) other qualified person. The declaration lets the client choose instead.",
+          },
+        ],
+      },
+      {
+        id: "interview-and-handoff",
+        title: "Interview Technique & Handoff",
         blocks: [
           {
             type: "list",
             items: [
-              "**Ask open-ended questions** — \"Tell me about your family\" surfaces more than yes/no questions.",
-              "**Work from the questionnaire**, but listen for what's missing and follow up.",
-              "**Stay neutral.** Record the client's wishes; don't steer them or react to their choices.",
-              "**Handle sensitive topics plainly** — disinheriting a child, unequal shares, or blended-family concerns are common; note them without judgment for the attorney.",
-              "**Note your observations** about the client's clarity and that they seem to be acting freely (relevant to capacity and undue influence) — but never diagnose.",
+              "**Ask open-ended questions** and work from the questionnaire; listen for what's missing.",
+              "**Stay neutral** — record the client's wishes; don't steer or react.",
+              "**Note your observations** about clarity and that the client appears to act freely (capacity / undue influence) — never diagnose.",
+              "**Spell names exactly** as they should appear, and attach documents the client provided.",
+              "Keep everything **confidential**, summarize open questions, and **hand the file to the attorney**.",
             ],
           },
           {
             type: "callout",
             tone: "warning",
             title: "Do not give legal advice",
-            text: "If the client asks \"What should I do?\" or \"Is that allowed?\", don't answer from your own knowledge. Capture the question and route it to the supervising attorney.",
-          },
-        ],
-      },
-      {
-        id: "documenting",
-        title: "Documenting & Handoff",
-        blocks: [
-          {
-            type: "list",
-            ordered: true,
-            items: [
-              "Record everything on the firm's **intake form**, spelling **names exactly** as they should appear.",
-              "Organize notes clearly and attach any documents the client provided (prior will, deeds, statements).",
-              "Keep all of it **confidential** and secure, consistent with the firm's confidentiality policy.",
-              "**Summarize open questions** for the attorney and hand the file off for the drafting stage.",
-            ],
+            text: "If the client asks \"What should I do?\" or \"Is that allowed?\", capture the question and route it to the supervising attorney.",
           },
         ],
       },
@@ -874,9 +916,9 @@ export const TRAINING_MODULES: TrainingModule[] = [
           {
             type: "questions",
             items: [
-              { q: "What two things should always happen before the substantive intake interview begins?", a: "Run/confirm the conflicts check, and send the client the intake questionnaire so they can gather names, dates, and an asset list in advance." },
-              { q: "Why must you flag life insurance and retirement accounts specifically?", a: "They are non-probate assets that pass by beneficiary designation, outside the will — a will does not override those designations, so the attorney needs to know." },
-              { q: "A client asks you whether they're allowed to leave a child out of the will. What do you do?", a: "Don't advise. Note the question and the client's wishes neutrally and route the legal question to the supervising attorney." },
+              { q: "Why does the questionnaire ask whether the client ever lived outside Texas?", a: "Living in another state can raise community-property questions the attorney needs to evaluate." },
+              { q: "How many alternates does the questionnaire collect for the executor, and what's the rule for co-guardians?", a: "A primary plus first and second alternate executors; co-guardians must be married to serve together." },
+              { q: "Name two companion documents from the firm's document menu besides the will.", a: "Any two of: statutory durable power of attorney, medical power of attorney, directive to physicians, appointment of agent to control disposition of remains, or declaration of guardian." },
             ],
           },
         ],
@@ -1243,6 +1285,123 @@ export const TRAINING_MODULES: TrainingModule[] = [
       },
     ],
   },
+  {
+    slug: "estate-lady-bird-deed",
+    title: "Lady Bird Deed (Enhanced Life Estate Deed)",
+    category: "Estate Planning (Wills & Trusts)",
+    audience: "Clerks & staff",
+    summary: "How a Texas Lady Bird deed lets an owner keep full control of real property during life and pass it at death without probate.",
+    estMinutes: 12,
+    updated: "January 2025",
+    lessons: [
+      {
+        id: "what-it-is",
+        title: "What a Lady Bird Deed Is",
+        blocks: [
+          {
+            type: "callout",
+            tone: "info",
+            title: "Internal training only",
+            text: "A general introduction for firm staff, not legal advice. The attorney drafts and reviews every deed.",
+          },
+          {
+            type: "paragraph",
+            text: "A **Lady Bird deed** — formally an **Enhanced Life Estate Deed** — is a Texas deed in which the owner (**grantor**) keeps a **life estate** in real property but also retains **enhanced powers** to sell, lease, mortgage, gift, or otherwise dispose of the property during life, and even to cancel the deed — all **without** the consent of the future owner.",
+          },
+          {
+            type: "paragraph",
+            text: "The named **grantee** holds only a **remainder interest**. If the grantor still owns the property at death, title passes automatically to the grantee — **outside probate**. If the grantor sold or revoked during life, the grantee gets nothing.",
+          },
+        ],
+      },
+      {
+        id: "why-use",
+        title: "Why Clients Use One",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Avoids probate** on that specific property — title vests in the remainderman at death.",
+              "**Keeps full control during life** — unlike a traditional life estate, the grantor can sell, mortgage, or change their mind freely.",
+              "**Homestead & tax exemptions** are preserved during the grantor's life.",
+              "Often used for a **homestead** and can support **Medicaid estate-recovery** planning — but whether it's appropriate is the attorney's call.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "anatomy",
+        title: "Anatomy of the Deed",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Grantor** and **grantee** (with mailing addresses) and nominal **consideration** ($10 and other good and valuable consideration).",
+              "The **legal description** of the property (lot/block/addition and county) — must be exact.",
+              "**Reservation of the enhanced life estate** — full possession, use, rents and profits for life, plus the right to sell, lease, encumber, or dispose, and to **cancel the deed** by further conveyance.",
+              "**Remainder vesting** language — title vests in the grantee at death only if not previously disposed of.",
+              "Subject to existing easements, covenants, and restrictions of record.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Confidentiality notice on real-property records",
+            text: "Deeds are public records. The instrument carries a notice that a natural person may strike their Social Security or driver's license number before it is filed. Don't put sensitive numbers in a recorded deed.",
+          },
+        ],
+      },
+      {
+        id: "execution-recording",
+        title: "Execution & Recording",
+        blocks: [
+          {
+            type: "list",
+            ordered: true,
+            items: [
+              "The **grantor signs** the deed.",
+              "The signature is **acknowledged before a notary**.",
+              "The deed is **recorded** in the real-property records of the **county where the land is located**.",
+              "After recording, the original is returned to the owner; note its location in the file.",
+            ],
+          },
+          {
+            type: "paragraph",
+            text: "Our deeds note they were prepared from information furnished by the parties, with **no title search** performed unless requested.",
+          },
+        ],
+      },
+      {
+        id: "cautions",
+        title: "Cautions & Coordination",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "A Lady Bird deed only covers the **property described in it** — it is not a substitute for a will.",
+              "It must be **coordinated with the overall plan** so it doesn't conflict with the will or other transfers.",
+              "Confirm the **legal description** against the prior deed; an error can cloud title.",
+              "Texas also allows a **Transfer on Death Deed** as an alternative; which tool fits is the attorney's decision.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What makes a Lady Bird deed 'enhanced' compared with a traditional life estate?", a: "The grantor keeps the power to sell, mortgage, gift, or revoke the property during life without the remainderman's consent." },
+              { q: "What happens to the property if the grantor still owns it at death?", a: "Title passes automatically to the grantee (remainderman) outside of probate." },
+              { q: "Where must the deed be recorded, and what protects the grantor's sensitive numbers?", a: "In the real-property records of the county where the land is located; the confidentiality notice lets a person strike their SSN or driver's license number before filing." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
   /* ---------------------------------------------------------------- *
    * Estate Planning — ancillary documents (POAs, HIPAA, guardian
    * declarations). Same series/category as the wills modules.
@@ -1252,7 +1411,7 @@ export const TRAINING_MODULES: TrainingModule[] = [
     title: "Medical Power of Attorney (Texas)",
     category: "Estate Planning (Wills & Trusts)",
     audience: "Clerks & staff",
-    summary: "How a Texas medical power of attorney lets someone appoint an agent to make health-care decisions, who may serve, and how it's executed.",
+    summary: "How a Texas medical power of attorney lets someone appoint an agent for health-care decisions — the agent's authority and limits, who may serve, and how it's executed.",
     estMinutes: 12,
     updated: "January 2025",
     lessons: [
@@ -1268,15 +1427,17 @@ export const TRAINING_MODULES: TrainingModule[] = [
           },
           {
             type: "paragraph",
-            text: "A **Medical Power of Attorney (MPOA)** lets a person (the **principal**) name an **agent** to make **health-care decisions** for them if they become unable to make those decisions themselves. It is governed by the Texas Health & Safety Code.",
+            text: "A **Medical Power of Attorney (MPOA)** lets a person (the **principal**) name an **agent** to make **health-care decisions** for them. It takes effect only when the **attending physician certifies in writing** that the principal can't make their own health-care decisions, and the principal can **revoke it at any time**, even after losing capacity.",
           },
           {
-            type: "list",
-            items: [
-              "It becomes effective only when the **attending physician certifies** the principal lacks the capacity to make health-care decisions.",
-              "The principal can **revoke it at any time**, even after losing capacity, and regardless of how it was executed.",
-              "The agent must follow the principal's known wishes and otherwise act in their best interest.",
-            ],
+            type: "paragraph",
+            text: "The agent may consent to, refuse, or withdraw treatment — including life-sustaining treatment — in line with the principal's wishes.",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Limits on the agent",
+            text: "By law the agent may NOT consent to: voluntary inpatient mental-health services, convulsive treatment, psychosurgery, or abortion.",
           },
         ],
       },
@@ -1286,14 +1447,20 @@ export const TRAINING_MODULES: TrainingModule[] = [
         blocks: [
           {
             type: "paragraph",
-            text: "Capture the principal's first choice of agent **and at least one alternate**. Some people cannot serve as agent:",
+            text: "The agent must be **18 or older** (or a minor whose disabilities have been removed). Capture a first choice **and at least one alternate**.",
           },
           {
             type: "list",
             items: [
-              "The principal's **health-care provider** or an **employee** of that provider (unless they are a relative).",
-              "A **residential care provider** serving the principal, or its employee (unless a relative).",
+              "The agent generally cannot be the principal's **health-care or residential-care provider**, or an employee of one (unless a relative).",
+              "If the agent is the principal's **spouse**, the appointment is **automatically revoked** on divorce, annulment, or a void marriage — unless the document says otherwise.",
             ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Practical details to record",
+            text: "Note where the **original** will be kept and **who has signed copies** (e.g., the agent and physician) — the form asks for both.",
           },
         ],
       },
@@ -1302,20 +1469,26 @@ export const TRAINING_MODULES: TrainingModule[] = [
         title: "Texas Execution Requirements",
         blocks: [
           {
+            type: "paragraph",
+            text: "The principal must be a **competent adult**, must receive the required **statutory disclosure statement**, and must sign. The MPOA is **not valid unless** the principal either:",
+          },
+          {
             type: "list",
             ordered: true,
             items: [
-              "The principal must be a **competent adult**.",
-              "The MPOA must be **signed by the principal**.",
-              "It must be either **signed by two qualified witnesses** or **acknowledged before a notary**.",
-              "The principal must receive the required **statutory disclosure statement** before signing.",
+              "**Signs it before a notary** (acknowledged), **or**",
+              "**Signs it in the presence of two competent adult witnesses.**",
             ],
           },
           {
             type: "callout",
             tone: "warning",
             title: "Witness disqualifications",
-            text: "If witnesses are used, at least one witness must NOT be the agent, related to the principal, entitled to part of the estate, the attending physician (or their employee), or the principal's health-care/residential provider (or their employee).",
+            text: "If witnesses are used, at least one must NOT be the agent, a relative, someone entitled to part of the estate, the attending physician (or their employee), or an employee of the facility providing care.",
+          },
+          {
+            type: "paragraph",
+            text: "The document **cannot be changed or modified** — to make changes, the principal executes a **new** medical power of attorney.",
           },
         ],
       },
@@ -1340,9 +1513,9 @@ export const TRAINING_MODULES: TrainingModule[] = [
           {
             type: "questions",
             items: [
-              { q: "When does a Texas medical power of attorney become effective?", a: "Only when the attending physician certifies that the principal lacks the capacity to make their own health-care decisions." },
-              { q: "What are the two acceptable ways to execute an MPOA besides the principal's signature?", a: "Have it signed by two qualified witnesses, or have it acknowledged before a notary." },
-              { q: "How does an MPOA differ from a HIPAA release?", a: "An MPOA grants authority to make health-care decisions; a HIPAA release grants access to medical information. They work together." },
+              { q: "When does a Texas medical power of attorney become effective?", a: "Only when the attending physician certifies in writing that the principal lacks the capacity to make their own health-care decisions." },
+              { q: "Name two decisions the agent may NOT make.", a: "Any two of: consenting to voluntary inpatient mental-health services, convulsive treatment, psychosurgery, or abortion." },
+              { q: "What are the two ways a Texas MPOA can be validly executed?", a: "Signed and acknowledged before a notary, OR signed in the presence of two competent adult witnesses." },
             ],
           },
         ],
@@ -1354,8 +1527,8 @@ export const TRAINING_MODULES: TrainingModule[] = [
     title: "Statutory Durable (Financial) Power of Attorney (Texas)",
     category: "Estate Planning (Wills & Trusts)",
     audience: "Clerks & staff",
-    summary: "The Texas durable power of attorney for finances — what 'durable' means, immediate vs. springing, the statutory form, hot powers, and the agent's duties.",
-    estMinutes: 14,
+    summary: "The Texas durable power of attorney for finances — the statutory powers, immediate vs. springing, the granular form choices, hot powers, and the agent's fiduciary duties.",
+    estMinutes: 15,
     updated: "January 2025",
     lessons: [
       {
@@ -1370,7 +1543,32 @@ export const TRAINING_MODULES: TrainingModule[] = [
           },
           {
             type: "paragraph",
-            text: "A **durable power of attorney** lets a person (the **principal**) appoint an **agent** (also called an **attorney-in-fact**) to handle **financial and property** matters. \"**Durable**\" means it stays effective even if the principal later becomes incapacitated — the document must contain the durability language to achieve that.",
+            text: "A **statutory durable power of attorney** lets a person (the **principal**) appoint an **agent** (attorney-in-fact) to handle **financial and property** matters. The powers are broad and sweeping. \"**Durable**\" means it survives the principal's later incapacity.",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "It does NOT cover health care",
+            text: "A financial POA gives no authority over medical decisions — that's what the Medical Power of Attorney is for.",
+          },
+        ],
+      },
+      {
+        id: "powers",
+        title: "The Statutory Powers",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "On the statutory form the principal **initials** each category of authority to grant (or initials \"(O)\" to grant them all). The categories are:",
+          },
+          {
+            type: "list",
+            items: [
+              "Real property; tangible personal property; stocks and bonds; commodities and options.",
+              "Banking; business operating; insurance and annuity; estate/trust/beneficiary transactions.",
+              "Claims and litigation; personal and family maintenance.",
+              "Government benefits (Social Security, Medicare, Medicaid); retirement plans; tax matters; digital assets.",
+            ],
           },
         ],
       },
@@ -1379,62 +1577,82 @@ export const TRAINING_MODULES: TrainingModule[] = [
         title: "Immediate vs. Springing",
         blocks: [
           {
-            type: "list",
-            items: [
-              "**Immediate** — effective as soon as it is signed. Simpler and avoids fights over whether the principal is incapacitated. Often recommended.",
-              "**Springing** — effective only upon a future event, usually the principal's disability, which then must be proven (commonly by a physician). More steps, more delay.",
-            ],
-          },
-        ],
-      },
-      {
-        id: "execution",
-        title: "Execution & the Statutory Form",
-        blocks: [
-          {
             type: "paragraph",
-            text: "Texas provides a **statutory durable power of attorney form**. Key points when preparing one:",
+            text: "The form defaults to **effective immediately** and continuing until it terminates. The principal chooses one alternative:",
           },
           {
             type: "list",
             items: [
-              "It must be **signed by the principal** and **acknowledged before a notary** (notarization is required, partly so it can be used for real-estate transactions).",
-              "The form lists categories of authority (real property, banking, business, etc.) that the principal **grants or withholds**.",
-              "A **special instructions** section lets the principal limit or customize the powers.",
+              "**(A) Immediate** — not affected by later disability (the default if neither is crossed out).",
+              "**(B) Springing** — becomes effective only upon the principal's disability/incapacity, which a physician must certify.",
             ],
           },
         ],
       },
       {
-        id: "hot-powers-duties",
-        title: "Hot Powers & Agent Duties",
+        id: "form-choices",
+        title: "Execution & Form Choices",
         blocks: [
+          {
+            type: "list",
+            items: [
+              "Signed by the principal and **acknowledged before a notary** (needed to record real-estate transactions).",
+              "**Co-agents** — the principal may direct that they act independently, jointly, or by majority.",
+              "**Compensation** — agent gets reasonable compensation unless the principal limits it to reimbursement only.",
+              "**Gifts** — choose no gift power, gifts limited to the annual gift-tax exclusion, or a broad gift power.",
+            ],
+          },
           {
             type: "callout",
             tone: "warning",
-            title: "\"Hot\" powers must be expressly granted",
-            text: "Certain powers don't come automatically and must be specifically initialed/granted — for example, making gifts, creating or changing rights of survivorship or beneficiary designations, delegating authority, and creating or changing a trust.",
+            title: "Home-equity caveat",
+            text: "For the agent to sign home-equity loan documents, the principal must sign the POA at the lender's office, an attorney's office, or a title company.",
+          },
+        ],
+      },
+      {
+        id: "hot-powers",
+        title: "\"Hot\" Powers",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Certain powers can significantly change the principal's property or who inherits, so they are granted only if **specifically initialed**:",
           },
           {
             type: "list",
             items: [
-              "The agent is a **fiduciary** — they must act in good faith, only within the authority granted, and in the principal's interest.",
-              "The agent should keep **records** of transactions made on the principal's behalf.",
+              "Create, amend, revoke, or terminate an **inter vivos (living) trust**.",
+              "**Make gifts** (subject to Estates Code §751.032 and any special instructions).",
+              "**Create or change rights of survivorship.**",
+              "**Create or change a beneficiary designation.**",
+              "**Delegate** the authority to another person.",
             ],
           },
         ],
       },
       {
-        id: "termination",
-        title: "When It Ends",
+        id: "agent-duties",
+        title: "Agent Duties & Termination",
         blocks: [
+          {
+            type: "paragraph",
+            text: "The agent is a **fiduciary**. The form's notice to the agent requires them to:",
+          },
           {
             type: "list",
             items: [
-              "The principal's **death**.",
-              "**Revocation** by the principal.",
-              "If the agent is the principal's **spouse**, generally upon **divorce** or annulment.",
-              "A court order, or the terms of the document itself.",
+              "Act in **good faith**, only within the authority granted, and **loyally** for the principal's benefit; avoid conflicts.",
+              "**Disclose** they are acting as agent (sign \"(Principal) by (Agent) as Agent\").",
+              "**Keep records** of every action and provide an **accounting** if the principal asks.",
+            ],
+          },
+          { type: "heading", text: "When authority ends" },
+          {
+            type: "list",
+            items: [
+              "Principal's **death** or **revocation**; a termination event in the document.",
+              "**Divorce/annulment** if the agent is the spouse (unless stated otherwise).",
+              "Appointment of a **permanent guardian** of the estate, or court **removal** of the agent.",
             ],
           },
         ],
@@ -1446,9 +1664,9 @@ export const TRAINING_MODULES: TrainingModule[] = [
           {
             type: "questions",
             items: [
-              { q: "What does 'durable' mean in a durable power of attorney?", a: "It remains effective even after the principal becomes incapacitated (the document must include the durability language)." },
-              { q: "Why is an immediate POA often preferred over a springing one?", a: "It avoids the delay and proof required to establish that the principal has become incapacitated before the agent can act." },
-              { q: "Give two examples of 'hot' powers that must be expressly granted.", a: "Any two of: making gifts; creating/changing survivorship rights or beneficiary designations; delegating authority; creating or amending a trust." },
+              { q: "Is a financial POA effective immediately or on incapacity by default?", a: "Effective immediately — Alternative (A) is assumed unless the springing option is chosen." },
+              { q: "Give two 'hot' powers that must be specifically initialed.", a: "Any two of: create/amend/revoke a living trust; make gifts; create/change rights of survivorship; create/change a beneficiary designation; delegate authority." },
+              { q: "Name two of the agent's fiduciary duties under the statutory notice.", a: "Any two of: act in good faith; stay within the authority granted; act loyally/avoid conflicts; disclose acting as agent; keep records and account to the principal." },
             ],
           },
         ],
