@@ -9,6 +9,18 @@ export const TIME_ACTIVITY_USERS: TimeActivityUserSeed[] = [
   { name: "Micah Walters (Legal Assistant)", rate: 145 },
   { name: "Austin Choate (Legal Assistant)", rate: 145 },
   { name: "Jessica Smith (Legal Assistant)", rate: 145 },
+  { name: "Frankie Moreno (Legal Assistant)", rate: 145 },
+  { name: "Maddox Wolfe (Intern)", rate: 145 },
+];
+
+/**
+ * Activity users to ensure exist even when the table is already populated
+ * (added over time). "Apply database updates" inserts any of these that are
+ * missing — by exact name — without disturbing or duplicating existing users.
+ */
+export const TIME_ACTIVITY_USERS_ENSURE: TimeActivityUserSeed[] = [
+  { name: "Frankie Moreno (Legal Assistant)", rate: 145 },
+  { name: "Maddox Wolfe (Intern)", rate: 145 },
 ];
 
 export const TIME_CATEGORIES: string[] = [

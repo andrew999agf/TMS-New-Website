@@ -9,7 +9,7 @@ import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
 import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
-import { TIME_ACTIVITY_USERS, TIME_CATEGORIES } from "@/lib/content/defaults/time";
+import { TIME_ACTIVITY_USERS, TIME_ACTIVITY_USERS_ENSURE, TIME_CATEGORIES } from "@/lib/content/defaults/time";
 
 export const runtime = "nodejs";
 
@@ -242,6 +242,20 @@ export async function POST() {
         await db.insert(timeActivityUsers).values({ name: u.name, rate: u.rate, sort: i });
       }
       applied.push(`Seeded ${TIME_ACTIVITY_USERS.length} time-tracker users`);
+    } else {
+      // Table already populated: add any newer activity users that are missing,
+      // matched by exact name, placed at the end. Existing users are untouched.
+      const existing = await db.select({ name: timeActivityUsers.name, sort: timeActivityUsers.sort }).from(timeActivityUsers);
+      const have = new Set(existing.map((r) => r.name));
+      let nextSort = existing.reduce((m, r) => Math.max(m, r.sort), 0) + 1;
+      let added = 0;
+      for (const u of TIME_ACTIVITY_USERS_ENSURE) {
+        if (!have.has(u.name)) {
+          await db.insert(timeActivityUsers).values({ name: u.name, rate: u.rate, sort: nextSort++ });
+          added++;
+        }
+      }
+      if (added) applied.push(`Added ${added} time-tracker user(s)`);
     }
     const catCount = await db.select({ id: timeCategories.id }).from(timeCategories).limit(1);
     if (catCount.length === 0) {
