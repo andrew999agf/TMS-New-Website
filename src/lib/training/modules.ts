@@ -1438,6 +1438,163 @@ export const TRAINING_MODULES: TrainingModule[] = [
     ],
   },
   {
+    slug: "estate-living-trust",
+    title: "Texas Revocable Living Trusts",
+    category: "Estate Planning (Wills & Trusts)",
+    audience: "Clerks & staff",
+    summary: "Trusts created and funded during life — how they avoid probate, why 'funding' is everything, and how they handle incapacity and death.",
+    estMinutes: 18,
+    updated: "January 2025",
+    lessons: [
+      {
+        id: "what-it-is",
+        title: "What a Living Trust Is",
+        blocks: [
+          {
+            type: "callout",
+            tone: "info",
+            title: "Internal training only",
+            text: "A general introduction for firm staff, not legal advice. The attorney drafts and reviews every trust.",
+          },
+          {
+            type: "paragraph",
+            text: "A **revocable living trust** (an **inter vivos** trust) is created by a **trust agreement** the person signs **during life** — not by a will. The person who creates it transfers property into the trust to be managed under its terms.",
+          },
+          { type: "heading", text: "The roles (often the same person at first)" },
+          {
+            type: "list",
+            items: [
+              "**Trustor / settlor / grantor** — the person who creates and funds the trust.",
+              "**Trustee** — manages the trust property. With a living trust, the trustor is usually **their own trustee** during life.",
+              "**Beneficiary** — who benefits. Again, usually the trustor during their lifetime, then others after.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "vs-will",
+        title: "Living Trust vs. Will & Testamentary Trust",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Created and funded during life** — unlike a testamentary trust, which a will creates at death.",
+              "**Avoids probate** for assets titled in the trust — they pass under the trust without court administration.",
+              "**Private** — it isn't filed or probated in the public record the way a will is.",
+              "**Manages incapacity** — a successor trustee can step in without a court guardianship.",
+              "**Revocable during life**, then becomes **irrevocable at the trustor's death**.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Still pair it with a pour-over will",
+            text: "A living trust only controls property actually titled in it. Clients also need a \"pour-over\" will to catch anything left outside the trust (and to name a guardian for minor children). The trust does not replace the will.",
+          },
+        ],
+      },
+      {
+        id: "funding",
+        title: "Funding the Trust (the Critical Step)",
+        blocks: [
+          {
+            type: "callout",
+            tone: "warning",
+            title: "An unfunded trust does nothing",
+            text: "A living trust only avoids probate for assets actually transferred into it. Signing the document is not enough — the assets must be retitled into the name of the trust.",
+          },
+          {
+            type: "paragraph",
+            text: "Trust property is listed on a schedule (commonly **Exhibit A**). Funding typically includes:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Real property** — a new deed conveys the home/land into the trust (legal description, recorded).",
+              "**Bank and brokerage/retirement accounts** — retitled in the name of the trust.",
+              "**Vehicles** and titled property.",
+              "**Personal property** — household goods, furnishings, and valuables assigned to the trust.",
+              "**Homestead** — Texas lets a homestead be held in a qualifying trust while **keeping its homestead exemption** and creditor protection.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "control-incapacity",
+        title: "Control During Life, Incapacity & Death",
+        blocks: [
+          { type: "heading", text: "Full control during life" },
+          {
+            type: "list",
+            items: [
+              "The trustor keeps full power to **manage, sell, amend, revoke, withdraw property, or add property** at any time.",
+              "The trustor may **live in and use** the homestead held in the trust.",
+              "The trust pays the trustor the net income (and principal if needed) during life.",
+            ],
+          },
+          { type: "heading", text: "Incapacity and death" },
+          {
+            type: "list",
+            items: [
+              "If the trustor becomes **incapacitated**, the **successor trustee** steps in to manage the assets — **no guardianship** of the estate needed.",
+              "At the trustor's **death**, the trust becomes **irrevocable**; the trustee pays last-illness, funeral, and any death taxes, then distributes to the remainder beneficiaries.",
+              "Remainder gifts often pass **per stirpes** to the trustor's issue, mirroring a will.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "trustee-duties",
+        title: "Trustee Powers, Duties & Successors",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "The trustee has broad powers (invest and reinvest, sell, lease, manage real property and minerals, borrow, run a business, employ professionals) and acts only in a **fiduciary** capacity.",
+          },
+          {
+            type: "list",
+            items: [
+              "**No self-dealing** — the trustee can't buy trust property for less than fair value, borrow trust funds, or use trust assets to pay premiums on the trustor's life insurance.",
+              "**Spendthrift** protection bars a beneficiary from assigning their interest and shields it from creditors.",
+              "**No bond** is required, and the trustee provides an **annual accounting** to the beneficiaries.",
+              "**Successor trustees** — the trustor may remove the trustee during life; the document names successors, and after death the adult beneficiaries can typically remove/appoint by unanimous written notice. A common clause **removes a spouse-trustee on divorce**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "execution",
+        title: "Execution & Administration",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "Signed by the **trustor and the trustee** (often the same person) and **acknowledged before a notary**.",
+              "**No witnesses are required** — a trust is not executed with the two-witness formalities of a will.",
+              "Governed by **Texas law**; keep the **property schedule current** as assets change.",
+              "A **certification of trust** lets banks and title companies confirm the trustee's authority without seeing the entire agreement.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What is the single most important step after signing a living trust, and why?", a: "Funding it — retitling assets into the trust's name. An unfunded trust avoids probate for nothing." },
+              { q: "Name two advantages a living trust has over a plain will.", a: "Any two of: avoids probate for funded assets, stays private, and lets a successor trustee manage incapacity without a guardianship." },
+              { q: "Does a living trust replace the need for a will?", a: "No. Clients still need a pour-over will to catch assets left outside the trust and to name a guardian for minor children." },
+              { q: "How is a living trust executed compared with a will?", a: "It's signed by the trustor/trustee and acknowledged before a notary; unlike a will, it doesn't require two witnesses." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
     slug: "estate-lady-bird-deed",
     title: "Lady Bird Deed (Enhanced Life Estate Deed)",
     category: "Estate Planning (Wills & Trusts)",
