@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { FileSignature, FileText, Copy, Download, Check, Loader2, AlertCircle, User, Mail, PencilLine } from "lucide-react";
+import { FileSignature, FileText, Copy, Download, Check, Loader2, AlertCircle, User, Mail, PencilLine, ExternalLink } from "lucide-react";
 import { renderDocument } from "@/app/admin/(panel)/documents/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 
@@ -14,7 +14,7 @@ function requested(answers: Record<string, unknown>, trigger: DocMeta["trigger"]
   return arr.includes(trigger.value);
 }
 
-export function DocumentGenerator({ submissions, docMeta }: { submissions: Submission[]; docMeta: DocMeta[] }) {
+export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submissions: Submission[]; docMeta: DocMeta[]; intakeUrl: string }) {
   const [selected, setSelected] = useState<Submission | null>(null);
   const [docId, setDocId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ label: string; text: string; missing: string[] } | null>(null);
@@ -134,11 +134,19 @@ export function DocumentGenerator({ submissions, docMeta }: { submissions: Submi
                     >
                       <Mail size={15} /> Email the client to fill it out
                     </button>
+                    <a
+                      href={intakeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]"
+                    >
+                      <ExternalLink size={15} /> Fill out the intake for them
+                    </a>
                     <button
                       onClick={() => setManual(true)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]"
                     >
-                      <PencilLine size={15} /> Enter the documents myself
+                      <PencilLine size={15} /> Just pick documents to draft
                     </button>
                   </div>
                 </div>
