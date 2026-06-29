@@ -1286,6 +1286,158 @@ export const TRAINING_MODULES: TrainingModule[] = [
     ],
   },
   {
+    slug: "estate-testamentary-trusts",
+    title: "Texas Testamentary Trusts",
+    category: "Estate Planning (Wills & Trusts)",
+    audience: "Clerks & staff",
+    summary: "Trusts created inside a will — what they are, why clients use them, how they're structured, and the trustee's powers and duties under Texas law.",
+    estMinutes: 18,
+    updated: "January 2025",
+    lessons: [
+      {
+        id: "what-it-is",
+        title: "What a Testamentary Trust Is",
+        blocks: [
+          {
+            type: "callout",
+            tone: "info",
+            title: "Internal training only",
+            text: "A general introduction for firm staff, not legal advice. The attorney drafts and reviews every trust.",
+          },
+          {
+            type: "paragraph",
+            text: "A **testamentary trust** is a trust **created by a will**. Unlike a living (inter vivos) trust set up during life, it springs into existence only **at the testator's death**, when the will is probated and the named property passes to the trustee instead of outright to the beneficiary.",
+          },
+          { type: "heading", text: "The three roles" },
+          {
+            type: "list",
+            items: [
+              "**Settlor / testator** — the person whose will creates the trust.",
+              "**Trustee** — holds and manages the trust property and makes distributions (governed by the **Texas Trust Code**).",
+              "**Beneficiary** — the person the trust is for.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "why-use",
+        title: "Why Clients Use One",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Manage money over time** instead of handing a beneficiary a lump sum.",
+              "**Protect minors or young adults** until they're ready (often with staggered ages).",
+              "**Spendthrift protection** — shield the inheritance from a beneficiary's creditors or divorce.",
+              "**Special-needs planning** — preserve eligibility for government benefits (often coordinated with a separate special needs trust).",
+              "**Control and incentives** — tie distributions to a standard and the beneficiary's circumstances.",
+              "**Tax / generation-skipping planning** for larger estates.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "It does NOT avoid probate",
+            text: "Because a testamentary trust is created by the will, the will must still be probated to fund it. A client whose main goal is avoiding probate may instead want a living trust — that's the attorney's call.",
+          },
+        ],
+      },
+      {
+        id: "anatomy",
+        title: "Creating the Trust in the Will",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "The will **sets aside a share** of the estate to \"the Trustee of the [Beneficiary] Testamentary Trust\" rather than to the beneficiary outright.",
+              "A **separate trust per beneficiary** is common, so each share is administered independently.",
+              "The will **names the trustee and a successor trustee**, and may let the beneficiary serve as their own trustee and appoint or remove successors.",
+              "A **survival requirement** (e.g., survive the testator by 30 days) decides whether a share funds the trust or passes to alternates.",
+              "The will may **incorporate an existing trust by reference** (for example, a previously executed special needs trust).",
+            ],
+          },
+        ],
+      },
+      {
+        id: "distributions",
+        title: "Distribution Standard & Spendthrift",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Most testamentary trusts give the trustee discretion to distribute income and principal under an **ascertainable standard** — commonly **HEMS: Health, Education, Maintenance, and Support**. Undistributed income is typically accumulated and added to principal.",
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Spendthrift clause",
+            text: "A spendthrift provision bars a beneficiary from transferring their interest before they receive it and keeps creditors from reaching it inside the trust — a major reason clients choose trusts over outright gifts.",
+          },
+          { type: "heading", text: "Distribution considerations" },
+          {
+            type: "list",
+            items: [
+              "The trustee may weigh the beneficiary's **other resources**, character and habits, and ability to manage money.",
+              "Trusts often let the trustee **withhold** distributions during **substance abuse or incarceration** (incentive provisions).",
+              "For a **minor** beneficiary, the trustee can distribute to a custodian under the **Texas Uniform Transfers to Minors Act** or to the person caring for the child.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "trustee-powers",
+        title: "Trustee Powers & Duties",
+        blocks: [
+          { type: "heading", text: "Powers" },
+          {
+            type: "paragraph",
+            text: "The trustee has all powers granted by the **Texas Trust Code**, plus the broad powers the will enumerates — to invest and reinvest, hold real property and mineral interests, run or sell businesses, lend and borrow, and **sell trust property without beneficiary consent**.",
+          },
+          { type: "heading", text: "Duties" },
+          {
+            type: "list",
+            items: [
+              "**Fiduciary duty** — act in good faith, loyally, and impartially among beneficiaries.",
+              "**Prudent management** and investment of trust assets.",
+              "**Records and accountings** — keep books and report to beneficiaries who request it.",
+              "Serve **without bond** when the will so provides, and take **reasonable compensation**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "lifespan",
+        title: "Lifespan, Termination & Special Clauses",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Duration** — a trust often continues for the beneficiary's lifetime, or until set ages with staggered distributions.",
+              "**At the beneficiary's death** — assets typically pass **per stirpes** into trusts for the beneficiary's descendants.",
+              "**Limited (special) power of appointment** — a beneficiary may redirect the remaining trust at death, but **never to themselves, their estate, or their creditors**.",
+              "**Rule against perpetuities savings clause** — Texas limits how long a trust can last; the will includes language ensuring it ends within the legal period.",
+              "**Practical clauses** — terminating small/uneconomical trusts, merging trusts for the same beneficiary, changing the trust's situs, and dividing GST-exempt vs. non-exempt shares.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "When does a testamentary trust come into existence, and does it avoid probate?", a: "At the testator's death, when the will is probated. It does NOT avoid probate — the will must be probated to fund it." },
+              { q: "What does the HEMS distribution standard stand for?", a: "Health, Education, Maintenance, and Support — the ascertainable standard the trustee uses to make discretionary distributions." },
+              { q: "What does a spendthrift clause do?", a: "It prevents the beneficiary from transferring their interest before receiving it and protects the trust assets from the beneficiary's creditors." },
+              { q: "Can a beneficiary with a limited power of appointment leave the trust property to their own creditors?", a: "No. A limited (special) power of appointment cannot be exercised in favor of the beneficiary, their estate, or their creditors." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
     slug: "estate-lady-bird-deed",
     title: "Lady Bird Deed (Enhanced Life Estate Deed)",
     category: "Estate Planning (Wills & Trusts)",
