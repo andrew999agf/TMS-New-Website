@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { CheckCircle2, Clock, BookOpen, ChevronRight } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { getModules } from "@/lib/training/modules";
 import { TRAINING_CATEGORIES } from "@/lib/training/types";
-import { getMyCompletion } from "./actions";
+import { getMyCompletion, getMyAllowedSlugs } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function TrainingPage() {
-  await requireAdmin();
-  const modules = getModules();
+  const session = await requireAdmin();
+  const allowed = await getMyAllowedSlugs();
+  const full = isFullAdmin(session.role);
+  const modules = getModules().filter((m) => full || allowed.includes(m.slug));
   const completion = await getMyCompletion();
   const doneCount = modules.filter((m) => completion[m.slug]).length;
 
@@ -30,6 +32,12 @@ export default async function TrainingPage() {
           <span className="font-semibold text-[var(--c-ink)]">{doneCount}</span> of{" "}
           <span className="font-semibold text-[var(--c-ink)]">{modules.length}</span> modules completed.
         </p>
+
+        {modules.length === 0 && (
+          <p className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-6 text-sm text-[var(--c-ink-muted)]">
+            No training modules have been assigned to your account yet. Check with an administrator.
+          </p>
+        )}
 
         <div className="space-y-10">
           {byCategory.map((group) => (

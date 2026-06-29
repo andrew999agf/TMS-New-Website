@@ -9,10 +9,17 @@
  */
 
 /** Top-level grouping shown as headings on the Training index. Extend freely. */
-export type TrainingCategory = "Onboarding" | "Firm Policies" | "Legal Skills";
+export type TrainingCategory = "Onboarding" | "Firm Policies" | "Estate Planning (Wills & Trusts)";
 
 /** Ordered list of categories — controls section order on the index page. */
-export const TRAINING_CATEGORIES: TrainingCategory[] = ["Onboarding", "Firm Policies", "Legal Skills"];
+export const TRAINING_CATEGORIES: TrainingCategory[] = [
+  "Onboarding",
+  "Firm Policies",
+  "Estate Planning (Wills & Trusts)",
+];
+
+/** A self-check question with an optional revealable answer. */
+export type ReviewQuestion = { q: string; a?: string };
 
 /** A single piece of lesson content. Paragraph/list text supports **bold**. */
 export type TrainingBlock =
@@ -20,7 +27,8 @@ export type TrainingBlock =
   | { type: "paragraph"; text: string }
   | { type: "list"; ordered?: boolean; items: string[] }
   | { type: "callout"; tone?: "info" | "warning"; title?: string; text: string }
-  | { type: "quote"; text: string };
+  | { type: "quote"; text: string }
+  | { type: "questions"; items: ReviewQuestion[] };
 
 export type TrainingLesson = {
   /** Stable slug, unique within the module (used for anchors/table of contents). */

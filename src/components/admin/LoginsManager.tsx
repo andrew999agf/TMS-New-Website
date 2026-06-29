@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, Trash2, KeyRound, Check, Mail, SlidersHorizontal } from "lucide-react";
+import { Plus, Trash2, KeyRound, Check, Mail, SlidersHorizontal, GraduationCap } from "lucide-react";
 import {
   createLogin, resetLoginPassword, updateLoginRole, deleteLogin,
   updateLoginPermissions, sendSetupLink,
 } from "@/app/admin/(panel)/logins/actions";
 import { TOGGLEABLE_SECTIONS, isFullAdminRole } from "@/lib/admin-sections";
+import { UserTrainingPanel } from "@/components/admin/training/UserTrainingPanel";
 
 type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null };
 type Role = "owner" | "editor" | "timekeeper";
@@ -18,6 +19,7 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [openAccess, setOpenAccess] = useState<number | null>(null);
+  const [openTraining, setOpenTraining] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", email: "", role: "timekeeper" as Role, password: "" });
   const cls = "w-full border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm rounded outline-none focus:border-[var(--c-accent)]";
 
@@ -83,7 +85,17 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
             <div key={u.id} className="bg-[var(--c-surface)]">
               <div className="p-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium">{u.name} {u.id === selfId && <span className="text-xs text-[var(--c-ink-muted)]">(you)</span>}</div>
+                  <div className="text-sm font-medium flex items-center gap-1.5">
+                    {u.name} {u.id === selfId && <span className="text-xs text-[var(--c-ink-muted)]">(you)</span>}
+                    <button
+                      onClick={() => setOpenTraining(openTraining === u.id ? null : u.id)}
+                      title="Training progress & module access"
+                      aria-label="Training progress & module access"
+                      className={`text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] ${openTraining === u.id ? "text-[var(--c-accent)]" : ""}`}
+                    >
+                      <GraduationCap size={16} />
+                    </button>
+                  </div>
                   <div className="text-xs text-[var(--c-ink-muted)] truncate">{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleDateString()}` : " · never signed in"}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -126,6 +138,12 @@ export function LoginsManager({ initial, selfId }: { initial: Login[]; selfId: n
                     </div>
                     <p className="text-[11px] text-[var(--c-ink-muted)] mt-2">Changes take effect the next time they sign in.</p>
                   </div>
+                </div>
+              )}
+
+              {openTraining === u.id && (
+                <div className="px-4 pb-4 -mt-1">
+                  <UserTrainingPanel userId={u.id} fullAdmin={fullAdmin} />
                 </div>
               )}
             </div>

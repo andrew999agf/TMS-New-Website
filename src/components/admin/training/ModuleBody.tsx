@@ -1,4 +1,4 @@
-import { Info, AlertTriangle } from "lucide-react";
+import { Info, AlertTriangle, HelpCircle } from "lucide-react";
 import type { TrainingBlock, TrainingLesson } from "@/lib/training/types";
 
 /** Minimal inline formatter: turns **bold** into <strong>. */
@@ -54,6 +54,37 @@ function Block({ block }: { block: TrainingBlock }) {
         <blockquote className="my-3 border-l-2 border-[var(--c-accent)] pl-4 text-sm italic text-[var(--c-ink-muted)]">
           <Inline text={block.text} />
         </blockquote>
+      );
+    case "questions":
+      return (
+        <div className="my-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface2)] p-4">
+          <p className="flex items-center gap-1.5 font-semibold text-[var(--c-ink)] mb-3">
+            <HelpCircle size={16} className="text-[var(--c-accent)]" /> Check your understanding
+          </p>
+          <ol className="space-y-2 pl-5 list-decimal text-sm text-[var(--c-ink)]">
+            {block.items.map((item, i) => (
+              <li key={i}>
+                {item.a ? (
+                  <details className="group">
+                    <summary className="cursor-pointer marker:text-[var(--c-ink-muted)]">
+                      <span className="font-medium">
+                        <Inline text={item.q} />
+                      </span>
+                      <span className="ml-2 text-xs text-[var(--c-accent)] group-open:hidden">Show answer</span>
+                    </summary>
+                    <p className="mt-1.5 rounded-md bg-[var(--c-surface)] p-2.5 text-[var(--c-ink-muted)] leading-relaxed">
+                      <Inline text={item.a} />
+                    </p>
+                  </details>
+                ) : (
+                  <span className="font-medium">
+                    <Inline text={item.q} />
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
       );
     case "callout": {
       const warning = block.tone === "warning";

@@ -1,19 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, BookOpen, Users, FileText } from "lucide-react";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { getModule } from "@/lib/training/modules";
 import { ModuleBody } from "@/components/admin/training/ModuleBody";
 import { ModuleComplete } from "@/components/admin/training/ModuleComplete";
-import { getMyCompletion } from "../actions";
+import { getMyCompletion, getMyAllowedSlugs } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function TrainingModulePage({ params }: { params: Promise<{ slug: string }> }) {
-  await requireAdmin();
+  const session = await requireAdmin();
   const { slug } = await params;
   const mod = getModule(slug);
   if (!mod) notFound();
+
+  // Respect per-user module access (full admins can preview anything).
+  if (!isFullAdmin(session.role)) {
+    const allowed = await getMyAllowedSlugs();
+    if (!allowed.includes(mod.slug)) notFound();
+  }
 
   const completion = await getMyCompletion();
   const completedAt = completion[mod.slug];
