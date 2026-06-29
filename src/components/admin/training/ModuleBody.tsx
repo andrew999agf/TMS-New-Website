@@ -1,20 +1,51 @@
 import { Info, AlertTriangle, HelpCircle } from "lucide-react";
 import type { TrainingBlock, TrainingLesson } from "@/lib/training/types";
+import { lookupTerm, type GlossaryEntry } from "@/lib/training/glossary";
 
-/** Minimal inline formatter: turns **bold** into <strong>. */
+/**
+ * A glossary term: bold, dotted-underlined, with a pure-CSS hover popup that
+ * appears BELOW the term (definition + a flashcard-style hypothetical) and
+ * disappears the moment the cursor leaves the term. No JS/state required.
+ */
+function GlossaryTerm({ label, entry }: { label: string; entry: GlossaryEntry }) {
+  return (
+    <span className="group/term relative inline-block align-baseline">
+      <span className="cursor-help font-semibold text-[var(--c-ink)] underline decoration-dotted decoration-[var(--c-accent)] underline-offset-2">
+        {label}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-72 max-w-[80vw] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-left opacity-0 shadow-xl transition-opacity duration-100 group-hover/term:visible group-hover/term:opacity-100"
+      >
+        <span className="block text-sm font-semibold text-[var(--c-ink)]">{entry.term}</span>
+        <span className="mt-1 block text-xs font-normal leading-relaxed text-[var(--c-ink-muted)]">{entry.definition}</span>
+        <span className="mt-2 block rounded-md bg-[var(--c-surface2)] p-2 text-xs font-normal leading-relaxed text-[var(--c-ink)]">
+          <span className="font-semibold text-[var(--c-accent)]">Hypothetical: </span>
+          {entry.hypothetical}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** Inline formatter: **bold**, and bold terms in the glossary get a hover popup. */
 function Inline({ text }: { text: string }) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
   return (
     <>
-      {parts.map((p, i) =>
-        p.startsWith("**") && p.endsWith("**") ? (
-          <strong key={i} className="font-semibold text-[var(--c-ink)]">
-            {p.slice(2, -2)}
-          </strong>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
+      {parts.map((p, i) => {
+        if (p.startsWith("**") && p.endsWith("**")) {
+          const inner = p.slice(2, -2);
+          const entry = lookupTerm(inner);
+          if (entry) return <GlossaryTerm key={i} label={inner} entry={entry} />;
+          return (
+            <strong key={i} className="font-semibold text-[var(--c-ink)]">
+              {inner}
+            </strong>
+          );
+        }
+        return <span key={i}>{p}</span>;
+      })}
     </>
   );
 }
