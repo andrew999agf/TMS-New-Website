@@ -41,9 +41,10 @@ export function isFullAdminRole(role?: string): boolean {
 /** All section keys a given account may access. */
 export function allowedSections(role?: string, permissions?: string[]): string[] {
   if (isFullAdminRole(role)) return ADMIN_SECTIONS.map((s) => s.key);
-  // Every account (including interns/timekeepers) gets the Time Tracker, Training,
-  // Intake, and the Document Generator by default, plus any granted sections.
-  return ["time-tracker", "time-tracker-4", "training", "intake", "documents", ...(permissions ?? [])];
+  // Every account (including interns/timekeepers) gets Time Tracker 4.0, Training,
+  // Intake, and the Document Generator by default, plus any granted sections. The
+  // original Time Tracker (1.0) is admin-only.
+  return ["time-tracker-4", "training", "intake", "documents", ...(permissions ?? [])];
 }
 
 /** Which section key a pathname belongs to (longest matching href wins). */

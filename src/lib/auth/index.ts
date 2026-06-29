@@ -117,11 +117,11 @@ export function isFullAdmin(role?: string): boolean {
   return role === "owner" || role === "editor";
 }
 
-/** Gate full-admin areas. Timekeeper logins are bounced to the time tracker. */
+/** Gate full-admin areas. Timekeeper logins are bounced to Time Tracker 4.0. */
 export async function requireFullAdmin(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session) redirect("/admin/login");
-  if (!isFullAdmin(session.role)) redirect("/admin/time-tracker");
+  if (!isFullAdmin(session.role)) redirect("/admin/time-tracker-4");
   return session;
 }
 

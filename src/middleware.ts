@@ -99,7 +99,7 @@ export async function middleware(req: NextRequest) {
 
   if (!canAccessPath(pathname, valid.role, valid.permissions)) {
     const url = req.nextUrl.clone();
-    url.pathname = "/admin/time-tracker";
+    url.pathname = "/admin/time-tracker-4";
     url.search = "";
     return NextResponse.redirect(url);
   }
