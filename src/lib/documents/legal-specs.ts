@@ -18,7 +18,7 @@ const OPT_INDEP = { id: "independent", label: "Independent Administration", defa
 const OPT_NO_CONTEST = { id: "noContest", label: "No-Contest", defaultOn: false, text: "If any beneficiary under this Will contests or attacks this Will or any of its provisions, any share or interest given to that beneficiary is revoked and shall be disposed of as if that beneficiary had predeceased me without descendants." };
 const OPT_TANGIBLE = { id: "tangible", label: "Tangible Personal Property Memorandum", defaultOn: false, text: "I may leave a written memorandum, separate from this Will, directing the disposition of items of tangible personal property. I direct my Executor to give effect to any such memorandum to the extent permitted by law." };
 
-const TITLE = (t: string, subHtml: string) => `<h1 class="doc-title">${t}</h1><p class="doc-sub">${subHtml}</p>`;
+const TITLE = (t: string, subHtml: string) => `<h1 class="doc-title">${t}</h1><p class="doc-sub">${subHtml}</p><hr class="title-rule"/>`;
 const ARTH = (h: string) => `<h2 class="article"><span class="art-h">${h}</span></h2>`;
 const SELF_PROVING = (countyHtml: string) =>
   ARTH("Self-Proving Affidavit") +
@@ -36,19 +36,19 @@ export const LEGAL_DOCS: DocSpec[] = [
     optionals: [OPT_NO_BOND, OPT_INDEP, OPT_NO_CONTEST, OPT_TANGIBLE],
     body: (c) => `
       ${TITLE("Last Will and Testament", `of ${c.f("testatorFullName")}`)}
-      ${C.recital(`I, ${c.f("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, being of sound and disposing mind and over the age of eighteen years, make, publish, and declare this to be my Last Will and Testament, and revoke all wills and codicils previously made by me.`)}
+      ${C.recital(`I, ${c.b("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, being of sound and disposing mind and over the age of eighteen years, make, publish, and declare this to be my Last Will and Testament, and revoke all wills and codicils previously made by me.`)}
       ${C.article("I", "Family")}
       ${C.p(`My marital status is ${c.f("maritalStatus")}.${c.raw("spouseName") ? ` My spouse is ${c.f("spouseName")}.` : ""} My children are:`)}
       ${C.p(c.f("children"))}
       ${C.article("II", "Executor")}
-      ${C.section("Appointment", `I appoint ${c.f("executor")} as Independent Executor of my estate. If that person fails or ceases to serve, I appoint ${c.f("executorAlt1")}, and then ${c.f("executorAlt2")}, to serve in that order.`)}
+      ${C.section("Appointment", `I appoint ${c.b("executor")} as Independent Executor of my estate. If that person fails or ceases to serve, I appoint ${c.b("executorAlt1")}, and then ${c.b("executorAlt2")}, to serve in that order.`)}
       ${c.opt("noBond")}${c.opt("independent")}
       ${C.article("III", "Guardian of Minor Children")}
-      ${C.p(`If at my death any of my children are minors, I appoint ${c.f("guardianMinor")} as guardian of the person of my minor children, and if that person cannot serve, ${c.f("guardianMinorAlt")}.`)}
+      ${C.p(`If at my death any of my children are minors, I appoint ${c.b("guardianMinor")} as guardian of the person of my minor children, and if that person cannot serve, ${c.b("guardianMinorAlt")}.`)}
       ${C.article("IV", "Specific Gifts")}
       ${C.p(c.f("specificGifts"))}${c.opt("tangible")}
       ${C.article("V", "Residuary Estate")}
-      ${C.p(`I give all the rest, residue, and remainder of my estate to ${c.f("residuaryBeneficiary")}. If that beneficiary does not survive me, then to ${c.f("residuaryAlternate")}.`)}
+      ${C.p(`I give all the rest, residue, and remainder of my estate to ${c.b("residuaryBeneficiary")}. If that beneficiary does not survive me, then to ${c.b("residuaryAlternate")}.`)}
       ${c.raw("funeralWishes") ? C.article("VI", "Funeral and Burial") + C.p(c.f("funeralWishes")) : ""}
       ${c.opt("noContest")}
       ${C.spacer()}${C.p(`IN WITNESS WHEREOF, I have signed this Will on ____________________.`)}
@@ -71,19 +71,19 @@ export const LEGAL_DOCS: DocSpec[] = [
     ],
     body: (c) => `
       ${TITLE("Last Will and Testament", `of ${c.f("testatorFullName")}`)}
-      ${C.recital(`I, ${c.f("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, being of sound and disposing mind, make, publish, and declare this to be my Last Will and Testament, and revoke all prior wills and codicils.`)}
+      ${C.recital(`I, ${c.b("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, being of sound and disposing mind, make, publish, and declare this to be my Last Will and Testament, and revoke all prior wills and codicils.`)}
       ${C.article("I", "Family")}
       ${C.p(`My marital status is ${c.f("maritalStatus")}.${c.raw("spouseName") ? ` My spouse is ${c.f("spouseName")}.` : ""} My children are:`)}
       ${C.p(c.f("children"))}
       ${C.article("II", "Executor")}
-      ${C.section("Appointment", `I appoint ${c.f("executor")} as Independent Executor, and if that person cannot serve, ${c.f("executorAlt1")}, and then ${c.f("executorAlt2")}.`)}
+      ${C.section("Appointment", `I appoint ${c.b("executor")} as Independent Executor, and if that person cannot serve, ${c.b("executorAlt1")}, and then ${c.b("executorAlt2")}.`)}
       ${c.opt("noBond")}${c.opt("independent")}
       ${C.article("III", "Guardian of Minor Children")}
-      ${C.p(`I appoint ${c.f("guardianMinor")} as guardian of the person of my minor children, and if that person cannot serve, ${c.f("guardianMinorAlt")}.`)}
+      ${C.p(`I appoint ${c.b("guardianMinor")} as guardian of the person of my minor children, and if that person cannot serve, ${c.b("guardianMinorAlt")}.`)}
       ${C.article("IV", "Residuary Estate and Minor's Trust")}
-      ${C.section("Gift", `I give the residue of my estate to ${c.f("residuaryBeneficiary")}; and if that beneficiary does not survive me, to ${c.f("residuaryAlternate")}.`)}
+      ${C.section("Gift", `I give the residue of my estate to ${c.b("residuaryBeneficiary")}; and if that beneficiary does not survive me, to ${c.b("residuaryAlternate")}.`)}
       ${C.section("Minor's Trust", `Notwithstanding the foregoing, if any beneficiary is under the age of thirty-five (35) at my death, that beneficiary's share shall not be distributed outright but shall be held in a separate trust under this Article.`)}
-      ${C.section("Trustee", `I appoint ${c.f("trustee")} as Trustee of each trust created under this Article, and if that person cannot serve, ${c.f("successorTrustee")}, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
+      ${C.section("Trustee", `I appoint ${c.b("trustee")} as Trustee of each trust created under this Article, and if that person cannot serve, ${c.b("successorTrustee")}, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
       ${C.section("Distributions", `The Trustee shall distribute as much of the net income and principal as the Trustee deems necessary for the beneficiary's health, education, maintenance, and support. The Trustee shall distribute the remaining principal as follows: ${c.opt("trustAge") ? "" : "as the Trustee determines."}`)}
       ${c.opt("trustAge")}
       ${C.section("Spendthrift", `No beneficiary may assign, and no creditor may reach, any interest in a trust before it is actually distributed.`)}
@@ -107,12 +107,12 @@ export const LEGAL_DOCS: DocSpec[] = [
     ],
     body: (c) => `
       ${TITLE("Revocable Living Trust Agreement", `of ${c.f("testatorFullName")}`)}
-      ${C.recital(`This Trust Agreement is made by ${c.f("testatorFullName")}, of ${c.f("testatorAddress")} (the "Trustor" and initial "Trustee"). The Trustor transfers to the Trust the property described on Exhibit A, to be held, administered, and distributed as provided herein.`)}
+      ${C.recital(`This Trust Agreement is made by ${c.f("testatorFullName")}, of ${c.b("testatorAddress")} (the "Trustor" and initial "Trustee"). The Trustor transfers to the Trust the property described on Exhibit A, to be held, administered, and distributed as provided herein.`)}
       ${C.article("I", "Administration During Life")}
       ${C.section("Revocable", `The Trustor may amend or revoke this Trust, in whole or in part, at any time by written instrument, and shall receive the net income of the Trust during the Trustor's life.`)}
       ${c.opt("incapacity")}${c.opt("homestead")}
       ${C.article("II", "Successor Trustee")}
-      ${C.p(`Upon the Trustor's incapacity or death, ${c.f("successorTrustee")} shall serve as Successor Trustee, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
+      ${C.p(`Upon the Trustor's incapacity or death, ${c.b("successorTrustee")} shall serve as Successor Trustee, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
       ${C.article("III", "Disposition at Death")}
       ${C.section("Irrevocable", `This Trust becomes irrevocable upon the Trustor's death.`)}
       ${C.section("Beneficiaries", `After the Trustor's death, the Trustee shall distribute the Trust estate to ${c.f("trustBeneficiaries")}.`)}
@@ -139,7 +139,7 @@ export const LEGAL_DOCS: DocSpec[] = [
       ${TITLE("Testamentary Trust Provisions", `to be included in the Will of ${c.f("testatorFullName")}`)}
       ${C.p(`On my death, the share of my estate passing to a beneficiary named below shall be held in a separate trust rather than distributed outright.`)}
       ${C.article("I", "Trustee")}
-      ${C.p(`I appoint ${c.f("trustee")} as Trustee, and if that person cannot serve, ${c.f("successorTrustee")}, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
+      ${C.p(`I appoint ${c.b("trustee")} as Trustee, and if that person cannot serve, ${c.b("successorTrustee")}, to serve without bond and with all powers granted to a trustee under the Texas Trust Code.`)}
       ${C.article("II", "Beneficiaries")}
       ${C.p(c.f("trustBeneficiaries"))}
       ${C.article("III", "Distributions")}
@@ -161,7 +161,7 @@ export const LEGAL_DOCS: DocSpec[] = [
       ${TITLE("Statutory Durable Power of Attorney", `of ${c.f("testatorFullName")}`)}
       ${C.p(`NOTICE: THE POWERS GRANTED BY THIS DOCUMENT ARE BROAD AND SWEEPING. THEY ARE EXPLAINED IN THE DURABLE POWER OF ATTORNEY ACT, SUBTITLE P, TITLE 2, TEXAS ESTATES CODE. THIS DOCUMENT DOES NOT AUTHORIZE ANYONE TO MAKE HEALTH-CARE DECISIONS FOR YOU.`)}
       ${C.article("I", "Designation of Agent")}
-      ${C.p(`I, ${c.f("testatorFullName")}, of ${c.f("testatorAddress")}, appoint ${c.f("finAgent")} as my agent (attorney-in-fact). If that person is unable or unwilling to serve, I appoint ${c.f("finAgentAlt")}.`)}
+      ${C.p(`I, ${c.b("testatorFullName")}, of ${c.b("testatorAddress")}, appoint ${c.b("finAgent")} as my agent (attorney-in-fact). If that person is unable or unwilling to serve, I appoint ${c.b("finAgentAlt")}.`)}
       ${C.article("II", "Grant of Authority")}
       ${C.section("Powers", `I grant my agent the following authority: ${c.f("finScope")}. ${c.raw("finScopeLimits") ? `Limitations: ${c.f("finScopeLimits")}.` : ""}`)}
       ${C.section("Gifts", `Gift-giving authority: ${c.f("finGifts")}.`)}
@@ -184,7 +184,7 @@ export const LEGAL_DOCS: DocSpec[] = [
     body: (c) => `
       ${TITLE("Medical Power of Attorney", `Designation of Health Care Agent by ${c.f("testatorFullName")}`)}
       ${C.article("I", "Designation of Agent")}
-      ${C.p(`I, ${c.f("testatorFullName")}, of ${c.f("testatorAddress")}, appoint ${c.f("medAgent")} as my agent to make any and all health-care decisions for me, except to the extent I state otherwise, when my attending physician certifies in writing that I am unable to make such decisions. If my agent is unable or unwilling to serve, I appoint ${c.f("medAgentAlt")}.`)}
+      ${C.p(`I, ${c.b("testatorFullName")}, of ${c.b("testatorAddress")}, appoint ${c.b("medAgent")} as my agent to make any and all health-care decisions for me, except to the extent I state otherwise, when my attending physician certifies in writing that I am unable to make such decisions. If my agent is unable or unwilling to serve, I appoint ${c.b("medAgentAlt")}.`)}
       ${C.article("II", "Limitations")}
       ${C.p(`Limitations on my agent's authority: ${c.f("medLimits")}.`)}
       ${C.article("III", "Effect and Duration")}
@@ -205,7 +205,7 @@ export const LEGAL_DOCS: DocSpec[] = [
     optionals: [],
     body: (c) => `
       ${TITLE("Directive to Physicians and Family or Surrogates", `of ${c.f("testatorFullName")}`)}
-      ${C.p(`I, ${c.f("testatorFullName")}, of ${c.f("testatorAddress")}, make this Directive regarding my medical care if I have a terminal or irreversible condition, and willfully and voluntarily make known my wishes.`)}
+      ${C.p(`I, ${c.b("testatorFullName")}, of ${c.b("testatorAddress")}, make this Directive regarding my medical care if I have a terminal or irreversible condition, and willfully and voluntarily make known my wishes.`)}
       ${C.article("I", "My Wishes")}
       ${C.p(c.f("lifeSupport"))}
       ${C.article("II", "Execution")}
@@ -225,7 +225,7 @@ export const LEGAL_DOCS: DocSpec[] = [
     optionals: [],
     body: (c) => `
       ${TITLE("Authorization for Release of Protected Health Information", `under HIPAA — ${c.f("testatorFullName")}`)}
-      ${C.p(`I, ${c.f("testatorFullName")}, authorize all health-care providers, plans, and clearinghouses to use and disclose my protected health information to the following persons:`)}
+      ${C.p(`I, ${c.b("testatorFullName")}, authorize all health-care providers, plans, and clearinghouses to use and disclose my protected health information to the following persons:`)}
       ${C.p(c.f("hipaaRecipients"))}
       ${C.article("I", "Scope and Duration")}
       ${C.p(`This authorization applies to all of my protected health information and remains in effect until I revoke it in writing. This authorization is made under the HIPAA Privacy Rule, 45 C.F.R. § 164.508. A photocopy or electronic copy of this authorization is as valid as the original.`)}
@@ -243,7 +243,7 @@ export const LEGAL_DOCS: DocSpec[] = [
     optionals: [],
     body: (c) => `
       ${TITLE("Declaration of Guardian in the Event of Later Incapacity or Need of Guardian", `of ${c.f("testatorFullName")}`)}
-      ${C.p(`I, ${c.f("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, make this Declaration in the event a guardian is ever needed for me or my estate.`)}
+      ${C.p(`I, ${c.b("testatorFullName")}, a resident of ${c.f("testatorCounty")} County, Texas, make this Declaration in the event a guardian is ever needed for me or my estate.`)}
       ${C.article("I", "Designation")}
       ${C.p(`I designate the following persons, in the order named, to serve as my guardian:`)}
       ${C.p(c.f("guardianPreferred"))}
@@ -269,8 +269,8 @@ export const LEGAL_DOCS: DocSpec[] = [
     body: (c) => `
       ${TITLE("Enhanced Life Estate Deed", "(Lady Bird Deed)")}
       ${C.p(`<strong>NOTICE OF CONFIDENTIALITY RIGHTS:</strong> IF YOU ARE A NATURAL PERSON, YOU MAY REMOVE OR STRIKE ANY OF THE FOLLOWING INFORMATION FROM THIS INSTRUMENT BEFORE IT IS FILED FOR RECORD: YOUR SOCIAL SECURITY NUMBER OR YOUR DRIVER'S LICENSE NUMBER.`)}
-      ${C.section("Grantor", `${c.f("testatorFullName")}, of ${c.f("testatorAddress")}.`)}
-      ${C.section("Grantee", `${c.f("deedGrantee")}.`)}
+      ${C.section("Grantor", `${c.b("testatorFullName")}, of ${c.b("testatorAddress")}.`)}
+      ${C.section("Grantee", `${c.b("deedGrantee")}.`)}
       ${C.section("Consideration", `Ten Dollars ($10.00) and other good and valuable consideration.`)}
       ${C.section("Property", `${c.f("deedProperty")}.`)}
       ${C.article("I", "Reservation of Enhanced Life Estate")}

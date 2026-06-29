@@ -22,6 +22,8 @@ export type OptionalProvision = {
 export type DocBuildCtx = {
   /** Merge a field by token; records a placeholder when blank. */
   f: (token: string, label?: string) => string;
+  /** Like f, but bold — used for party names and addresses (house style). */
+  b: (token: string, label?: string) => string;
   /** Raw value or "" (no placeholder) — for conditional text. */
   raw: (token: string) => string;
   /** Included optional provision HTML, or "" when excluded. */
@@ -50,10 +52,10 @@ const nl2br = (s: string) => esc(s).replace(/\r?\n/g, "<br/>");
 
 export const C = {
   title: (t: string, sub?: string) =>
-    `<h1 class="doc-title">${esc(t)}</h1>${sub ? `<p class="doc-sub">${esc(sub)}</p>` : ""}`,
+    `<h1 class="doc-title">${esc(t)}</h1>${sub ? `<p class="doc-sub">${esc(sub)}</p>` : ""}<hr class="title-rule"/>`,
   recital: (html: string) => `<p class="recital">${html}</p>`,
   article: (numeral: string, heading: string) =>
-    `<h2 class="article"><span class="art-n">ARTICLE ${esc(numeral)}</span><span class="art-h">${esc(heading)}</span></h2>`,
+    `<div class="article"><div class="art-n">${esc(numeral)}.</div><div class="art-h">${esc(heading)}</div></div>`,
   section: (heading: string, html: string) =>
     `<p class="section"><span class="sec-h">${esc(heading)}.</span> ${html}</p>`,
   p: (html: string) => `<p class="body">${html}</p>`,
@@ -93,6 +95,7 @@ export function renderDoc(
       if (!missing.includes(token)) missing.push(token);
       return `<span class="ph">[ ${esc(label ?? FIELD_LABELS[token] ?? token)} ]</span>`;
     },
+    b: (token, label) => `<strong>${ctx.f(token, label)}</strong>`,
     raw: (token) => val(token),
     opt: (id) => {
       const def = spec.optionals.find((p) => p.id === id);
@@ -111,41 +114,43 @@ export function renderDoc(
 
 function legalCss(footerName: string): string {
   const f = esc(footerName);
+  const SERIF = `"Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
   return `
-  :root { --ink:#14110f; --muted:#555; }
+  :root { --ink:#141414; --muted:#555; }
   * { box-sizing:border-box; }
-  body { margin:0; background:#f3f1ec; }
-  .page { max-width:7.5in; margin:24px auto; background:#fff; padding:1in; box-shadow:0 1px 6px rgba(0,0,0,.15);
-    font-family:Georgia,'Times New Roman',serif; font-size:12.5pt; line-height:1.6; color:var(--ink); }
-  .doc-title { text-align:center; font-size:16pt; letter-spacing:.06em; text-transform:uppercase; margin:0 0 4px; }
-  .doc-sub { text-align:center; font-style:italic; color:var(--muted); margin:0 0 18px; }
-  .article { text-align:center; margin:24px 0 8px; }
-  .art-n { display:block; font-size:11.5pt; letter-spacing:.12em; }
-  .art-h { display:block; font-weight:bold; text-transform:uppercase; letter-spacing:.04em; }
-  p.recital { text-align:justify; text-indent:.4in; margin:0 0 12px; }
-  p.body { text-align:justify; margin:0 0 11px; }
-  p.section { text-align:justify; margin:0 0 11px; }
+  body { margin:0; background:#ece9e3; }
+  .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.15in; box-shadow:0 1px 8px rgba(0,0,0,.18);
+    font-family:${SERIF}; font-size:12pt; line-height:1.55; color:var(--ink); }
+  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:21pt; letter-spacing:.05em; margin:6px 0 2px; }
+  .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; letter-spacing:.04em; font-weight:400; margin:0 0 6px; }
+  hr.title-rule { border:0; border-top:1px solid #999; margin:8px 0 24px; }
+  .article { text-align:center; margin:22px 0 11px; }
+  .art-n { font-size:12pt; }
+  .art-h { display:block; font-weight:bold; font-size:12.5pt; }
+  p.recital, p.body, p.section { text-align:justify; text-indent:.45in; margin:0 0 12px; }
   .sec-h { font-weight:bold; }
-  ol.legal-ol, ul.legal-ul { margin:0 0 11px 0; padding-left:.5in; text-align:justify; }
-  ol.legal-ol li, ul.legal-ul li { margin:0 0 6px; }
-  .spacer { height:14px; }
-  .two-col { display:flex; gap:.5in; }
+  ol.legal-ol { margin:0 0 12px 0; padding-left:.5in; list-style:lower-alpha; }
+  ul.legal-ul { margin:0 0 12px 0; padding-left:.5in; }
+  ol.legal-ol li, ul.legal-ul li { margin:0 0 9px; text-align:justify; padding-left:.12in; }
+  strong { font-weight:bold; }
+  .spacer { height:16px; }
+  .two-col { display:flex; gap:.6in; }
   .two-col > .sig { flex:1; }
-  .sig { margin:26px 0 4px; }
+  .sig { margin:30px 0 6px; }
   .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:4px; }
-  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:14px 0 4px; }
+  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:16px 0 4px; }
   .sig-name { font-weight:bold; }
-  .sig-role { font-size:9.5pt; color:var(--muted); }
-  .notary { margin-top:18px; }
+  .sig-role { font-size:10pt; color:var(--muted); }
+  .notary { margin-top:20px; }
   .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }
   @media print {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
-      size: letter; margin: 1in 1in 1.1in 1in;
-      @bottom-left { content:"${f}"; font:8pt Georgia; color:#555; }
-      @bottom-center { content:"Initials: ____________"; font:8pt Georgia; color:#555; }
-      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:8pt Georgia; color:#555; }
+      size: letter; margin: 1in 1in 1.15in 1in;
+      @bottom-left { content:"${f}"; font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
+      @bottom-center { content:"Initials ____________"; font:9pt ${SERIF}; color:#333; }
+      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
     }
   }`;
 }
@@ -164,29 +169,31 @@ export function wrapForWeb(spec: DocSpec, body: string): string {
  */
 export function wrapForWord(spec: DocSpec, body: string): string {
   const f = esc(spec.footerName);
+  const SERIF = `"Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head>
   <meta charset="utf-8"/><title>${esc(spec.label)}</title>
   <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
   <style>
-    @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.0in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
+    @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.15in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
     div.Section1 { page:Section1; }
-    body { font-family:Georgia,'Times New Roman',serif; font-size:12.5pt; color:#14110f; line-height:1.55; }
-    .doc-title { text-align:center; font-size:16pt; text-transform:uppercase; letter-spacing:.06em; }
-    .doc-sub { text-align:center; font-style:italic; }
-    .article { text-align:center; margin:20pt 0 6pt; }
-    .art-n { display:block; letter-spacing:.1em; }
-    .art-h { display:block; font-weight:bold; text-transform:uppercase; }
-    p.recital, p.body, p.section { text-align:justify; margin:0 0 8pt; }
+    body { font-family:${SERIF}; font-size:12pt; color:#141414; line-height:1.5; }
+    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:21pt; letter-spacing:.05em; margin:6pt 0 2pt; }
+    .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; margin:0 0 4pt; }
+    hr.title-rule { border:0; border-top:1px solid #999; margin:6pt 0 18pt; }
+    .article { text-align:center; margin:18pt 0 8pt; }
+    .art-n { display:block; } .art-h { display:block; font-weight:bold; }
+    p.recital, p.body, p.section { text-align:justify; text-indent:.45in; margin:0 0 10pt; }
+    ol.legal-ol { margin:0 0 10pt; }
     .sec-h { font-weight:bold; }
     .ph { background:#fff2b8; font-style:italic; }
-    .sig-line, .addr-line { border-bottom:1px solid #14110f; }
-    .sig-role { font-size:9.5pt; color:#555; }
+    .sig-line, .addr-line { border-bottom:1px solid #141414; }
+    .sig-role { font-size:10pt; color:#555; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; tab-stops:center 3.0in right 6.5in; font-size:8.5pt; color:#555; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:9pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
   </style></head>
   <body><div class="Section1">${body}
     <div style='mso-element:footer' id=f1>
-      <p class=MsoFooter><span style='font-style:italic'>${f}</span><span style="mso-tab-count:1"></span>Initials: ____________<span style="mso-tab-count:1"></span>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p>
+      <p class=MsoFooter><span>${f}</span><span style="mso-tab-count:1"></span>Initials ____________<span style="mso-tab-count:1"></span>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p>
     </div>
   </div></body></html>`;
 }
