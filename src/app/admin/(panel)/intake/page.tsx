@@ -1,6 +1,7 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
+import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
 import { db, hasDb } from "@/db";
 import { intakeSubmissions, referralAttorneys } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
@@ -54,6 +55,7 @@ export default async function IntakeAdminPage() {
       <AdminHeader
         title="Intake"
         description="Consultation requests. Manage who gets notified, filter, update status, and export."
+        actions={<SendIntakeRequest branches={branches} />}
       />
       <div className="p-8">
         <IntakeRecipientsManager
