@@ -29,10 +29,12 @@ function RepNotice() {
 
 export function IntakeWizard({
   initialPractice,
+  initialAnswers,
   consentText,
   turnstileSiteKey,
 }: {
   initialPractice?: string;
+  initialAnswers?: Answers;
   consentText: string;
   turnstileSiteKey?: string;
 }) {
@@ -42,7 +44,7 @@ export function IntakeWizard({
 
   const [branch, setBranch] = useState<Branch | null>(initialBranch);
   const [stepIndex, setStepIndex] = useState(0);
-  const [answers, setAnswers] = useState<Answers>({});
+  const [answers, setAnswers] = useState<Answers>(initialAnswers ?? {});
   const [query, setQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);

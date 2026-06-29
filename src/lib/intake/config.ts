@@ -215,6 +215,38 @@ export const EP = {
   NOT_SURE: "Not sure — please recommend a plan for me",
 } as const;
 
+/**
+ * Canonical estate-planning documents, used both by the admin "send a specific
+ * intake" picker and by the deep link that pre-checks them in the wizard. Each
+ * maps to the document-picker field/option in the estate branch above.
+ */
+export const ESTATE_PRACTICE_SLUG = "estate-succession-planning";
+
+export const ESTATE_DOCS = [
+  { id: "will", label: "Last Will & Testament", group: "Wills", field: "docsWill", value: EP.WILL },
+  { id: "living-trust", label: "Revocable Living Trust", group: "Trusts", field: "docsTrust", value: EP.LIVING_TRUST },
+  { id: "testamentary-trust", label: "Testamentary Trust", group: "Trusts", field: "docsTrust", value: EP.TEST_TRUST },
+  { id: "financial-poa", label: "Financial Power of Attorney", group: "Powers of Attorney & Directives", field: "docsPoa", value: EP.FIN_POA },
+  { id: "medical-poa", label: "Medical Power of Attorney", group: "Powers of Attorney & Directives", field: "docsPoa", value: EP.MED_POA },
+  { id: "directive", label: "Directive to Physicians", group: "Powers of Attorney & Directives", field: "docsPoa", value: EP.DIRECTIVE },
+  { id: "hipaa", label: "HIPAA Authorization", group: "Powers of Attorney & Directives", field: "docsPoa", value: EP.HIPAA },
+  { id: "lady-bird", label: "Lady Bird / TOD Deed", group: "Deeds & Guardianship", field: "docsOther", value: EP.LADYBIRD },
+  { id: "declaration-of-guardian", label: "Declaration of Guardian", group: "Deeds & Guardianship", field: "docsOther", value: EP.GUARDIAN_DECL },
+] as const;
+
+export const ESTATE_DOC_GROUPS = ["Wills", "Trusts", "Powers of Attorney & Directives", "Deeds & Guardianship"] as const;
+
+/** Convert picked document ids into pre-checked answers for the estate wizard. */
+export function estateDocsToAnswers(ids: string[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const id of ids) {
+    const d = ESTATE_DOCS.find((x) => x.id === id);
+    if (!d) continue;
+    (out[d.field] ??= []).push(d.value);
+  }
+  return out;
+}
+
 const NEEDS_WILL: Condition[] = [
   { field: "docsWill", includesAny: [EP.WILL] },
   { field: "docsTrust", includesAny: [EP.TEST_TRUST] },

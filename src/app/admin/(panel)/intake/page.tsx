@@ -65,7 +65,7 @@ export default async function IntakeAdminPage() {
           emailConfigured={emailConfigured}
           senderFrom={senderFrom}
         />
-        <IntakeTable rows={rows} attorneys={attorneys} branches={branches} />
+        <IntakeTable rows={rows} attorneys={attorneys} />
       </div>
     </>
   );

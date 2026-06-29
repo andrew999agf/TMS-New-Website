@@ -5,8 +5,6 @@ import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft, Pencil, X, C
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 
-type BranchOpt = { id: string; label: string };
-
 export type IntakeRow = {
   id: number;
   branch: string;
@@ -38,7 +36,7 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys, branches = [] }: { rows: IntakeRow[]; attorneys: string[]; branches?: BranchOpt[] }) {
+export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys: string[] }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
@@ -152,18 +150,17 @@ export function IntakeTable({ rows, attorneys, branches = [] }: { rows: IntakeRo
                     <div className="flex items-center gap-2">
                       {r.isUrgent && <span className="h-2 w-2 rounded-full bg-[var(--c-error)]" />}
                       <span className="font-medium">{r.name ?? "—"}</span>
-                      {r.email && (
-                        <button
-                          onClick={() => setSendFor(r)}
-                          title={`Send an intake request to ${r.email}`}
-                          aria-label="Send intake request"
-                          className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
-                        >
-                          <Send size={14} />
-                        </button>
-                      )}
                     </div>
-                    <div className="text-xs text-[var(--c-ink-muted)]">{r.email}</div>
+                    <div className="text-xs text-[var(--c-ink-muted)] break-all">{r.email}</div>
+                    {r.email && (
+                      <button
+                        onClick={() => setSendFor(r)}
+                        title={`Send an estate-planning intake to ${r.email}`}
+                        className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-[var(--c-on-accent)]"
+                      >
+                        <Send size={13} /> Send intake
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div>{r.branch}</div>
@@ -233,7 +230,7 @@ export function IntakeTable({ rows, attorneys, branches = [] }: { rows: IntakeRo
       {sendFor && (
         <SendIntakeDialog
           key={sendFor.id}
-          branches={branches}
+          kind="estate"
           presetName={sendFor.name ?? ""}
           presetEmail={sendFor.email ?? ""}
           onClose={() => setSendFor(null)}

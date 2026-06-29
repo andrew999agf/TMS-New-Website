@@ -1,7 +1,7 @@
 "use server";
 
 import { FIRM } from "@/lib/firm";
-import { getBranch } from "@/lib/intake/config";
+import { getBranch, ESTATE_DOCS, ESTATE_PRACTICE_SLUG } from "@/lib/intake/config";
 import { requireAdmin, audit } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { getActiveTheme, getBlocks } from "@/lib/content";
@@ -18,7 +18,10 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export async function sendIntakeRequest(input: {
   name?: string;
   email: string;
-  branchIds: string[];
+  /** Practice-area branches (top "Send intake request" button). */
+  branchIds?: string[];
+  /** Estate-planning document ids (the per-row button) — pre-checked in the wizard. */
+  estateDocs?: string[];
   note?: string;
 }) {
   const session = await requireAdmin();
@@ -27,13 +30,25 @@ export async function sendIntakeRequest(input: {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false as const, error: "Enter a valid email address." };
   }
-  const branches = (input.branchIds || []).map(getBranch).filter((b): b is NonNullable<typeof b> => Boolean(b));
-  if (branches.length === 0) {
-    return { ok: false as const, error: "Choose at least one intake to send." };
-  }
 
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
-  const link = (slug: string) => `${baseUrl}/consultation?practice=${encodeURIComponent(slug)}`;
+
+  // Build the call-to-action: either one estate intake pre-loaded with the
+  // chosen documents, or one link per selected practice area.
+  let cta: { label: string; href: string }[];
+  let matterList: string;
+  if (input.estateDocs && input.estateDocs.length > 0) {
+    const docs = ESTATE_DOCS.filter((d) => input.estateDocs!.includes(d.id));
+    if (docs.length === 0) return { ok: false as const, error: "Choose at least one document to send." };
+    const href = `${baseUrl}/consultation?practice=${encodeURIComponent(ESTATE_PRACTICE_SLUG)}&docs=${docs.map((d) => d.id).join(",")}`;
+    cta = [{ label: "Complete your estate-planning intake", href }];
+    matterList = docs.map((d) => d.label).join(", ");
+  } else {
+    const branches = (input.branchIds || []).map(getBranch).filter((b): b is NonNullable<typeof b> => Boolean(b));
+    if (branches.length === 0) return { ok: false as const, error: "Choose at least one intake to send." };
+    cta = branches.map((b) => ({ label: `Start the ${b.label} intake`, href: `${baseUrl}/consultation?practice=${encodeURIComponent(b.practiceSlug)}` }));
+    matterList = branches.map((b) => b.label).join(", ");
+  }
 
   const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
   const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
@@ -50,13 +65,16 @@ export async function sendIntakeRequest(input: {
         <a href="${href}" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:${colors.onAccent};text-decoration:none">${esc(label)} &rarr;</a>
       </td></tr></table>`;
 
-  const buttons = branches.map((b) => button(`Start the ${b.label} intake`, link(b.practiceSlug))).join("");
-  const plainLinks = branches.map((b) => link(b.practiceSlug)).join("<br/>");
-  const matterList = branches.map((b) => b.label).join(", ");
+  const buttons = cta.map((c) => button(c.label, c.href)).join("");
+  const plainLinks = cta.map((c) => c.href).join("<br/>");
+  const docLine = input.estateDocs && input.estateDocs.length
+    ? `<p style="margin:0 0 16px">We&rsquo;ve set up your intake for the following: <strong>${esc(matterList)}</strong>. The form will walk you through what we need for each.</p>`
+    : "";
 
   const body = `
     <p style="margin:0 0 14px">Dear ${greeting},</p>
     <p style="margin:0 0 16px">To help us assist you, please complete the short intake form below. It only takes a few minutes and sends your information to the right place at our office.</p>
+    ${docLine}
     ${note ? `<p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}">${esc(note)}</p>` : ""}
     <div style="margin:8px 0 18px">${buttons}</div>
     <p style="margin:0 0 16px;font-size:13px;color:${colors.inkMuted}">If the button doesn&rsquo;t work, copy and paste this link into your browser:<br/>${plainLinks}</p>
@@ -73,8 +91,10 @@ export async function sendIntakeRequest(input: {
   });
 
   const subject =
-    branches.length === 1
-      ? `${firmName}: please complete your ${branches[0].label} intake`
+    input.estateDocs && input.estateDocs.length
+      ? `${firmName}: please complete your estate-planning intake`
+      : cta.length === 1
+      ? `${firmName}: please complete your intake`
       : `${firmName}: please complete your intake`;
 
   const res = await sendEmail({ to: email, fromName: firmName, subject, html });
