@@ -1,31 +1,50 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { FileSignature, FileText, Copy, Download, Check, Loader2, AlertCircle, User, Mail, PencilLine, ExternalLink } from "lucide-react";
-import { renderDocument } from "@/app/admin/(panel)/documents/actions";
+import { useMemo, useState, useTransition } from "react";
+import {
+  FileSignature, FileText, FileDown, Printer, Loader2, AlertCircle, User, Mail,
+  PencilLine, ExternalLink, Braces, ChevronDown,
+} from "lucide-react";
+import { generateLegalDoc } from "@/app/admin/(panel)/documents/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 
-type DocMeta = { id: string; label: string; trigger: { field: string; value: string } };
+type Trigger = { field: string; value: string };
+type DocMeta = {
+  id: string;
+  label: string;
+  trigger: Trigger | null;
+  fields: { token: string; label: string }[];
+  optionals: { id: string; label: string; text: string; defaultOn: boolean }[];
+};
 type Submission = { id: number; name: string; email: string | null; createdAt: string; answers: Record<string, unknown> };
+type OptState = Record<string, { on: boolean; text: string }>;
+type Draft = { label: string; html: string; wordHtml: string; missing: string[] };
 
-function requested(answers: Record<string, unknown>, trigger: DocMeta["trigger"]): boolean {
+function requested(answers: Record<string, unknown>, trigger: Trigger | null): boolean {
+  if (!trigger) return false;
   const v = answers[trigger.field];
   const arr = Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
   return arr.includes(trigger.value);
 }
 
+const slug = (s: string) => s.replace(/[^a-z0-9]+/gi, "-");
+
 export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submissions: Submission[]; docMeta: DocMeta[]; intakeUrl: string }) {
   const [selected, setSelected] = useState<Submission | null>(null);
   const [docId, setDocId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ label: string; text: string; missing: string[] } | null>(null);
+  const [optState, setOptState] = useState<OptState>({});
+  const [draft, setDraft] = useState<Draft | null>(null);
   const [pending, start] = useTransition();
-  const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [showFields, setShowFields] = useState(false);
 
-  const requestedDocs = selected ? docMeta.filter((d) => requested(selected.answers, d.trigger)) : [];
-  // In manual mode (client didn't request any) the team can pick any document.
+  const requestedDocs = useMemo(
+    () => (selected ? docMeta.filter((d) => requested(selected.answers, d.trigger)) : []),
+    [selected, docMeta],
+  );
   const shownDocs = manual ? docMeta : requestedDocs;
+  const activeDoc = docMeta.find((d) => d.id === docId) ?? null;
 
   function pickSubmission(s: Submission) {
     setSelected(s);
@@ -35,31 +54,46 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
     setSendOpen(false);
   }
 
-  function pickDoc(id: string) {
-    if (!selected) return;
-    setDocId(id);
+  function pickDoc(d: DocMeta) {
+    setDocId(d.id);
     setDraft(null);
+    setShowFields(false);
+    const init: OptState = {};
+    for (const o of d.optionals) init[o.id] = { on: o.defaultOn, text: o.text };
+    setOptState(init);
+  }
+
+  function generate() {
+    if (!selected || !activeDoc) return;
+    const payload: Record<string, string | false> = {};
+    for (const o of activeDoc.optionals) {
+      const st = optState[o.id];
+      payload[o.id] = st?.on ? st.text : false;
+    }
     start(async () => {
-      const res = await renderDocument(selected.id, id);
-      if (res.ok) setDraft({ label: res.label, text: res.text, missing: res.missing });
+      const res = await generateLegalDoc(selected.id, activeDoc.id, payload);
+      if (res.ok) setDraft({ label: res.label, html: res.html, wordHtml: res.wordHtml, missing: res.missing });
     });
   }
 
-  function copy() {
+  function downloadPdf() {
     if (!draft) return;
-    navigator.clipboard.writeText(draft.text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    });
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open();
+    w.document.write(draft.html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 500);
   }
 
-  function download() {
+  function downloadWord() {
     if (!draft || !selected) return;
-    const blob = new Blob([draft.text], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob(["﻿", draft.wordHtml], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${selected.name.replace(/[^a-z0-9]+/gi, "-")}-${docId}.txt`;
+    a.download = `${slug(selected.name)}-${docId}.doc`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -111,78 +145,111 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Document chips */}
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-ink-muted)]">
-                {manual ? `Choose documents to draft for ${selected.name}` : `Documents requested by ${selected.name}`}
+                {manual ? `Choose a document to draft for ${selected.name}` : `Documents requested by ${selected.name}`}
               </p>
 
               {requestedDocs.length === 0 && !manual ? (
-                /* Client didn't check any documents — offer the two paths. */
                 <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
                   <p className="text-sm text-[var(--c-ink-muted)]">
                     This intake didn&apos;t check any documents{" "}
                     {selected.answers["docsNotSure"] ? "(they asked us to recommend a plan). " : ". "}
-                    You can email them to complete it, or pick the documents yourself and draft now.
+                    You can email them to complete it, enter it for them, or pick documents to draft.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setSendOpen(true)}
-                      disabled={!selected.email}
-                      title={selected.email ? "" : "No email on this submission"}
-                      className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50"
-                    >
+                    <button onClick={() => setSendOpen(true)} disabled={!selected.email} title={selected.email ? "" : "No email on this submission"} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
                       <Mail size={15} /> Email the client to fill it out
                     </button>
-                    <a
-                      href={intakeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]"
-                    >
+                    <a href={intakeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]">
                       <ExternalLink size={15} /> Fill out the intake for them
                     </a>
-                    <button
-                      onClick={() => setManual(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]"
-                    >
+                    <button onClick={() => setManual(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)]">
                       <PencilLine size={15} /> Just pick documents to draft
                     </button>
                   </div>
                 </div>
               ) : (
-                <>
-                  {manual && (
-                    <p className="mb-2 text-xs text-[var(--c-ink-muted)]">
-                      Manual mode — pick any document. Fields the client didn&apos;t provide appear as placeholders to complete.
-                    </p>
+                <div className="flex flex-wrap gap-2">
+                  {shownDocs.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => pickDoc(d)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+                        docId === d.id ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-ink)]" : "border-[var(--c-border)] hover:bg-[var(--c-surface2)]"
+                      }`}
+                    >
+                      <FileText size={14} /> {d.label}
+                    </button>
+                  ))}
+                  {!manual && (
+                    <button onClick={() => setManual(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--c-border)] px-3 py-2 text-sm text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]">
+                      <PencilLine size={14} /> More documents
+                    </button>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    {shownDocs.map((d) => (
-                      <button
-                        key={d.id}
-                        onClick={() => pickDoc(d.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
-                          docId === d.id
-                            ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-ink)]"
-                            : "border-[var(--c-border)] hover:bg-[var(--c-surface2)]"
-                        }`}
-                      >
-                        <FileText size={14} /> {d.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                </div>
               )}
             </div>
 
-            {/* Draft */}
-            {pending && (
-              <div className="flex items-center gap-2 text-sm text-[var(--c-ink-muted)]">
-                <Loader2 size={15} className="animate-spin" /> Generating draft…
+            {/* Selected document: merge fields + optional provisions */}
+            {activeDoc && (
+              <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-[var(--c-ink)]">
+                    <FileSignature size={16} className="text-[var(--c-accent)]" /> {activeDoc.label}
+                  </span>
+                  <button onClick={() => setShowFields((v) => !v)} className="inline-flex items-center gap-1 text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
+                    <Braces size={13} /> Merge fields <ChevronDown size={13} className={showFields ? "rotate-180" : ""} />
+                  </button>
+                </div>
+
+                {showFields && (
+                  <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] p-3">
+                    <p className="mb-1.5 text-xs text-[var(--c-ink-muted)]">This document uses these merge fields (blank ones become highlighted placeholders):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeDoc.fields.map((f) => (
+                        <span key={f.token} className="rounded bg-[var(--c-surface)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)]" title={`{{${f.token}}}`}>{f.label}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeDoc.optionals.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--c-ink-muted)]">Optional provisions</p>
+                    <div className="space-y-2.5">
+                      {activeDoc.optionals.map((o) => {
+                        const st = optState[o.id] ?? { on: o.defaultOn, text: o.text };
+                        return (
+                          <div key={o.id} className="rounded-md border border-[var(--c-border)] p-2.5">
+                            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--c-ink)]">
+                              <input type="checkbox" className="accent-[var(--c-accent)]" checked={st.on} onChange={(e) => setOptState((m) => ({ ...m, [o.id]: { ...st, on: e.target.checked } }))} />
+                              {o.label}
+                            </label>
+                            {st.on && (
+                              <textarea
+                                value={st.text}
+                                onChange={(e) => setOptState((m) => ({ ...m, [o.id]: { ...st, text: e.target.value } }))}
+                                rows={2}
+                                className="mt-2 w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-xs text-[var(--c-ink)] outline-none focus:border-[var(--c-accent)]"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <button onClick={generate} disabled={pending} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
+                    {pending ? <Loader2 size={15} className="animate-spin" /> : <FileSignature size={15} />} {draft ? "Regenerate draft" : "Generate draft"}
+                  </button>
+                </div>
               </div>
             )}
 
+            {/* Draft preview + downloads */}
             {draft && !pending && (
               <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
@@ -190,11 +257,11 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
                     <FileSignature size={16} className="text-[var(--c-accent)]" /> {draft.label} — draft
                   </span>
                   <div className="flex items-center gap-2">
-                    <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]">
-                      {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+                    <button onClick={downloadPdf} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]">
+                      <Printer size={13} /> PDF
                     </button>
-                    <button onClick={download} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]">
-                      <Download size={13} /> Download
+                    <button onClick={downloadWord} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]">
+                      <FileDown size={13} /> Word
                     </button>
                   </div>
                 </div>
@@ -204,14 +271,12 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
                     <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--c-error)]" />
                     <span>
                       <span className="font-semibold text-[var(--c-ink)]">{draft.missing.length}</span> field
-                      {draft.missing.length === 1 ? "" : "s"} still blank — shown as <code>[ … ]</code> placeholders for the attorney to complete.
+                      {draft.missing.length === 1 ? "" : "s"} still blank — highlighted in the draft for the attorney to complete.
                     </span>
                   </div>
                 )}
 
-                <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap px-5 py-4 font-[family-name:var(--font-ui)] text-sm leading-relaxed text-[var(--c-ink)]">
-                  {draft.text}
-                </pre>
+                <iframe title="Document preview" srcDoc={draft.html} className="h-[62vh] w-full rounded-b-xl border-0 bg-white" />
               </div>
             )}
 
@@ -223,13 +288,7 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
       </div>
 
       {sendOpen && selected && (
-        <SendIntakeDialog
-          key={selected.id}
-          kind="estate"
-          presetName={selected.name ?? ""}
-          presetEmail={selected.email ?? ""}
-          onClose={() => setSendOpen(false)}
-        />
+        <SendIntakeDialog key={selected.id} kind="estate" presetName={selected.name ?? ""} presetEmail={selected.email ?? ""} onClose={() => setSendOpen(false)} />
       )}
     </div>
   );

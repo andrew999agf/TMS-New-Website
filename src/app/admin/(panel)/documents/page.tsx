@@ -5,7 +5,8 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { DOC_META, FIELD_LABELS } from "@/lib/documents/templates";
+import { FIELD_LABELS } from "@/lib/documents/templates";
+import { LEGAL_DOC_META } from "@/lib/documents/legal-specs";
 import { getSetting } from "@/lib/content";
 import { ESTATE_PRACTICE_SLUG } from "@/lib/intake/config";
 
@@ -50,7 +51,7 @@ export default async function DocumentsPage() {
       />
       <div className="p-8">
         <DocToolbar mergeFields={mergeFields} initialTemplates={Array.isArray(templates) ? templates : []} intakeUrl={intakeUrl} />
-        <DocumentGenerator submissions={submissions} docMeta={DOC_META} intakeUrl={intakeUrl} />
+        <DocumentGenerator submissions={submissions} docMeta={LEGAL_DOC_META} intakeUrl={intakeUrl} />
       </div>
     </>
   );

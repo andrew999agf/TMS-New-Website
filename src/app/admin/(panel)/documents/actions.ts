@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { intakeSubmissions, settings } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { isBlobConfigured } from "@/lib/blob";
-import { getTemplate, fillTemplate } from "@/lib/documents/templates";
+import { getDocSpec } from "@/lib/documents/legal-specs";
+import { renderDoc, wrapForWeb, wrapForWord } from "@/lib/documents/legal";
 
 const TEMPLATES_KEY = "documents.templates";
 type TemplateFile = { id: string; name: string; url: string; pathname: string; uploadedAt: string };
@@ -67,21 +68,34 @@ export async function removeTemplate(id: string) {
 }
 
 /**
- * Render a draft document for an intake submission. The template body is kept
- * server-side; this returns the filled text plus the list of fields still
- * blank (so the UI can show how complete the draft is).
+ * Render a polished legal document for an intake submission. Returns the
+ * formatted HTML (for on-screen preview and browser print → PDF), a
+ * Word-compatible (.doc) HTML version, and the list of fields still blank.
+ * `optionals` carries the user's optional-provision choices: an edited string
+ * to include with that text, or false to exclude.
  */
-export async function renderDocument(submissionId: number, templateId: string) {
+export async function generateLegalDoc(
+  submissionId: number,
+  docId: string,
+  optionals: Record<string, string | false>,
+) {
   await requireAdmin();
   if (!db) return { ok: false as const, error: "Database not configured." };
 
-  const tpl = getTemplate(templateId);
-  if (!tpl) return { ok: false as const, error: "Unknown document type." };
+  const spec = getDocSpec(docId);
+  if (!spec) return { ok: false as const, error: "Unknown document type." };
 
   const [row] = await db.select().from(intakeSubmissions).where(eq(intakeSubmissions.id, submissionId));
   if (!row) return { ok: false as const, error: "Submission not found." };
 
   const answers = (row.answers as Record<string, unknown>) ?? {};
-  const { text, missing } = fillTemplate(tpl.body, answers);
-  return { ok: true as const, label: tpl.label, text, missing };
+  const { body, missing } = renderDoc(spec, answers, optionals ?? {});
+  return {
+    ok: true as const,
+    label: spec.label,
+    footerName: spec.footerName,
+    html: wrapForWeb(spec, body),
+    wordHtml: wrapForWord(spec, body),
+    missing,
+  };
 }
