@@ -1,8 +1,11 @@
 "use client";
 
 import { Fragment, useMemo, useState, useTransition } from "react";
-import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check } from "lucide-react";
+import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send } from "lucide-react";
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
+import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
+
+type BranchOpt = { id: string; label: string };
 
 export type IntakeRow = {
   id: number;
@@ -35,13 +38,14 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys: string[] }) {
+export function IntakeTable({ rows, attorneys, branches = [] }: { rows: IntakeRow[]; attorneys: string[]; branches?: BranchOpt[] }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [view, setView] = useState<"active" | "archived">("active");
   const [open, setOpen] = useState<number | null>(null);
   const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
+  const [sendFor, setSendFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   const practices = useMemo(
@@ -148,6 +152,16 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
                     <div className="flex items-center gap-2">
                       {r.isUrgent && <span className="h-2 w-2 rounded-full bg-[var(--c-error)]" />}
                       <span className="font-medium">{r.name ?? "—"}</span>
+                      {r.email && (
+                        <button
+                          onClick={() => setSendFor(r)}
+                          title={`Send an intake request to ${r.email}`}
+                          aria-label="Send intake request"
+                          className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+                        >
+                          <Send size={14} />
+                        </button>
+                      )}
                     </div>
                     <div className="text-xs text-[var(--c-ink-muted)]">{r.email}</div>
                   </td>
@@ -214,6 +228,16 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
 
       {referralFor && (
         <ReferralModal row={referralFor} attorneys={attorneys} onClose={() => setReferralFor(null)} />
+      )}
+
+      {sendFor && (
+        <SendIntakeDialog
+          key={sendFor.id}
+          branches={branches}
+          presetName={sendFor.name ?? ""}
+          presetEmail={sendFor.email ?? ""}
+          onClose={() => setSendFor(null)}
+        />
       )}
     </div>
   );
