@@ -7,6 +7,7 @@ import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
   COMMON_STEPS,
+  condMet,
   type Branch,
   type Field,
   type Step,
@@ -77,18 +78,24 @@ export function IntakeWizard({
     return fuse.search(query).map((r) => r.item);
   }, [query, fuse]);
 
-  const steps: Step[] = branch
+  // Conditional steps: a step is shown only when its showIf condition holds
+  // (e.g. ask for trustee details only if the visitor checked a trust).
+  const allSteps: Step[] = branch
     ? [...branch.steps, ...COMMON_STEPS.map((s) => branch.commonOverrides?.[s.id] ?? s)]
     : [];
-  const currentStep = steps[stepIndex];
+  const steps: Step[] = allSteps.filter((s) => condMet(s.showIf, answers));
   const totalSteps = steps.length;
+  // Selections can change which steps exist; never index past the end.
+  const safeIndex = Math.min(stepIndex, Math.max(0, totalSteps - 1));
+  const currentStep = steps[safeIndex];
+  const visibleFields = (step: Step) => step.fields.filter((f) => condMet(f.showIf, answers));
 
   function setField(name: string, value: string | string[]) {
     setAnswers((a) => ({ ...a, [name]: value }));
   }
 
   function canAdvance(step: Step): boolean {
-    return step.fields.every((f) => {
+    return visibleFields(step).every((f) => {
       if (!f.required) return true;
       const v = answers[f.name];
       if (Array.isArray(v)) return v.length > 0;
@@ -189,7 +196,7 @@ export function IntakeWizard({
   }
 
   // ---- Step flow ----
-  const isLast = stepIndex === totalSteps - 1;
+  const isLast = safeIndex === totalSteps - 1;
 
   return (
     <div className="max-w-2xl" ref={topRef} style={{ scrollMarginTop: "100px" }}>
@@ -200,7 +207,7 @@ export function IntakeWizard({
           <div
             key={s.id}
             className={`h-1 flex-1 rounded-full transition-colors ${
-              i <= stepIndex ? "bg-[var(--c-accent)]" : "bg-[var(--c-border)]"
+              i <= safeIndex ? "bg-[var(--c-accent)]" : "bg-[var(--c-border)]"
             }`}
           />
         ))}
@@ -211,7 +218,7 @@ export function IntakeWizard({
           {branch.label}
         </span>
         <span>
-          Step {stepIndex + 1} of {totalSteps}
+          Step {safeIndex + 1} of {totalSteps}
         </span>
       </div>
 
@@ -221,7 +228,7 @@ export function IntakeWizard({
       )}
 
       <div className="mt-8 space-y-6">
-        {currentStep.fields.map((f) => (
+        {visibleFields(currentStep).map((f) => (
           <FieldInput
             key={f.name}
             field={f}
@@ -256,12 +263,12 @@ export function IntakeWizard({
       <div className="mt-10 flex items-center justify-between">
         <button
           onClick={() => {
-            if (stepIndex === 0) {
+            if (safeIndex === 0) {
               setBranch(initialBranch);
               if (initialBranch) return;
               setBranch(null);
             } else {
-              setStepIndex((i) => i - 1);
+              setStepIndex(safeIndex - 1);
             }
           }}
           className="btn btn-outline"
@@ -279,7 +286,7 @@ export function IntakeWizard({
           </button>
         ) : (
           <button
-            onClick={() => setStepIndex((i) => i + 1)}
+            onClick={() => setStepIndex(safeIndex + 1)}
             disabled={!canAdvance(currentStep)}
             className="btn btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >

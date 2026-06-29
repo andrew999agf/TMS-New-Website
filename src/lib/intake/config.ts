@@ -28,6 +28,8 @@ export type Field = {
   placeholder?: string;
   required?: boolean;
   help?: string;
+  /** Show this field only when the condition(s) are met (array = OR). */
+  showIf?: Condition | Condition[];
 };
 
 export type Step = {
@@ -35,7 +37,39 @@ export type Step = {
   title: string;
   subtitle?: string;
   fields: Field[];
+  /** Show this step only when the condition(s) are met (array = OR). */
+  showIf?: Condition | Condition[];
 };
+
+/**
+ * Declarative visibility condition used by conditional steps/fields (e.g. only
+ * ask for trustee details if the visitor checked a trust). Kept JSON-friendly
+ * so the config stays serializable.
+ *  - includesAny: the field's value (string or string[]) contains one of these
+ *  - equals: the field's value strictly equals this
+ *  - (neither): the field simply has a truthy value
+ */
+export type Condition = { field: string; includesAny?: string[]; equals?: string };
+
+function oneCondMet(c: Condition, answers: Record<string, string | string[]>): boolean {
+  const v = answers[c.field];
+  if (c.includesAny) {
+    const arr = Array.isArray(v) ? v : v ? [v] : [];
+    return c.includesAny.some((x) => arr.includes(x));
+  }
+  if (c.equals !== undefined) return v === c.equals;
+  return Array.isArray(v) ? v.length > 0 : Boolean(v && String(v).trim());
+}
+
+/** True when the condition (or any condition in the array) is satisfied. */
+export function condMet(
+  cond: Condition | Condition[] | undefined,
+  answers: Record<string, string | string[]>,
+): boolean {
+  if (!cond) return true;
+  const list = Array.isArray(cond) ? cond : [cond];
+  return list.some((c) => oneCondMet(c, answers));
+}
 
 export type Branch = {
   id: string;
@@ -160,6 +194,38 @@ function involvedStep(
     fields: [{ name: "opposingParty", label, type: "textarea", placeholder }],
   };
 }
+
+/**
+ * Estate-planning document options (the checkable "bubbles"). Defined as
+ * constants so the conditional steps that follow can reference the exact
+ * labels without typos. The drafting-info steps below are written so a future
+ * template engine can map each answer straight into a document field; any
+ * answer left blank becomes a labeled placeholder in the generated draft.
+ */
+export const EP = {
+  WILL: "Last Will & Testament (standard will)",
+  LIVING_TRUST: "Revocable Living Trust",
+  TEST_TRUST: "Testamentary Trust (created within your will)",
+  FIN_POA: "Statutory Durable (Financial) Power of Attorney",
+  MED_POA: "Medical Power of Attorney",
+  DIRECTIVE: "Directive to Physicians (Living Will)",
+  HIPAA: "HIPAA Authorization",
+  LADYBIRD: "Lady Bird / Transfer-on-Death Deed",
+  GUARDIAN_DECL: "Declaration of Guardian",
+  NOT_SURE: "Not sure — please recommend a plan for me",
+} as const;
+
+const NEEDS_WILL: Condition[] = [
+  { field: "docsWill", includesAny: [EP.WILL] },
+  { field: "docsTrust", includesAny: [EP.TEST_TRUST] },
+];
+const NEEDS_TRUST: Condition = { field: "docsTrust", includesAny: [EP.LIVING_TRUST, EP.TEST_TRUST] };
+const NEEDS_FAMILY: Condition[] = [
+  ...NEEDS_WILL,
+  NEEDS_TRUST,
+  { field: "docsOther", includesAny: [EP.GUARDIAN_DECL] },
+];
+const NEEDS_ASSETS: Condition[] = [...NEEDS_WILL, NEEDS_TRUST];
 
 export const BRANCHES: Branch[] = [
   {
@@ -357,16 +423,26 @@ export const BRANCHES: Branch[] = [
   },
   {
     id: "estate",
-    label: "Estate planning (will / trust / POA)",
+    label: "Estate planning (wills, trusts & POAs)",
     blurb: "I want to plan ahead",
     practiceSlug: "estate-succession-planning",
     summaryNoun: "an estate planning matter",
     keywords: [
-      "will", "last will", "make a will", "trust", "living trust", "estate plan", "estate planning",
-      "power of attorney", "poa", "medical power of attorney", "directive", "living will", "advance directive",
-      "guardian", "guardianship", "beneficiary", "inherit", "inheritance plan", "succession", "farm",
-      "ranch", "land", "transfer on death", "lady bird deed", "plan ahead", "when i die", "leave to my kids",
-      "estate planning attorney",
+      "estate", "estate plan", "estate planning", "estate planning attorney", "plan ahead", "when i die",
+      "leave to my kids", "beneficiary", "inherit", "inheritance plan", "succession", "farm", "ranch", "land",
+      // wills
+      "will", "last will", "last will and testament", "make a will", "standard will", "simple will",
+      "update my will", "new will", "holographic will",
+      // trusts
+      "trust", "living trust", "revocable living trust", "revocable trust", "testamentary trust",
+      "special needs trust", "spendthrift trust", "trust agreement", "trustee",
+      // powers of attorney & directives
+      "power of attorney", "poa", "durable power of attorney", "financial power of attorney",
+      "statutory durable power of attorney", "medical power of attorney", "health care power of attorney",
+      "directive to physicians", "living will", "advance directive", "hipaa", "hipaa release", "hipaa authorization",
+      // deeds & guardianship
+      "transfer on death", "transfer on death deed", "tod deed", "lady bird deed", "enhanced life estate deed",
+      "guardian", "guardianship", "declaration of guardian", "disposition of remains",
     ],
     commonOverrides: {
       conflict: {
@@ -394,29 +470,207 @@ export const BRANCHES: Branch[] = [
       },
     },
     steps: [
+      // 1) The document picker — grouped "bubbles" in a fixed, logical order:
+      //    Estate Planning › Wills › Trusts › Powers of Attorney › Deeds & Guardianship.
       {
-        id: "household",
-        title: "Tell us about your household",
+        id: "documents",
+        title: "What would you like to set up?",
+        subtitle: "Check every document you need — you can combine them. Not sure? Check the last box and we'll recommend a plan.",
         fields: [
-          { name: "maritalStatus", label: "Single or married?", type: "radio", options: ["Single", "Married"] },
-          { name: "children", label: "Children (names/ages optional)", type: "textarea" },
-          { name: "priorWill", label: "Do you have a prior will?", type: "yesno" },
+          { name: "docsWill", label: "Wills", type: "checklist", options: [EP.WILL] },
+          { name: "docsTrust", label: "Trusts", type: "checklist", options: [EP.LIVING_TRUST, EP.TEST_TRUST] },
+          {
+            name: "docsPoa",
+            label: "Powers of Attorney & Health Directives",
+            type: "checklist",
+            options: [EP.FIN_POA, EP.MED_POA, EP.DIRECTIVE, EP.HIPAA],
+          },
+          { name: "docsOther", label: "Deeds & Guardianship", type: "checklist", options: [EP.LADYBIRD, EP.GUARDIAN_DECL] },
+          { name: "docsNotSure", label: "Help me decide", type: "checklist", options: [EP.NOT_SURE] },
         ],
       },
+      // 2) Testator / principal — the person the documents are for (every doc needs this).
+      {
+        id: "testator",
+        title: "About you",
+        subtitle: "These details go at the top of every document, exactly as you write them here.",
+        fields: [
+          { name: "testatorFullName", label: "Your full legal name", type: "text", required: true, help: "Spell it exactly as it should appear in the documents." },
+          { name: "testatorAddress", label: "Home (residence) address", type: "text", placeholder: "Street, City, Texas, ZIP" },
+          { name: "testatorCounty", label: "County of residence", type: "text" },
+          { name: "testatorDob", label: "Date of birth", type: "date" },
+          { name: "maritalStatus", label: "Marital status", type: "radio", options: ["Single", "Married", "Widowed", "Divorced"] },
+          { name: "spouseName", label: "Spouse's full legal name", type: "text", showIf: { field: "maritalStatus", equals: "Married" } },
+          { name: "everLivedOtherState", label: "Have you ever lived in a state other than Texas?", type: "yesno", help: "This can affect community-property questions; if yes, note where and when in the last step." },
+          { name: "priorWill", label: "Do you have a prior will or estate plan?", type: "yesno" },
+        ],
+      },
+      // 3) Family — needed for wills, trusts, and guardian declarations.
+      {
+        id: "family",
+        title: "Your family",
+        subtitle: "Who should the plan provide for or protect?",
+        showIf: NEEDS_FAMILY,
+        fields: [
+          {
+            name: "children",
+            label: "Children",
+            type: "textarea",
+            placeholder: "One per line: full name, date of birth, and note if from a prior relationship.",
+            help: "Include adopted children. Note any with special needs.",
+          },
+          { name: "minorChildren", label: "Do you have minor children (under 18)?", type: "yesno" },
+          {
+            name: "otherDependents",
+            label: "Anyone else you support or want to provide for?",
+            type: "textarea",
+            placeholder: "e.g., a parent, grandchild, or other dependent",
+          },
+        ],
+      },
+      // 4) Will details — also used when a testamentary trust is created in the will.
+      {
+        id: "willDetails",
+        title: "Your will",
+        subtitle: "Who carries it out, and who receives what.",
+        showIf: NEEDS_WILL,
+        fields: [
+          { name: "executor", label: "Executor (who administers your estate)", type: "text", required: true, help: "Full name and relationship to you." },
+          { name: "executorAlt1", label: "First alternate executor", type: "text" },
+          { name: "executorAlt2", label: "Second alternate executor", type: "text" },
+          { name: "guardianMinor", label: "Guardian for minor children", type: "text", help: "Co-guardians must be married. Leave blank if not applicable." },
+          { name: "guardianMinorAlt", label: "Alternate guardian for minor children", type: "text" },
+          {
+            name: "specificGifts",
+            label: "Specific gifts",
+            type: "textarea",
+            placeholder: "e.g., \"My truck to John Smith.\" One per line. Leave blank if none.",
+            help: "Particular items or dollar amounts to particular people.",
+          },
+          { name: "residuaryBeneficiary", label: "Who receives everything else (the residue)?", type: "textarea", placeholder: "e.g., \"All to my children who survive me, in equal shares.\"" },
+          { name: "residuaryAlternate", label: "If they don't survive you, then to whom?", type: "textarea" },
+          { name: "funeralWishes", label: "Funeral / burial wishes (optional)", type: "textarea" },
+        ],
+      },
+      // 5) Trust details — living and/or testamentary trust.
+      {
+        id: "trustDetails",
+        title: "Your trust",
+        subtitle: "Who manages it and who benefits.",
+        showIf: NEEDS_TRUST,
+        fields: [
+          { name: "trustee", label: "Trustee (who manages the trust)", type: "text", help: "For a living trust this is often you, then a successor." },
+          { name: "successorTrustee", label: "Successor trustee", type: "text", required: true, help: "Who takes over on your incapacity or death." },
+          { name: "trustBeneficiaries", label: "Trust beneficiaries", type: "textarea", placeholder: "Who benefits, and in what shares." },
+          {
+            name: "trustDistribution",
+            label: "How should beneficiaries receive their shares?",
+            type: "radio",
+            options: ["Outright", "At certain ages (staggered)", "Held for life (HEMS standard)", "Trustee's discretion"],
+          },
+          { name: "trustAges", label: "If staggered, at what ages?", type: "text", placeholder: "e.g., 1/3 at 25, 1/2 at 30, balance at 35", showIf: { field: "trustDistribution", equals: "At certain ages (staggered)" } },
+          {
+            name: "trustFunding",
+            label: "Which assets will fund the living trust?",
+            type: "textarea",
+            placeholder: "List the property to be retitled into the trust (home, accounts, etc.).",
+            help: "A living trust only avoids probate for assets actually transferred into it.",
+            showIf: { field: "docsTrust", includesAny: [EP.LIVING_TRUST] },
+          },
+        ],
+      },
+      // 6) Financial POA.
+      {
+        id: "financialPoa",
+        title: "Financial power of attorney",
+        subtitle: "Who can handle your finances, and when.",
+        showIf: { field: "docsPoa", includesAny: [EP.FIN_POA] },
+        fields: [
+          { name: "finAgent", label: "Agent (attorney-in-fact)", type: "text", required: true, help: "The person who will handle your financial matters." },
+          { name: "finAgentAlt", label: "Alternate agent", type: "text" },
+          { name: "finEffective", label: "When should it take effect?", type: "radio", options: ["Immediately", "Only if I become incapacitated (springing)"] },
+          { name: "finScope", label: "Scope of authority", type: "radio", options: ["All powers (general)", "Limited — I'll specify"] },
+          { name: "finScopeLimits", label: "If limited, which powers?", type: "textarea", showIf: { field: "finScope", equals: "Limited — I'll specify" } },
+          { name: "finGifts", label: "Gift-giving power", type: "radio", options: ["No gift power", "Limited to annual exclusion", "Broad gift power"] },
+        ],
+      },
+      // 7) Medical POA / Directive / HIPAA.
+      {
+        id: "medicalPoa",
+        title: "Health-care documents",
+        subtitle: "Who speaks for your care, and your wishes.",
+        showIf: { field: "docsPoa", includesAny: [EP.MED_POA, EP.DIRECTIVE, EP.HIPAA] },
+        fields: [
+          { name: "medAgent", label: "Health-care agent", type: "text", help: "Who makes medical decisions if you cannot. Must be 18+.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medAgentAlt", label: "Alternate health-care agent", type: "text", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          {
+            name: "lifeSupport",
+            label: "Life-support wishes (Directive to Physicians)",
+            type: "textarea",
+            placeholder: "Your wishes if you have a terminal or irreversible condition.",
+            showIf: { field: "docsPoa", includesAny: [EP.DIRECTIVE] },
+          },
+          {
+            name: "hipaaRecipients",
+            label: "Who may receive your medical information (HIPAA)?",
+            type: "textarea",
+            placeholder: "Family members or others who should be able to get your records.",
+            showIf: { field: "docsPoa", includesAny: [EP.HIPAA] },
+          },
+        ],
+      },
+      // 8) Declaration of guardian.
+      {
+        id: "guardianDeclaration",
+        title: "Declaration of guardian",
+        subtitle: "Who you'd want — and not want — if a guardianship ever became necessary.",
+        showIf: { field: "docsOther", includesAny: [EP.GUARDIAN_DECL] },
+        fields: [
+          { name: "guardianPreferred", label: "Preferred guardian(s), in order of choice", type: "textarea" },
+          { name: "guardianExcluded", label: "Anyone you do NOT want to serve as your guardian", type: "textarea", help: "A judge cannot appoint a person you exclude here." },
+        ],
+      },
+      // 9) Lady Bird / TOD deed.
+      {
+        id: "deed",
+        title: "Lady Bird / Transfer-on-Death deed",
+        subtitle: "Pass real property at death without probate.",
+        showIf: { field: "docsOther", includesAny: [EP.LADYBIRD] },
+        fields: [
+          { name: "deedProperty", label: "Property address (and legal description if you have it)", type: "textarea", help: "We'll confirm the legal description from the prior deed." },
+          { name: "deedGrantee", label: "Who should receive the property at your death?", type: "text" },
+        ],
+      },
+      // 10) Asset inventory — for wills and trusts.
       {
         id: "assets",
-        title: "What does the estate include?",
-        subtitle: "Check what applies. Rough is fine.",
+        title: "Your assets",
+        subtitle: "A rough inventory — estimates are fine. This helps us draft and fund the plan.",
+        showIf: NEEDS_ASSETS,
         fields: [
           {
             name: "assets",
-            label: "Assets",
+            label: "What does the estate include?",
             type: "checklist",
-            options: ["Home", "Land / farm", "Business", "Bank / investment accounts", "Retirement accounts", "Other"],
+            options: [
+              "Home / residence",
+              "Other real estate / land / farm",
+              "Bank / investment accounts",
+              "Retirement accounts (IRA/401k)",
+              "Life insurance",
+              "Business interest",
+              "Vehicles",
+              "Valuable personal property",
+            ],
           },
-          { name: "executor", label: "Executor preference", type: "text" },
-          { name: "guardian", label: "Guardian preference (if minor children)", type: "text" },
-          { name: "wishes", label: "Special wishes", type: "textarea" },
+          {
+            name: "beneficiaryDesignations",
+            label: "Do any accounts already name a beneficiary (POD/TOD, retirement, life insurance)?",
+            type: "yesno",
+            help: "Those pass outside the will — good to flag so the plan is consistent.",
+          },
+          { name: "estimatedValue", label: "Approximate total estate value", type: "select", options: ["Under $100,000", "$100,000–$500,000", "$500,000–$2M", "$2M–$5M", "Over $5M", "Not sure"] },
         ],
       },
     ],
