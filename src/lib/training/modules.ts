@@ -1746,7 +1746,7 @@ export const TRAINING_MODULES: TrainingModule[] = [
             type: "callout",
             tone: "warning",
             title: "Limits on the agent",
-            text: "By law the agent may NOT consent to: voluntary inpatient mental-health services, convulsive treatment, psychosurgery, or abortion.",
+            text: "By law the agent may NOT consent to: voluntary inpatient mental-health services, convulsive treatment, or psychosurgery.",
           },
         ],
       },
@@ -1823,7 +1823,7 @@ export const TRAINING_MODULES: TrainingModule[] = [
             type: "questions",
             items: [
               { q: "When does a Texas medical power of attorney become effective?", a: "Only when the attending physician certifies in writing that the principal lacks the capacity to make their own health-care decisions." },
-              { q: "Name two decisions the agent may NOT make.", a: "Any two of: consenting to voluntary inpatient mental-health services, convulsive treatment, psychosurgery, or abortion." },
+              { q: "Name two decisions the agent may NOT make.", a: "Any two of: consenting to voluntary inpatient mental-health services, convulsive treatment, or psychosurgery." },
               { q: "What are the two ways a Texas MPOA can be validly executed?", a: "Signed and acknowledged before a notary, OR signed in the presence of two competent adult witnesses." },
             ],
           },
