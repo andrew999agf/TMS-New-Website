@@ -37,9 +37,25 @@ export type DocBuildCtx = {
   gifts: (token: string) => string;
   /** True if a party/gifts field has at least one entry. */
   has: (token: string) => boolean;
+  /** People in a party field as { name, html } — for building appointment chains. */
+  persons: (token: string) => { name: string; html: string }[];
+  /** A repeater/string-list field's values (e.g. children). */
+  list: (token: string) => string[];
   /** Included optional provision HTML, or "" when excluded. */
   opt: (id: string) => string;
+  /** The raw (possibly edited) optional-provision text, or "" when excluded. */
+  optText: (id: string) => string;
 };
+
+/** Render a list of articles with sequential Roman numerals; empty bodies are skipped. */
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI"];
+export function buildArticles(items: { heading: string; html: string }[]): string {
+  let n = 0;
+  return items
+    .filter((i) => i.html.trim())
+    .map((i) => `<div class="article"><div class="art-n">${ROMAN[n++] ?? ""}.</div><div class="art-h">${esc(i.heading)}</div></div>${i.html}`)
+    .join("");
+}
 
 const personStr = (p: Person, bold = true): string => {
   const name = (p?.name ?? "").trim();
@@ -161,14 +177,26 @@ export function renderDoc(
         .map((g) => `<p class="body">I give ${esc(g.item.trim())} to ${joinAnd(g.to.filter((p) => (p.name ?? "").trim()).map((p) => personStr(p)))}.</p>`)
         .join("");
     },
-    opt: (id) => {
+    persons: (token) => peopleOf(token).map((p) => ({ name: (p.name ?? "").trim(), html: personStr(p) })),
+    list: (token) => {
+      const v = answers[token];
+      if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+      const s = val(token);
+      return s ? [s] : [];
+    },
+    optText: (id) => {
       const def = spec.optionals.find((p) => p.id === id);
       if (!def) return "";
       const chosen = optionals[id];
       if (chosen === false) return "";
       const text = typeof chosen === "string" ? chosen : def.defaultOn ? def.text : "";
-      if (!text.trim()) return "";
-      return `<p class="section"><span class="sec-h">${esc(def.label)}.</span> ${nl2br(text)}</p>`;
+      return text.trim() ? nl2br(text) : "";
+    },
+    opt: (id) => {
+      const text = ctx.optText(id);
+      if (!text) return "";
+      const def = spec.optionals.find((p) => p.id === id)!;
+      return `<p class="section"><span class="sec-h">${esc(def.label)}.</span> ${text}</p>`;
     },
   };
   return { body: spec.body(ctx), missing };
@@ -187,6 +215,8 @@ function legalCss(footerName: string): string {
     font-family:${SERIF}; font-size:12pt; line-height:1.55; color:var(--ink); }
   .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:21pt; letter-spacing:.05em; margin:6px 0 2px; }
   .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; letter-spacing:.04em; font-weight:400; margin:0 0 6px; }
+  .doc-for { text-align:center; font-style:italic; margin:2px 0; }
+  p.footnote { font-size:9.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:16px; padding-top:6px; text-align:justify; text-indent:0; }
   hr.title-rule { border:0; border-top:1px solid #999; margin:8px 0 24px; }
   .article { text-align:center; margin:22px 0 11px; }
   .art-n { font-size:12pt; }
@@ -243,6 +273,8 @@ export function wrapForWord(spec: DocSpec, body: string): string {
     body { font-family:${SERIF}; font-size:12pt; color:#141414; line-height:1.5; }
     .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:21pt; letter-spacing:.05em; margin:6pt 0 2pt; }
     .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; margin:0 0 4pt; }
+    .doc-for { text-align:center; font-style:italic; margin:2pt 0; }
+    p.footnote { font-size:9.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:14pt; padding-top:5pt; text-align:justify; text-indent:0; }
     hr.title-rule { border:0; border-top:1px solid #999; margin:6pt 0 18pt; }
     .article { text-align:center; margin:18pt 0 8pt; }
     .art-n { display:block; } .art-h { display:block; font-weight:bold; }
