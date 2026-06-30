@@ -599,6 +599,15 @@ export const BRANCHES: Branch[] = [
           { name: "gifts", label: "Specific gifts (optional)", type: "gifts", addLabel: "Add a specific gift", help: "Particular items or amounts to particular people. Use the + on the right to split one gift between people." },
           { name: "residuary", label: "Residuary estate — who receives everything else", type: "residuary" },
           { name: "funeralWishes", label: "Funeral / burial wishes (optional)", type: "textarea" },
+          {
+            name: "witnessChoice",
+            label: "Witnesses & date of execution",
+            type: "radio",
+            options: ["Leave blank — fill in by hand at signing", "Enter what I have now"],
+            help: "Most wills leave the witnesses and signing date blank to complete at the signing. If you already know the witnesses, you can enter their names and contact info now and they'll be inserted into the attestation.",
+          },
+          { name: "witnesses", label: "Witnesses", type: "party", max: 3, addLabel: "Add a witness", showIf: { field: "witnessChoice", equals: "Enter what I have now" } },
+          { name: "executionDate", label: "Date of execution (optional)", type: "date", showIf: { field: "witnessChoice", equals: "Enter what I have now" } },
         ],
       },
       // 5) Trust details — living and/or testamentary trust.

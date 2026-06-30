@@ -76,6 +76,8 @@ export const FIELD_LABELS: Record<string, string> = {
   medAgents: "Health-care agent(s)",
   medAlts: "Successor health-care agent(s)",
   hipaaPeople: "HIPAA recipients",
+  witnesses: "Witnesses",
+  executionDate: "Date of execution",
 };
 
 const WILL = `LAST WILL AND TESTAMENT OF {{testatorFullName}}

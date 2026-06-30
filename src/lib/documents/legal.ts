@@ -37,8 +37,8 @@ export type DocBuildCtx = {
   gifts: (token: string) => string;
   /** True if a party/gifts field has at least one entry. */
   has: (token: string) => boolean;
-  /** People in a party field as { name, html } — for building appointment chains. */
-  persons: (token: string) => { name: string; html: string }[];
+  /** People in a party field — for building appointment / witness blocks. */
+  persons: (token: string) => { name: string; address: string; phone: string; html: string }[];
   /** A repeater/string-list field's values (e.g. children). */
   list: (token: string) => string[];
   /** Included optional provision HTML, or "" when excluded. */
@@ -177,7 +177,8 @@ export function renderDoc(
         .map((g) => `<p class="body">I give ${esc(g.item.trim())} to ${joinAnd(g.to.filter((p) => (p.name ?? "").trim()).map((p) => personStr(p)))}.</p>`)
         .join("");
     },
-    persons: (token) => peopleOf(token).map((p) => ({ name: (p.name ?? "").trim(), html: personStr(p) })),
+    persons: (token) =>
+      peopleOf(token).map((p) => ({ name: (p.name ?? "").trim(), address: (p.address ?? "").trim(), phone: (p.phone ?? "").trim(), html: personStr(p) })),
     list: (token) => {
       const v = answers[token];
       if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
@@ -212,15 +213,15 @@ function legalCss(footerName: string): string {
   * { box-sizing:border-box; }
   body { margin:0; background:#ece9e3; }
   .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.1in; box-shadow:0 1px 8px rgba(0,0,0,.18);
-    font-family:${SERIF}; font-size:12pt; line-height:1.32; color:var(--ink); }
-  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:16pt; letter-spacing:.04em; margin:4px 0 1px; }
-  .doc-sub { text-align:center; font-variant:small-caps; font-size:12.5pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
-  .doc-for { text-align:center; font-style:italic; font-size:11pt; margin:1px 0; }
-  p.footnote { font-size:9pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:12px; padding-top:5px; text-align:justify; text-indent:0; line-height:1.25; }
+    font-family:${SERIF}; font-size:9.6pt; line-height:1.34; color:var(--ink); }
+  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:13pt; letter-spacing:.04em; margin:4px 0 1px; }
+  .doc-sub { text-align:center; font-variant:small-caps; font-size:10pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
+  .doc-for { text-align:center; font-style:italic; font-size:9pt; margin:1px 0; }
+  p.footnote { font-size:7.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:12px; padding-top:5px; text-align:justify; text-indent:0; line-height:1.25; }
   hr.title-rule { border:0; border-top:1px solid #999; margin:6px 0 16px; }
   .article { text-align:center; margin:14px 0 6px; }
-  .art-n { font-size:12pt; }
-  .art-h { display:block; font-weight:bold; font-size:12pt; }
+  .art-n { font-size:9.6pt; }
+  .art-h { display:block; font-weight:bold; font-size:9.6pt; }
   p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 7px; }
   .sec-h { font-weight:bold; }
   ol.legal-ol { margin:0 0 7px 0; padding-left:.45in; list-style:lower-alpha; }
@@ -234,7 +235,7 @@ function legalCss(footerName: string): string {
   .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:3px; }
   .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:14px 0 4px; }
   .sig-name { font-weight:bold; }
-  .sig-role { font-size:10pt; color:var(--muted); }
+  .sig-role { font-size:8pt; color:var(--muted); }
   /* Witness / jurat blocks */
   .jurat { margin:14px 0 6px; }
   .jurat .j-row { white-space:pre; }
@@ -250,9 +251,9 @@ function legalCss(footerName: string): string {
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
       size: letter; margin: 1in 1in 1.1in 1in;
-      @bottom-left { content:"${f}"; font:10pt ${SERIF}; font-variant:small-caps; color:#333; }
-      @bottom-center { content:"Initials ____________"; font:10pt ${SERIF}; color:#333; }
-      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:10pt ${SERIF}; font-variant:small-caps; color:#333; }
+      @bottom-left { content:"${f}"; font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
+      @bottom-center { content:"Initials ____________"; font:9pt ${SERIF}; color:#333; }
+      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
     }
   }`;
 }
@@ -278,11 +279,11 @@ export function wrapForWord(spec: DocSpec, body: string): string {
   <style>
     @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.15in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
     div.Section1 { page:Section1; }
-    body { font-family:${SERIF}; font-size:12pt; color:#141414; line-height:1.25; }
-    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:16pt; letter-spacing:.04em; margin:4pt 0 1pt; }
-    .doc-sub { text-align:center; font-variant:small-caps; font-size:12.5pt; margin:0 0 2pt; }
-    .doc-for { text-align:center; font-style:italic; font-size:11pt; margin:1pt 0; }
-    p.footnote { font-size:9pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:10pt; padding-top:4pt; text-align:justify; text-indent:0; }
+    body { font-family:${SERIF}; font-size:9.6pt; color:#141414; line-height:1.28; }
+    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:13pt; letter-spacing:.04em; margin:4pt 0 1pt; }
+    .doc-sub { text-align:center; font-variant:small-caps; font-size:10pt; margin:0 0 2pt; }
+    .doc-for { text-align:center; font-style:italic; font-size:9pt; margin:1pt 0; }
+    p.footnote { font-size:7.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:10pt; padding-top:4pt; text-align:justify; text-indent:0; }
     hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 12pt; }
     .article { text-align:center; margin:12pt 0 5pt; }
     .art-n { display:block; } .art-h { display:block; font-weight:bold; }
@@ -291,11 +292,11 @@ export function wrapForWord(spec: DocSpec, body: string): string {
     .sec-h { font-weight:bold; }
     .ph { background:#fff2b8; font-style:italic; }
     .sig-line, .wit-line, .addr-line { border-bottom:1px solid #141414; }
-    .sig-role { font-size:10pt; color:#555; }
+    .sig-role { font-size:8pt; color:#555; }
     .wit-row { margin:0 0 6pt; } .wit-label { display:inline-block; width:1.3in; }
     .jurat { margin:10pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:10pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:9pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
   </style></head>
   <body><div class="Section1">${body}
     <div style='mso-element:footer' id=f1>

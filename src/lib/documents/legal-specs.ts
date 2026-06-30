@@ -24,13 +24,27 @@ const DISCRETIONARY =
     `The Executor(s) shall also in their absolute discretion determine the allocation of any GST exemption available to me at my death to property passing under this Will or otherwise. The determination of the Executor(s) with respect to any elections or allocation, if made or taken in good faith, shall be binding upon all affected.`,
   ]);
 
-/** A neat witness block: a name (placeholder until filled) + signature + address lines. */
-function witnessBlock(name?: string): string {
-  const nm = name?.trim() ? esc(name.trim()) : `<span class="ph">[ Witness Name ]</span>`;
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const ordinal = (d: number) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = d % 100;
+  return `${d}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
+/** Parse a YYYY-MM-DD execution date into day/month/year phrasing, or null. */
+function execDate(raw: string): { day: string; month: string; yy: string } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((raw || "").trim());
+  if (!m) return null;
+  return { day: ordinal(parseInt(m[3], 10)), month: MONTHS[parseInt(m[2], 10) - 1] ?? "", yy: m[1].slice(2) };
+}
+
+/** A neat witness block: name + contact (filled when known, else placeholder) + signature line. */
+function witnessBlock(p?: { name: string; address: string }): string {
+  const nm = p?.name ? esc(p.name) : `<span class="ph">[ Witness Name ]</span>`;
+  const addr = p?.address ? esc(p.address) : "";
   return `<div class="wit">
     <div class="wit-row"><span class="wit-label">Witness Name:</span><span class="wit-line" style="border:0">${nm}</span></div>
     <div class="wit-row"><span class="wit-label">Signature:</span><span class="wit-line"></span></div>
-    <div class="wit-row"><span class="wit-label">Address:</span><span class="wit-line"></span></div>
+    <div class="wit-row"><span class="wit-label">Address:</span><span class="wit-line"${addr ? ' style="border:0"' : ""}>${addr}</span></div>
   </div>`;
 }
 
@@ -43,24 +57,37 @@ function jurat(countyHtml: string): string {
   </div>`;
 }
 
-/** Execution, witness attestation, self-proving affidavit, and notary blocks (verbatim). */
+/** Execution, witness attestation, self-proving affidavit, and notary blocks. Witness
+ *  names, contact info, and the execution date are inserted when provided, else blank. */
 function executionBlocks(c: DocBuildCtx): string {
   const name = c.b("testatorFullName");
   const ARTH = (h: string) => `<h2 class="article"><span class="art-h">${esc(h)}</span></h2>`;
+  const wit = c.persons("witnesses");
+  const witNames = wit.map((w) => bold(w.name));
+  // "Joe, the Testator, and Bob and Tim, the witnesses"
+  const partiesPhrase = `${name}, the Testator${witNames.length ? `, and ${andList(witNames)}, the witnesses` : " and the witnesses"}`;
+  const inPresenceOf = witNames.length ? andList(witNames) : "the undersigned attesting witnesses";
+  // Execution date pieces: filled if a date was given, otherwise blanks.
+  const d = execDate(c.raw("executionDate"));
+  const day = d ? `<strong>${d.day}</strong>` : "______";
+  const month = d ? `<strong>${esc(d.month)}</strong>` : "____________________";
+  const yy = d ? `<strong>${esc(d.yy)}</strong>` : "______";
+  const witBlocks = (wit.length ? wit : [undefined, undefined]).map((w) => witnessBlock(w)).join("");
+
   return (
     ARTH("Execution") +
-    C.p(`IN WITNESS WHEREOF, I sign my name to this Last Will and Testament, including the attestation and the self-proving affidavit, on this the ______ day of ____________________, in the year of 20______, at ____________________________________, State of Texas, in the presence of the attesting witnesses, who sign their names here at my request and in my presence.`) +
+    C.p(`IN WITNESS WHEREOF, I sign my name to this Last Will and Testament, including the attestation and the self-proving affidavit, on this the ${day} day of ${month}, in the year of 20${yy}, at ____________________________________, State of Texas, in the presence of ${inPresenceOf}, attesting witnesses, who sign their names here at my request and in my presence.`) +
     C.sign(name, "Testator") +
     ARTH("Witness Attestation") +
-    C.p(`We, the undersigned persons of lawful age, declare that the foregoing instrument was signed, published, and declared by ${name}, the above-named Testator, as the Testator's Will, in our presence, and we, at the Testator's request, and in the Testator's presence and in the presence of each other, have signed our names to this instrument as attesting witnesses on this the ______ day of ____________________, in the year of 20______; and we certify that, in our opinion, the said Testator is of sound and disposing mind.`) +
-    C.spacer() + witnessBlock() + witnessBlock() +
+    C.p(`We, the undersigned persons of lawful age, declare that the foregoing instrument was signed, published, and declared by ${name}, the above-named Testator, as the Testator's Will, in our presence, and we, at the Testator's request, and in the Testator's presence and in the presence of each other, have signed our names to this instrument as attesting witnesses on this the ${day} day of ${month}, in the year of 20${yy}; and we certify that, in our opinion, the said Testator is of sound and disposing mind.`) +
+    C.spacer() + witBlocks +
     ARTH("Self-Proving Affidavit") +
     jurat(c.f("testatorCounty")) +
-    C.p(`Before me, the undersigned authority, on this day personally appeared ${name} and the witnesses, known to me to be the testator and the witnesses, respectively, whose names are subscribed to the foregoing instrument in their respective capacities, and, all of said persons being by me duly sworn, the said Testator declared to me and to the said witnesses in my presence that said instrument is the Testator's Will, and that the Testator had willingly made and executed it as the Testator's free act and deed; and the said witnesses, each on his or her oath stated to me, in the presence and hearing of the said Testator, that the said Testator had declared to them that said instrument is the Testator's Will, and that the Testator executed same as such and wanted each of them to sign it as a witness; and upon their oaths each witness stated further that they did sign the same as witnesses in the presence of the said Testator and at the Testator's request; that the Testator was at that time eighteen years of age or over (or being under such age, was or had been lawfully married, or was then a member of the armed forces of the United States) and was of sound mind; and that each of said witnesses was then at least fourteen years of age.`) +
+    C.p(`Before me, the undersigned authority, on this day personally appeared ${partiesPhrase}, known to me to be the testator and the witnesses, respectively, whose names are subscribed to the foregoing instrument in their respective capacities, and, all of said persons being by me duly sworn, the said Testator declared to me and to the said witnesses in my presence that said instrument is the Testator's Will, and that the Testator had willingly made and executed it as the Testator's free act and deed; and the said witnesses, each on his or her oath stated to me, in the presence and hearing of the said Testator, that the said Testator had declared to them that said instrument is the Testator's Will, and that the Testator executed same as such and wanted each of them to sign it as a witness; and upon their oaths each witness stated further that they did sign the same as witnesses in the presence of the said Testator and at the Testator's request; that the Testator was at that time eighteen years of age or over (or being under such age, was or had been lawfully married, or was then a member of the armed forces of the United States) and was of sound mind; and that each of said witnesses was then at least fourteen years of age.`) +
     `<div class="two-col"><div>${C.sign(name, "Testator")}</div><div></div></div>` +
-    `<div class="two-col">${C.sign("", "Witness")}${C.sign("", "Witness")}</div>` +
+    `<div class="two-col">${C.sign(witNames[0] ?? "", "Witness")}${C.sign(witNames[1] ?? "", "Witness")}</div>` +
     ARTH("Notary Acknowledgment") +
-    C.p(`Subscribed and sworn to before me by the Testator and the witnesses, on this the ______ day of ____________________, 20______.`) +
+    C.p(`Subscribed and sworn to before me by ${partiesPhrase}, on this the ${day} day of ${month}, 20${yy}.`) +
     `<div class="two-col"><div>${C.sign("", "Notary Public, State of Texas")}<p class="sig-role" style="margin-top:2px">My commission expires: ____________________</p></div><div></div></div>`
   );
 }
