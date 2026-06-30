@@ -57,6 +57,24 @@ function jurat(countyHtml: string): string {
   </div>`;
 }
 
+/** Flush-left bold caption used for the statutory section labels (e.g. "DURATION."). */
+const POAH = (t: string) => `<p class="body" style="text-indent:0;font-weight:bold;margin:11px 0 4px">${esc(t)}</p>`;
+
+/** One blank ruled line (for fill-in-by-hand fields). */
+const blankLine = `<div class="addr-line" style="margin:14px 0"></div>`;
+
+/** A labeled "Name / Address / Phone" block; each value is printed in bold when
+ *  provided, otherwise a ruled blank line is left to complete by hand. */
+function poaContact(p: { name?: string; address?: string; phone?: string } | undefined, opts: { phone?: boolean } = {}): string {
+  const row = (label: string, val?: string) => {
+    const filled = (val ?? "").trim();
+    return `<div class="wit-row"><span class="wit-label">${label}</span><span class="wit-line"${filled ? ' style="border:0"' : ""}>${filled ? bold(filled) : ""}</span></div>`;
+  };
+  return `<div class="wit">${row("Name:", p?.name)}${row("Address:", p?.address)}${opts.phone === false ? "" : row("Phone:", p?.phone)}</div>`;
+}
+
+const ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth"];
+
 /** Execution, witness attestation, self-proving affidavit, and notary blocks. Witness
  *  names, contact info, and the execution date are inserted when provided, else blank. */
 function executionBlocks(c: DocBuildCtx): string {
@@ -325,20 +343,87 @@ export const LEGAL_DOCS: DocSpec[] = [
     label: "Medical Power of Attorney",
     footerName: "Medical Power of Attorney",
     trigger: { field: "docsPoa", value: EP.MED_POA },
-    fields: flds("testatorFullName", "testatorAddress", "testatorCounty", "medAgents", "medAlts", "medLimits"),
+    fields: flds("testatorFullName", "testatorAddress", "testatorPhone", "testatorCounty", "medAgents", "medAlts", "medLimits", "medOriginalLocation", "medCopyHolders", "medEndDate"),
     optionals: [],
-    body: (c) => `
-      ${TITLE("Medical Power of Attorney", `Designation of Health Care Agent by ${c.f("testatorFullName")}`)}
-      ${C.article("I", "Designation of Agent")}
-      ${C.p(`I, ${c.b("testatorFullName")}, of ${c.f("testatorAddress")}, appoint ${c.party("medAgents")} as my agent to make any and all health-care decisions for me, except to the extent I state otherwise, when my attending physician certifies in writing that I am unable to make such decisions.${c.has("medAlts") ? ` If my agent is unable or unwilling to serve, I appoint ${c.partyOrder("medAlts")}.` : ""}`)}
-      ${C.article("II", "Limitations")}
-      ${C.p(`Limitations on my agent's authority: ${c.f("medLimits")}.`)}
-      ${C.article("III", "Effect and Duration")}
-      ${C.p(`This medical power of attorney takes effect upon my attending physician's certification of my incapacity and continues until I revoke it. I revoke any prior medical power of attorney. This document is not valid unless signed before a notary public or in the presence of two qualified witnesses.`)}
-      ${C.spacer()}${C.p(`Signed on ____________________.`)}
-      ${C.sign(c.f("testatorFullName"), "Principal")}
-      ${C.witnesses()}
-      ${C.notary(c.f("testatorCounty"))}`,
+    body: (c) => {
+      const agents = c.persons("medAgents");
+      const agent = agents[0];
+      const alts = c.persons("medAlts");
+      const copies = c.persons("medCopyHolders");
+      const original = c.raw("medOriginalLocation").trim() || c.raw("testatorAddress").trim();
+      const endDate = c.raw("medEndDate").trim();
+      const limits = c.raw("medLimits").trim();
+      const county = c.f("testatorCounty");
+
+      // First / Second / … alternate blocks (at least one shown, blank if none).
+      const altBlocks = (alts.length ? alts : [undefined])
+        .map((a, i) => `${C.section(`${ORDINALS[i] ?? `${i + 1}`} Alternate`, "")}${poaContact(a)}`)
+        .join("");
+      // Signed-copy holders (name + address only); at least one blank row.
+      const copyBlocks = (copies.length ? copies : [undefined])
+        .map((p) => poaContact(p, { phone: false }))
+        .join("");
+
+      return `
+      ${TITLE("Medical Power of Attorney", `Designation of Health Care Agent — ${c.f("testatorFullName")}`)}
+      ${POAH("Declaration of Health Care Agent.")}
+      ${C.p(`I, ${c.b("testatorFullName")} of ${c.f("testatorAddress")}; Phone Number: ${c.f("testatorPhone")}, appoint:`)}
+      ${poaContact(agent)}
+      ${C.p(`as my agent to make any and all health care decisions for me, except to the extent I state otherwise in this document. This medical power of attorney takes effect if I become unable to make my own health care decisions and this fact is certified in writing by my physician.`)}
+      ${POAH("Limitations on the Decision-Making Authority of My Agent Are as Follows:")}
+      ${limits ? C.p(c.f("medLimits")) : blankLine + blankLine + blankLine}
+      ${POAH("Designation of Alternate Agent.")}
+      ${C.p(`<em>(You are not required to designate an alternate agent but you may do so. An alternate agent may make the same health care decisions as the designated agent if the designated agent is unable or unwilling to act as your agent. If the agent designated is your spouse, the designation is automatically revoked by law if your marriage is dissolved, annulled, or declared void unless this document provides otherwise.)</em>`)}
+      ${C.p(`If the person designated as my agent is unable or unwilling to make health care decisions for me, I designate the following persons to serve as my agent to make health care decisions for me as authorized by this document, who serve in the following order:`)}
+      ${altBlocks}
+      ${C.p(`The original of this document is kept at: ${original ? bold(original) : `<span class="ph">[ ${esc(FIELD_LABELS.medOriginalLocation)} ]</span>`}`)}
+      ${C.p(`The following individuals and / or institutions have signed copies:`)}
+      ${copyBlocks}
+      ${POAH("Duration.")}
+      ${C.p(`I understand that this power of attorney exists indefinitely from the date I execute this document unless I establish a shorter time or revoke the power of attorney. If I am unable to make health care decisions for myself when this power of attorney expires, the authority I have granted my agent continues to exist until the time I become able to make health care decisions for myself.`)}
+      ${C.p(`(If applicable) This power of attorney ends on the following date: ${bold(endDate || "INDEFINITE")}`)}
+      ${POAH("Prior Designations Revoked.")}
+      ${C.p(`I revoke any prior medical power of attorney.`)}
+      ${POAH("Disclosure Statement")}
+      ${C.p(`THIS MEDICAL POWER OF ATTORNEY IS AN IMPORTANT LEGAL DOCUMENT. BEFORE SIGNING THIS DOCUMENT, YOU SHOULD KNOW THESE IMPORTANT FACTS:`)}
+      ${C.p(`Except to the extent you state otherwise, this document gives the person you name as your agent the authority to make any and all health care decisions for you in accordance with your wishes, including your religious and moral beliefs, when you are unable to make the decisions for yourself. Because "health care" means any treatment, service, or procedure to maintain, diagnose, or treat your physical or mental condition, your agent has the power to make a broad range of health care decisions for you. Your agent may consent, refuse to consent, or withdraw consent to medical treatment and may make decisions about withdrawing or withholding life-sustaining treatment. Your agent may not consent to voluntary inpatient mental health services, convulsive treatment, psychosurgery, or abortion. A physician must comply with your agent's instructions or allow you to be transferred to another physician.`)}
+      ${C.p(`Your agent's authority is effective when your doctor certifies that you lack the competence to make health care decisions.`)}
+      ${C.p(`Your agent is obligated to follow your instructions when making decisions on your behalf. Unless you state otherwise, your agent has the same authority to make decisions about your health care as you would have if you were able to make health care decisions for yourself.`)}
+      ${C.p(`It is important that you discuss this document with your physician or other health care provider before you sign the document to ensure that you understand the nature and range of decisions that may be made on your behalf. If you do not have a physician, you should talk with someone else who is knowledgeable about these issues and can answer your questions. You do not need a lawyer's assistance to complete this document, but if there is anything in this document that you do not understand, you should ask a lawyer to explain it to you.`)}
+      ${C.p(`The person you appoint as agent should be someone you know and trust. The person must be 18 years of age or older or a person under 18 years of age who has had the disabilities of a minority removed. If you appoint your health or residential care provider (e.g., your physician or an employee of a home health agency, hospital, nursing facility, or residential care facility, other than a relative), that person has to choose between acting as your agent or as your health or residential care provider; the law does not allow a person to serve as both at the same time.`)}
+      ${C.p(`You should inform the person you appoint that you want the person to be your health care agent. You should discuss this document with your agent and your physician and give each a signed copy. You should indicate on the document itself the people and institutions that you intend to have signed copies. Your agent is not liable for health care decisions made in good faith on your behalf.`)}
+      ${C.p(`Once you have signed this document, you have the right to make health care decisions for yourself as long as you are able to make those decisions, and treatment cannot be given to you or stopped over your objection. You have the right to revoke the authority granted to your agent by informing your agent or your health or residential care provider orally or in writing or by your execution of a subsequent medical power of attorney. Unless you state otherwise in this document, your appointment of a spouse is revoked if your marriage is dissolved, annulled, or declared void.`)}
+      ${C.p(`This document may not be changed or modified. If you want to make changes in this document, you must execute a new medical power of attorney.`)}
+      ${C.p(`You may wish to designate an alternate agent in the event that your agent is unwilling, unable, or ineligible to act as your agent. If you designate an alternate agent, the alternate agent has the same authority as the agent to make health care decisions for you.`)}
+      ${C.p(`THIS POWER OF ATTORNEY IS NOT VALID UNLESS:`)}
+      ${C.ul([
+        `YOU SIGN IT AND HAVE YOUR SIGNATURE ACKNOWLEDGED BEFORE A NOTARY PUBLIC; OR`,
+        `YOU SIGN IT IN THE PRESENCE OF TWO COMPETENT ADULT WITNESSES.`,
+      ])}
+      ${C.p(`THE FOLLOWING PERSONS MAY NOT ACT AS ONE OF THE WITNESSES:`)}
+      ${C.ul([
+        `the person you have designated as your agent;`,
+        `a person related to you by blood or marriage;`,
+        `a person entitled to any part of your estate after your death under a will or codicil executed by you or by operation of law;`,
+        `your attending physician;`,
+        `an employee of your attending physician;`,
+        `an employee of a health care facility in which you are a patient if the employee is providing direct patient care to you or is an officer, director, partner, or business office employee of the health care facility or of any parent organization of the health care facility; or`,
+        `a person who, at the time this medical power of attorney is executed, has a claim against any part of your estate after your death.`,
+      ])}
+      ${C.p(`By signing below, I acknowledge that I have read and understand the information contained in the above disclosure statement.`)}
+      ${C.p(`<em>(YOU MUST DATE AND SIGN THIS POWER OF ATTORNEY. YOU MAY SIGN IT AND HAVE YOUR SIGNATURE ACKNOWLEDGED BEFORE A NOTARY PUBLIC OR YOU MAY SIGN IT IN THE PRESENCE OF TWO COMPETENT ADULT WITNESSES.)</em>`)}
+      ${POAH("Signature Acknowledged Before Notary")}
+      <div class="keep">
+        ${C.p(`I sign my name to this medical power of attorney on the ________ day of _________________________, 20________ at __________________ ${county} County, Texas.`)}
+        ${C.sign(c.b("testatorFullName"), "Declarant")}
+        ${C.sign("", "Witness #1")}
+        ${C.sign("", "Witness #2")}
+      </div>
+      <div class="keep">
+        ${C.p(`SUBSCRIBED AND SWORN TO before me by the above named declarant and affiants on this the ________ day of _________________________, 20________.`)}
+        ${C.sign("", "Notary Public, State of Texas")}
+      </div>`;
+    },
   },
 
   /* --------------------- Directive to Physicians ------------------------- */

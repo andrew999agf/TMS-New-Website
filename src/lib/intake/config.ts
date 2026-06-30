@@ -549,6 +549,7 @@ export const BRANCHES: Branch[] = [
         fields: [
           { name: "testatorFullName", label: "Your full legal name", type: "text", required: true, help: "Spell it exactly as it should appear in the documents." },
           { name: "testatorAddress", label: "Home (residence) address", type: "text", placeholder: "Street, City, Texas, ZIP" },
+          { name: "testatorPhone", label: "Phone number", type: "text", placeholder: "(000) 000-0000" },
           { name: "testatorCounty", label: "County of residence", type: "text" },
           { name: "testatorDob", label: "Date of birth", type: "date" },
           { name: "maritalStatus", label: "Marital status", type: "radio", options: ["Single", "Married", "Widowed", "Divorced"] },
@@ -683,7 +684,10 @@ export const BRANCHES: Branch[] = [
         fields: [
           { name: "medAgents", label: "Health-care agent", type: "party", max: 4, addLabel: "Add a co-agent", help: "Who makes medical decisions if you cannot. Must be 18+.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           { name: "medAlts", label: "Successor health-care agent(s)", type: "party", max: 4, addLabel: "Add a successor agent", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
-          { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", help: "Leave blank to grant full authority. Anything entered here is printed as a stated limitation; otherwise blank lines are left for you to fill in by hand.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medOriginalLocation", label: "Where will the signed original be kept?", type: "text", placeholder: "Defaults to your home address", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medCopyHolders", label: "Individuals / institutions who will hold a signed copy", type: "party", max: 4, addLabel: "Add a copy holder", help: "Usually your agent and alternate. Listed by name and address in the document.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medEndDate", label: "Does this power of attorney end on a specific date?", type: "text", placeholder: "Leave blank for INDEFINITE (no expiration)", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           {
             name: "lifeSupport",
             label: "Life-support wishes (Directive to Physicians)",

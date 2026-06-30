@@ -23,6 +23,7 @@ export type DocTemplate = {
 export const FIELD_LABELS: Record<string, string> = {
   testatorFullName: "Full legal name",
   testatorAddress: "Residence address",
+  testatorPhone: "Phone number",
   testatorCounty: "County of residence",
   testatorDob: "Date of birth",
   maritalStatus: "Marital status",
@@ -75,6 +76,9 @@ export const FIELD_LABELS: Record<string, string> = {
   finPowers: "Powers granted",
   medAgents: "Health-care agent(s)",
   medAlts: "Successor health-care agent(s)",
+  medOriginalLocation: "Where the signed original is kept",
+  medCopyHolders: "Holders of signed copies",
+  medEndDate: "Expiration date",
   hipaaPeople: "HIPAA recipients",
   witnesses: "Witnesses",
   executionDate: "Date of execution",
