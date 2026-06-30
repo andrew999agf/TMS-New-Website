@@ -37,6 +37,8 @@ export type DocBuildCtx = {
   gifts: (token: string) => string;
   /** True if a party/gifts field has at least one entry. */
   has: (token: string) => boolean;
+  /** Register a footnote; returns the superscript reference to place in the text. */
+  footnote: (text: string) => string;
   /** People in a party field — for building appointment / witness blocks. */
   persons: (token: string) => { name: string; address: string; phone: string; html: string }[];
   /** A repeater/string-list field's values (e.g. children). */
@@ -47,13 +49,14 @@ export type DocBuildCtx = {
   optText: (id: string) => string;
 };
 
-/** Render a list of articles with sequential Roman numerals; empty bodies are skipped. */
+/** Render a list of articles with sequential Roman numerals; empty bodies are skipped.
+ *  `ref` (e.g. a footnote superscript) is appended to the heading unescaped. */
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI"];
-export function buildArticles(items: { heading: string; html: string }[]): string {
+export function buildArticles(items: { heading: string; html: string; ref?: string }[]): string {
   let n = 0;
   return items
     .filter((i) => i.html.trim())
-    .map((i) => `<div class="article"><div class="art-n">${ROMAN[n++] ?? ""}.</div><div class="art-h">${esc(i.heading)}</div></div>${i.html}`)
+    .map((i) => `<div class="article"><div class="art-n">${ROMAN[n++] ?? ""}.</div><div class="art-h">${esc(i.heading)}${i.ref ?? ""}</div></div>${i.html}`)
     .join("");
 }
 
@@ -124,8 +127,9 @@ export function renderDoc(
   spec: DocSpec,
   answers: Record<string, unknown>,
   optionals: Record<string, string | false>,
-): { body: string; missing: string[] } {
+): { body: string; missing: string[]; footnotes: string[] } {
   const missing: string[] = [];
+  const footnotes: string[] = [];
   const val = (token: string): string => {
     const v = answers[token];
     return Array.isArray(v) ? v.filter(Boolean).join("; ") : v == null ? "" : String(v).trim();
@@ -151,6 +155,11 @@ export function renderDoc(
       const v = answers[token];
       if (!Array.isArray(v)) return Boolean(val(token));
       return v.some((x) => (x && typeof x === "object" && "name" in x ? (x as Person).name?.trim() : (x as Gift).item?.trim()));
+    },
+    footnote: (text) => {
+      footnotes.push(text);
+      const n = footnotes.length;
+      return `<sup class="fnref" data-n="${n}">${n}</sup>`;
     },
     party: (token, label) => {
       const ppl = peopleOf(token);
@@ -200,107 +209,128 @@ export function renderDoc(
       return `<p class="section"><span class="sec-h">${esc(def.label)}.</span> ${text}</p>`;
     },
   };
-  return { body: spec.body(ctx), missing };
+  const body = spec.body(ctx);
+  return { body, missing, footnotes };
 }
 
 /* ------------------------------- CSS ------------------------------------- */
 
+const SERIF = `"Century","Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
+
 function legalCss(footerName: string): string {
   const f = esc(footerName);
-  const SERIF = `"Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
   return `
   :root { --ink:#141414; --muted:#555; }
   * { box-sizing:border-box; }
   body { margin:0; background:#ece9e3; }
   .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.1in; box-shadow:0 1px 8px rgba(0,0,0,.18);
-    font-family:${SERIF}; font-size:9.6pt; line-height:1.34; color:var(--ink); }
-  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:13pt; letter-spacing:.04em; margin:4px 0 1px; }
-  .doc-sub { text-align:center; font-variant:small-caps; font-size:10pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
-  .doc-for { text-align:center; font-style:italic; font-size:9pt; margin:1px 0; }
-  p.footnote { font-size:7.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:12px; padding-top:5px; text-align:justify; text-indent:0; line-height:1.25; }
-  hr.title-rule { border:0; border-top:1px solid #999; margin:6px 0 16px; }
-  .article { text-align:center; margin:14px 0 6px; }
-  .art-n { font-size:9.6pt; }
-  .art-h { display:block; font-weight:bold; font-size:9.6pt; }
-  p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 7px; }
+    font-family:${SERIF}; font-size:8.2pt; line-height:1.26; color:var(--ink); }
+  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:11pt; letter-spacing:.04em; margin:3px 0 1px; }
+  .doc-sub { text-align:center; font-variant:small-caps; font-size:8.5pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
+  .doc-for { text-align:center; font-style:italic; font-size:7.7pt; margin:1px 0; }
+  sup.fnref { font-size:.72em; vertical-align:super; line-height:0; }
+  .doc-fns { margin-top:18px; }
+  p.footnote { font-size:7pt; color:#3a3a3a; border-top:1px solid #bbb; margin:6px 0 0; padding-top:4px; text-align:justify; text-indent:0; line-height:1.2; }
+  hr.title-rule { border:0; border-top:1px solid #999; margin:5px 0 14px; }
+  .article { text-align:center; margin:12px 0 5px; }
+  .art-n { font-size:8.2pt; }
+  .art-h { display:block; font-weight:bold; font-size:8.2pt; }
+  p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6px; }
   .sec-h { font-weight:bold; }
-  ol.legal-ol { margin:0 0 7px 0; padding-left:.45in; list-style:lower-alpha; }
-  ul.legal-ul { margin:0 0 7px 0; padding-left:.45in; }
-  ol.legal-ol li, ul.legal-ul li { margin:0 0 6px; text-align:justify; padding-left:.1in; }
+  ol.legal-ol { margin:0 0 6px 0; padding-left:.45in; list-style:lower-alpha; }
+  ul.legal-ul { margin:0 0 6px 0; padding-left:.45in; }
+  ol.legal-ol li, ul.legal-ul li { margin:0 0 5px; text-align:justify; padding-left:.1in; }
   strong { font-weight:bold; }
-  .spacer { height:12px; }
+  .spacer { height:10px; }
   .two-col { display:flex; gap:.5in; }
   .two-col > .sig { flex:1; }
-  .sig { margin:22px 0 4px; max-width:3.9in; }
+  .sig { margin:20px 0 4px; max-width:3.9in; }
   .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:3px; }
-  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:14px 0 4px; }
+  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:13px 0 4px; }
   .sig-name { font-weight:bold; }
-  .sig-role { font-size:8pt; color:var(--muted); }
-  /* Witness / jurat blocks */
-  .jurat { margin:14px 0 6px; }
+  .sig-role { font-size:7pt; color:var(--muted); }
+  .jurat { margin:12px 0 5px; }
   .jurat .j-row { white-space:pre; }
   .jurat .j-left { display:inline-block; width:2.6in; }
-  .wit { margin:0 0 14px; }
-  .wit-row { display:flex; align-items:flex-end; gap:8px; margin:0 0 7px; }
+  .wit { margin:0 0 12px; }
+  .wit-row { display:flex; align-items:flex-end; gap:8px; margin:0 0 6px; }
   .wit-label { flex:0 0 1.3in; }
   .wit-line { flex:1; border-bottom:1px solid var(--ink); height:1.05em; }
-  .notary { margin-top:16px; }
+  .notary { margin-top:14px; }
   .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }
   @media print {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
-      size: letter; margin: 1in 1in 1.1in 1in;
-      @bottom-left { content:"${f}"; font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
-      @bottom-center { content:"Initials ____________"; font:9pt ${SERIF}; color:#333; }
-      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
+      size: letter; margin: 1in 1in 1.15in 1in;
+      @bottom-left { content:"${f}"; font:7pt ${SERIF}; font-variant:small-caps; color:#333; }
+      @bottom-right { content:"________________\\A " counter(page); white-space:pre-line; text-align:right; font:7pt ${SERIF}; font-variant:small-caps; color:#333; }
     }
   }`;
 }
 
+/** Endnote/footnote block for the on-screen + PDF output. */
+function footnotesHtml(footnotes: string[]): string {
+  if (!footnotes.length) return "";
+  return `<div class="doc-fns">${footnotes.map((t, i) => `<p class="footnote"><sup>${i + 1}</sup>&nbsp;${t}</p>`).join("")}</div>`;
+}
+
 /** Full self-contained HTML for on-screen preview and browser print → PDF. */
-export function wrapForWeb(spec: DocSpec, body: string): string {
+export function wrapForWeb(spec: DocSpec, body: string, footnotes: string[] = []): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${esc(spec.label)}</title><style>${legalCss(spec.footerName)}</style></head>
-  <body><div class="page">${body}</div></body></html>`;
+  <body><div class="page">${body}${footnotesHtml(footnotes)}</div></body></html>`;
 }
 
 /**
  * Word-compatible (.doc) HTML: opens in Microsoft Word as a formatted, editable
- * document with a footer (document name, an initials line, and "Page X of Y").
+ * document with real page-bottom footnotes and a footer (document name in small
+ * caps on the left; an initials line above the dynamic page number on the right).
  */
-export function wrapForWord(spec: DocSpec, body: string): string {
+export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = []): string {
   const f = esc(spec.footerName);
-  const SERIF = `"Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
+  // Turn each <sup class="fnref" data-n="N">N</sup> into a real Word footnote reference.
+  const refAnchor = (n: number) =>
+    `<a style='mso-footnote-id:ftn${n}' href="#_ftn${n}" name="_ftnref${n}"><span class=MsoFootnoteReference><span style='mso-special-character:footnote'></span></span></a>`;
+  const wordBody = body.replace(/<sup class="fnref" data-n="(\d+)">\d+<\/sup>/g, (_m, n) => refAnchor(Number(n)));
+  const footnoteList = footnotes.length
+    ? `<div style='mso-element:footnote-list'>${footnotes
+        .map(
+          (t, i) =>
+            `<div style='mso-element:footnote' id=ftn${i + 1}><p class=MsoFootnoteText><a style='mso-footnote-id:ftn${i + 1}' href="#_ftnref${i + 1}" name="_ftn${i + 1}"><span class=MsoFootnoteReference><span style='mso-special-character:footnote'></span></span></a> ${t}</p></div>`,
+        )
+        .join("")}</div>`
+    : "";
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head>
   <meta charset="utf-8"/><title>${esc(spec.label)}</title>
   <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
   <style>
     @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.15in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
     div.Section1 { page:Section1; }
-    body { font-family:${SERIF}; font-size:9.6pt; color:#141414; line-height:1.28; }
-    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:13pt; letter-spacing:.04em; margin:4pt 0 1pt; }
-    .doc-sub { text-align:center; font-variant:small-caps; font-size:10pt; margin:0 0 2pt; }
-    .doc-for { text-align:center; font-style:italic; font-size:9pt; margin:1pt 0; }
-    p.footnote { font-size:7.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:10pt; padding-top:4pt; text-align:justify; text-indent:0; }
-    hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 12pt; }
-    .article { text-align:center; margin:12pt 0 5pt; }
+    body { font-family:${SERIF}; font-size:8.2pt; color:#141414; line-height:1.2; }
+    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:11pt; letter-spacing:.04em; margin:3pt 0 1pt; }
+    .doc-sub { text-align:center; font-variant:small-caps; font-size:8.5pt; margin:0 0 2pt; }
+    .doc-for { text-align:center; font-style:italic; font-size:7.7pt; margin:1pt 0; }
+    hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 11pt; }
+    .article { text-align:center; margin:11pt 0 5pt; }
     .art-n { display:block; } .art-h { display:block; font-weight:bold; }
     p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6pt; }
     ol.legal-ol { margin:0 0 6pt; }
     .sec-h { font-weight:bold; }
     .ph { background:#fff2b8; font-style:italic; }
     .sig-line, .wit-line, .addr-line { border-bottom:1px solid #141414; }
-    .sig-role { font-size:8pt; color:#555; }
+    .sig-role { font-size:7pt; color:#555; }
     .wit-row { margin:0 0 6pt; } .wit-label { display:inline-block; width:1.3in; }
-    .jurat { margin:10pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
+    .jurat { margin:9pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:9pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
+    p.MsoFootnoteText { font-size:7pt; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:right 6.5in; font-size:7pt; font-variant:small-caps; color:#333; }
   </style></head>
-  <body><div class="Section1">${body}
+  <body><div class="Section1">${wordBody}
     <div style='mso-element:footer' id=f1>
-      <p class=MsoFooter><span>${f}</span><span style="mso-tab-count:1"></span>Initials ____________<span style="mso-tab-count:1"></span>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p>
-    </div>
+      <p class=MsoFooter style='text-align:right'>________________</p>
+      <p class=MsoFooter><span>${f}</span><span style="mso-tab-count:1"></span>Page <span style='mso-field-code:" PAGE "'></span></p>
+    </div>${footnoteList}
   </div></body></html>`;
 }

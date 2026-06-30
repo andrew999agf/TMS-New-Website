@@ -89,13 +89,13 @@ export async function generateLegalDoc(
   if (!row) return { ok: false as const, error: "Submission not found." };
 
   const answers = (row.answers as Record<string, unknown>) ?? {};
-  const { body, missing } = renderDoc(spec, answers, optionals ?? {});
+  const { body, missing, footnotes } = renderDoc(spec, answers, optionals ?? {});
   return {
     ok: true as const,
     label: spec.label,
     footerName: spec.footerName,
-    html: wrapForWeb(spec, body),
-    wordHtml: wrapForWord(spec, body),
+    html: wrapForWeb(spec, body, footnotes),
+    wordHtml: wrapForWord(spec, body, footnotes),
     missing,
   };
 }

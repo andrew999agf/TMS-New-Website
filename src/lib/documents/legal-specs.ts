@@ -155,12 +155,14 @@ export const LEGAL_DOCS: DocSpec[] = [
         : "";
 
       // ---- Estate Disposition (residuary) with footnote ----
+      const dispositionRef = c.footnote(
+        `The addresses and/or telephone numbers provided for the beneficiaries and Executor(s) are included to assist in contacting the individuals only and should not be used to identify them. The individuals named shall remain the intended beneficiaries regardless of any subsequent change or mistake in their addresses; the gifts, devises, and bequests are made to them personally and follow them regardless of their place of residence at the time of my death.`,
+      );
       const residuary =
         C.p(`I give, devise, and bequeath all of my property and estate, both real and personal, of whatever kind and wherever situated, which I may own or have the right to dispose of at the time of my death, ${c.residuary("residuary")}, if such beneficiary or beneficiaries shall survive me.`) +
         C.p(`If no beneficiary named above shall survive me, then I give, devise, and bequeath all of my property and estate to my heirs at law, as determined by the laws of intestate succession of the State of Texas in effect at the time of my death.`) +
         C.p(`If any beneficiary disclaims or renounces any bequest or devise hereunder, then the property subject to such disclaimer or renunciation shall pass as if such beneficiary had predeceased me.`) +
-        C.p(`In distributing my estate, my Executor may make distribution on a non-pro rata basis, if he or she determines that to be the correct course of action, without regard to the income tax basis of such assets.`) +
-        `<p class="footnote">&sup1; The addresses and/or telephone numbers provided for the beneficiaries and Executor(s) are included to assist in contacting the individuals only and should not be used to identify them. The individuals named shall remain the intended beneficiaries regardless of any subsequent change or mistake in their addresses; the gifts, devises, and bequests are made to them personally and follow them regardless of their place of residence at the time of my death.</p>`;
+        C.p(`In distributing my estate, my Executor may make distribution on a non-pro rata basis, if he or she determines that to be the correct course of action, without regard to the income tax basis of such assets.`);
 
       // ---- Executor (successive appointments) ----
       const execs = c.persons("executors");
@@ -189,7 +191,7 @@ export const LEGAL_DOCS: DocSpec[] = [
         { heading: "Debts, Taxes, Funeral Arrangements, and General Expenses", html: debts },
         { heading: "Property Disposed of by Will", html: C.p(`It is my intention to dispose of all property subject to my testamentary power.`) },
         { heading: "Specific Gifts", html: gifts },
-        { heading: "Estate Disposition¹", html: residuary },
+        { heading: "Estate Disposition", ref: dispositionRef, html: residuary },
         { heading: "Executor", html: executor },
         { heading: "Bond", html: C.p(`No bond shall be required of any fiduciary serving hereunder, whether or not specifically named in this Will, or if a bond is required by law, then no surety will be required on such bond.`) },
         ...(c.optText("independent") ? [{ heading: "Independent Administration", html: C.p(c.optText("independent")) }] : []),
