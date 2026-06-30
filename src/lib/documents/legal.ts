@@ -217,8 +217,8 @@ export function renderDoc(
 
 const SERIF = `"Century","Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
 
-function legalCss(footerName: string): string {
-  const f = esc(footerName);
+function legalCss(footerName: string, footerSub: string): string {
+  const ident = footerSub ? `${esc(footerName)} of ${esc(footerSub)}` : esc(footerName);
   return `
   :root { --ink:#141414; --muted:#555; }
   * { box-sizing:border-box; }
@@ -233,7 +233,7 @@ function legalCss(footerName: string): string {
   p.footnote { font-size:7pt; color:#3a3a3a; border-top:1px solid #bbb; margin:6px 0 0; padding-top:4px; text-align:justify; text-indent:0; line-height:1.2; }
   hr.title-rule { border:0; border-top:1px solid #999; margin:5px 0 14px; }
   .article { text-align:center; margin:12px 0 5px; }
-  .art-n { font-size:8.2pt; }
+  .art-n { font-size:8.2pt; font-weight:bold; }
   .art-h { display:block; font-weight:bold; font-size:8.2pt; }
   p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6px; }
   .sec-h { font-weight:bold; }
@@ -262,9 +262,10 @@ function legalCss(footerName: string): string {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
-      size: letter; margin: 1in 1in 1.15in 1in;
-      @bottom-left { content:"${f}"; font:7pt ${SERIF}; font-variant:small-caps; color:#333; }
-      @bottom-right { content:"________________\\A " counter(page); white-space:pre-line; text-align:right; font:7pt ${SERIF}; font-variant:small-caps; color:#333; }
+      size: letter; margin: 1in 1in 1.25in 1in;
+      @bottom-left { content:"${ident}"; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
+      @bottom-center { content:"____________"; font:8pt ${SERIF}; color:#222; vertical-align:bottom; }
+      @bottom-right { content:counter(page) " of " counter(pages); font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
     }
   }`;
 }
@@ -276,10 +277,10 @@ function footnotesHtml(footnotes: string[]): string {
 }
 
 /** Full self-contained HTML for on-screen preview and browser print → PDF. */
-export function wrapForWeb(spec: DocSpec, body: string, footnotes: string[] = []): string {
+export function wrapForWeb(spec: DocSpec, body: string, footnotes: string[] = [], footerSub = ""): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${esc(spec.label)}</title><style>${legalCss(spec.footerName)}</style></head>
+  <title>${esc(spec.label)}</title><style>${legalCss(spec.footerName, footerSub)}</style></head>
   <body><div class="page">${body}${footnotesHtml(footnotes)}</div></body></html>`;
 }
 
@@ -288,8 +289,9 @@ export function wrapForWeb(spec: DocSpec, body: string, footnotes: string[] = []
  * document with real page-bottom footnotes and a footer (document name in small
  * caps on the left; an initials line above the dynamic page number on the right).
  */
-export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = []): string {
+export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [], footerSub = ""): string {
   const f = esc(spec.footerName);
+  const sub = footerSub ? esc(footerSub) : "";
   // Turn each <sup class="fnref" data-n="N">N</sup> into a real Word footnote reference.
   const refAnchor = (n: number) =>
     `<a style='mso-footnote-id:ftn${n}' href="#_ftn${n}" name="_ftnref${n}"><span class=MsoFootnoteReference><span style='mso-special-character:footnote'></span></span></a>`;
@@ -314,7 +316,7 @@ export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [
     .doc-for { text-align:center; font-style:italic; font-size:7.7pt; margin:1pt 0; }
     hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 11pt; }
     .article { text-align:center; margin:11pt 0 5pt; }
-    .art-n { display:block; } .art-h { display:block; font-weight:bold; }
+    .art-n { display:block; font-weight:bold; } .art-h { display:block; font-weight:bold; }
     p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6pt; }
     ol.legal-ol { margin:0 0 6pt; }
     .sec-h { font-weight:bold; }
@@ -325,12 +327,17 @@ export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [
     .jurat { margin:9pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
     p.MsoFootnoteText { font-size:7pt; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:right 6.5in; font-size:7pt; font-variant:small-caps; color:#333; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; font-size:8pt; font-variant:small-caps; letter-spacing:.04em; color:#222; }
+    table.FooterTbl td { padding:3pt 0 0; vertical-align:top; }
   </style></head>
   <body><div class="Section1">${wordBody}
     <div style='mso-element:footer' id=f1>
-      <p class=MsoFooter style='text-align:right'>________________</p>
-      <p class=MsoFooter><span>${f}</span><span style="mso-tab-count:1"></span>Page <span style='mso-field-code:" PAGE "'></span></p>
+      <table class=FooterTbl cellpadding=0 cellspacing=0 width="100%" style='width:100%;border-top:.75pt solid #888'>
+        <tr>
+          <td style='width:62%'><p class=MsoFooter>${f}${sub ? ` of` : ""}${sub ? `<br/>${sub}` : ""}</p></td>
+          <td style='width:38%'><p class=MsoFooter style='text-align:right'>____________<br/>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p></td>
+        </tr>
+      </table>
     </div>${footnoteList}
   </div></body></html>`;
 }
