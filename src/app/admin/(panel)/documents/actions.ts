@@ -7,7 +7,7 @@ import { intakeSubmissions, settings } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { isBlobConfigured } from "@/lib/blob";
 import { getDocSpec } from "@/lib/documents/legal-specs";
-import { renderDoc, wrapForWeb, wrapForWord } from "@/lib/documents/legal";
+import { renderDoc, wrapForWeb, wrapForPreview, wrapForWord } from "@/lib/documents/legal";
 
 const TEMPLATES_KEY = "documents.templates";
 type TemplateFile = { id: string; name: string; url: string; pathname: string; uploadedAt: string };
@@ -96,6 +96,7 @@ export async function generateLegalDoc(
     label: spec.label,
     footerName: spec.footerName,
     html: wrapForWeb(spec, body, footnotes, footerSub),
+    previewHtml: wrapForPreview(spec, body, footnotes, footerSub),
     wordHtml: wrapForWord(spec, body, footnotes, footerSub),
     missing,
   };

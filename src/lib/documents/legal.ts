@@ -217,24 +217,30 @@ export function renderDoc(
 
 const SERIF = `"Century","Century Schoolbook","Bookman Old Style",Georgia,'Times New Roman',serif`;
 
-function legalCss(footerName: string, footerSub: string): string {
-  const ident = footerSub ? `${esc(footerName)} of ${esc(footerSub)}` : esc(footerName);
-  return `
-  :root { --ink:#141414; --muted:#555; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:#ece9e3; }
-  .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.1in; box-shadow:0 1px 8px rgba(0,0,0,.18);
-    font-family:${SERIF}; font-size:8.2pt; line-height:1.26; color:var(--ink); }
-  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:11pt; letter-spacing:.04em; margin:3px 0 1px; }
-  .doc-sub { text-align:center; font-variant:small-caps; font-size:8.5pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
-  .doc-for { text-align:center; font-style:italic; font-size:7.7pt; margin:1px 0; }
+/* Type sizes (pt). The body and headings were enlarged ~40% over the prior
+ * 8.2pt body so the document reads at full legal size on screen and in print. */
+const BODY_PT = 11.5;
+const TITLE_PT = 15;
+const SUB_PT = 12;
+const FOR_PT = 10.8;
+const ART_PT = 11.5;
+const NOTE_PT = 9.8;
+const ROLE_PT = 9.8;
+const FOOTER_PT = 9.5;
+
+/** Shared document-element styles (everything except the page/sheet frame),
+ *  used identically by the on-screen continuous view and the paginated preview. */
+const DOC_ELEMENTS = `
+  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:${TITLE_PT}pt; letter-spacing:.04em; margin:3px 0 1px; }
+  .doc-sub { text-align:center; font-variant:small-caps; font-size:${SUB_PT}pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
+  .doc-for { text-align:center; font-style:italic; font-size:${FOR_PT}pt; margin:1px 0; }
   sup.fnref { font-size:.72em; vertical-align:super; line-height:0; }
   .doc-fns { margin-top:18px; }
-  p.footnote { font-size:7pt; color:#3a3a3a; border-top:1px solid #bbb; margin:6px 0 0; padding-top:4px; text-align:justify; text-indent:0; line-height:1.2; }
+  p.footnote { font-size:${NOTE_PT}pt; color:#3a3a3a; border-top:1px solid #bbb; margin:6px 0 0; padding-top:4px; text-align:justify; text-indent:0; line-height:1.2; }
   hr.title-rule { border:0; border-top:1px solid #999; margin:5px 0 14px; }
-  .article { text-align:center; margin:12px 0 5px; }
-  .art-n { font-size:8.2pt; font-weight:bold; }
-  .art-h { display:block; font-weight:bold; font-size:8.2pt; }
+  .article { text-align:center; margin:12px 0 5px; break-after:avoid; }
+  .art-n { font-size:${ART_PT}pt; font-weight:bold; }
+  .art-h { display:block; font-weight:bold; font-size:${ART_PT}pt; }
   p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6px; }
   .sec-h { font-weight:bold; }
   ol.legal-ol { margin:0 0 6px 0; padding-left:.45in; list-style:lower-alpha; }
@@ -245,28 +251,36 @@ function legalCss(footerName: string, footerSub: string): string {
   .two-col { display:flex; gap:.5in; }
   .two-col > .sig { flex:1; }
   .sig { margin:20px 0 4px; max-width:3.9in; }
-  .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:3px; }
-  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:13px 0 4px; }
+  .sig-line { border-bottom:1px solid #141414; height:1px; margin-bottom:3px; }
+  .addr-line { border-bottom:1px solid #141414; height:1px; margin:13px 0 4px; }
   .sig-name { font-weight:bold; }
-  .sig-role { font-size:7pt; color:var(--muted); }
+  .sig-role { font-size:${ROLE_PT}pt; color:#555; }
   .jurat { margin:12px 0 5px; }
   .jurat .j-row { white-space:pre; }
   .jurat .j-left { display:inline-block; width:2.6in; }
   .wit { margin:0 0 12px; }
   .wit-row { display:flex; align-items:flex-end; gap:8px; margin:0 0 6px; }
   .wit-label { flex:0 0 1.3in; }
-  .wit-line { flex:1; border-bottom:1px solid var(--ink); height:1.05em; }
+  .wit-line { flex:1; border-bottom:1px solid #141414; height:1.05em; }
   .notary { margin-top:14px; }
   .keep { break-inside:avoid; page-break-inside:avoid; }
-  .article { break-after:avoid; }
-  .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }
+  .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }`;
+
+function legalCss(footerName: string, footerSub: string): string {
+  const ident = footerSub ? `${esc(footerName)} of ${esc(footerSub)}` : esc(footerName);
+  return `
+  * { box-sizing:border-box; }
+  body { margin:0; background:#ece9e3; }
+  .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.1in; box-shadow:0 1px 8px rgba(0,0,0,.18);
+    font-family:${SERIF}; font-size:${BODY_PT}pt; line-height:1.26; color:#141414; }
+  ${DOC_ELEMENTS}
   @media print {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
       size: letter; margin: 1in 1in 1.25in 1in;
-      @bottom-left { content:"${ident}"; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; text-align:left; }
-      @bottom-right { content:"____________\\A " counter(page) " of " counter(pages); white-space:pre-line; text-align:right; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
+      @bottom-left { content:"${ident}"; font:${FOOTER_PT}pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; text-align:left; }
+      @bottom-right { content:"____________\\A " counter(page) " of " counter(pages); white-space:pre-line; text-align:right; font:${FOOTER_PT}pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
     }
   }`;
 }
@@ -283,6 +297,58 @@ export function wrapForWeb(spec: DocSpec, body: string, footnotes: string[] = []
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${esc(spec.label)}</title><style>${legalCss(spec.footerName, footerSub)}</style></head>
   <body><div class="page">${body}${footnotesHtml(footnotes)}</div></body></html>`;
+}
+
+/** Client-side paginator: distributes the top-level blocks into letter-size
+ *  sheets (breaking only between blocks, never inside a `.keep` group), then
+ *  draws a running footer with the document name and live page numbers. */
+const PAGINATE_JS = `(function(){
+  var DPI=96, PAGE_H=11*DPI, IDENT=__IDENT__;
+  var src=document.getElementById('src'), pages=document.getElementById('pages');
+  function newSheet(){var s=document.createElement('div');s.className='sheet';var b=document.createElement('div');b.className='sheet-body';s.appendChild(b);pages.appendChild(s);return b;}
+  var body=newSheet();
+  while(src.firstChild){
+    var el=src.firstChild; body.appendChild(el);
+    if(body.scrollHeight>PAGE_H && body.children.length>1){ body.removeChild(el); body=newSheet(); body.appendChild(el); }
+  }
+  var sheets=pages.querySelectorAll('.sheet');
+  for(var i=0;i<sheets.length;i++){
+    var f=document.createElement('div'); f.className='sheet-foot';
+    f.innerHTML='<span class="sf-rule"></span><span class="sf-l">'+IDENT+'</span><span class="sf-r">____________\\n'+(i+1)+' of '+sheets.length+'</span>';
+    sheets[i].appendChild(f);
+  }
+  if(src.parentNode) src.parentNode.removeChild(src);
+})();`;
+
+/**
+ * Paginated "print view" for the portal preview: renders the document as
+ * discrete letter-size page sheets (with a running footer) so staff see exactly
+ * how it breaks across pages, rather than one continuous strip.
+ */
+export function wrapForPreview(spec: DocSpec, body: string, footnotes: string[] = [], footerSub = ""): string {
+  const ident = footerSub ? `${esc(spec.footerName)} of ${esc(footerSub)}` : esc(spec.footerName);
+  const flow = body + footnotesHtml(footnotes);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${esc(spec.label)}</title><style>
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body { background:#54565a; padding:22px 0; font-family:${SERIF}; }
+  #pages { display:flex; flex-direction:column; align-items:center; gap:20px; }
+  .sheet { position:relative; width:8.5in; min-height:11in; background:#fff; box-shadow:0 3px 14px rgba(0,0,0,.45); }
+  .sheet-body { padding:1in 1in 1.1in; font-size:${BODY_PT}pt; line-height:1.26; color:#141414; }
+  #src { display:none; }
+  .sheet-foot { position:absolute; left:1in; right:1in; bottom:.5in; display:flex; justify-content:space-between; align-items:flex-end;
+    font-family:${SERIF}; font-size:${FOOTER_PT}pt; font-variant:small-caps; letter-spacing:.04em; color:#222; }
+  .sheet-foot .sf-rule { position:absolute; left:0; right:0; top:-5px; border-top:.75pt solid #888; }
+  .sheet-foot .sf-r { text-align:right; white-space:pre-line; }
+  ${DOC_ELEMENTS}
+  </style></head>
+  <body>
+    <div id="pages"></div>
+    <div id="src" class="sheet-body">${flow}</div>
+    <script>${PAGINATE_JS.replace("__IDENT__", JSON.stringify(ident))}</script>
+  </body></html>`;
 }
 
 /**
@@ -311,10 +377,10 @@ export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [
   <style>
     @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.15in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
     div.Section1 { page:Section1; }
-    body { font-family:${SERIF}; font-size:8.2pt; color:#141414; line-height:1.2; }
-    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:11pt; letter-spacing:.04em; margin:3pt 0 1pt; }
-    .doc-sub { text-align:center; font-variant:small-caps; font-size:8.5pt; margin:0 0 2pt; }
-    .doc-for { text-align:center; font-style:italic; font-size:7.7pt; margin:1pt 0; }
+    body { font-family:${SERIF}; font-size:${BODY_PT}pt; color:#141414; line-height:1.2; }
+    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:${TITLE_PT}pt; letter-spacing:.04em; margin:3pt 0 1pt; }
+    .doc-sub { text-align:center; font-variant:small-caps; font-size:${SUB_PT}pt; margin:0 0 2pt; }
+    .doc-for { text-align:center; font-style:italic; font-size:${FOR_PT}pt; margin:1pt 0; }
     hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 11pt; }
     .article { text-align:center; margin:11pt 0 5pt; }
     .art-n { display:block; font-weight:bold; } .art-h { display:block; font-weight:bold; }
@@ -323,13 +389,13 @@ export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [
     .sec-h { font-weight:bold; }
     .ph { background:#fff2b8; font-style:italic; }
     .sig-line, .wit-line, .addr-line { border-bottom:1px solid #141414; }
-    .sig-role { font-size:7pt; color:#555; }
+    .sig-role { font-size:${ROLE_PT}pt; color:#555; }
     .wit-row { margin:0 0 6pt; } .wit-label { display:inline-block; width:1.3in; }
     .jurat { margin:9pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
     .keep { page-break-inside:avoid; }
-    p.MsoFootnoteText { font-size:7pt; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; font-size:8pt; font-variant:small-caps; letter-spacing:.04em; color:#222; mso-tab-stops:right 6.5in; }
+    p.MsoFootnoteText { font-size:${NOTE_PT}pt; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; font-size:${FOOTER_PT}pt; font-variant:small-caps; letter-spacing:.04em; color:#222; mso-tab-stops:right 6.5in; }
   </style></head>
   <body><div class="Section1">${wordBody}
     <div style='mso-element:footer' id=f1>

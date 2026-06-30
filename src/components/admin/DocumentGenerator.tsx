@@ -18,7 +18,7 @@ type DocMeta = {
 };
 type Submission = { id: number; name: string; email: string | null; createdAt: string; answers: Record<string, unknown> };
 type OptState = Record<string, { on: boolean; text: string }>;
-type Draft = { label: string; html: string; wordHtml: string; missing: string[] };
+type Draft = { label: string; html: string; previewHtml: string; wordHtml: string; missing: string[] };
 
 function requested(answers: Record<string, unknown>, trigger: Trigger | null): boolean {
   if (!trigger) return false;
@@ -72,7 +72,7 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
     }
     start(async () => {
       const res = await generateLegalDoc(selected.id, activeDoc.id, payload);
-      if (res.ok) setDraft({ label: res.label, html: res.html, wordHtml: res.wordHtml, missing: res.missing });
+      if (res.ok) setDraft({ label: res.label, html: res.html, previewHtml: res.previewHtml, wordHtml: res.wordHtml, missing: res.missing });
     });
   }
 
@@ -276,7 +276,7 @@ export function DocumentGenerator({ submissions, docMeta, intakeUrl }: { submiss
                   </div>
                 )}
 
-                <iframe title="Document preview" srcDoc={draft.html} className="h-[62vh] w-full rounded-b-xl border-0 bg-white" />
+                <iframe title="Document preview" srcDoc={draft.previewHtml} className="h-[62vh] w-full rounded-b-xl border-0 bg-white" />
               </div>
             )}
 
