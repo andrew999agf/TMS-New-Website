@@ -24,7 +24,24 @@ const DISCRETIONARY =
     `The Executor(s) shall also in their absolute discretion determine the allocation of any GST exemption available to me at my death to property passing under this Will or otherwise. The determination of the Executor(s) with respect to any elections or allocation, if made or taken in good faith, shall be binding upon all affected.`,
   ]);
 
-const WITNESS_LINE = (label: string) => `<p class="body" style="text-indent:0;margin:0 0 6px">${label}: ____________________________________________</p>`;
+/** A neat witness block: a name (placeholder until filled) + signature + address lines. */
+function witnessBlock(name?: string): string {
+  const nm = name?.trim() ? esc(name.trim()) : `<span class="ph">[ Witness Name ]</span>`;
+  return `<div class="wit">
+    <div class="wit-row"><span class="wit-label">Witness Name:</span><span class="wit-line" style="border:0">${nm}</span></div>
+    <div class="wit-row"><span class="wit-label">Signature:</span><span class="wit-line"></span></div>
+    <div class="wit-row"><span class="wit-label">Address:</span><span class="wit-line"></span></div>
+  </div>`;
+}
+
+/** The "STATE OF TEXAS / COUNTY OF ___ §" jurat caption. */
+function jurat(countyHtml: string): string {
+  return `<div class="jurat">
+    <div class="j-row"><span class="j-left">STATE OF TEXAS</span>&sect;</div>
+    <div class="j-row"><span class="j-left">&nbsp;</span>&sect;</div>
+    <div class="j-row"><span class="j-left">COUNTY OF ${countyHtml}</span>&sect;</div>
+  </div>`;
+}
 
 /** Execution, witness attestation, self-proving affidavit, and notary blocks (verbatim). */
 function executionBlocks(c: DocBuildCtx): string {
@@ -36,17 +53,15 @@ function executionBlocks(c: DocBuildCtx): string {
     C.sign(name, "Testator") +
     ARTH("Witness Attestation") +
     C.p(`We, the undersigned persons of lawful age, declare that the foregoing instrument was signed, published, and declared by ${name}, the above-named Testator, as the Testator's Will, in our presence, and we, at the Testator's request, and in the Testator's presence and in the presence of each other, have signed our names to this instrument as attesting witnesses on this the ______ day of ____________________, in the year of 20______; and we certify that, in our opinion, the said Testator is of sound and disposing mind.`) +
-    C.spacer() + WITNESS_LINE("Witness Name") + WITNESS_LINE("Signature") + WITNESS_LINE("Address") +
-    C.spacer() + WITNESS_LINE("Witness Name") + WITNESS_LINE("Signature") + WITNESS_LINE("Address") +
-    C.spacer() +
-    C.p(`STATE OF TEXAS &nbsp;&nbsp;&sect;<br/>COUNTY OF ${c.f("testatorCounty")} &nbsp;&nbsp;&sect;`) +
+    C.spacer() + witnessBlock() + witnessBlock() +
     ARTH("Self-Proving Affidavit") +
+    jurat(c.f("testatorCounty")) +
     C.p(`Before me, the undersigned authority, on this day personally appeared ${name} and the witnesses, known to me to be the testator and the witnesses, respectively, whose names are subscribed to the foregoing instrument in their respective capacities, and, all of said persons being by me duly sworn, the said Testator declared to me and to the said witnesses in my presence that said instrument is the Testator's Will, and that the Testator had willingly made and executed it as the Testator's free act and deed; and the said witnesses, each on his or her oath stated to me, in the presence and hearing of the said Testator, that the said Testator had declared to them that said instrument is the Testator's Will, and that the Testator executed same as such and wanted each of them to sign it as a witness; and upon their oaths each witness stated further that they did sign the same as witnesses in the presence of the said Testator and at the Testator's request; that the Testator was at that time eighteen years of age or over (or being under such age, was or had been lawfully married, or was then a member of the armed forces of the United States) and was of sound mind; and that each of said witnesses was then at least fourteen years of age.`) +
-    C.sign(name, "Testator") +
+    `<div class="two-col"><div>${C.sign(name, "Testator")}</div><div></div></div>` +
     `<div class="two-col">${C.sign("", "Witness")}${C.sign("", "Witness")}</div>` +
     ARTH("Notary Acknowledgment") +
-    C.p(`Subscribed and sworn to before me by ${name}, the Testator, and by the witnesses, on this the ______ day of ____________________, 20______.`) +
-    C.sign("", "Notary Public, State of Texas")
+    C.p(`Subscribed and sworn to before me by the Testator and the witnesses, on this the ______ day of ____________________, 20______.`) +
+    `<div class="two-col"><div>${C.sign("", "Notary Public, State of Texas")}<p class="sig-role" style="margin-top:2px">My commission expires: ____________________</p></div><div></div></div>`
   );
 }
 

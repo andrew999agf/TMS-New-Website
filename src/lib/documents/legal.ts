@@ -211,40 +211,48 @@ function legalCss(footerName: string): string {
   :root { --ink:#141414; --muted:#555; }
   * { box-sizing:border-box; }
   body { margin:0; background:#ece9e3; }
-  .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.15in; box-shadow:0 1px 8px rgba(0,0,0,.18);
-    font-family:${SERIF}; font-size:12pt; line-height:1.55; color:var(--ink); }
-  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:21pt; letter-spacing:.05em; margin:6px 0 2px; }
-  .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; letter-spacing:.04em; font-weight:400; margin:0 0 6px; }
-  .doc-for { text-align:center; font-style:italic; margin:2px 0; }
-  p.footnote { font-size:9.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:16px; padding-top:6px; text-align:justify; text-indent:0; }
-  hr.title-rule { border:0; border-top:1px solid #999; margin:8px 0 24px; }
-  .article { text-align:center; margin:22px 0 11px; }
+  .page { max-width:8.5in; margin:24px auto; background:#fff; padding:1in 1in 1.1in; box-shadow:0 1px 8px rgba(0,0,0,.18);
+    font-family:${SERIF}; font-size:12pt; line-height:1.32; color:var(--ink); }
+  .doc-title { text-align:center; font-variant:small-caps; font-weight:600; font-size:16pt; letter-spacing:.04em; margin:4px 0 1px; }
+  .doc-sub { text-align:center; font-variant:small-caps; font-size:12.5pt; letter-spacing:.03em; font-weight:400; margin:0 0 4px; }
+  .doc-for { text-align:center; font-style:italic; font-size:11pt; margin:1px 0; }
+  p.footnote { font-size:9pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:12px; padding-top:5px; text-align:justify; text-indent:0; line-height:1.25; }
+  hr.title-rule { border:0; border-top:1px solid #999; margin:6px 0 16px; }
+  .article { text-align:center; margin:14px 0 6px; }
   .art-n { font-size:12pt; }
-  .art-h { display:block; font-weight:bold; font-size:12.5pt; }
-  p.recital, p.body, p.section { text-align:justify; text-indent:.45in; margin:0 0 12px; }
+  .art-h { display:block; font-weight:bold; font-size:12pt; }
+  p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 7px; }
   .sec-h { font-weight:bold; }
-  ol.legal-ol { margin:0 0 12px 0; padding-left:.5in; list-style:lower-alpha; }
-  ul.legal-ul { margin:0 0 12px 0; padding-left:.5in; }
-  ol.legal-ol li, ul.legal-ul li { margin:0 0 9px; text-align:justify; padding-left:.12in; }
+  ol.legal-ol { margin:0 0 7px 0; padding-left:.45in; list-style:lower-alpha; }
+  ul.legal-ul { margin:0 0 7px 0; padding-left:.45in; }
+  ol.legal-ol li, ul.legal-ul li { margin:0 0 6px; text-align:justify; padding-left:.1in; }
   strong { font-weight:bold; }
-  .spacer { height:16px; }
-  .two-col { display:flex; gap:.6in; }
+  .spacer { height:12px; }
+  .two-col { display:flex; gap:.5in; }
   .two-col > .sig { flex:1; }
-  .sig { margin:30px 0 6px; }
-  .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:4px; }
-  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:16px 0 4px; }
+  .sig { margin:22px 0 4px; max-width:3.9in; }
+  .sig-line { border-bottom:1px solid var(--ink); height:1px; margin-bottom:3px; }
+  .addr-line { border-bottom:1px solid var(--ink); height:1px; margin:14px 0 4px; }
   .sig-name { font-weight:bold; }
   .sig-role { font-size:10pt; color:var(--muted); }
-  .notary { margin-top:20px; }
+  /* Witness / jurat blocks */
+  .jurat { margin:14px 0 6px; }
+  .jurat .j-row { white-space:pre; }
+  .jurat .j-left { display:inline-block; width:2.6in; }
+  .wit { margin:0 0 14px; }
+  .wit-row { display:flex; align-items:flex-end; gap:8px; margin:0 0 7px; }
+  .wit-label { flex:0 0 1.3in; }
+  .wit-line { flex:1; border-bottom:1px solid var(--ink); height:1.05em; }
+  .notary { margin-top:16px; }
   .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }
   @media print {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
-      size: letter; margin: 1in 1in 1.15in 1in;
-      @bottom-left { content:"${f}"; font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
-      @bottom-center { content:"Initials ____________"; font:9pt ${SERIF}; color:#333; }
-      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:9pt ${SERIF}; font-variant:small-caps; color:#333; }
+      size: letter; margin: 1in 1in 1.1in 1in;
+      @bottom-left { content:"${f}"; font:10pt ${SERIF}; font-variant:small-caps; color:#333; }
+      @bottom-center { content:"Initials ____________"; font:10pt ${SERIF}; color:#333; }
+      @bottom-right { content:"Page " counter(page) " of " counter(pages); font:10pt ${SERIF}; font-variant:small-caps; color:#333; }
     }
   }`;
 }
@@ -270,22 +278,24 @@ export function wrapForWord(spec: DocSpec, body: string): string {
   <style>
     @page Section1 { size:8.5in 11.0in; margin:1.0in 1.0in 1.15in 1.0in; mso-header-margin:.5in; mso-footer-margin:.5in; mso-footer:f1; mso-paper-source:0; }
     div.Section1 { page:Section1; }
-    body { font-family:${SERIF}; font-size:12pt; color:#141414; line-height:1.5; }
-    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:21pt; letter-spacing:.05em; margin:6pt 0 2pt; }
-    .doc-sub { text-align:center; font-variant:small-caps; font-size:13.5pt; margin:0 0 4pt; }
-    .doc-for { text-align:center; font-style:italic; margin:2pt 0; }
-    p.footnote { font-size:9.5pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:14pt; padding-top:5pt; text-align:justify; text-indent:0; }
-    hr.title-rule { border:0; border-top:1px solid #999; margin:6pt 0 18pt; }
-    .article { text-align:center; margin:18pt 0 8pt; }
+    body { font-family:${SERIF}; font-size:12pt; color:#141414; line-height:1.25; }
+    .doc-title { text-align:center; font-variant:small-caps; font-weight:bold; font-size:16pt; letter-spacing:.04em; margin:4pt 0 1pt; }
+    .doc-sub { text-align:center; font-variant:small-caps; font-size:12.5pt; margin:0 0 2pt; }
+    .doc-for { text-align:center; font-style:italic; font-size:11pt; margin:1pt 0; }
+    p.footnote { font-size:9pt; color:#3a3a3a; border-top:1px solid #bbb; margin-top:10pt; padding-top:4pt; text-align:justify; text-indent:0; }
+    hr.title-rule { border:0; border-top:1px solid #999; margin:4pt 0 12pt; }
+    .article { text-align:center; margin:12pt 0 5pt; }
     .art-n { display:block; } .art-h { display:block; font-weight:bold; }
-    p.recital, p.body, p.section { text-align:justify; text-indent:.45in; margin:0 0 10pt; }
-    ol.legal-ol { margin:0 0 10pt; }
+    p.recital, p.body, p.section { text-align:justify; text-indent:.4in; margin:0 0 6pt; }
+    ol.legal-ol { margin:0 0 6pt; }
     .sec-h { font-weight:bold; }
     .ph { background:#fff2b8; font-style:italic; }
-    .sig-line, .addr-line { border-bottom:1px solid #141414; }
+    .sig-line, .wit-line, .addr-line { border-bottom:1px solid #141414; }
     .sig-role { font-size:10pt; color:#555; }
+    .wit-row { margin:0 0 6pt; } .wit-label { display:inline-block; width:1.3in; }
+    .jurat { margin:10pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:9pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; mso-tab-stops:center 3.25in right 6.5in; font-size:10pt; font-variant:small-caps; color:#333; border-top:.5pt solid #999; padding-top:3pt; }
   </style></head>
   <body><div class="Section1">${body}
     <div style='mso-element:footer' id=f1>
