@@ -257,15 +257,16 @@ function legalCss(footerName: string, footerSub: string): string {
   .wit-label { flex:0 0 1.3in; }
   .wit-line { flex:1; border-bottom:1px solid var(--ink); height:1.05em; }
   .notary { margin-top:14px; }
+  .keep { break-inside:avoid; page-break-inside:avoid; }
+  .article { break-after:avoid; }
   .ph { background:#fff2b8; border-bottom:1px dashed #b8860b; padding:0 3px; font-style:italic; }
   @media print {
     body { background:#fff; }
     .page { box-shadow:none; margin:0; max-width:none; padding:0; }
     @page {
       size: letter; margin: 1in 1in 1.25in 1in;
-      @bottom-left { content:"${ident}"; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
-      @bottom-center { content:"____________"; font:8pt ${SERIF}; color:#222; vertical-align:bottom; }
-      @bottom-right { content:counter(page) " of " counter(pages); font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
+      @bottom-left { content:"${ident}"; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; text-align:left; }
+      @bottom-right { content:"____________\\A " counter(page) " of " counter(pages); white-space:pre-line; text-align:right; font:8pt ${SERIF}; font-variant:small-caps; letter-spacing:.04em; color:#222; vertical-align:bottom; }
     }
   }`;
 }
@@ -326,18 +327,14 @@ export function wrapForWord(spec: DocSpec, body: string, footnotes: string[] = [
     .wit-row { margin:0 0 6pt; } .wit-label { display:inline-block; width:1.3in; }
     .jurat { margin:9pt 0 5pt; } .jurat .j-left { display:inline-block; width:2.6in; }
     .two-col { width:100%; } .two-col > .sig { display:inline-block; width:46%; }
+    .keep { page-break-inside:avoid; }
     p.MsoFootnoteText { font-size:7pt; }
-    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; font-size:8pt; font-variant:small-caps; letter-spacing:.04em; color:#222; }
-    table.FooterTbl td { padding:3pt 0 0; vertical-align:top; }
+    p.MsoFooter, li.MsoFooter, div.MsoFooter { margin:0; font-size:8pt; font-variant:small-caps; letter-spacing:.04em; color:#222; mso-tab-stops:right 6.5in; }
   </style></head>
   <body><div class="Section1">${wordBody}
     <div style='mso-element:footer' id=f1>
-      <table class=FooterTbl cellpadding=0 cellspacing=0 width="100%" style='width:100%;border-top:.75pt solid #888'>
-        <tr>
-          <td style='width:62%'><p class=MsoFooter>${f}${sub ? ` of` : ""}${sub ? `<br/>${sub}` : ""}</p></td>
-          <td style='width:38%'><p class=MsoFooter style='text-align:right'>____________<br/>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p></td>
-        </tr>
-      </table>
+      <p class=MsoFooter style='border-top:.75pt solid #888;padding-top:3.0pt;mso-tab-stops:right 6.5in'>${f}${sub ? ` of ${sub}` : ""}<span style='mso-tab-count:1'></span>____________</p>
+      <p class=MsoFooter style='mso-tab-stops:right 6.5in'><span style='mso-tab-count:1'></span>Page <span style='mso-field-code:" PAGE "'></span> of <span style='mso-field-code:" NUMPAGES "'></span></p>
     </div>${footnoteList}
   </div></body></html>`;
 }

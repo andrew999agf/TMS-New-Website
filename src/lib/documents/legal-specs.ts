@@ -76,8 +76,10 @@ function executionBlocks(c: DocBuildCtx): string {
 
   return (
     ARTH("Execution") +
-    C.p(`IN WITNESS WHEREOF, I sign my name to this Last Will and Testament, including the attestation and the self-proving affidavit, on this the ${day} day of ${month}, in the year of 20${yy}, at ____________________________________, State of Texas, in the presence of ${inPresenceOf}, attesting witnesses, who sign their names here at my request and in my presence.`) +
+    `<div class="keep">` +
+    C.p(`IN WITNESS WHEREOF, I, ${name}, sign my name to this Last Will and Testament, including the attestation and the self-proving affidavit, on this the ${day} day of ${month}, in the year of 20${yy}, at ____________________________________, State of Texas, in the presence of ${inPresenceOf}, attesting witnesses, who sign their names here at my request and in my presence.`) +
     C.sign(name, "Testator") +
+    `</div>` +
     ARTH("Witness Attestation") +
     C.p(`We, the undersigned persons of lawful age, declare that the foregoing instrument was signed, published, and declared by ${name}, the above-named Testator, as the Testator's Will, in our presence, and we, at the Testator's request, and in the Testator's presence and in the presence of each other, have signed our names to this instrument as attesting witnesses on this the ${day} day of ${month}, in the year of 20${yy}; and we certify that, in our opinion, the said Testator is of sound and disposing mind.`) +
     C.spacer() + witBlocks +
@@ -233,8 +235,8 @@ export const LEGAL_DOCS: DocSpec[] = [
       ${C.section("Distribution", `The Trustee shall distribute as much of the net income and principal as the Trustee deems necessary for the beneficiary's health, education, maintenance, and support, and shall distribute the remaining principal ${c.raw("minorTrustAge") ? `as follows: ${c.f("minorTrustAge")}` : `when the beneficiary reaches the age I have specified`}.`)}
       ${C.section("Spendthrift", `No beneficiary may assign, and no creditor may reach, any interest in a trust before it is actually distributed.`)}
       ${c.opt("noContest")}
-      ${C.spacer()}${C.p(`IN WITNESS WHEREOF, I have signed this Will on ____________________.`)}
-      ${C.sign(c.f("testatorFullName"), "Testator")}
+      ${C.spacer()}<div class="keep">${C.p(`IN WITNESS WHEREOF, I, ${c.b("testatorFullName")}, have signed this Will on this ______ day of ____________________, 20____.`)}
+      ${C.sign(c.f("testatorFullName"), "Testator")}</div>
       ${ARTH("Attestation")}${C.witnesses()}
       ${SELF_PROVING(c.f("testatorCounty"))}`,
   },
