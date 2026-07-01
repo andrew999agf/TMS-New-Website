@@ -9,13 +9,18 @@
  */
 
 /** Top-level grouping shown as headings on the Training index. Extend freely. */
-export type TrainingCategory = "Onboarding" | "Firm Policies" | "Estate Planning (Wills & Trusts)";
+export type TrainingCategory =
+  | "Onboarding"
+  | "Firm Policies"
+  | "Estate Planning (Wills & Trusts)"
+  | "Criminal Defense Foundations";
 
 /** Ordered list of categories — controls section order on the index page. */
 export const TRAINING_CATEGORIES: TrainingCategory[] = [
   "Onboarding",
   "Firm Policies",
   "Estate Planning (Wills & Trusts)",
+  "Criminal Defense Foundations",
 ];
 
 /** A self-check question with an optional revealable answer. */

@@ -2159,6 +2159,959 @@ export const TRAINING_MODULES: TrainingModule[] = [
       },
     ],
   },
+
+  /* ================================================================ *
+   * Criminal Defense Foundations — a four-part overview series followed
+   * by deep-dives on the major offense classes. Introductory training for
+   * firm staff; all criminal-defense work is performed under attorney
+   * supervision, and penalty ranges are summarized from the Texas Penal
+   * Code / Code of Criminal Procedure and can change — always confirm the
+   * current statute and the attorney's charge analysis.
+   * ================================================================ */
+  {
+    slug: "crim-1-system",
+    title: "Criminal Defense 1 — The Texas Criminal Justice System",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "The big picture: how Texas sorts charges into felonies and misdemeanors, who the players are, and the path a criminal case takes from arrest to disposition.",
+    estMinutes: 15,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "scope",
+        title: "How This Series Works",
+        blocks: [
+          {
+            type: "callout",
+            tone: "info",
+            title: "Internal training only",
+            text: "This series is a general introduction for firm staff, not legal advice. Non-attorney staff gather information, organize files, and prepare drafts; a licensed attorney makes every legal decision and advises the client. Penalty ranges here summarize Texas law and can change — always confirm the current statute and the attorney's analysis.",
+          },
+          {
+            type: "paragraph",
+            text: "The first four modules are an **overview** of the system — the classes of charges, the penalty ranges, and the ways a case can end (convictions, deferred adjudication, probation, and the admonishments a judge must give). The later modules dig into the offense types you'll see most: **DWI, assault and family violence, drugs, theft and property, and weapons**.",
+          },
+        ],
+      },
+      {
+        id: "charge-types",
+        title: "Types of Charges: Felony vs. Misdemeanor",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Every Texas criminal charge is either a **felony** or a **misdemeanor**, and a small third tier of fine-only offenses sits at the bottom. The classification drives everything — which court hears the case, how it is charged, and the punishment range.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Felony** — the serious tier; punishable by state prison or state-jail confinement. Felonies must generally be charged by a **grand jury indictment**.",
+              "**Misdemeanor** — the lesser tier; punishable by up to a year in **county jail** and/or a fine, or by fine only. Charged by the prosecutor's **information/complaint** (no grand jury required).",
+              "**Fine-only (Class C)** — the lowest level, handled in justice or municipal court; **no jail** as punishment for the offense itself.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Where cases are heard",
+            text: "Felonies are heard in **District Courts**; most jailable misdemeanors (Class A and B) in **County Courts at Law**; and Class C matters in **Justice** and **Municipal** courts. The exact court appears on the charging papers.",
+          },
+        ],
+      },
+      {
+        id: "players",
+        title: "The People Involved",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**The State (prosecution)** — the District or County Attorney represents \"the People of the State of Texas.\" The defendant is never our client's opponent by name; the State is.",
+              "**The defendant** — the person charged, our **client**. Presumed innocent; the State must prove guilt **beyond a reasonable doubt**.",
+              "**Defense attorney** — advises the client, negotiates, and litigates. Staff support this work but never advise the client directly.",
+              "**Judge** — runs the courtroom, rules on law, and (unless the jury is asked to) assesses punishment.",
+              "**Grand jury** — a panel that decides whether there is probable cause to **indict** on a felony (a \"true bill\") or not (\"no bill\").",
+              "**Trial jury (petit jury)** — decides guilt at trial and, if the defendant elects, assesses punishment.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "case-flow",
+        title: "How a Case Moves",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Most cases follow the same path. Knowing where a file sits helps you calendar deadlines and prep the right documents.",
+          },
+          {
+            type: "list",
+            ordered: true,
+            items: [
+              "**Arrest / citation** — the case begins with an arrest or a written citation to appear.",
+              "**Magistration** — soon after arrest, a magistrate reads the accused their rights and sets **bail** (see Module 4).",
+              "**Charging** — a misdemeanor proceeds on the prosecutor's **information**; a felony generally requires a **grand jury indictment**.",
+              "**Arraignment** — the defendant is formally told the charge and enters a **plea** (guilty, not guilty, or no contest).",
+              "**Pretrial** — discovery, motions (including motions to suppress evidence), and **plea negotiations**. The vast majority of cases resolve here.",
+              "**Trial** — if there's no plea, the case is tried to a judge or jury.",
+              "**Sentencing** — punishment is assessed within the statutory range.",
+              "**Post-conviction** — appeal, and later possible **expunction or nondisclosure** of records (see Module 4).",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Deadlines are unforgiving",
+            text: "Criminal matters run on strict court settings and filing deadlines. Calendar every setting the moment you learn of it and flag anything time-sensitive for the attorney immediately.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What is the basic difference between how felonies and misdemeanors are charged?", a: "A felony generally must be charged by a grand jury indictment; a misdemeanor proceeds on the prosecutor's information/complaint with no grand jury." },
+              { q: "Who must prove the case, and to what standard?", a: "The State (prosecution) must prove guilt beyond a reasonable doubt; the defendant is presumed innocent." },
+              { q: "At what early step is bail typically set?", a: "At magistration, shortly after arrest, when a magistrate advises the accused of their rights and sets bail." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-2-classifications",
+    title: "Criminal Defense 2 — Offense Classes & Penalty Ranges",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "The Texas penalty ladder — the three misdemeanor classes and the five felony degrees, their jail/prison ranges and fines, where time is served, and how prior convictions enhance punishment.",
+    estMinutes: 16,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "misdemeanors",
+        title: "Misdemeanor Classes",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Texas has three misdemeanor classes (Penal Code §§12.21–12.23). Confinement, when any, is served in **county jail**.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Class A** — up to **1 year** in county jail and/or a fine up to **$4,000**. (E.g., assault causing bodily injury, DWI second.)",
+              "**Class B** — up to **180 days** in county jail and/or a fine up to **$2,000**. (E.g., DWI first, possession of small amounts of marijuana.)",
+              "**Class C** — **fine only, up to $500**, no jail for the offense itself. (E.g., simple assault by threat or contact, most traffic offenses.)",
+            ],
+          },
+        ],
+      },
+      {
+        id: "felonies",
+        title: "Felony Degrees",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Felonies run from state jail felony up to capital felony (Penal Code §§12.31–12.35). A fine of up to **$10,000** may be added to any of them (some drug offenses carry higher fines).",
+          },
+          {
+            type: "list",
+            items: [
+              "**Capital felony** — **life without parole**, or the **death penalty** where sought. (E.g., capital murder.)",
+              "**First-degree** — **5 to 99 years or life** in prison, plus a fine up to $10,000.",
+              "**Second-degree** — **2 to 20 years** in prison, plus a fine up to $10,000.",
+              "**Third-degree** — **2 to 10 years** in prison, plus a fine up to $10,000.",
+              "**State jail felony** — **180 days to 2 years** in a **state jail facility**, plus a fine up to $10,000.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Where the time is served",
+            text: "First-, second-, third-degree, and capital felonies are served in **TDCJ (state prison)**. A **state jail felony** is served in a separate **state jail facility** (day-for-day, without the usual parole/good-time). Class A and B misdemeanors are served in **county jail**.",
+          },
+        ],
+      },
+      {
+        id: "fines-costs",
+        title: "Fines, Court Costs & Restitution",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Fine** — the statutory penalty amount tied to the offense class (above). A fine can be assessed with or without confinement.",
+              "**Court costs & fees** — separate mandatory amounts added to nearly every case; they are not the \"fine.\"",
+              "**Restitution** — money ordered paid to a victim for their loss; distinct from the fine and often a condition of supervision.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "enhancements",
+        title: "Enhancements: How Priors Raise the Range",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Prior convictions and certain facts can **enhance** punishment — moving an offense up the ladder (Penal Code §12.42 and related sections). The attorney calculates exact exposure; your job is to spot and document the history accurately.",
+          },
+          {
+            type: "list",
+            items: [
+              "A **repeat** felony offender is often punished one degree higher (e.g., a third-degree becomes a second-degree range).",
+              "A **habitual** offender with the required prior sequence can face a greatly elevated range (up to 25–99 years or life).",
+              "**Offense-specific enhancements** bump the class based on the facts — a prior conviction, a deadly weapon, a vulnerable victim, or a **drug-free zone**.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Capture criminal history precisely",
+            text: "The number, type, dates, and sequence of prior convictions can change the punishment range entirely. Gather certified records and flag every prior for the attorney — never estimate.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What are the punishment ceilings for Class A, B, and C misdemeanors?", a: "Class A: up to 1 year county jail and/or $4,000; Class B: up to 180 days and/or $2,000; Class C: fine only up to $500 with no jail." },
+              { q: "What is the prison range for a second-degree felony?", a: "2 to 20 years in TDCJ, plus an optional fine up to $10,000." },
+              { q: "Where is a state jail felony served, and how does it differ from a regular prison sentence?", a: "In a state jail facility (180 days to 2 years), served day-for-day without the usual parole/good-time credit that applies to TDCJ prison sentences." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-3-dispositions",
+    title: "Criminal Defense 3 — Pleas, Deferred Adjudication & Probation",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "How cases end short of prison — pleas and plea bargains, the admonishments a judge must give, and the crucial difference between deferred adjudication and a conviction with community supervision (probation).",
+    estMinutes: 18,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "pleas",
+        title: "Pleas & Plea Bargains",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Not guilty** — puts the State to its proof; the case heads toward trial unless resolved.",
+              "**Guilty** — admits the offense.",
+              "**Nolo contendere (no contest)** — the defendant does not contest the charge; treated like a guilty plea for punishment but is not an admission usable the same way in a related civil suit.",
+            ],
+          },
+          {
+            type: "paragraph",
+            text: "Most cases resolve by **plea bargain** — an agreement on the charge and/or punishment that the judge may accept or reject. The **attorney** negotiates and advises; staff prepare paperwork and never counsel the client on whether to plead.",
+          },
+        ],
+      },
+      {
+        id: "admonishments",
+        title: "Plea Admonishments",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Before accepting a guilty or no-contest plea, the court must **admonish** the defendant (Code of Criminal Procedure Art. 26.13) so the plea is knowing and voluntary. These admonishments include:",
+          },
+          {
+            type: "list",
+            items: [
+              "The **range of punishment** for the offense.",
+              "That any **plea-bargain recommendation is not binding** on the court.",
+              "That if the punishment exceeds the recommendation, the defendant may **withdraw the plea**.",
+              "The **immigration consequences** — that a plea may result in **deportation, exclusion from admission, or denial of naturalization** for a non-citizen.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Immigration is a red flag to route up",
+            text: "A plea can carry severe, permanent immigration consequences. If a client is not a U.S. citizen, flag it prominently for the attorney — it can change the entire strategy.",
+          },
+        ],
+      },
+      {
+        id: "deferred",
+        title: "Deferred Adjudication",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "With **deferred adjudication community supervision**, the defendant pleads guilty or no contest, but the judge **does not enter a finding of guilt**. Instead the judge defers the case and places the person on supervision. **If they complete it successfully, the case is dismissed** with **no final conviction**.",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "The trade-off",
+            text: "If the person **violates** deferred terms, the judge can **adjudicate guilt** and impose punishment anywhere in the **full statutory range** — not limited to what a plea bargain suggested. That exposure is the key downside.",
+          },
+          {
+            type: "list",
+            items: [
+              "Deferred is **not a conviction**, but the record of the arrest and deferred plea **still shows up** unless the person later obtains an **order of nondisclosure** (Module 4).",
+              "It is **available only if the judge grants it** (no jury deferred), and it is **not available for some offenses** (for example, certain repeat DWIs and the most serious crimes).",
+              "A **first-time DWI** can be eligible for deferred in Texas (with an ignition interlock) — covered in the DWI module.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "probation",
+        title: "Community Supervision (Probation)",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "\"Straight\" or **regular community supervision** follows a **conviction**: the court assesses a jail/prison sentence but **suspends** it and places the person on **probation** instead. Unlike deferred, there **is** a conviction on the record.",
+          },
+          {
+            type: "list",
+            items: [
+              "Can be granted by the **judge** or recommended by a **jury** (within limits set by statute).",
+              "If the person **violates**, the court can **revoke** and impose the **originally assessed** sentence (not more).",
+              "Common **conditions**: report to a supervision officer, pay fees and restitution, hold a job, perform **community-service hours**, submit to **drug testing**, complete classes or counseling, and commit no new offenses.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Deferred vs. probation — the one-line difference",
+            text: "**Deferred adjudication** = no finding of guilt yet; finish it and the case is dismissed (but violation exposes the full range). **Regular probation** = a conviction with a suspended sentence; violation imposes the sentence already assessed.",
+          },
+        ],
+      },
+      {
+        id: "confinement-parole",
+        title: "Jail, Prison & Parole in Brief",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**County jail** — misdemeanor confinement and pretrial holding.",
+              "**State jail** — state jail felonies, served largely day-for-day.",
+              "**TDCJ (prison)** — felony sentences; eligibility for **parole** (supervised early release) depends on the offense and time served.",
+              "**Parole** is decided by the Board of Pardons and Paroles; it is **not** the same as probation, which is imposed by the court up front.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "Name two admonishments a judge must give before accepting a guilty plea.", a: "Any two of: the range of punishment; that a plea-bargain recommendation isn't binding; that the defendant may withdraw the plea if punishment exceeds the recommendation; and the immigration (deportation) consequences." },
+              { q: "What is the fundamental difference between deferred adjudication and regular probation?", a: "Deferred defers a finding of guilt and dismisses the case on successful completion (no conviction), but violation exposes the full punishment range; regular probation is a conviction with a suspended sentence, and violation imposes the sentence already assessed." },
+              { q: "Why is it important to identify a non-citizen client early?", a: "A guilty or no-contest plea can trigger deportation or other permanent immigration consequences, which can change the entire defense strategy — so it must be flagged for the attorney." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-4-consequences",
+    title: "Criminal Defense 4 — Bail, Records & Collateral Consequences",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "The bookends of a case: how bail and bonds work up front, and what happens to the record afterward — expunction, nondisclosure, and the collateral consequences that outlast the sentence.",
+    estMinutes: 15,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "bail",
+        title: "Bail & Bonds",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "**Bail** is what secures a defendant's release and their promise to appear. It is set at magistration based on the offense, risk of flight, and safety.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Cash bond** — the full amount posted with the court, refundable at the end if conditions are met.",
+              "**Surety bond** — a bail bondsman posts the bond for a **non-refundable fee** (commonly a percentage of the amount).",
+              "**Personal (PR) bond** — release on a written promise to appear, **no money down**, at the court's discretion.",
+              "**Conditions of bond** — e.g., no contact with a victim, no new offenses, GPS or **ignition interlock**, and drug/alcohol testing.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "records",
+        title: "What Ends Up on the Record",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "A **conviction** (including regular probation) stays on the record unless separately sealed by law.",
+              "A **deferred adjudication** is not a conviction, but the arrest and case still appear **until sealed** by an order of nondisclosure.",
+              "A **dismissal or acquittal** may make the person eligible to **erase** the record entirely.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "expunction-nondisclosure",
+        title: "Expunction vs. Nondisclosure",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Texas offers two different forms of record relief. They are **not** interchangeable, and eligibility is technical — the attorney determines what a client qualifies for.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Expunction** — a complete **erasure** of the record. Generally available after an **acquittal, a dismissal, or certain arrests that never led to conviction**, subject to waiting periods and other rules.",
+              "**Order of nondisclosure** — **seals** the record from public view (police and certain agencies can still see it). Often available after successfully completing **deferred adjudication**, subject to offense limits and waiting periods.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Don't promise an outcome",
+            text: "Eligibility for expunction or nondisclosure turns on the exact offense, disposition, and timing. Never tell a client their record \"can be cleared\" — gather the facts and let the attorney assess.",
+          },
+        ],
+      },
+      {
+        id: "collateral",
+        title: "Collateral Consequences",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "A case can carry consequences far beyond the sentence — the reasons a client fights even a \"minor\" charge:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Firearms** — a felony conviction, and a **family-violence** finding, restrict firearm possession under state and federal law.",
+              "**Immigration** — deportation, inadmissibility, or denial of naturalization for non-citizens.",
+              "**Licensing & employment** — professional licenses, jobs, and security clearances can be affected.",
+              "**Driver's license** — DWI and certain drug offenses can trigger suspensions.",
+              "**Housing, education, and family law** — background checks, financial aid, and custody can all be touched.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "appeals",
+        title: "Appeals in Brief",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "After a conviction, a defendant may **appeal** to a court of appeals, arguing legal error in the trial. Appeals run on **short, strict deadlines** (a notice of appeal is due soon after sentencing). If you learn a client wants to appeal, flag it for the attorney **immediately** so the deadline is protected.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What is the difference between a surety bond and a personal (PR) bond?", a: "A surety bond is posted by a bondsman for a non-refundable fee; a PR bond releases the defendant on a written promise to appear with no money down, at the court's discretion." },
+              { q: "How do expunction and nondisclosure differ?", a: "Expunction erases the record entirely (typically after acquittal, dismissal, or a non-conviction), while nondisclosure seals it from public view (often after completing deferred adjudication) though certain agencies can still see it." },
+              { q: "Name two collateral consequences that can outlast the sentence itself.", a: "Any two of: firearm restrictions, immigration consequences, professional-licensing/employment effects, driver's-license suspension, or housing/education/family-law impacts." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-dwi-intoxication",
+    title: "Criminal Defense — DWI & Intoxication Offenses",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "Texas intoxication offenses end-to-end — what \"intoxicated\" means, how DWI levels escalate from Class B to felony, intoxication assault and manslaughter, the license (ALR) side, and deferred/nondisclosure options.",
+    estMinutes: 18,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "definition",
+        title: "What \"Intoxicated\" Means",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "A person commits **DWI** by operating a motor vehicle in a public place while **intoxicated** (Penal Code §49.04). Texas defines **intoxication** two ways, and the State can prove either:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Loss of faculties** — not having the normal use of mental or physical faculties due to alcohol, a drug, or a combination; **or**",
+              "**Per se** — an **alcohol concentration of 0.08 or more** (blood or breath).",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "It isn't only alcohol",
+            text: "DWI covers intoxication by **drugs** — including prescription medication — not just alcohol. Related offenses include **BWI** (boating) and **flying while intoxicated**.",
+          },
+        ],
+      },
+      {
+        id: "levels",
+        title: "DWI Levels & Penalties",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**DWI first** — **Class B** misdemeanor; a minimum term of confinement applies (with a longer minimum if an **open container** was present).",
+              "**DWI with BAC 0.15 or more** — elevated to a **Class A** misdemeanor.",
+              "**DWI second** — **Class A** misdemeanor, with a higher minimum.",
+              "**DWI third or more** — **third-degree felony** (2–10 years).",
+              "**DWI with a child passenger** (younger than 15) — **state jail felony**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "assault-manslaughter",
+        title: "Intoxication Assault & Manslaughter",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Intoxication assault** — causing **serious bodily injury** to another by accident while intoxicated: **third-degree felony** (higher if the victim is a first responder or suffers a traumatic brain injury, per statute).",
+              "**Intoxication manslaughter** — causing a **death** by accident while intoxicated: **second-degree felony**.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "These are felonies from the start",
+            text: "Unlike a first DWI, intoxication assault and manslaughter are serious felonies regardless of prior record. Treat any injury/fatality DWI as a top-priority file for the attorney.",
+          },
+        ],
+      },
+      {
+        id: "alr-license",
+        title: "The License Side: Implied Consent & ALR",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "A DWI arrest starts **two separate cases**: the **criminal** case and a **civil driver's-license** case called **Administrative License Revocation (ALR)**.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Implied consent** — by driving in Texas, a person is deemed to consent to breath/blood testing after a lawful DWI arrest.",
+              "**Refusing or failing** the test triggers an **ALR license suspension** — a civil matter handled separately from the criminal charge.",
+              "There is a **short deadline (about 15 days)** to **request an ALR hearing** to contest the suspension. Missing it means the suspension takes effect automatically.",
+              "An **ignition interlock** device may be required as a condition of bond or supervision.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Calendar the ALR deadline first",
+            text: "The ~15-day window to request an ALR hearing is easy to miss and cannot be undone. On any new DWI, confirm the arrest date and flag the ALR deadline for the attorney immediately.",
+          },
+        ],
+      },
+      {
+        id: "deferred-relief",
+        title: "Deferred & Record Relief for DWI",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "Texas allows **deferred adjudication for a first-time DWI** (with limits — generally not available if the BAC was very high) and typically requires an **ignition interlock**.",
+              "A **DWI cannot be expunged** if it results in a conviction, but a **first DWI** may qualify for an **order of nondisclosure** later if statutory conditions are met (no accident involving others, BAC under the higher threshold, waiting period satisfied).",
+              "The attorney determines eligibility — the rules are specific and change.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What are the two ways Texas can prove a driver was \"intoxicated\"?", a: "Loss of the normal use of mental or physical faculties due to alcohol/drugs, or an alcohol concentration of 0.08 or more (per se)." },
+              { q: "At what point does a DWI become a felony by level alone?", a: "A third (or subsequent) DWI is a third-degree felony; a DWI with a child passenger is a state jail felony." },
+              { q: "What is the ALR case, and what deadline must be protected?", a: "Administrative License Revocation — a separate civil driver's-license suspension case. There is roughly a 15-day deadline to request an ALR hearing, or the suspension takes effect automatically." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-assault-family-violence",
+    title: "Criminal Defense — Assault & Family Violence Offenses",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "How Texas grades assault from a Class C up to a first-degree felony, what makes an assault \"family violence,\" and the special consequences — enhancements, strangulation, and firearm bans — that come with a family-violence finding.",
+    estMinutes: 16,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "simple-assault",
+        title: "Simple Assault",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Assault (Penal Code §22.01) covers three kinds of conduct, and the grade depends on which occurred:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Bodily injury** — intentionally, knowingly, or recklessly causing injury: **Class A** misdemeanor.",
+              "**Threat** — intentionally or knowingly threatening imminent bodily injury: **Class C** misdemeanor.",
+              "**Offensive contact** — provocative or offensive physical contact: **Class C** misdemeanor.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Victim status can raise the grade",
+            text: "Assault against certain victims — public servants, security or emergency personnel, or in retaliation — can be charged higher than the base grade. The attorney checks the specific subsection.",
+          },
+        ],
+      },
+      {
+        id: "family-violence",
+        title: "Family Violence Assault",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "When the victim is a **family or household member or someone in a dating relationship**, an assault causing bodily injury is **family violence**. The base offense is a **Class A** misdemeanor, but it escalates quickly:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Prior family-violence conviction** — a new family-violence assault becomes a **third-degree felony**.",
+              "**Strangulation/suffocation** — impeding normal breathing or blood circulation (e.g., choking) is a **third-degree felony**, and higher with a prior.",
+              "A court can enter an affirmative **finding of family violence**, which carries consequences beyond the sentence.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "aggravated",
+        title: "Aggravated Assault",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "**Aggravated assault** (Penal Code §22.02) is an assault that either causes **serious bodily injury** or is committed **using or exhibiting a deadly weapon**.",
+          },
+          {
+            type: "list",
+            items: [
+              "Base offense: **second-degree felony**.",
+              "**First-degree felony** in certain circumstances — for example, against a family member with serious bodily injury, or against a public servant or witness.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "fv-consequences",
+        title: "Consequences of a Family-Violence Finding",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Firearms** — state and federal law restrict firearm possession after a family-violence conviction (federal law reaches even some misdemeanor convictions).",
+              "**Protective orders** — the court may issue a protective order the defendant must obey; violating it is a **separate crime**.",
+              "**No expunction** of a conviction, and family-violence dispositions have **limited** nondisclosure eligibility.",
+              "**Enhancements** — the finding sets up felony enhancement of any future family-violence charge.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Bond conditions and no-contact",
+            text: "Family-violence cases usually carry no-contact and other bond conditions from day one. Make sure the client understands (through the attorney) that violating them creates new charges.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What grade is a simple assault that causes bodily injury, versus one that is only a threat or offensive contact?", a: "Bodily-injury assault is a Class A misdemeanor; a threat or offensive-contact assault is a Class C misdemeanor." },
+              { q: "Name two ways a family-violence assault can be elevated to a third-degree felony.", a: "A prior family-violence conviction, or an assault by strangulation/suffocation (impeding breath or blood circulation)." },
+              { q: "What makes an assault \"aggravated\"?", a: "It causes serious bodily injury, or it is committed using or exhibiting a deadly weapon — a second-degree felony (first-degree in certain circumstances)." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-drug-offenses",
+    title: "Criminal Defense — Drug & Controlled-Substance Offenses",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "How Texas grades drug crimes — the penalty groups, why the offense (possession vs. delivery) and the weight both matter, how marijuana and THC concentrates are treated, and common enhancements and diversion options.",
+    estMinutes: 18,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "framework",
+        title: "The Controlled Substances Act Framework",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Drug crimes are in the **Texas Controlled Substances Act** (Health & Safety Code Chapter 481), not the Penal Code. Two things set the punishment: **which penalty group** the substance is in, and the **aggregate weight**.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Penalty Groups 1, 1-A, 1-B, 2, 2-A, 3, and 4** classify substances by type and danger (e.g., PG1 includes cocaine, heroin, and methamphetamine; PG1-A is LSD; PG2 includes ecstasy and THC concentrates).",
+              "**Marijuana** (the plant) is treated on its **own separate ladder**, distinct from the penalty groups.",
+              "**Aggregate weight** includes **adulterants and dilutants** — the total mixture, not just the pure drug — which can push a small amount of actual drug into a higher range.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "possession-vs-delivery",
+        title: "Possession vs. Manufacture / Delivery",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Possession** — knowingly or intentionally having the substance; graded by penalty group and weight.",
+              "**Manufacture or delivery** — making, delivering, or **possessing with intent to deliver**; punished **more harshly** than simple possession at the same weight.",
+              "**Possession of drug paraphernalia** — a low-level (often Class C) offense; **delivery** of paraphernalia is higher.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Weight tiers scale the grade",
+            text: "For PG1 possession, the range climbs with weight — from a **state jail felony** at the smallest amounts, up through **third-, second-, and first-degree** felonies, and an **enhanced first-degree** range (with fines up to $100,000) at the largest quantities. The attorney pins the exact tier from the lab weight.",
+          },
+        ],
+      },
+      {
+        id: "marijuana-thc",
+        title: "Marijuana & THC Concentrates",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Marijuana possession** ladder: **2 oz or less = Class B**; **2–4 oz = Class A**; **4 oz–5 lb = state jail felony**; larger amounts rise to higher felonies.",
+              "**THC concentrates / edibles** (oils, waxes, gummies) are **not** treated as marijuana — they fall in **Penalty Group 2**, where even small amounts are **felonies**. This surprises many clients.",
+              "**Hemp** (very low THC) is legal, which can create lab-testing and proof issues the attorney may raise.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "enhancements-diversion",
+        title: "Enhancements & Diversion",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Drug-free zone** — offenses in or near schools, playgrounds, or youth centers carry **enhanced** punishment.",
+              "**Priors** enhance drug offenses like other felonies.",
+              "**Diversion & treatment** — depending on the county and the offense, options like **drug court, pretrial diversion, deferred adjudication, or treatment-based supervision** may be available. The attorney and the local program rules govern eligibility.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Driver's-license and other ripple effects",
+            text: "Some drug convictions carry a driver's-license suspension and immigration or licensing consequences. Capture the full picture and route it to the attorney.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "What two factors set the punishment for a drug possession charge?", a: "Which penalty group the substance is in, and the aggregate weight (including adulterants and dilutants)." },
+              { q: "Why can a small amount of a drug still be charged at a high weight tier?", a: "Because Texas counts the aggregate weight of the whole mixture — adulterants and dilutants included — not just the pure drug." },
+              { q: "Why is a THC vape cartridge or edible often a felony when a similar amount of marijuana leaf is a misdemeanor?", a: "THC concentrates and edibles fall in Penalty Group 2, where even small amounts are felonies, while marijuana plant material is on its own separate ladder that starts at a Class B misdemeanor." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-theft-property",
+    title: "Criminal Defense — Theft & Property Offenses",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "The property-crime family — how theft is graded on a value ladder from Class C to first-degree felony, the related offenses (burglary, robbery, fraud, criminal mischief), and how value aggregation and priors raise the stakes.",
+    estMinutes: 15,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "theft-ladder",
+        title: "Theft: The Value Ladder",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Theft (Penal Code §31.03) is unlawfully appropriating property with intent to deprive the owner. The grade climbs with the **value** of what was taken:",
+          },
+          {
+            type: "list",
+            items: [
+              "**Under $100** — **Class C** misdemeanor.",
+              "**$100–$750** — **Class B** misdemeanor.",
+              "**$750–$2,500** — **Class A** misdemeanor.",
+              "**$2,500–$30,000** — **state jail felony**.",
+              "**$30,000–$150,000** — **third-degree felony**.",
+              "**$150,000–$300,000** — **second-degree felony**.",
+              "**$300,000 or more** — **first-degree felony**.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "aggregation-priors",
+        title: "Aggregation & Enhancements",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Aggregation** — multiple thefts under one scheme can be **added together**, raising the grade based on the combined value.",
+              "**Prior theft convictions** can enhance a low-value theft (for example, bumping a would-be misdemeanor up to a state jail felony).",
+              "**Victim/type enhancements** — theft from certain victims (e.g., the elderly) or of certain property (firearms, livestock, some metals) can be graded higher.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "related-offenses",
+        title: "Related Property Offenses",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Burglary** — entering a habitation or building without consent intending to commit theft or another felony; **burglary of a habitation** is a **second-degree felony**.",
+              "**Robbery** — theft **plus** causing bodily injury or threatening it: a **second-degree felony**; **aggravated robbery** (serious bodily injury, a deadly weapon, or an elderly/disabled victim) is a **first-degree felony**.",
+              "**Unauthorized use of a vehicle (UUMV)** — operating another's vehicle without consent: a **state jail felony**.",
+              "**Criminal mischief** — damaging another's property; graded on the **cost of the damage**, mirroring the theft ladder.",
+              "**Fraud, forgery, and credit/debit card abuse** — deception-based property crimes, graded by amount and type.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Robbery is a crime against a person",
+            text: "Even though property is the object, **robbery and aggravated robbery are violent offenses** graded far above ordinary theft, because they involve injury or the threat of it.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "At what value does theft first become a felony in Texas, and what kind?", a: "At $2,500, where it becomes a state jail felony; it rises to third-, second-, and first-degree felony at higher value tiers." },
+              { q: "How can several small thefts become a felony?", a: "Through aggregation — multiple thefts committed under one scheme can be added together, and the combined value sets the grade." },
+              { q: "What separates robbery from ordinary theft?", a: "Robbery is theft accompanied by causing or threatening bodily injury, making it a violent second-degree felony (first-degree as aggravated robbery)." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "crim-weapons-offenses",
+    title: "Criminal Defense — Weapons Offenses",
+    category: "Criminal Defense Foundations",
+    audience: "Clerks & staff",
+    summary: "Texas firearm and weapons law after constitutional carry — who may carry, where weapons remain prohibited, the felon-in-possession and family-violence firearm bans, and outright prohibited weapons.",
+    estMinutes: 13,
+    updated: "July 2026",
+    lessons: [
+      {
+        id: "carry",
+        title: "Carrying After Constitutional Carry",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Since 2021, Texas has **permitless (\"constitutional\") carry**: most people **21 or older** who are **not otherwise prohibited** may carry a handgun without a License to Carry. A License to Carry still exists and offers benefits (reciprocity, some location exceptions).",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Permitless carry is not unlimited",
+            text: "It does not help someone who is legally **prohibited** from possessing a firearm, and it does not override the places where weapons remain banned. Those two limits are where most weapons charges arise.",
+          },
+        ],
+      },
+      {
+        id: "unlawful-carry-places",
+        title: "Unlawful Carry & Prohibited Places",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Unlawful carrying of a weapon** (Penal Code §46.02) — still applies to those who **can't** carry (e.g., under 21, prohibited persons) or who carry in a prohibited manner.",
+              "**Places weapons prohibited** (§46.03) — e.g., schools, polling places, courts, secured airport areas, and certain government meetings; carrying there is an offense even for someone otherwise allowed to carry.",
+              "A business can also give lawful notice (**30.06/30.07** signs or oral notice) barring licensed/permitless carry on its premises.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "prohibited-persons-weapons",
+        title: "Prohibited Persons & Prohibited Weapons",
+        blocks: [
+          {
+            type: "list",
+            items: [
+              "**Felon in possession** (§46.04) — a person with a **felony conviction** possessing a firearm is committing a **third-degree felony** (with timing rules about where and when possession is barred).",
+              "**Family-violence firearm ban** — a person under certain family-violence convictions or active protective orders is **prohibited** from possessing a firearm under state and federal law.",
+              "**Unlawful possession by other prohibited persons** — e.g., while under certain protective orders.",
+              "**Prohibited weapons** (§46.05) — some items are unlawful to possess regardless of carry rules (e.g., explosive devices, certain short-barrel firearms, and other statutorily banned items).",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "The firearm ban ties back to other cases",
+            text: "A felony conviction or a family-violence finding creates a firearm disability — one reason those underlying cases matter so much. Always connect a weapons charge to the client's full criminal and protective-order history for the attorney.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "Under constitutional carry, who may generally carry a handgun without a License to Carry?", a: "Most people 21 or older who are not otherwise legally prohibited from possessing a firearm." },
+              { q: "Name two places where carrying a weapon remains prohibited even for someone otherwise allowed to carry.", a: "Any two of: schools, polling places, courts, secured airport areas, or certain government meetings (and premises posted with lawful 30.06/30.07 notice)." },
+              { q: "What offense is a person with a felony conviction committing by possessing a firearm?", a: "Unlawful possession of a firearm by a felon — a third-degree felony under Penal Code §46.04." },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 /** All modules. */
