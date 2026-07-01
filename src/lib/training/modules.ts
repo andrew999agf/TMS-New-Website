@@ -2209,11 +2209,25 @@ export const TRAINING_MODULES: TrainingModule[] = [
               "**Fine-only (Class C)** — the lowest level, handled in justice or municipal court; **no jail** as punishment for the offense itself.",
             ],
           },
+          { type: "heading", text: "Where cases are heard — it depends on the county" },
+          {
+            type: "paragraph",
+            text: "**Felonies** are always heard at the district-court level and **Class C** matters always sit in **Justice of the Peace** and **Municipal** courts — but the courts in between are organized very differently in urban and rural counties, and even the court names change. Never assume; read the charging papers.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Tarrant County** — felonies go to eleven district-level felony courts (including the **Criminal District Courts Nos. 1–4**), and Class A/B misdemeanors to ten dedicated **County Criminal Courts**, all housed in the Tim Curry Justice Center in Fort Worth. (Tarrant's \"County Courts at Law\" are civil courts — a common trap when reading a Tarrant case number.)",
+              "**Dallas County** — seventeen felony district courts (several named **Criminal District Court No. 1–7**) at the Frank Crowley Courts Building, plus eleven **County Criminal Courts** for misdemeanors and two County Criminal Courts of Appeal that hear appeals from municipal and JP courts.",
+              "**Harris County** — over twenty district courts assigned to felonies and sixteen **County Criminal Courts at Law** for misdemeanors, in downtown Houston's Criminal Justice Center.",
+              "**Rural counties** — one district court often serves several counties, hearing felony, civil, and family dockets alike as the judge travels between courthouses: the **271st District Court** covers **Wise and Jack Counties**, and the **220th** covers **Bosque, Comanche, and Hamilton**. Misdemeanors go to a **County Court at Law** where the legislature has created one (Wise County has two); in counties without one (like Bosque and Jack), the **constitutional county court** — presided over by the elected county judge, who is not required to be a lawyer — hears the Class A/B misdemeanor docket.",
+            ],
+          },
           {
             type: "callout",
             tone: "info",
-            title: "Where cases are heard",
-            text: "Felonies are heard in **District Courts**; most jailable misdemeanors (Class A and B) in **County Courts at Law**; and Class C matters in **Justice** and **Municipal** courts. The exact court appears on the charging papers.",
+            title: "Practical habit",
+            text: "Docket the exact court named on the papers — \"Criminal District Court No. 2, Tarrant County\" and \"County Court at Law No. 1, Wise County\" have different clerks, filing systems, and local rules. The court name tells you the county's structure.",
           },
         ],
       },

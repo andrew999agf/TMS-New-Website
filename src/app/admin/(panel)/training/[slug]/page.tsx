@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, BookOpen, Users, FileText } from "lucide-react";
+import { ArrowLeft, Clock, BookOpen, BookMarked, Users, FileText } from "lucide-react";
 import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { getModule } from "@/lib/training/modules";
 import { ModuleBody } from "@/components/admin/training/ModuleBody";
@@ -26,12 +26,21 @@ export default async function TrainingModulePage({ params }: { params: Promise<{
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href="/admin/training"
-        className="inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"
-      >
-        <ArrowLeft size={15} /> All training
-      </Link>
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href="/admin/training"
+          className="inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"
+        >
+          <ArrowLeft size={15} /> All training
+        </Link>
+        <Link
+          href="/admin/training/glossary"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#1b3a6b] hover:underline"
+          title="Definitions and hypotheticals for every underlined term"
+        >
+          <BookMarked size={15} /> Glossary
+        </Link>
+      </div>
 
       {/* Header */}
       <div className="mt-4 border-b border-[var(--c-border)] pb-6">

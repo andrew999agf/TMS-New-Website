@@ -10,16 +10,16 @@ import { lookupTerm, type GlossaryEntry } from "@/lib/training/glossary";
 function GlossaryTerm({ label, entry }: { label: string; entry: GlossaryEntry }) {
   return (
     <span className="group/term relative inline-block align-baseline">
-      <span className="cursor-help font-semibold text-[var(--c-ink)] underline decoration-dotted decoration-[var(--c-accent)] underline-offset-2">
+      <span className="cursor-help font-semibold text-[#1b3a6b] underline decoration-dotted decoration-[#1b3a6b]/60 underline-offset-2">
         {label}
       </span>
       <span
         role="tooltip"
-        className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-72 max-w-[80vw] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-left opacity-0 shadow-xl transition-opacity duration-100 group-hover/term:visible group-hover/term:opacity-100"
+        className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-72 max-w-[80vw] rounded-lg border border-[#1b3a6b]/25 bg-[var(--c-surface)] p-3 text-left opacity-0 shadow-xl transition-opacity duration-100 group-hover/term:visible group-hover/term:opacity-100"
       >
-        <span className="block text-sm font-semibold text-[var(--c-ink)]">{entry.term}</span>
+        <span className="block text-sm font-semibold capitalize text-[#1b3a6b]">{entry.term}</span>
         <span className="mt-1 block text-xs font-normal leading-relaxed text-[var(--c-ink-muted)]">{entry.definition}</span>
-        <span className="mt-2 block rounded-md bg-[var(--c-surface2)] p-2 text-xs font-normal leading-relaxed text-[var(--c-ink)]">
+        <span className="mt-2 block rounded-md bg-[var(--c-surface-2)] p-2 text-xs font-normal leading-relaxed text-[var(--c-ink)]">
           <span className="font-semibold text-[var(--c-accent)]">Hypothetical: </span>
           {entry.hypothetical}
         </span>
@@ -88,7 +88,7 @@ function Block({ block }: { block: TrainingBlock }) {
       );
     case "questions":
       return (
-        <div className="my-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface2)] p-4">
+        <div className="my-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] p-4">
           <p className="flex items-center gap-1.5 font-semibold text-[var(--c-ink)] mb-3">
             <HelpCircle size={16} className="text-[var(--c-accent)]" /> Check your understanding
           </p>

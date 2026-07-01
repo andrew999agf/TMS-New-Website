@@ -34,7 +34,7 @@ export function ModuleComplete({ slug, completedAt }: { slug: string; completedA
         <button
           onClick={() => toggle(false)}
           disabled={pending}
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--c-border)] px-3.5 py-2 text-xs font-medium text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--c-border)] px-3.5 py-2 text-xs font-medium text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)] disabled:opacity-50"
         >
           {pending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Mark not complete
         </button>
@@ -43,7 +43,7 @@ export function ModuleComplete({ slug, completedAt }: { slug: string; completedA
   }
 
   return (
-    <div className="mt-10 flex flex-col gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface2)] p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-10 flex flex-col gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-2)] p-5 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
         <Circle size={22} className="shrink-0 text-[var(--c-ink-muted)]" />
         <div>
