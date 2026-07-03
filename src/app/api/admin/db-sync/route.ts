@@ -3,7 +3,7 @@ import { sql, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db } from "@/db";
-import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories, admins } from "@/db/schema";
+import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories, admins, settings } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
@@ -291,6 +291,36 @@ export async function POST() {
     if (created) applied.push(`Created ${created} timekeeper login(s)`);
   } catch (err) {
     failed.push(`Seed logins: ${(err as Error).message}`);
+  }
+
+  // 8) One-time owner-login bootstrap requested by the owner: ensure the
+  //    account exists and set its password exactly once. Only the bcrypt hash
+  //    lives in the repo (generated offline), and a settings marker guarantees
+  //    repeat syncs never clobber a password changed later.
+  try {
+    const BOOT_KEY = "auth.bootstrap.maxdev9192";
+    const BOOT_EMAIL = "maxdev9192@gmail.com";
+    const BOOT_HASH = "$2a$12$ZMFRipEUbx3p/53MnLufo.y27JN0URfYRhx3UhdC2oW2aXVFAIUC6";
+    const [done] = await db.select().from(settings).where(eq(settings.key, BOOT_KEY));
+    if (!done) {
+      const [existing] = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, BOOT_EMAIL));
+      if (existing) {
+        await db
+          .update(admins)
+          .set({ passwordHash: BOOT_HASH, failedLogins: 0, lockedUntil: null })
+          .where(eq(admins.id, existing.id));
+        applied.push(`Reset password for ${BOOT_EMAIL}`);
+      } else {
+        await db.insert(admins).values({ email: BOOT_EMAIL, name: "Max Smith", role: "owner", passwordHash: BOOT_HASH, permissions: [] });
+        applied.push(`Created owner login ${BOOT_EMAIL}`);
+      }
+      await db
+        .insert(settings)
+        .values({ key: BOOT_KEY, value: { appliedAt: new Date().toISOString() }, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value: { appliedAt: new Date().toISOString() }, updatedAt: new Date() } });
+    }
+  } catch (err) {
+    failed.push(`Owner bootstrap: ${(err as Error).message}`);
   }
 
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });
