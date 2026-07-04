@@ -17,7 +17,8 @@ export const metadata: Metadata = {
 const INAUGURAL = 2007;
 const LATEST = 2025; // 2026 is the upcoming USA 250 tournament
 
-type Champion = { team: string | null; captain?: string; roster?: string[]; note?: string };
+/** `later` = what the franchise became; its logo represents the championship. */
+type Champion = { team: string | null; later?: string; captain?: string; roster?: string[]; note?: string };
 
 const CHAMPIONS: Record<number, Champion> = {
   2025: { team: "Minutemen", captain: "Max S.", roster: ["Brian B.", "Oliver B."] },
@@ -30,14 +31,14 @@ const CHAMPIONS: Record<number, Champion> = {
   2017: { team: null, captain: "Matthew H.", roster: ["Brandon M.", "Garrett G."], note: "Team name lost — the trophy is dented right where it's written" },
   2016: { team: "Pirates", captain: "Brandon H.", roster: ["Michael S.", "Robbie G."] },
   2015: { team: "The Tribe", captain: "Mark H.", roster: ["Mac E.", "Rylan M."] },
-  2014: { team: "Team Potter", captain: "Brandon P.", roster: ["Mandy P.", "Brandon H."] },
-  2013: { team: "Texas Storm", captain: "Max S.", roster: ["Gabe G.", "Jack M.", "Nick C."] },
-  2012: { team: "Texas Storm", captain: "Max S.", roster: ["Garrett C.", "Mark H."] },
-  2011: { team: "Ft. Worth Ironbirds", captain: "Paul H.", roster: ["Braxton F.", "Gage G."] },
+  2014: { team: "Team Potter", later: "Dragons", captain: "Brandon P.", roster: ["Mandy P.", "Brandon H."] },
+  2013: { team: "Texas Storm", later: "Minutemen", captain: "Max S.", roster: ["Gabe G.", "Jack M.", "Nick C."] },
+  2012: { team: "Texas Storm", later: "Minutemen", captain: "Max S.", roster: ["Garrett C.", "Mark H."] },
+  2011: { team: "Ft. Worth Ironbirds", later: "Ironsides", captain: "Paul H.", roster: ["Braxton F.", "Gage G."] },
   2010: { team: "The Neighbors", captain: "Jayson F." },
-  2009: { team: "Yellow Jackets", captain: "Ross P.", roster: ["Adam H.", "Austin W.", "Reid P."] },
-  2008: { team: "Texas Storm", captain: "Max S.", roster: ["Garrett C.", "Adam H.", "Mark H."] },
-  2007: { team: "Team Cooper", captain: "Andrew C.", roster: ["Andrew N.", "Nathan U."] },
+  2009: { team: "Yellow Jackets", later: "Bears", captain: "Ross P.", roster: ["Adam H.", "Austin W.", "Reid P."] },
+  2008: { team: "Texas Storm", later: "Minutemen", captain: "Max S.", roster: ["Garrett C.", "Adam H.", "Mark H."] },
+  2007: { team: "Team Cooper", later: "Eagles", captain: "Andrew C.", roster: ["Andrew N.", "Nathan U."] },
 };
 
 function ordinal(n: number) {
@@ -93,7 +94,9 @@ export default async function PastTournamentsPage() {
       <div className="mx-auto mt-10 max-w-3xl space-y-3">
         {rows.map((h) => {
           const champ = CHAMPIONS[h.year];
-          const logo = champ?.team ? logoByName.get(normalizeName(champ.team)) : undefined;
+          // A renamed franchise is represented by the logo it carries today.
+          const logoName = champ?.later ?? champ?.team;
+          const logo = logoName ? logoByName.get(normalizeName(logoName)) : undefined;
           const players = champ ? playersLine(champ) : "";
           return (
             <div
@@ -107,7 +110,7 @@ export default async function PastTournamentsPage() {
                   <Ban size={24} strokeWidth={1.5} />
                 ) : logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logo} alt={`${champ!.team} logo`} className="h-full w-full object-contain p-1.5" />
+                  <img src={logo} alt={`${logoName} logo`} className="h-full w-full object-contain p-1.5" />
                 ) : (
                   <Trophy size={26} strokeWidth={1.5} />
                 )}
@@ -124,7 +127,10 @@ export default async function PastTournamentsPage() {
                     <p className="mt-1.5 text-sm text-[color:var(--psx-fg)]">
                       <span className="text-[color:var(--psx-faint)]">Champion · </span>
                       {champ.team ? (
-                        <span className="font-semibold">{champ.team}</span>
+                        <>
+                          <span className="font-semibold">{champ.team}</span>
+                          {champ.later && <span className="text-[color:var(--psx-faint)]"> (later the {champ.later})</span>}
+                        </>
                       ) : (
                         <span className="font-semibold italic text-[color:var(--psx-muted)]">Team name lost to history</span>
                       )}
