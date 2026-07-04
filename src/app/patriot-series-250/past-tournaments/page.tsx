@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Trophy, Ban } from "lucide-react";
 import { PatriotShell } from "../PatriotShell";
 import { getPageVisibility } from "@/lib/patriot/visibility";
+import { getSetting } from "@/lib/content";
+import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -15,20 +17,27 @@ export const metadata: Metadata = {
 const INAUGURAL = 2007;
 const LATEST = 2025; // 2026 is the upcoming USA 250 tournament
 
-const CHAMPIONS: Record<number, { team: string; was?: string; players?: string }> = {
-  2007: { team: "Team Cooper", players: "Andrew Cooper (c), Andrew Neathery, Nathan U., Kevin Conrad" },
-  2008: { team: "Minutemen", was: "Texas Storm", players: "Max Smith (c), Garret Cooper, Adam Horton, Mark Horton" },
-  2009: { team: "Bears", was: "Yellow Jackets", players: "Ross Pinkerton (c), Austen Williams, Adam Horton, Reid Pinkerton" },
-  2010: { team: "The Neighbors", players: "Jason Freeman (c), Brantley Freeman" },
-  2011: { team: "Ironsides", was: "Ft. Worth Ironbirds", players: "Paul Horton (c), Gabe Gumm, Braxton Feist" },
-  2012: { team: "Minutemen", was: "Texas Storm", players: "Max Smith (c), Garret Cooper, Mark Horton" },
-  2013: { team: "Minutemen", was: "Texas Storm", players: "Max Smith (c), Gabe Gumm, Jack Millan, Nick Gould" },
-  2014: { team: "Dragons", was: "Team Potter", players: "Brandon Potter (c), Bandi Powell, Brandon Heitpas" },
-  2015: { team: "Tribe", players: "Mark Horton (c), Mac Emrich, Rylan McBride" },
-  2016: { team: "Pirates", players: "Brandon Heitpas (c), Michael Salas, Robbie Gould" },
-  2017: { team: "Pirates", players: "Matthew Hunter (c)" },
-  2018: { team: "Ironsides", players: "Paul Horton (c), Darren Neumann, James Ziemba" },
-  2019: { team: "Minutemen" },
+type Champion = { team: string | null; captain?: string; roster?: string[]; note?: string };
+
+const CHAMPIONS: Record<number, Champion> = {
+  2025: { team: "Minutemen", captain: "Max S.", roster: ["Brian B.", "Oliver B."] },
+  2024: { team: "Founding Fathers" },
+  2023: { team: "Whalers", roster: ["Adam H.", "Trey H.", "Brennan B."] },
+  2022: { team: "Founding Fathers" },
+  2021: { team: "Founding Fathers" },
+  2019: { team: "Minutemen", captain: "Max S.", roster: ["Brian B.", "Oliver B."] },
+  2018: { team: "Ironsides", captain: "Paul H.", roster: ["Darren N.", "James Z."] },
+  2017: { team: null, captain: "Matthew H.", roster: ["Brandon M.", "Garrett G."], note: "Team name lost — the trophy is dented right where it's written" },
+  2016: { team: "Pirates", captain: "Brandon H.", roster: ["Michael S.", "Robbie G."] },
+  2015: { team: "The Tribe", captain: "Mark H.", roster: ["Mac E.", "Rylan M."] },
+  2014: { team: "Team Potter", captain: "Brandon P.", roster: ["Mandy P.", "Brandon H."] },
+  2013: { team: "Texas Storm", captain: "Max S.", roster: ["Gabe G.", "Jack M.", "Nick C."] },
+  2012: { team: "Texas Storm", captain: "Max S.", roster: ["Garrett C.", "Mark H."] },
+  2011: { team: "Ft. Worth Ironbirds", captain: "Paul H.", roster: ["Braxton F.", "Gage G."] },
+  2010: { team: "The Neighbors", captain: "Jayson F." },
+  2009: { team: "Yellow Jackets", captain: "Ross P.", roster: ["Adam H.", "Austin W.", "Reid P."] },
+  2008: { team: "Texas Storm", captain: "Max S.", roster: ["Garrett C.", "Adam H.", "Mark H."] },
+  2007: { team: "Team Cooper", captain: "Andrew C.", roster: ["Andrew N.", "Nathan U."] },
 };
 
 function ordinal(n: number) {
@@ -37,9 +46,26 @@ function ordinal(n: number) {
   return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }
 
+/** "The Tribe" / "Tribe" / "the Neighbors" all match the same team entry. */
+const normalizeName = (s: string) => s.toLowerCase().replace(/^the\s+/, "").trim();
+
+/** Captain first (marked), then the rest of the roster. */
+function playersLine(c: Champion): string {
+  const parts = [...(c.captain ? [`${c.captain} (c)`] : []), ...(c.roster ?? [])];
+  return parts.join(", ");
+}
+
 export default async function PastTournamentsPage() {
   const vis = await getPageVisibility();
   if (!vis["past-tournaments"]) redirect("/");
+
+  // Winner logos come from the team list managed in the admin panel; champions
+  // whose team no longer exists (or was never named) keep the trophy mark.
+  const teams = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS);
+  const logoByName = new Map<string, string>();
+  for (const t of teams) {
+    if (t.logo) logoByName.set(normalizeName(t.name), t.logo);
+  }
 
   const rows: { year: number; edition: number | null; cancelled: boolean }[] = [];
   let edition = 0;
@@ -67,15 +93,24 @@ export default async function PastTournamentsPage() {
       <div className="mx-auto mt-10 max-w-3xl space-y-3">
         {rows.map((h) => {
           const champ = CHAMPIONS[h.year];
+          const logo = champ?.team ? logoByName.get(normalizeName(champ.team)) : undefined;
+          const players = champ ? playersLine(champ) : "";
           return (
             <div
               key={h.year}
               className={`flex gap-5 rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-5 ${h.cancelled ? "opacity-70" : ""}`}
             >
               <div
-                className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border ${h.cancelled ? "border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-500"}`}
+                className={`flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border ${h.cancelled ? "border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-500"}`}
               >
-                {h.cancelled ? <Ban size={24} strokeWidth={1.5} /> : <Trophy size={26} strokeWidth={1.5} />}
+                {h.cancelled ? (
+                  <Ban size={24} strokeWidth={1.5} />
+                ) : logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logo} alt={`${champ!.team} logo`} className="h-full w-full object-contain p-1.5" />
+                ) : (
+                  <Trophy size={26} strokeWidth={1.5} />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -88,10 +123,14 @@ export default async function PastTournamentsPage() {
                   <>
                     <p className="mt-1.5 text-sm text-[color:var(--psx-fg)]">
                       <span className="text-[color:var(--psx-faint)]">Champion · </span>
-                      <span className="font-semibold">{champ.team}</span>
-                      {champ.was && <span className="text-[color:var(--psx-faint)]"> ({champ.was})</span>}
+                      {champ.team ? (
+                        <span className="font-semibold">{champ.team}</span>
+                      ) : (
+                        <span className="font-semibold italic text-[color:var(--psx-muted)]">Team name lost to history</span>
+                      )}
                     </p>
-                    {champ.players && <p className="mt-1 text-[12px] leading-relaxed text-[color:var(--psx-muted)]">{champ.players}</p>}
+                    {players && <p className="mt-1 text-[12px] leading-relaxed text-[color:var(--psx-muted)]">{players}</p>}
+                    {champ.note && <p className="mt-1 text-[11px] italic leading-relaxed text-[color:var(--psx-faint)]">{champ.note}</p>}
                   </>
                 ) : (
                   <p className="mt-1.5 text-[11px] uppercase tracking-wider text-[color:var(--psx-faint)]">Champion TBA</p>
