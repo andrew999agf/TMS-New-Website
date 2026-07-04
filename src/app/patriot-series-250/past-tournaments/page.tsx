@@ -28,7 +28,7 @@ const CHAMPIONS: Record<number, Champion> = {
   2021: { team: "Founding Fathers" },
   2019: { team: "Minutemen", captain: "Max S.", roster: ["Brian B.", "Oliver B."] },
   2018: { team: "Ironsides", captain: "Paul H.", roster: ["Darren N.", "James Z."] },
-  2017: { team: null, captain: "Matthew H.", roster: ["Brandon M.", "Garrett G."], note: "Team name lost — the trophy is dented right where it's written" },
+  2017: { team: "Landscapers", captain: "Matthew H.", roster: ["Brandon M.", "Garrett G."] },
   2016: { team: "Pirates", captain: "Brandon H.", roster: ["Michael S.", "Robbie G."] },
   2015: { team: "The Tribe", captain: "Mark H.", roster: ["Mac E.", "Rylan M."] },
   2014: { team: "Team Potter", later: "Dragons", captain: "Brandon P.", roster: ["Mandy P.", "Brandon H."] },
