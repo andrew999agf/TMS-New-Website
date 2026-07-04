@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const INAUGURAL = 2007;
-const LATEST = 2025; // 2026 is the upcoming USA 250 tournament
+const LATEST = 2026; // this year's USA 250 tournament — champion TBD until it's played
 
 /** `later` = what the franchise became; its logo represents the championship. */
 type Champion = { team: string | null; later?: string; captain?: string; roster?: string[]; note?: string };
@@ -139,7 +139,10 @@ export default async function PastTournamentsPage() {
                     {champ.note && <p className="mt-1 text-[11px] italic leading-relaxed text-[color:var(--psx-faint)]">{champ.note}</p>}
                   </>
                 ) : (
-                  <p className="mt-1.5 text-[11px] uppercase tracking-wider text-[color:var(--psx-faint)]">Champion TBA</p>
+                  <p className="mt-1.5 text-sm text-[color:var(--psx-fg)]">
+                    <span className="text-[color:var(--psx-faint)]">Champion · </span>
+                    <span className="font-semibold italic text-[color:var(--psx-muted)]">To Be Determined</span>
+                  </p>
                 )}
               </div>
             </div>
