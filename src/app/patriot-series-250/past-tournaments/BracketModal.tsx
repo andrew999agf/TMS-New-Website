@@ -101,7 +101,7 @@ export function BracketModal({
           aria-label={`${year} Patriot Series bracket`}
         >
           <div
-            className="max-h-[88vh] w-[min(94vw,900px)] overflow-y-auto rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-bg,#101422)] p-5 shadow-2xl sm:p-6"
+            className="max-h-[88vh] w-[min(94vw,900px)] overflow-y-auto rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-panel,#101422)] p-5 shadow-2xl sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">

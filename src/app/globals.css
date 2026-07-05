@@ -333,6 +333,8 @@
   --psx-surface-2: rgba(11, 18, 32, 0.07);
   --psx-border: rgba(11, 18, 32, 0.12);
   --psx-header: rgba(238, 241, 247, 0.85);
+  /* Solid panel color for popups/dialogs (translucent surfaces sit on top). */
+  --psx-panel: #ffffff;
   --psx-accent: #1d4ed8;
   --psx-live: #dc2626;
   --psx-logo-filter: none;
@@ -349,6 +351,7 @@
   --psx-surface-2: rgba(255, 255, 255, 0.07);
   --psx-border: rgba(255, 255, 255, 0.12);
   --psx-header: rgba(10, 14, 26, 0.85);
+  --psx-panel: #101422;
   --psx-accent: #93c5fd;
   --psx-live: #fca5a5;
   --psx-logo-filter: brightness(0) invert(1);
