@@ -37,7 +37,13 @@ export default async function PatriotArticlePage({ params }: { params: Promise<{
   const [newsHref, pastHref] = await Promise.all([patriotPublicPath("/news"), patriotPublicPath("/past-tournaments")]);
 
   return (
-    <PatriotShell active="/news" eyebrow={article.date} title={article.title} subtitle={article.dek}>
+    <PatriotShell
+      active="/news"
+      eyebrow={article.date}
+      title={article.title}
+      subtitle={article.dek}
+      bannerImages={article.banner ? [article.banner] : []}
+    >
       <article className="mx-auto max-w-3xl">
         <Link
           href={newsHref}
@@ -45,15 +51,6 @@ export default async function PatriotArticlePage({ params }: { params: Promise<{
         >
           <ArrowLeft size={14} /> All news
         </Link>
-
-        {article.banner && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={article.banner}
-            alt={article.title}
-            className="mt-5 w-full rounded-2xl border border-[color:var(--psx-border)] object-cover"
-          />
-        )}
 
         <div className="mt-7 space-y-5 text-[15px] leading-relaxed text-[color:var(--psx-fg)]">
           {paragraphs.map((p, i) => (
