@@ -8,25 +8,9 @@
  * (e.g. "L2" = loser of game 2), matching the hand-drawn posters.
  */
 
-export type BracketGame = {
-  /** Game id, e.g. "G7" — shown as a chip and used for connector lines. */
-  id: string;
-  a: string;
-  b: string;
-  sa?: number;
-  sb?: number;
-  /** Explicit winner when no scores were recorded. */
-  winner?: "a" | "b";
-  /** Entry tags per side, poster-style ("L2" = loser of G2). */
-  ta?: string;
-  tb?: string;
-  /** Game id the winner advances into (connector line target). */
-  to?: string;
-  note?: string;
-};
-export type BracketRound = { title: string; games: BracketGame[] };
-export type BracketSection = { title?: string; rounds: BracketRound[] };
-export type TournamentBracket = { sections: BracketSection[]; summary: string[] };
+import type { TournamentBracket } from "@/lib/patriot/tournament";
+
+export type { BracketGame, BracketRound, BracketSection, TournamentBracket } from "@/lib/patriot/tournament";
 
 export const BRACKETS: Record<number, TournamentBracket> = {
   2021: {

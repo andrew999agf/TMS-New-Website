@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Radio, ImageIcon, Images, Users, UserRound, Building2, Eye, ExternalLink, Newspaper } from "lucide-react";
+import { Radio, ImageIcon, Images, Users, UserRound, Building2, Eye, ExternalLink, Newspaper, GitBranch } from "lucide-react";
 
 const ITEMS = [
   { key: "switchboard", label: "Switchboard", href: "/admin", icon: Radio },
   { key: "news", label: "News", href: "/admin/news", icon: Newspaper },
+  { key: "bracket-lab", label: "Bracket Lab", href: "/admin/bracket-lab", icon: GitBranch },
   { key: "branding", label: "Branding & Media", href: "/admin/branding", icon: ImageIcon },
   { key: "banners", label: "Banners", href: "/admin/banners", icon: Images },
   { key: "teams", label: "Teams", href: "/admin/teams", icon: Users },

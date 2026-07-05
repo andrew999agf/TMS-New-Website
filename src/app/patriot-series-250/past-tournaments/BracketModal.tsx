@@ -1,30 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { X, Trophy } from "lucide-react";
-import type { TournamentBracket, BracketSection, BracketGame } from "./brackets";
+import type { TournamentBracket, BracketSection } from "@/lib/patriot/tournament";
+import { gameResult } from "@/lib/patriot/tournament";
+import { BracketSections, norm, initials } from "./BracketView";
 
-const norm = (s: string) => s.toLowerCase().replace(/^the\s+/, "").trim();
-const initials = (s: string) =>
-  norm(s)
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 3)
-    .toUpperCase();
-
-/** Which side won a game (draw only when scores are recorded and equal). */
-function gameWinner(g: BracketGame): "a" | "b" | "draw" {
-  if (g.winner) return g.winner;
-  if (g.sa != null && g.sb != null) return g.sa === g.sb ? "draw" : g.sa > g.sb ? "a" : "b";
-  return "a";
-}
-
-const allGames = (sections: BracketSection[]) => sections.flatMap((s) => s.rounds.flatMap((r) => r.games.map((game) => ({ round: r.title, game }))));
+const allGames = (sections: BracketSection[]) =>
+  sections.flatMap((s) => s.rounds.flatMap((r) => r.games.map((game) => ({ round: r.title, game }))));
 
 type StandingRow = { team: string; w: number; l: number; d: number; pct: number };
 
-/** Tournament standings computed from every game in the bracket. */
+/** Standings from every decided, non-exhibition game in the bracket. */
 function computeStandings(sections: BracketSection[]): StandingRow[] {
   const table = new Map<string, StandingRow>();
   const row = (team: string) => {
@@ -32,7 +19,9 @@ function computeStandings(sections: BracketSection[]): StandingRow[] {
     return table.get(team)!;
   };
   for (const { game: g } of allGames(sections)) {
-    const res = gameWinner(g);
+    if (g.exhibition) continue;
+    const res = gameResult(g);
+    if (res === "none") continue;
     if (res === "draw") {
       row(g.a).d += 1;
       row(g.b).d += 1;
@@ -51,130 +40,9 @@ function computeStandings(sections: BracketSection[]): StandingRow[] {
 /** ".833"-style baseball formatting for win percentage. */
 const fmtPct = (p: number) => (p >= 1 ? "1.000" : p.toFixed(3).replace(/^0/, ""));
 
-function TeamRow({ name, score, won, logo, tag }: { name: string; score?: number; won: boolean; logo?: string; tag?: string }) {
-  return (
-    <div className={`flex items-center gap-2 ${won ? "" : "opacity-55"}`}>
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[color:var(--psx-border)] bg-[var(--psx-surface-2)]">
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" className="h-full w-full object-contain p-0.5" />
-        ) : (
-          <span className="text-[8px] font-bold tracking-wide text-[color:var(--psx-faint)]">{initials(name)}</span>
-        )}
-      </span>
-      <span className={`min-w-0 flex-1 truncate text-[13px] ${won ? "font-semibold text-[color:var(--psx-fg)]" : "text-[color:var(--psx-muted)]"}`}>
-        {name}
-        {tag && <span className="ml-1.5 align-middle text-[9px] font-semibold uppercase text-[color:var(--psx-faint)]">{tag}</span>}
-      </span>
-      <span className={`text-[13px] tabular-nums ${won ? "font-bold text-[color:var(--psx-accent)]" : "text-[color:var(--psx-faint)]"}`}>
-        {score ?? (won ? "W" : "")}
-      </span>
-    </div>
-  );
-}
-
-function GameCard({ g, logos, cardRef }: { g: BracketGame; logos: Record<string, string>; cardRef: (el: HTMLDivElement | null) => void }) {
-  const aWon = gameWinner(g) === "a";
-  return (
-    <div ref={cardRef} className="relative w-56 shrink-0 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-3">
-      <span className="absolute -top-2 left-2 rounded bg-[var(--psx-panel,#101422)] px-1 text-[9px] font-bold tracking-wider text-[color:var(--psx-faint)]">
-        {g.id}
-      </span>
-      <div className="space-y-1.5">
-        <TeamRow name={g.a} score={g.sa} won={aWon} logo={logos[norm(g.a)]} tag={g.ta} />
-        <TeamRow name={g.b} score={g.sb} won={!aWon} logo={logos[norm(g.b)]} tag={g.tb} />
-      </div>
-      {g.note && <p className="mt-2 border-t border-[color:var(--psx-border)] pt-1.5 text-[10px] italic leading-snug text-[color:var(--psx-faint)]">{g.note}</p>}
-    </div>
-  );
-}
-
-/**
- * One bracket section (winners / elimination / a whole single-elim year):
- * round columns left-to-right, with right-angle connector lines drawn in an
- * SVG overlay from each game to the game its winner advances into — the way
- * the hand-drawn posters connect them.
- */
-function SectionView({ section, logos }: { section: BracketSection; logos: Record<string, string> }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const cardRefs = useRef(new Map<string, HTMLDivElement>());
-  const [paths, setPaths] = useState<string[]>([]);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-
-  const games = section.rounds.flatMap((r) => r.games);
-
-  const measure = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const cRect = container.getBoundingClientRect();
-    const next: string[] = [];
-    for (const g of games) {
-      if (!g.to) continue;
-      const from = cardRefs.current.get(g.id);
-      const to = cardRefs.current.get(g.to);
-      if (!from || !to) continue;
-      const f = from.getBoundingClientRect();
-      const t = to.getBoundingClientRect();
-      const x1 = f.right - cRect.left;
-      const y1 = f.top + f.height / 2 - cRect.top;
-      const x2 = t.left - cRect.left;
-      const y2 = t.top + t.height / 2 - cRect.top;
-      const midX = x1 + (x2 - x1) / 2;
-      next.push(`M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
-    }
-    setPaths(next);
-    setSize({ w: container.scrollWidth, h: container.scrollHeight });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
-
-  useEffect(() => {
-    measure();
-    const container = containerRef.current;
-    if (!container) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [measure]);
-
-  return (
-    <div className="mt-5">
-      {section.title && (
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[color:var(--psx-accent)]">{section.title}</p>
-      )}
-      <div className="overflow-x-auto pb-2">
-        <div ref={containerRef} className="relative flex w-max min-w-full items-stretch gap-12">
-          <svg width={size.w} height={size.h} className="pointer-events-none absolute left-0 top-0" aria-hidden="true">
-            {paths.map((d, i) => (
-              <path key={i} d={d} fill="none" stroke="var(--psx-faint)" strokeWidth="1.5" />
-            ))}
-          </svg>
-          {section.rounds.map((round) => (
-            <div key={round.title} className="flex shrink-0 flex-col">
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">{round.title}</p>
-              <div className="flex flex-1 flex-col justify-around gap-4">
-                {round.games.map((g) => (
-                  <GameCard
-                    key={g.id}
-                    g={g}
-                    logos={logos}
-                    cardRef={(el) => {
-                      if (el) cardRefs.current.set(g.id, el);
-                      else cardRefs.current.delete(g.id);
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Wraps a year's crest tile on Past Tournaments in a button that opens the
- * bracket popup: poster-style connected bracket, then the game summary,
+ * bracket popup: broadcast-style connected bracket, then the game summary,
  * standings, and game-by-game log.
  */
 export function BracketModal({
@@ -232,7 +100,7 @@ export function BracketModal({
           aria-label={`${year} Patriot Series bracket`}
         >
           <div
-            className="max-h-[88vh] w-[min(94vw,960px)] overflow-y-auto rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-panel,#101422)] p-5 shadow-2xl sm:p-6"
+            className="max-h-[88vh] w-[min(94vw,1000px)] overflow-y-auto rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-panel,#101422)] p-5 shadow-2xl sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -254,10 +122,8 @@ export function BracketModal({
               </button>
             </div>
 
-            {/* The bracket, poster-style */}
-            {bracket.sections.map((section, i) => (
-              <SectionView key={section.title ?? i} section={section} logos={logos} />
-            ))}
+            {/* The bracket */}
+            <BracketSections sections={bracket.sections} logos={logos} />
 
             {/* Game summary */}
             <div className="mt-4 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-4">
@@ -322,7 +188,7 @@ export function BracketModal({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">Game by game</p>
               <ol className="mt-2 space-y-1.5">
                 {gameLog.map(({ round, game: g }, i) => {
-                  const res = gameWinner(g);
+                  const res = gameResult(g);
                   const winner = res === "a" ? g.a : g.b;
                   const score = g.sa != null && g.sb != null ? `${Math.max(g.sa, g.sb)}–${Math.min(g.sa, g.sb)}` : null;
                   const label = /^\D*\d+$/.test(g.id) ? `Game ${g.id.replace(/\D/g, "")}` : g.id;
@@ -331,7 +197,9 @@ export function BracketModal({
                       <span className="w-16 shrink-0 font-semibold text-[color:var(--psx-fg)]">{label}</span>
                       <span className="min-w-0 text-[color:var(--psx-muted)]">
                         {g.a} vs. {g.b} —{" "}
-                        {res === "draw" ? (
+                        {res === "none" ? (
+                          <span className="italic text-[color:var(--psx-faint)]">TBD</span>
+                        ) : res === "draw" ? (
                           <span className="font-medium text-[color:var(--psx-fg)]">draw{g.sa != null ? `, ${g.sa}–${g.sb}` : ""}</span>
                         ) : (
                           <>
