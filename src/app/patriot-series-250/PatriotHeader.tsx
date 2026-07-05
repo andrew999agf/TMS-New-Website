@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { PatriotThemeScript, PatriotThemeToggle } from "./PatriotTheme";
 import { PatriotLiveBadge } from "./PatriotLive";
 import { getPageVisibility } from "@/lib/patriot/visibility";
-import { patriotAdminPath } from "@/lib/patriot/hosts";
+import { patriotAdminPath, isPatriotRequest } from "@/lib/patriot/hosts";
 import type { PatriotPageKey } from "@/lib/patriot/settings";
 
 const NAV: { href: string; label: string; key: PatriotPageKey | null }[] = [
@@ -17,21 +17,25 @@ const NAV: { href: string; label: string; key: PatriotPageKey | null }[] = [
 
 export async function PatriotHeader({ active = "/" }: { active?: string }) {
   const vis = await getPageVisibility();
-  const nav = NAV.filter((n) => n.key === null || vis[n.key]);
   const adminHref = await patriotAdminPath();
+  // Clean paths only exist on the Patriot domain (middleware rewrites); on the
+  // firm domain and previews the nav must use the real /patriot-series-250 paths.
+  const onPatriot = await isPatriotRequest();
+  const toHref = (path: string) => (onPatriot ? path : path === "/" ? "/patriot-series-250" : `/patriot-series-250${path}`);
+  const nav = NAV.filter((n) => n.key === null || vis[n.key]).map((n) => ({ ...n, renderHref: toHref(n.href) }));
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--psx-border)] bg-[var(--psx-header)] backdrop-blur">
       <PatriotThemeScript />
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
-        <Link href="/" className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.25em] text-[color:var(--psx-fg)] sm:text-xs">
+        <Link href={toHref("/")} className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.25em] text-[color:var(--psx-fg)] sm:text-xs">
           Patriot Series 250
         </Link>
         <nav className="hidden items-center gap-6 lg:flex">
           {nav.map((n) => (
             <Link
               key={n.href}
-              href={n.href}
+              href={n.renderHref}
               className={`text-xs font-medium uppercase tracking-wider transition-colors ${active === n.href ? "text-[color:var(--psx-fg)]" : "text-[color:var(--psx-muted)] hover:text-[color:var(--psx-fg)]"}`}
             >
               {n.label}
@@ -53,7 +57,7 @@ export async function PatriotHeader({ active = "/" }: { active?: string }) {
         {nav.map((n) => (
           <Link
             key={n.href}
-            href={n.href}
+            href={n.renderHref}
             className={`whitespace-nowrap text-[11px] font-medium uppercase tracking-wider ${active === n.href ? "text-[color:var(--psx-fg)]" : "text-[color:var(--psx-muted)]"}`}
           >
             {n.label}

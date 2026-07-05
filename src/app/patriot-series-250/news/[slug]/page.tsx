@@ -6,6 +6,7 @@ import { PatriotShell } from "../../PatriotShell";
 import { getPageVisibility } from "@/lib/patriot/visibility";
 import { getSetting } from "@/lib/content";
 import { PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS, type PatriotArticle } from "@/lib/patriot/settings";
+import { patriotPublicPath } from "@/lib/patriot/hosts";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,13 @@ export default async function PatriotArticlePage({ params }: { params: Promise<{
   if (!article) notFound();
 
   const paragraphs = article.body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const [newsHref, pastHref] = await Promise.all([patriotPublicPath("/news"), patriotPublicPath("/past-tournaments")]);
 
   return (
     <PatriotShell active="/news" eyebrow={article.date} title={article.title} subtitle={article.dek}>
       <article className="mx-auto max-w-3xl">
         <Link
-          href="/news"
+          href={newsHref}
           className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-[color:var(--psx-muted)] transition-colors hover:text-[color:var(--psx-fg)]"
         >
           <ArrowLeft size={14} /> All news
@@ -61,7 +63,7 @@ export default async function PatriotArticlePage({ params }: { params: Promise<{
 
         {article.tournamentYear && (
           <Link
-            href="/past-tournaments"
+            href={pastHref}
             className="mt-9 flex items-center gap-3 rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-4 transition-colors hover:border-[color:var(--psx-accent)]"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-yellow-400/30 bg-yellow-400/10 text-yellow-500">

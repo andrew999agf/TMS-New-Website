@@ -13,6 +13,7 @@ import {
   DEFAULT_PATRIOT_NEWS,
   type PatriotArticle,
 } from "@/lib/patriot/settings";
+import { patriotPublicPath } from "@/lib/patriot/hosts";
 import { BRACKETS } from "./brackets";
 import { BracketModal } from "./BracketModal";
 
@@ -88,6 +89,9 @@ export default async function PastTournamentsPage() {
     if (!a.tournamentYear) continue;
     newsByYear.set(a.tournamentYear, [...(newsByYear.get(a.tournamentYear) ?? []), a]);
   }
+  // Host-aware article links ("/news/x" on the Patriot domain, full path elsewhere).
+  const newsBase = await patriotPublicPath("/news");
+  const newsHrefs = new Map(news.map((a) => [a.id, `${newsBase}/${a.id}`]));
 
   const rows: { year: number; edition: number | null; cancelled: boolean }[] = [];
   let edition = 0;
@@ -178,7 +182,7 @@ export default async function PastTournamentsPage() {
                     {newsByYear.get(h.year)!.map((a) => (
                       <Link
                         key={a.id}
-                        href={`/news/${a.id}`}
+                        href={newsHrefs.get(a.id) ?? `/news/${a.id}`}
                         className="flex items-center gap-1.5 text-[12px] font-medium text-[color:var(--psx-accent)] hover:underline"
                       >
                         <Newspaper size={12} className="shrink-0" /> {a.title}

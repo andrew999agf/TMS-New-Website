@@ -25,3 +25,18 @@ export async function patriotAdminPath(): Promise<string> {
   const host = (await headers()).get("host");
   return isPatriotHostname(host) ? "/admin" : "/patriot-series-250/admin";
 }
+
+/** True when the current request is served on a Patriot Series hostname. */
+export async function isPatriotRequest(): Promise<boolean> {
+  return isPatriotHostname((await headers()).get("host"));
+}
+
+/**
+ * Host-aware href for a public Patriot page. On the Patriot domain the clean
+ * path ("/news/slug") works via the middleware rewrites; on the firm domain
+ * and vercel.app previews only the real "/patriot-series-250/…" paths exist.
+ */
+export async function patriotPublicPath(path: string): Promise<string> {
+  if (await isPatriotRequest()) return path;
+  return path === "/" ? "/patriot-series-250" : `/patriot-series-250${path}`;
+}

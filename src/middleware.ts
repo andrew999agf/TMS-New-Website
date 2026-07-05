@@ -116,5 +116,5 @@ export const config = {
   // "/" is matched so the Patriot host can serve the watch page at the root;
   // for the firm host it's a cheap pass-through. "/admin/:path*" keeps the
   // firm's admin guard (and powers the Patriot "/admin" → console rewrite).
-  matcher: ["/", "/admin/:path*", "/teams", "/past-tournaments", "/records", "/stadium"],
+  matcher: ["/", "/admin/:path*", "/teams", "/past-tournaments", "/records", "/stadium", "/news", "/news/:path*"],
 };

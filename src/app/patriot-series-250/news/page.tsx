@@ -6,6 +6,7 @@ import { PatriotShell } from "../PatriotShell";
 import { getPageVisibility } from "@/lib/patriot/visibility";
 import { getSetting } from "@/lib/content";
 import { PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS, type PatriotArticle } from "@/lib/patriot/settings";
+import { patriotPublicPath } from "@/lib/patriot/hosts";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function PatriotNewsPage() {
   if (!vis.news) redirect("/");
 
   const articles = await getSetting<PatriotArticle[]>(PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS);
+  const hrefs = await Promise.all(articles.map((a) => patriotPublicPath(`/news/${a.id}`)));
 
   return (
     <PatriotShell active="/news" title="News" subtitle="Coverage from the tournament.">
@@ -27,10 +29,10 @@ export default async function PatriotNewsPage() {
         {articles.length === 0 && (
           <p className="text-center text-sm text-[color:var(--psx-muted)]">No stories yet — check back during the tournament.</p>
         )}
-        {articles.map((a) => (
+        {articles.map((a, i) => (
           <Link
             key={a.id}
-            href={`/news/${a.id}`}
+            href={hrefs[i]}
             className="group block overflow-hidden rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] transition-colors hover:border-[color:var(--psx-accent)]"
           >
             {a.banner && (
