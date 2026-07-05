@@ -46,6 +46,10 @@ export const DEFAULT_PATRIOT_TEAMS: PatriotTeam[] = [
   { id: "neighbors", abbreviation: "NBR", name: "the Neighbors" },
   { id: "spartans", abbreviation: "SPA", name: "Spartans" },
   { id: "rangers", abbreviation: "RNG", name: "Rangers" },
+  { id: "bears", abbreviation: "BRS", name: "Bears" },
+  { id: "celtics", abbreviation: "CEL", name: "Celtics" },
+  { id: "stihl", abbreviation: "STL", name: "Stihl" },
+  { id: "oilers", abbreviation: "OIL", name: "Oilers" },
 ];
 
 /* Image collections + people, edited from the admin and shown across the site. */

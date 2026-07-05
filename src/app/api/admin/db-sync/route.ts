@@ -10,6 +10,7 @@ import { BADGES } from "@/lib/content/defaults/badges";
 import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
 import { TIME_ACTIVITY_USERS, TIME_ACTIVITY_USERS_ENSURE, TIME_CATEGORIES } from "@/lib/content/defaults/time";
+import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
 
 export const runtime = "nodejs";
 
@@ -347,6 +348,28 @@ export async function POST() {
     }
   } catch (err) {
     failed.push(`Operator bootstrap: ${(err as Error).message}`);
+  }
+
+  // 10) Merge newly added default Patriot teams (historical clubs like the
+  //     Bears, Celtics, Stihl, and Oilers) into an admin-saved team list.
+  //     Matched by name; never touches saved teams or their logos.
+  try {
+    const [row] = await db.select().from(settings).where(eq(settings.key, PATRIOT_TEAMS_KEY));
+    const savedTeams = Array.isArray(row?.value) ? (row!.value as PatriotTeam[]) : null;
+    if (savedTeams) {
+      const norm = (s: string) => s.trim().toLowerCase().replace(/^the\s+/, "");
+      const have = new Set(savedTeams.map((t) => norm(t.name)));
+      const missingTeams = DEFAULT_PATRIOT_TEAMS.filter((t) => !have.has(norm(t.name)));
+      if (missingTeams.length) {
+        await db
+          .update(settings)
+          .set({ value: [...savedTeams, ...missingTeams], updatedAt: new Date() })
+          .where(eq(settings.key, PATRIOT_TEAMS_KEY));
+        applied.push(`Added ${missingTeams.length} Patriot team(s): ${missingTeams.map((t) => t.name).join(", ")}`);
+      }
+    }
+  } catch (err) {
+    failed.push(`Patriot teams merge: ${(err as Error).message}`);
   }
 
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });
