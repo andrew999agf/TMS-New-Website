@@ -16,7 +16,10 @@ export async function loginAction(
   const result = await login(email, password);
   if (!result.ok) return { error: result.error };
 
-  redirect(next.startsWith("/admin") ? next : "/admin");
+  // Internal destinations only (no open redirect): the firm admin, or the
+  // Patriot operator console when sign-in started from the Patriot site.
+  const safeNext = next.startsWith("/admin") || next.startsWith("/patriot-series-250/admin") ? next : "/admin";
+  redirect(safeNext);
 }
 
 export async function logoutAction() {

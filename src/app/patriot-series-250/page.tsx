@@ -8,6 +8,7 @@ import { BroadcastStage } from "./BroadcastStage";
 import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
 import { getSetting } from "@/lib/content";
 import { PATRIOT_BRANDING_KEY, PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotBranding, type PatriotTeam } from "@/lib/patriot/settings";
+import { patriotAdminPath } from "@/lib/patriot/hosts";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function PatriotSeries250Page() {
   ]);
   const teams = savedTeams.length > 0 ? savedTeams : DEFAULT_PATRIOT_TEAMS;
   const ticker = [...teams, ...teams]; // duplicate for a seamless marquee loop
+  const adminHref = await patriotAdminPath();
 
   return (
     <PatriotLiveProvider>
@@ -96,7 +98,7 @@ export default async function PatriotSeries250Page() {
         {/* Operator entry point */}
         <footer className="mt-16 border-t border-[color:var(--psx-border)] pt-6 text-center">
           <Link
-            href="/admin"
+            href={adminHref}
             className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--psx-muted)] transition-colors hover:text-[color:var(--psx-fg)]"
           >
             <Lock size={12} /> Switchboard operator login

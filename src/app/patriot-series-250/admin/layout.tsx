@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Lock, LogIn } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { getSetting } from "@/lib/content";
+import { patriotAdminPath } from "@/lib/patriot/hosts";
 import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 import { PatriotAdminSidebar } from "./PatriotAdminSidebar";
 import styles from "../patriot.module.css";
@@ -30,6 +31,9 @@ export default async function PatriotAdminLayout({ children }: { children: React
   const session = await getSession();
 
   if (!session) {
+    // After signing in, land back on the Patriot switchboard — not the firm
+    // portal — regardless of which host is serving this page.
+    const next = await patriotAdminPath();
     return (
       <div data-psx-theme="dark" className={`${styles.page} flex min-h-screen flex-col items-center justify-center px-5`}>
         <div className="w-full max-w-sm rounded-2xl border border-white/12 bg-white/[0.04] p-7 text-center shadow-2xl">
@@ -39,7 +43,7 @@ export default async function PatriotAdminLayout({ children }: { children: React
           <h1 className="mt-4 font-[family-name:var(--font-display)] text-xl font-bold">Admin sign-in required</h1>
           <p className="mt-1 text-xs text-white/60">Sign in to manage the Patriot Series site.</p>
           <Link
-            href="/admin/login"
+            href={`/admin/login?next=${encodeURIComponent(next)}`}
             className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110"
           >
             <LogIn size={15} /> Sign in

@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { PatriotThemeScript, PatriotThemeToggle } from "./PatriotTheme";
 import { PatriotLiveBadge } from "./PatriotLive";
 import { getPageVisibility } from "@/lib/patriot/visibility";
+import { patriotAdminPath } from "@/lib/patriot/hosts";
 import type { PatriotPageKey } from "@/lib/patriot/settings";
 
 const NAV: { href: string; label: string; key: PatriotPageKey | null }[] = [
@@ -17,6 +18,7 @@ const NAV: { href: string; label: string; key: PatriotPageKey | null }[] = [
 export async function PatriotHeader({ active = "/" }: { active?: string }) {
   const vis = await getPageVisibility();
   const nav = NAV.filter((n) => n.key === null || vis[n.key]);
+  const adminHref = await patriotAdminPath();
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--psx-border)] bg-[var(--psx-header)] backdrop-blur">
@@ -39,7 +41,7 @@ export async function PatriotHeader({ active = "/" }: { active?: string }) {
         <div className="flex shrink-0 items-center gap-2.5">
           <PatriotThemeToggle />
           <Link
-            href="/admin"
+            href={adminHref}
             className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--psx-border)] px-3 py-1 text-[11px] font-medium text-[color:var(--psx-muted)] transition-colors hover:border-[color:var(--psx-fg)] hover:text-[color:var(--psx-fg)]"
           >
             <Lock size={12} /> <span className="hidden sm:inline">Operator</span>
