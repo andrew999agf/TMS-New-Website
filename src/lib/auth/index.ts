@@ -15,11 +15,14 @@ import {
 
 export type LoginResult = { ok: true } | { ok: false; error: string };
 
-/** Verify credentials, enforce lockout, set the session cookie. */
+/** Verify credentials, enforce lockout, set the session cookie. Bare
+ *  usernames (no "@") are shorthand for @patriotseriestexas.com accounts, so
+ *  broadcast crew can sign in with just a short operator name. */
 export async function login(email: string, password: string): Promise<LoginResult> {
   if (!db) return { ok: false, error: "The database is not configured yet." };
   if (!process.env.AUTH_SECRET)
     return { ok: false, error: "AUTH_SECRET is not configured." };
+  if (email.trim() && !email.includes("@")) email = `${email.trim()}@patriotseriestexas.com`;
 
   // Explicit columns only (so login keeps working before the permissions/reset
   // columns are added by "Apply database updates").

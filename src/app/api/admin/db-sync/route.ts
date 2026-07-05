@@ -323,5 +323,31 @@ export async function POST() {
     failed.push(`Owner bootstrap: ${(err as Error).message}`);
   }
 
+  // 9) One-time switchboard-operator login (requested by the owner): username
+  //    "123" (stored as 123@patriotseriestexas.com — the login form maps bare
+  //    usernames to that domain). Lowest role; the Patriot switchboard accepts
+  //    any signed-in account. Exactly-once via a settings marker, so the
+  //    password can be changed (or the login deleted) later without it
+  //    reappearing. Only the offline-generated bcrypt hash lives in the repo.
+  try {
+    const OP_KEY = "auth.bootstrap.operator123";
+    const OP_EMAIL = "123@patriotseriestexas.com";
+    const OP_HASH = "$2a$12$ZZkbFqE/SWROc9iW6XL1YumtsQjr9W1ft9xiCrpjS5OTlqphSDdYe";
+    const [opDone] = await db.select().from(settings).where(eq(settings.key, OP_KEY));
+    if (!opDone) {
+      const [existing] = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, OP_EMAIL));
+      if (!existing) {
+        await db.insert(admins).values({ email: OP_EMAIL, name: "Switchboard Operator", role: "timekeeper", passwordHash: OP_HASH, permissions: [] });
+        applied.push(`Created switchboard operator login "123"`);
+      }
+      await db
+        .insert(settings)
+        .values({ key: OP_KEY, value: { appliedAt: new Date().toISOString() }, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value: { appliedAt: new Date().toISOString() }, updatedAt: new Date() } });
+    }
+  } catch (err) {
+    failed.push(`Operator bootstrap: ${(err as Error).message}`);
+  }
+
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });
 }

@@ -91,12 +91,12 @@ function LoginForm() {
 
       <div className="mt-8 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-[var(--c-dark-ink)] mb-1.5">Email</label>
+          <label className="block text-sm font-medium text-[var(--c-dark-ink)] mb-1.5">Email or username</label>
           <input
             name="email"
-            type="email"
+            type="text"
             required
-            autoComplete="email"
+            autoComplete="username"
             className="w-full bg-[var(--c-dark-surface)] border border-[var(--c-dark-border)] text-[var(--c-dark-ink)] py-3 px-4 outline-none focus:border-[var(--c-dark-accent)]"
           />
         </div>
