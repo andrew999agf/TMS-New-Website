@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const TITLES = [
-  { name: "Max Smith", n: 3, detail: "Texas Storm '08, '12, '13" },
+  { name: "Max Smith", n: 6, detail: "Texas Storm '08, '12, '13 · Minutemen '19, '25, '26" },
   { name: "Paul Horton", n: 2, detail: "Ironbirds '11 · Ironsides '18" },
   { name: "Mark Horton", n: 1, detail: "Tribe '15" },
   { name: "Andrew Cooper", n: 1, detail: "Team Cooper '07" },
@@ -23,9 +23,11 @@ const TITLES = [
   { name: "Jason Freeman", n: 1, detail: "The Neighbors '10" },
   { name: "Brandon Potter", n: 1, detail: "Team Potter '14" },
   { name: "Brandon Heitpas", n: 1, detail: "Pirates '16" },
+  { name: "Matthew Hunter", n: 1, detail: "Landscapers '17" },
 ];
 
 const AWARDS: { year: number; mvp: string; pitcher: string; hr: string; rookie: string }[] = [
+  { year: 2026, mvp: "Max Smith", pitcher: "Michael Salas", hr: "Brandon Potter · 16", rookie: "Raymond" },
   { year: 2018, mvp: "Paul Horton", pitcher: "Darren Neumann", hr: "Max Smith · 10", rookie: "—" },
   { year: 2017, mvp: "Horton / Hunter", pitcher: "Stephen Elliot", hr: "Adam Horton · 16", rookie: "—" },
   { year: 2016, mvp: "Michael Salas", pitcher: "Brandon Heitpas", hr: "Braxton Feist · 9", rookie: "Rodney Marshall" },

@@ -73,7 +73,7 @@ export type PatriotPageKey = "teams" | "past-tournaments" | "records" | "stadium
 export const DEFAULT_PAGE_VISIBILITY: Record<PatriotPageKey, boolean> = {
   teams: true,
   "past-tournaments": true,
-  records: false,
+  records: true,
   stadium: true,
   news: true,
 };
