@@ -65,35 +65,8 @@ export default async function RecordsPage() {
 
   return (
     <PatriotShell active="/records" title="Records" subtitle="Paul Revere's Lantern winners, annual awards, and the record book.">
-      {/* Players in the pros */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Patriot Series Players in the Pros</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {pros.map((p) => (
-            <div key={p.id} className="overflow-hidden rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)]">
-              <div className="aspect-[4/3] bg-[var(--psx-surface-2)]">
-                {p.photo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.photo} alt={p.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-1 text-[color:var(--psx-faint)]">
-                    <span className="text-xs font-semibold text-[color:var(--psx-muted)]">Player photo</span>
-                    <span className="text-[11px]">800 × 600</span>
-                  </div>
-                )}
-              </div>
-              <div className="p-4">
-                <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--psx-fg)]">{p.name}</p>
-                {p.team && <p className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--psx-accent)]">{p.team}</p>}
-                {p.note && <p className="mt-2 text-[11px] leading-relaxed text-[color:var(--psx-muted)]">{p.note}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Annual awards */}
-      <section className="mt-14">
+      <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Annual Awards</h2>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--psx-border)]">
           <table className="w-full min-w-[860px] border-collapse text-sm">
@@ -133,6 +106,33 @@ export default async function RecordsPage() {
             <div key={r.label} className="flex flex-col gap-0.5 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">{r.label}</span>
               <span className="text-sm font-medium text-[color:var(--psx-fg)]">{r.value}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Players in the pros */}
+      <section className="mt-14">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Patriot Series Players in the Pros</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {pros.map((p) => (
+            <div key={p.id} className="overflow-hidden rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)]">
+              <div className="aspect-[4/3] bg-[var(--psx-surface-2)]">
+                {p.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.photo} alt={p.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-1 text-[color:var(--psx-faint)]">
+                    <span className="text-xs font-semibold text-[color:var(--psx-muted)]">Player photo</span>
+                    <span className="text-[11px]">800 × 600</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--psx-fg)]">{p.name}</p>
+                {p.team && <p className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--psx-accent)]">{p.team}</p>}
+                {p.note && <p className="mt-2 text-[11px] leading-relaxed text-[color:var(--psx-muted)]">{p.note}</p>}
+              </div>
             </div>
           ))}
         </div>
