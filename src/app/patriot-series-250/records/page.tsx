@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 
 const TITLES = [
   { name: "Max Smith", n: 6, detail: "Texas Storm '08, '12, '13 · Minutemen '19, '25, '26" },
+  { name: "Eric Horton", n: 3, detail: "Founding Fathers '21, '22, '24" },
   { name: "Paul Horton", n: 2, detail: "Ironbirds '11 · Ironsides '18" },
   { name: "Mark Horton", n: 1, detail: "Tribe '15" },
   { name: "Andrew Cooper", n: 1, detail: "Team Cooper '07" },
