@@ -65,26 +65,8 @@ export default async function RecordsPage() {
 
   return (
     <PatriotShell active="/records" title="Records" subtitle="Paul Revere's Lantern winners, annual awards, and the record book.">
-      {/* Championships by captain */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Championships by Captain</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {TITLES.map((t) => (
-            <div key={t.name} className="flex items-center gap-3 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] px-4 py-3">
-              <div className="flex items-center gap-1 font-[family-name:var(--font-display)] text-xl font-bold text-yellow-500">
-                <Trophy size={16} /> {t.n}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[color:var(--psx-fg)]">{t.name}</p>
-                <p className="truncate text-[11px] text-[color:var(--psx-faint)]">{t.detail}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Players in the pros */}
-      <section className="mt-14">
+      <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Patriot Series Players in the Pros</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {pros.map((p) => (
@@ -151,6 +133,24 @@ export default async function RecordsPage() {
             <div key={r.label} className="flex flex-col gap-0.5 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">{r.label}</span>
               <span className="text-sm font-medium text-[color:var(--psx-fg)]">{r.value}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Championships by captain */}
+      <section className="mt-14">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Championships by Captain</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {TITLES.map((t) => (
+            <div key={t.name} className="flex items-center gap-3 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] px-4 py-3">
+              <div className="flex items-center gap-1 font-[family-name:var(--font-display)] text-xl font-bold text-yellow-500">
+                <Trophy size={16} /> {t.n}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[color:var(--psx-fg)]">{t.name}</p>
+                <p className="truncate text-[11px] text-[color:var(--psx-faint)]">{t.detail}</p>
+              </div>
             </div>
           ))}
         </div>
