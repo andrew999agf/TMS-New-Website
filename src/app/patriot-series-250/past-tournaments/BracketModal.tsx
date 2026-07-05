@@ -13,6 +13,44 @@ const initials = (s: string) =>
     .slice(0, 3)
     .toUpperCase();
 
+/** Which side won a game (draw only when scores are recorded and equal). */
+function gameWinner(g: BracketGame): "a" | "b" | "draw" {
+  if (g.winner) return g.winner;
+  if (g.sa != null && g.sb != null) return g.sa === g.sb ? "draw" : g.sa > g.sb ? "a" : "b";
+  return "a";
+}
+
+type StandingRow = { team: string; w: number; l: number; d: number; pct: number };
+
+/** Tournament standings computed from every game in the bracket. */
+function computeStandings(rounds: { games: BracketGame[] }[]): StandingRow[] {
+  const table = new Map<string, StandingRow>();
+  const row = (team: string) => {
+    if (!table.has(team)) table.set(team, { team, w: 0, l: 0, d: 0, pct: 0 });
+    return table.get(team)!;
+  };
+  for (const round of rounds) {
+    for (const g of round.games) {
+      const res = gameWinner(g);
+      if (res === "draw") {
+        row(g.a).d += 1;
+        row(g.b).d += 1;
+      } else {
+        row(res === "a" ? g.a : g.b).w += 1;
+        row(res === "a" ? g.b : g.a).l += 1;
+      }
+    }
+  }
+  for (const r of table.values()) {
+    const games = r.w + r.l + r.d;
+    r.pct = games ? (r.w + 0.5 * r.d) / games : 0;
+  }
+  return [...table.values()].sort((x, y) => y.pct - x.pct || y.w - x.w || x.team.localeCompare(y.team));
+}
+
+/** ".833"-style baseball formatting for win percentage. */
+const fmtPct = (p: number) => (p >= 1 ? "1.000" : p.toFixed(3).replace(/^0/, ""));
+
 function TeamRow({ name, score, won, logo }: { name: string; score?: number; won: boolean; logo?: string }) {
   return (
     <div className={`flex items-center gap-2 ${won ? "" : "opacity-55"}`}>
@@ -68,6 +106,8 @@ export function BracketModal({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const standings = computeStandings(bracket.rounds);
+  const gameLog = bracket.rounds.flatMap((r) => r.games.map((game) => ({ round: r.title, game })));
 
   useEffect(() => {
     if (!open) return;
@@ -147,6 +187,80 @@ export function BracketModal({
                   </li>
                 ))}
               </ul>
+            </div>
+
+            {/* Standings */}
+            <div className="mt-4 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">Tournament standings</p>
+              <table className="mt-2 w-full text-[13px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-[color:var(--psx-faint)]">
+                    <th className="pb-1.5 text-left font-semibold">Team</th>
+                    <th className="w-9 pb-1.5 text-center font-semibold">W</th>
+                    <th className="w-9 pb-1.5 text-center font-semibold">L</th>
+                    <th className="w-9 pb-1.5 text-center font-semibold">D</th>
+                    <th className="w-14 pb-1.5 text-right font-semibold">PCT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((r) => {
+                    const isChamp = champion ? norm(r.team) === norm(champion) : false;
+                    return (
+                      <tr key={r.team} className="border-t border-[color:var(--psx-border)]">
+                        <td className="py-1.5">
+                          <span className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-[color:var(--psx-border)] bg-[var(--psx-surface-2)]">
+                              {logos[norm(r.team)] ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={logos[norm(r.team)]} alt="" className="h-full w-full object-contain p-0.5" />
+                              ) : (
+                                <span className="text-[7px] font-bold text-[color:var(--psx-faint)]">{initials(r.team)}</span>
+                              )}
+                            </span>
+                            <span className={`truncate ${isChamp ? "font-semibold text-[color:var(--psx-fg)]" : "text-[color:var(--psx-muted)]"}`}>
+                              {r.team}
+                            </span>
+                            {isChamp && <Trophy size={11} className="shrink-0 text-yellow-500" />}
+                          </span>
+                        </td>
+                        <td className="py-1.5 text-center tabular-nums text-[color:var(--psx-fg)]">{r.w}</td>
+                        <td className="py-1.5 text-center tabular-nums text-[color:var(--psx-muted)]">{r.l}</td>
+                        <td className="py-1.5 text-center tabular-nums text-[color:var(--psx-muted)]">{r.d}</td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums text-[color:var(--psx-accent)]">{fmtPct(r.pct)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-2 text-[10px] italic text-[color:var(--psx-faint)]">From recorded bracket games only.</p>
+            </div>
+
+            {/* Game-by-game log */}
+            <div className="mt-4 rounded-xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--psx-faint)]">Game by game</p>
+              <ol className="mt-2 space-y-1.5">
+                {gameLog.map((g, i) => {
+                  const res = gameWinner(g.game);
+                  const winner = res === "a" ? g.game.a : g.game.b;
+                  const score = g.game.sa != null && g.game.sb != null ? `${Math.max(g.game.sa, g.game.sb)}–${Math.min(g.game.sa, g.game.sb)}` : null;
+                  return (
+                    <li key={i} className="flex flex-wrap items-baseline gap-x-2 border-t border-[color:var(--psx-border)] pt-1.5 text-[13px] first:border-t-0 first:pt-0">
+                      <span className="w-16 shrink-0 font-semibold text-[color:var(--psx-fg)]">Game {i + 1}</span>
+                      <span className="min-w-0 text-[color:var(--psx-muted)]">
+                        {g.game.a} vs. {g.game.b} —{" "}
+                        {res === "draw" ? (
+                          <span className="font-medium text-[color:var(--psx-fg)]">draw{score ? `, ${g.game.sa}–${g.game.sb}` : ""}</span>
+                        ) : (
+                          <>
+                            <span className="font-medium text-[color:var(--psx-fg)]">{winner}</span> win{score ? `, ${score}` : ""}
+                          </>
+                        )}
+                      </span>
+                      <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wider text-[color:var(--psx-faint)]">{g.round}</span>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
           </div>
         </div>
