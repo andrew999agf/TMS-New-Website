@@ -36,7 +36,7 @@ export const DEFAULT_PATRIOT_TEAMS: PatriotTeam[] = [
   { id: "colonels", abbreviation: "COL", name: "Colonels" },
   { id: "founding-fathers", abbreviation: "FF", name: "Founding Fathers" },
   { id: "dragons", abbreviation: "DRG", name: "Dragons" },
-  { id: "girls-team", abbreviation: "GIRL", name: "Girls Team" },
+  { id: "girls-team", abbreviation: "UNI", name: "Unicorns" },
   { id: "tribe", abbreviation: "TRB", name: "Tribe" },
   { id: "whalers", abbreviation: "WHL", name: "Whalers" },
   { id: "vikings", abbreviation: "VIK", name: "Vikings" },
@@ -50,7 +50,6 @@ export const DEFAULT_PATRIOT_TEAMS: PatriotTeam[] = [
   { id: "celtics", abbreviation: "CEL", name: "Celtics" },
   { id: "stihl", abbreviation: "STL", name: "Stihl" },
   { id: "oilers", abbreviation: "OIL", name: "Oilers" },
-  { id: "unicorns", abbreviation: "UNI", name: "Unicorns" },
 ];
 
 /* Image collections + people, edited from the admin and shown across the site. */
@@ -110,7 +109,7 @@ Game two belonged to the champions. Michael Salas delivered a dominant pitching 
 
 Tournament honors: MVP — Max Smith. Home Run Champion — Brandon Potter. Defensive Player of the Year — Brandon Potter. Pitcher of the Year — Michael Salas. Rookie of the Year — Raymond. Party Animal — to be announced.
 
-Final home run tally: Brandon P. 16, Max S. 11, Paul H. 5, Brent 5, Michael (Vegas) 4, DJ 4, Drew B. 4, Bobby P. 2, Raymond G. 2, Mark H. 2, Brandon H. 2, Michael (Texas) 2, Jack 1.`,
+Final home run tally: Brandon P. 16, Max S. 11, Paul H. 5, Brent (Colonels) 5, Michael (Vegas) 4, DJ 4, Drew B. 4, Bobby P. 2, Raymond G. 2, Mark H. 2, Brandon H. 2, Michael (Texas) 2, Jack 1.`,
   },
   {
     id: "2026-raymond-first-at-bat-homer",

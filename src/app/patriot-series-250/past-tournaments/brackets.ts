@@ -162,7 +162,7 @@ export const BRACKETS: Record<number, TournamentBracket> = {
       "The Minutemen never lost in the winners bracket: Oilers, Tribe, Whalers, and Ironsides in the winners final.",
       "Championship game one: with the Minutemen an out from the title, a too-close force out at second went to rock-paper-scissors. Brandon Potter's rock beat Max Smith's scissors — then Potter walked it off 10–9 against Smith, who had moved from short to the mound to face him.",
       "The if-necessary game: Michael Salas pitched the Minutemen to a 4–1 clincher, with Raymond's late homer closing the book — the rookie hit the tournament's first and last home runs.",
-      "Home Run Tally — Brandon P. 16 · Max S. 11 · Paul H. 5 · Brent 5 · Michael (Vegas) 4 · DJ 4 · Drew B. 4 · Bobby P. 2 · Raymond G. 2 · Mark H. 2 · Brandon H. 2 · Michael (Texas) 2 · Jack 1.",
+      "Home Run Tally — Brandon P. 16 · Max S. 11 · Paul H. 5 · Brent (Colonels) 5 · Michael (Vegas) 4 · DJ 4 · Drew B. 4 · Bobby P. 2 · Raymond G. 2 · Mark H. 2 · Brandon H. 2 · Michael (Texas) 2 · Jack 1.",
       "Honors — MVP: Max Smith · HR Champion & Defensive POY: Brandon Potter · Pitcher of the Year: Michael Salas · Rookie of the Year: Raymond.",
     ],
   },
