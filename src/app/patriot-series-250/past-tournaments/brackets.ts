@@ -90,23 +90,79 @@ export const BRACKETS: Record<number, TournamentBracket> = {
     ],
   },
   2026: {
+    /* Double elimination, ten teams — game numbers follow the bracket poster
+     * (G1–G18 plus the if-necessary game). */
     rounds: [
       {
-        title: "First Round",
-        games: [{ a: "Minutemen", b: "Oilers", sa: 3, sb: 2, note: "Raymond homered in his first-ever Patriot Series at-bat" }],
+        title: "Opening Round",
+        games: [
+          { a: "Minutemen", b: "Oilers", sa: 3, sb: 2, note: "4 innings — Raymond homered in his first-ever Patriot Series at-bat" },
+          { a: "Ironsides", b: "Dragons", winner: "a" },
+          { a: "Whalers", b: "Spartans", winner: "a" },
+          { a: "Founding Fathers", b: "Unicorns", winner: "a" },
+        ],
       },
       {
-        title: "Championship Series",
+        title: "Winners Round 2",
+        games: [
+          { a: "Minutemen", b: "Tribe", winner: "a" },
+          { a: "Ironsides", b: "Pirates", winner: "a" },
+        ],
+      },
+      {
+        title: "Elimination Round 1",
+        games: [
+          { a: "Dragons", b: "Tribe", winner: "a", note: "6 innings" },
+          { a: "Oilers", b: "Pirates", winner: "a" },
+        ],
+      },
+      {
+        title: "Elimination Round 2",
+        games: [
+          { a: "Dragons", b: "Spartans", winner: "a" },
+          { a: "Oilers", b: "Unicorns", winner: "a" },
+        ],
+      },
+      {
+        title: "Winners Semifinals",
+        games: [
+          { a: "Minutemen", b: "Whalers", winner: "a" },
+          { a: "Ironsides", b: "Founding Fathers", winner: "a" },
+        ],
+      },
+      {
+        title: "Elimination Round 3",
+        games: [
+          { a: "Dragons", b: "Founding Fathers", winner: "a" },
+          { a: "Oilers", b: "Whalers", winner: "a" },
+        ],
+      },
+      {
+        title: "Winners Final",
+        games: [{ a: "Minutemen", b: "Ironsides", winner: "a" }],
+      },
+      {
+        title: "Elimination Semifinal",
+        games: [{ a: "Dragons", b: "Oilers", winner: "a" }],
+      },
+      {
+        title: "Elimination Final",
+        games: [{ a: "Dragons", b: "Ironsides", winner: "a" }],
+      },
+      {
+        title: "Championship",
         games: [
           { a: "Dragons", b: "Minutemen", sa: 10, sb: 9, note: "Potter wins the rock-paper-scissors ruling at second, then walks it off against Smith" },
-          { a: "Minutemen", b: "Dragons", sa: 4, sb: 1, note: "Salas deals; Raymond adds a late homer — the tournament's first and last both his" },
+          { a: "Minutemen", b: "Dragons", sa: 4, sb: 1, note: "If-necessary game — Salas deals; Raymond adds a late homer, the tournament's first and last both his" },
         ],
       },
     ],
     summary: [
-      "The Dragons had to beat the Minutemen twice in the final — and nearly did.",
-      "Game one: with the Minutemen an out from the title, a too-close force out at second went to rock-paper-scissors. Brandon Potter's rock beat Max Smith's scissors — then Potter walked it off 10–9 against Smith, who had moved from short to the mound to face him.",
-      "Game two: Michael Salas pitched the Minutemen to a 4–1 clincher, with Raymond's late homer closing the book — the rookie hit the tournament's first and last home runs.",
+      "Ten teams, double elimination. The Dragons lost their opener to Ironsides — then won six straight elimination games to reach the final, taking out the Tribe, Spartans, Founding Fathers, Oilers, and Ironsides along the way.",
+      "The Minutemen never lost in the winners bracket: Oilers, Tribe, Whalers, and Ironsides in the winners final.",
+      "Championship game one: with the Minutemen an out from the title, a too-close force out at second went to rock-paper-scissors. Brandon Potter's rock beat Max Smith's scissors — then Potter walked it off 10–9 against Smith, who had moved from short to the mound to face him.",
+      "The if-necessary game: Michael Salas pitched the Minutemen to a 4–1 clincher, with Raymond's late homer closing the book — the rookie hit the tournament's first and last home runs.",
+      "Home Run Tally — Brandon P. 16 · Max S. 11 · Paul H. 5 · Brent 5 · Michael (Vegas) 4 · DJ 4 · Drew B. 4 · Bobby P. 2 · Raymond G. 2 · Mark H. 2 · Brandon H. 2 · Michael (Texas) 2 · Jack 1.",
       "Honors — MVP: Max Smith · HR Champion & Defensive POY: Brandon Potter · Pitcher of the Year: Michael Salas · Rookie of the Year: Raymond.",
     ],
   },

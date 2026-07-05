@@ -50,6 +50,7 @@ export const DEFAULT_PATRIOT_TEAMS: PatriotTeam[] = [
   { id: "celtics", abbreviation: "CEL", name: "Celtics" },
   { id: "stihl", abbreviation: "STL", name: "Stihl" },
   { id: "oilers", abbreviation: "OIL", name: "Oilers" },
+  { id: "unicorns", abbreviation: "UNI", name: "Unicorns" },
 ];
 
 /* Image collections + people, edited from the admin and shown across the site. */
@@ -107,7 +108,9 @@ What happened next belongs in Patriot Series lore. Potter stepped to the plate, 
 
 Game two belonged to the champions. Michael Salas delivered a dominant pitching performance, and Raymond — the rookie who homered in his first-ever Patriot Series at-bat in the opening round — put the exclamation point on the tournament with a late home run in the 4–1 clincher. The tournament's first home run and its last both came off the rookie's bat, and the Minutemen went back-to-back.
 
-Tournament honors: MVP — Max Smith. Home Run Champion — Brandon Potter. Defensive Player of the Year — Brandon Potter. Pitcher of the Year — Michael Salas. Rookie of the Year — Raymond. Party Animal — to be announced.`,
+Tournament honors: MVP — Max Smith. Home Run Champion — Brandon Potter. Defensive Player of the Year — Brandon Potter. Pitcher of the Year — Michael Salas. Rookie of the Year — Raymond. Party Animal — to be announced.
+
+Final home run tally: Brandon P. 16, Max S. 11, Paul H. 5, Brent 5, Michael (Vegas) 4, DJ 4, Drew B. 4, Bobby P. 2, Raymond G. 2, Mark H. 2, Brandon H. 2, Michael (Texas) 2, Jack 1.`,
   },
   {
     id: "2026-raymond-first-at-bat-homer",
