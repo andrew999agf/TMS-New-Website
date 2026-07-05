@@ -27,8 +27,8 @@ const TITLES = [
   { name: "Matthew Hunter", n: 1, detail: "Landscapers '17" },
 ];
 
-const AWARDS: { year: number; mvp: string; pitcher: string; hr: string; rookie: string }[] = [
-  { year: 2026, mvp: "Max Smith", pitcher: "Michael Salas", hr: "Brandon Potter · 16", rookie: "Raymond" },
+const AWARDS: { year: number; mvp: string; pitcher: string; hr: string; rookie: string; dpoy?: string; party?: string }[] = [
+  { year: 2026, mvp: "Max Smith", pitcher: "Michael Salas", hr: "Brandon Potter · 16", rookie: "Raymond", dpoy: "Brandon Potter", party: "TBA" },
   { year: 2018, mvp: "Paul Horton", pitcher: "Darren Neumann", hr: "Max Smith · 10", rookie: "—" },
   { year: 2017, mvp: "Horton / Hunter", pitcher: "Stephen Elliot", hr: "Adam Horton · 16", rookie: "—" },
   { year: 2016, mvp: "Michael Salas", pitcher: "Brandon Heitpas", hr: "Braxton Feist · 9", rookie: "Rodney Marshall" },
@@ -114,7 +114,7 @@ export default async function RecordsPage() {
       <section className="mt-14">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">Annual Awards</h2>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-[color:var(--psx-border)]">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
+          <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead>
               <tr className="bg-[var(--psx-surface-2)] text-[11px] uppercase tracking-wider text-[color:var(--psx-muted)]">
                 <th className="px-4 py-2.5 text-left">Year</th>
@@ -122,6 +122,8 @@ export default async function RecordsPage() {
                 <th className="px-4 py-2.5 text-left">Pitcher of the Year</th>
                 <th className="px-4 py-2.5 text-left">HR Champion</th>
                 <th className="px-4 py-2.5 text-left">Rookie of the Year</th>
+                <th className="px-4 py-2.5 text-left">Defensive Player of the Year</th>
+                <th className="px-4 py-2.5 text-left">Party Animal</th>
               </tr>
             </thead>
             <tbody>
@@ -132,6 +134,8 @@ export default async function RecordsPage() {
                   <td className="px-4 py-2.5">{a.pitcher}</td>
                   <td className="px-4 py-2.5">{a.hr}</td>
                   <td className="px-4 py-2.5 text-[color:var(--psx-muted)]">{a.rookie}</td>
+                  <td className="px-4 py-2.5">{a.dpoy ?? "\u2014"}</td>
+                  <td className="px-4 py-2.5 text-[color:var(--psx-muted)]">{a.party ?? "\u2014"}</td>
                 </tr>
               ))}
             </tbody>
