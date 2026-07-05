@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { hasDb } from "@/db";
 import { getPageVisibility } from "@/lib/patriot/visibility";
 import { PatriotVisibilityForm } from "./PatriotVisibilityForm";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = { title: "Visibility · Patriot Series Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function VisibilityAdmin() {
+  await requirePatriotSignIn();
   const vis = await getPageVisibility();
   return (
     <div className="mx-auto max-w-2xl">

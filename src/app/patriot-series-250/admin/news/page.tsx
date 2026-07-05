@@ -4,6 +4,7 @@ import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
 import { PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS, type PatriotArticle } from "@/lib/patriot/settings";
 import { PatriotNewsManager } from "./PatriotNewsManager";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = {
   title: "News · Patriot Series Admin",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function NewsAdmin() {
+  await requirePatriotSignIn();
   const articles = await getSetting<PatriotArticle[]>(PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS);
 
   return (

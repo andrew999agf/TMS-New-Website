@@ -4,11 +4,13 @@ import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
 import { PATRIOT_BANNERS_KEY } from "@/lib/patriot/settings";
 import { MultiImageManager } from "../MultiImageManager";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = { title: "Banners · Patriot Series Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function BannersAdmin() {
+  await requirePatriotSignIn();
   const banners = await getSetting<string[]>(PATRIOT_BANNERS_KEY, []);
   return (
     <div className="mx-auto max-w-3xl">

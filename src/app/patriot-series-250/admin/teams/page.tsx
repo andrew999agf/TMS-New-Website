@@ -4,6 +4,7 @@ import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
 import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
 import { PatriotTeamsManager } from "./PatriotTeamsManager";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = {
   title: "Teams · Patriot Series Admin",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function TeamsAdmin() {
+  await requirePatriotSignIn();
   const teams = await getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS);
 
   return (

@@ -4,11 +4,13 @@ import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
 import { PATRIOT_PHOTOS_LAKESIDE_KEY, PATRIOT_PHOTOS_STIHL_KEY, PATRIOT_PHOTOS_ALLEY_KEY } from "@/lib/patriot/settings";
 import { MultiImageManager } from "../MultiImageManager";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = { title: "Stadium · Patriot Series Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function StadiumAdmin() {
+  await requirePatriotSignIn();
   const [lakeside, stihl, alley] = await Promise.all([
     getSetting<string[]>(PATRIOT_PHOTOS_LAKESIDE_KEY, []),
     getSetting<string[]>(PATRIOT_PHOTOS_STIHL_KEY, []),

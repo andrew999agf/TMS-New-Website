@@ -3,11 +3,13 @@ import { getSetting } from "@/lib/content";
 import { hasDb } from "@/db";
 import { PATRIOT_PLAYERS_KEY, type PatriotPlayer } from "@/lib/patriot/settings";
 import { PatriotPlayersManager } from "./PatriotPlayersManager";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = { title: "Players · Patriot Series Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function PlayersAdmin() {
+  await requirePatriotSignIn();
   const players = await getSetting<PatriotPlayer[]>(PATRIOT_PLAYERS_KEY, []);
   return (
     <div className="mx-auto max-w-3xl">

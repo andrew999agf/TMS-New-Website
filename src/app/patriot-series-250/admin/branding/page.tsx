@@ -4,6 +4,7 @@ import { hasDb } from "@/db";
 import { isBlobConfigured } from "@/lib/blob";
 import { PATRIOT_BRANDING_KEY, type PatriotBranding } from "@/lib/patriot/settings";
 import { PatriotBrandingForm } from "./PatriotBrandingForm";
+import { requirePatriotSignIn } from "../require";
 
 export const metadata: Metadata = {
   title: "Branding & Media · Patriot Series Admin",
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function BrandingAdmin() {
+  await requirePatriotSignIn();
   const branding = await getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {});
 
   return (
