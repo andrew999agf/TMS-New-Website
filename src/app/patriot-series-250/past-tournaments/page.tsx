@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Trophy, Ban } from "lucide-react";
+import { Trophy, Ban, Newspaper } from "lucide-react";
 import { PatriotShell } from "../PatriotShell";
 import { getPageVisibility } from "@/lib/patriot/visibility";
 import { getSetting } from "@/lib/content";
-import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
+import {
+  PATRIOT_TEAMS_KEY,
+  DEFAULT_PATRIOT_TEAMS,
+  type PatriotTeam,
+  PATRIOT_NEWS_KEY,
+  DEFAULT_PATRIOT_NEWS,
+  type PatriotArticle,
+} from "@/lib/patriot/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +74,14 @@ export default async function PastTournamentsPage() {
   const logoByName = new Map<string, string>();
   for (const t of teams) {
     if (t.logo) logoByName.set(normalizeName(t.name), t.logo);
+  }
+
+  // Tournament coverage: news articles tagged with a year appear on that row.
+  const news = await getSetting<PatriotArticle[]>(PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS);
+  const newsByYear = new Map<number, PatriotArticle[]>();
+  for (const a of news) {
+    if (!a.tournamentYear) continue;
+    newsByYear.set(a.tournamentYear, [...(newsByYear.get(a.tournamentYear) ?? []), a]);
   }
 
   const rows: { year: number; edition: number | null; cancelled: boolean }[] = [];
@@ -143,6 +159,19 @@ export default async function PastTournamentsPage() {
                     <span className="text-[color:var(--psx-faint)]">Champion · </span>
                     <span className="font-semibold italic text-[color:var(--psx-muted)]">To Be Determined</span>
                   </p>
+                )}
+                {(newsByYear.get(h.year) ?? []).length > 0 && (
+                  <div className="mt-2.5 space-y-1">
+                    {newsByYear.get(h.year)!.map((a) => (
+                      <Link
+                        key={a.id}
+                        href={`/news/${a.id}`}
+                        className="flex items-center gap-1.5 text-[12px] font-medium text-[color:var(--psx-accent)] hover:underline"
+                      >
+                        <Newspaper size={12} className="shrink-0" /> {a.title}
+                      </Link>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

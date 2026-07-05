@@ -54,9 +54,14 @@ function patriotRouting(req: NextRequest): NextResponse {
     "/past-tournaments": "/patriot-series-250/past-tournaments",
     "/records": "/patriot-series-250/records",
     "/stadium": "/patriot-series-250/stadium",
+    "/news": "/patriot-series-250/news",
   };
   const dest = PUBLIC_PAGES[pathname];
   if (dest) return NextResponse.rewrite(new URL(dest, req.url));
+  // News articles: /news/<slug> → /patriot-series-250/news/<slug>
+  if (pathname.startsWith("/news/")) {
+    return NextResponse.rewrite(new URL(`/patriot-series-250${pathname}`, req.url));
+  }
 
   // The real Patriot pages and everything else just pass through.
   return NextResponse.next();

@@ -6,6 +6,7 @@ import { savePatriotSetting } from "../actions";
 import { PATRIOT_PAGES_KEY, type PatriotPageKey } from "@/lib/patriot/settings";
 
 const PAGES: { key: PatriotPageKey; label: string; note: string }[] = [
+  { key: "news", label: "News", note: "Tournament articles and coverage." },
   { key: "teams", label: "Teams", note: "The team roster page." },
   { key: "past-tournaments", label: "Past Tournaments", note: "Champions and winning rosters by year." },
   { key: "records", label: "Records", note: "Personal stats, awards, and the record book." },

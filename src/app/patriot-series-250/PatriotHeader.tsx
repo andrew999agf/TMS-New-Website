@@ -7,6 +7,7 @@ import type { PatriotPageKey } from "@/lib/patriot/settings";
 
 const NAV: { href: string; label: string; key: PatriotPageKey | null }[] = [
   { href: "/", label: "Watch", key: null },
+  { href: "/news", label: "News", key: "news" },
   { href: "/teams", label: "Teams", key: "teams" },
   { href: "/past-tournaments", label: "Past Tournaments", key: "past-tournaments" },
   { href: "/records", label: "Records", key: "records" },
