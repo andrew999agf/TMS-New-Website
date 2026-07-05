@@ -29,6 +29,7 @@ const LATEST = 2026; // this year's USA 250 tournament — champion TBD until it
 type Champion = { team: string | null; later?: string; captain?: string; roster?: string[]; note?: string };
 
 const CHAMPIONS: Record<number, Champion> = {
+  2026: { team: "Minutemen", captain: "Max S.", roster: ["Michael S.", "Raymond"], note: "Defeated the Dragons in the final — dropped game one 10–9 on a walk-off, took the clincher 4–1" },
   2025: { team: "Minutemen", captain: "Max S.", roster: ["Brian B.", "Oliver B."] },
   2024: { team: "Founding Fathers" },
   2023: { team: "Whalers", roster: ["Adam H.", "Trey H.", "Brennan B."] },

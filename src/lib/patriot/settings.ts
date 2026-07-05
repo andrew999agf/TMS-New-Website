@@ -90,6 +90,22 @@ export const PATRIOT_NEWS_KEY = "patriot.news";
 
 export const DEFAULT_PATRIOT_NEWS: PatriotArticle[] = [
   {
+    id: "2026-minutemen-repeat-champions",
+    title: "Minutemen Repeat: Back-to-Back Champions After a Game One for the Ages",
+    dek: "Brandon Potter won a rock-paper-scissors showdown and then walked it off — but Michael Salas and Raymond slammed the door in game two as the Minutemen went back-to-back.",
+    date: "July 4, 2026",
+    tournamentYear: 2026,
+    body: `The Minutemen are champions of the 19th Annual Patriot Series — but the Dragons made them earn it in one of the wildest finals this tournament has ever seen.
+
+Facing elimination math — the Dragons needed to beat the Minutemen twice — game one delivered instant history. With the Minutemen an out away from the title, a bang-bang force out at second base was too close to call, and the call went to the tournament's highest court: rock, paper, scissors. Brandon Potter threw rock. Max Smith threw scissors. Safe.
+
+What happened next belongs in Patriot Series lore. Potter stepped to the plate, and Smith — refusing to let anyone else wear it — moved himself from shortstop to the pitcher's mound to face him. Potter hit a walk-off home run. Dragons 10, Minutemen 9, and suddenly it was a one-game season.
+
+Game two belonged to the champions. Michael Salas delivered a dominant pitching performance, and Raymond — the rookie who homered in his first-ever Patriot Series at-bat in the opening round — put the exclamation point on the tournament with a late home run in the 4–1 clincher. The tournament's first home run and its last both came off the rookie's bat, and the Minutemen went back-to-back.
+
+Tournament honors: MVP — Max Smith. Home Run Champion — Brandon Potter. Defensive Player of the Year — Brandon Potter. Pitcher of the Year — Michael Salas. Rookie of the Year — Raymond. Party Animal — to be announced.`,
+  },
+  {
     id: "2026-raymond-first-at-bat-homer",
     title: "Rookie Raymond Homers in His First-Ever Patriot Series At-Bat",
     dek: "The Minutemen newcomer went deep on the first swing of his Patriot Series career in a 3–2 first-round win over the Oilers.",
