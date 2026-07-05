@@ -13,6 +13,8 @@ import {
   DEFAULT_PATRIOT_NEWS,
   type PatriotArticle,
 } from "@/lib/patriot/settings";
+import { BRACKETS } from "./brackets";
+import { BracketModal } from "./BracketModal";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +78,8 @@ export default async function PastTournamentsPage() {
   for (const t of teams) {
     if (t.logo) logoByName.set(normalizeName(t.name), t.logo);
   }
+  // Serializable copy for the client-side bracket popups.
+  const logosObj = Object.fromEntries(logoByName);
 
   // Tournament coverage: news articles tagged with a year appear on that row.
   const news = await getSetting<PatriotArticle[]>(PATRIOT_NEWS_KEY, DEFAULT_PATRIOT_NEWS);
@@ -115,23 +119,28 @@ export default async function PastTournamentsPage() {
           const logoName = champ?.later ?? champ?.team;
           const logo = logoName ? logoByName.get(normalizeName(logoName)) : undefined;
           const players = champ ? playersLine(champ) : "";
+          const bracket = h.cancelled ? undefined : BRACKETS[h.year];
+          const tileClass = `flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border ${h.cancelled ? "border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-500"}`;
+          const tileInner = h.cancelled ? (
+            <Ban size={24} strokeWidth={1.5} />
+          ) : logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt={`${logoName} logo`} className="h-full w-full object-contain p-1.5" />
+          ) : (
+            <Trophy size={26} strokeWidth={1.5} />
+          );
           return (
             <div
               key={h.year}
               className={`flex gap-5 rounded-2xl border border-[color:var(--psx-border)] bg-[var(--psx-surface)] p-5 ${h.cancelled ? "opacity-70" : ""}`}
             >
-              <div
-                className={`flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border ${h.cancelled ? "border-[color:var(--psx-border)] bg-[var(--psx-surface-2)] text-[color:var(--psx-faint)]" : "border-yellow-400/30 bg-yellow-400/10 text-yellow-500"}`}
-              >
-                {h.cancelled ? (
-                  <Ban size={24} strokeWidth={1.5} />
-                ) : logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logo} alt={`${logoName} logo`} className="h-full w-full object-contain p-1.5" />
-                ) : (
-                  <Trophy size={26} strokeWidth={1.5} />
-                )}
-              </div>
+              {bracket ? (
+                <BracketModal year={h.year} champion={champ?.team ?? undefined} bracket={bracket} logos={logosObj} className={tileClass}>
+                  {tileInner}
+                </BracketModal>
+              ) : (
+                <div className={tileClass}>{tileInner}</div>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <p className={`font-[family-name:var(--font-display)] text-2xl font-bold leading-none ${h.cancelled ? "text-[color:var(--psx-faint)]" : "text-[color:var(--psx-fg)]"}`}>{h.year}</p>
@@ -160,6 +169,9 @@ export default async function PastTournamentsPage() {
                     <span className="text-[color:var(--psx-faint)]">Champion · </span>
                     <span className="font-semibold italic text-[color:var(--psx-muted)]">To Be Determined</span>
                   </p>
+                )}
+                {bracket && (
+                  <p className="mt-1.5 text-[11px] text-[color:var(--psx-faint)]">Click the crest to view the full bracket and game summary.</p>
                 )}
                 {(newsByYear.get(h.year) ?? []).length > 0 && (
                   <div className="mt-2.5 space-y-1">
