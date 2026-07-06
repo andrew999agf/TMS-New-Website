@@ -210,7 +210,21 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
                         {Object.entries(r.answers).map(([k, v]) => (
                           <div key={k} className="flex gap-2">
                             <dt className="text-[var(--c-ink-muted)] min-w-32">{k}</dt>
-                            <dd>{Array.isArray(v) ? v.join(", ") : String(v ?? "")}</dd>
+                            <dd>
+                              {Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as object)) ? (
+                                <span className="flex flex-col gap-0.5">
+                                  {(v as { name?: string; url: string }[]).map((f, i) => (
+                                    <a key={i} href={f.url} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] underline underline-offset-2">
+                                      {f.name ?? `Attachment ${i + 1}`}
+                                    </a>
+                                  ))}
+                                </span>
+                              ) : Array.isArray(v) ? (
+                                v.join(", ")
+                              ) : (
+                                String(v ?? "")
+                              )}
+                            </dd>
                           </div>
                         ))}
                       </dl>

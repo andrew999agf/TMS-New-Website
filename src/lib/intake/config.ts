@@ -26,7 +26,12 @@ export type FieldType =
   /** Specific gifts: each an item + recipients. */
   | "gifts"
   /** Residuary beneficiaries with an even-split toggle and percentage validation. */
-  | "residuary";
+  | "residuary"
+  /** Drag-and-drop document upload (court papers etc.); value is IntakeFile[]. */
+  | "files";
+
+/** An uploaded document attached to a submission (stored in media storage). */
+export type IntakeFile = { name: string; url: string; size?: number };
 
 /** A person captured in the flow — reused across fields with autocomplete. */
 export type Person = { name: string; phone?: string; address?: string };
@@ -287,6 +292,7 @@ export const BRANCHES: Branch[] = [
     practiceSlug: "consumer-debt-defense",
     summaryNoun: "a lawsuit that has been filed against them",
     keywords: [
+      "eviction", "evicted", "evict", "notice to vacate", "forcible detainer", "landlord suing me",
       "sued", "being sued", "lawsuit", "law suit", "summons", "citation", "served", "served papers",
       "court papers", "legal papers", "petition", "complaint", "answer deadline", "default judgment",
       "judgment against me", "taken to court", "they are suing me", "someone is suing me",
@@ -335,6 +341,30 @@ export const BRANCHES: Branch[] = [
         ],
       },
     ],
+    // Defense matters (evictions, debt defense, civil-litigation defense):
+    // near the end, ask for the papers themselves — reviewing the actual
+    // petition/complaint before the consult saves everyone a step.
+    commonOverrides: {
+      details: {
+        id: "details",
+        title: "Anything else we should know?",
+        fields: [
+          {
+            name: "message",
+            label: "In your own words",
+            type: "textarea",
+            placeholder: "A few sentences about what is going on.",
+          },
+          {
+            name: "lawsuitDocs",
+            label: "Upload the petition / complaint / lawsuit papers (optional)",
+            type: "files",
+            max: 5,
+            help: "The papers you were served — petition, complaint, citation, or eviction notice. Clear photos work as well as scans. PDF, Word, or images, up to 20 MB each.",
+          },
+        ],
+      },
+    },
   },
   {
     id: "sue",

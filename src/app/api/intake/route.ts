@@ -150,12 +150,19 @@ export async function POST(req: Request) {
     a,
   );
 
+  const fmtAnswer = (v: unknown): string => {
+    // Uploaded documents (petition/complaint attachments) → clickable links.
+    if (Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as Record<string, unknown>))) {
+      return (v as { name?: string; url: string }[])
+        .map((f) => `<a href="${esc(f.url)}">${esc(f.name ?? f.url)}</a>`)
+        .join("<br/>");
+    }
+    return Array.isArray(v) ? v.join("; ") : String(v ?? "");
+  };
   const rows = Object.entries(a)
     .map(
       ([k, v]) =>
-        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${k}</td><td style="padding:4px 0">${
-          Array.isArray(v) ? v.join("; ") : String(v ?? "")
-        }</td></tr>`,
+        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${k}</td><td style="padding:4px 0">${fmtAnswer(v)}</td></tr>`,
     )
     .join("");
 

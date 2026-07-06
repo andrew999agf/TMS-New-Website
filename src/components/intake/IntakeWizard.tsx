@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Fuse from "fuse.js";
-import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2 } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
@@ -15,6 +16,7 @@ import {
   type Gift,
   type ResShare,
   type ResiduaryValue,
+  type IntakeFile,
 } from "@/lib/intake/config";
 
 type Answers = Record<string, unknown>;
@@ -366,6 +368,105 @@ export function IntakeWizard({
   );
 }
 
+
+const asFiles = (v: unknown): IntakeFile[] =>
+  Array.isArray(v) ? (v as IntakeFile[]).filter((f) => f && typeof f === "object" && typeof f.url === "string") : [];
+
+const fmtBytes = (n?: number) => (n == null ? "" : n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/** Drag-and-drop document upload (court papers). Files go straight from the
+ *  browser to media storage through the public intake token endpoint; the
+ *  submission stores {name, url, size} for each attachment. */
+function FilesField({ value, onChange, max = 5 }: { value: IntakeFile[]; onChange: (v: IntakeFile[]) => void; max?: number }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [drag, setDrag] = useState(false);
+  const [busy, setBusy] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const MAX_BYTES = 20 * 1024 * 1024;
+  const ACCEPT = ".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.heic,.heif,.tif,.tiff";
+
+  async function addFiles(picked: FileList | File[]) {
+    setError(null);
+    const room = max - value.length;
+    const files = [...picked].slice(0, Math.max(room, 0));
+    if ([...picked].length > room) setError(`Up to ${max} files — the extras were skipped.`);
+    const next = [...value];
+    for (const f of files) {
+      if (f.size > MAX_BYTES) {
+        setError(`“${f.name}” is over 20 MB — you can email it to us instead.`);
+        continue;
+      }
+      setBusy((b) => b + 1);
+      try {
+        const blob = await upload(`intake-docs/${f.name}`, f, { access: "public", handleUploadUrl: "/api/intake/upload" });
+        next.push({ name: f.name, url: blob.url, size: f.size });
+        onChange([...next]);
+      } catch {
+        setError(`Couldn’t upload “${f.name}”. You can continue without it and email the papers instead.`);
+      } finally {
+        setBusy((b) => b - 1);
+      }
+    }
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          void addFiles(e.dataTransfer.files);
+        }}
+        className={`flex w-full flex-col items-center justify-center gap-1.5 border-2 border-dashed px-4 py-8 text-center transition-colors ${
+          drag ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/60"
+        }`}
+      >
+        {busy > 0 ? <Loader2 size={22} className="animate-spin text-[var(--c-accent)]" /> : <UploadCloud size={22} className="text-[var(--c-accent)]" />}
+        <span className="text-sm font-medium">{busy > 0 ? "Uploading…" : "Drag & drop the papers here, or tap to browse"}</span>
+        <span className="text-xs text-[var(--c-ink-muted)]">PDF, Word, or photos · up to {max} files · 20 MB each</span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) void addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {value.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {value.map((f, i) => (
+            <li key={f.url} className="flex items-center gap-2 border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm">
+              <FileText size={15} className="shrink-0 text-[var(--c-accent)]" />
+              <span className="min-w-0 flex-1 truncate">{f.name}</span>
+              <span className="shrink-0 text-xs text-[var(--c-ink-muted)]">{fmtBytes(f.size)}</span>
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((_, j) => j !== i))}
+                className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+                aria-label={`Remove ${f.name}`}
+              >
+                <X size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p className="mt-1.5 text-xs text-[var(--c-accent)]">{error}</p>}
+    </div>
+  );
+}
+
 function FieldInput({
   field,
   value,
@@ -405,6 +506,14 @@ function FieldInput({
       <div>
         {labelEl}
         <GiftsField value={Array.isArray(value) ? (value as Gift[]) : []} onChange={onChange} people={people} addLabel={field.addLabel} />
+      </div>
+    );
+  }
+  if (field.type === "files") {
+    return (
+      <div>
+        {labelEl}
+        <FilesField value={asFiles(value)} onChange={onChange} max={field.max} />
       </div>
     );
   }
