@@ -232,11 +232,15 @@ export function rankMatters(spoken: string, matters: Matter[]): Ranked[] {
   if (!qTokens.length) return [];
   const ranked: Ranked[] = matters.map((m) => {
     const nTokens = nameTokens(matterName(m.displayNumber));
+    // Tokens from the matter DESCRIPTION also match (docket numbers, opposing
+    // party, "eviction", ...) at a slight discount so the client name wins ties.
+    const dTokens = nameTokens(m.description ?? "");
     const last = lastNameOf(m.displayNumber);
     let matched = 0, simSum = 0, lastBonus = 0;
     for (const q of qTokens) {
       let bestSim = 0, bestTok = "";
       for (const n of nTokens) { const sc = tokenSim(q, n); if (sc > bestSim) { bestSim = sc; bestTok = n; } }
+      for (const d of dTokens) { const sc = tokenSim(q, d) * 0.85; if (sc > bestSim) { bestSim = sc; bestTok = ""; } }
       simSum += bestSim;
       if (bestSim >= 0.8) { matched++; if (bestTok === last) lastBonus += 0.6; }
     }

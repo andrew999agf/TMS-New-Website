@@ -114,6 +114,7 @@ export function VoiceTimeEntry4({
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
   const [slots, setSlots] = useState<Slots>({});
+  const [matterFocus, setMatterFocus] = useState(false);
   const [saved, setSaved] = useState(false);
   const [candidates, setCandidates] = useState<Matter[]>([]);
   const [openDesc, setOpenDesc] = useState<string | null>(null);
@@ -805,8 +806,49 @@ export function VoiceTimeEntry4({
             <div className="mt-4 space-y-3">
               <div>
                 <label className={labelClass}>Case / client</label>
-                <input list="vte4-matters" value={slots.matter ?? slots.rawClient ?? ""} onChange={(e) => upd({ matter: e.target.value, rawClient: e.target.value })} className={fieldClass} placeholder="Choose a case" />
-                <datalist id="vte4-matters">{matters.map((m) => <option key={m.displayNumber} value={m.displayNumber}>{m.description}</option>)}</datalist>
+                <div className="relative">
+                  <input
+                    value={slots.matter ?? slots.rawClient ?? ""}
+                    onChange={(e) => upd({ matter: e.target.value, rawClient: e.target.value })}
+                    onFocus={() => setMatterFocus(true)}
+                    onBlur={() => setMatterFocus(false)}
+                    onKeyDown={(e) => e.key === "Escape" && setMatterFocus(false)}
+                    className={fieldClass}
+                    placeholder="Type a client, case number, or anything from the description"
+                    autoComplete="off"
+                  />
+                  {(() => {
+                    /* Ranked type-ahead: matches the matter number/name AND the
+                       description (docket no., opposing party, matter type). */
+                    const q = (slots.matter ?? slots.rawClient ?? "").trim();
+                    if (!matterFocus || q.length < 2) return null;
+                    if (matters.some((m) => m.displayNumber === q)) return null;
+                    const hits = rankMatters(q, matters).slice(0, 8);
+                    if (!hits.length) return null;
+                    return (
+                      <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] shadow-lg">
+                        {hits.map((m) => (
+                          <li key={m.displayNumber}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                upd({ matter: m.displayNumber, rawClient: m.displayNumber });
+                                setMatterFocus(false);
+                              }}
+                              className="block w-full px-3 py-2 text-left hover:bg-[var(--c-surface2)]"
+                            >
+                              <span className="block text-sm font-medium">{m.displayNumber}</span>
+                              {m.description && (
+                                <span className="block truncate text-xs text-[var(--c-ink-muted)]">{m.description}</span>
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </div>
                 {descOf(slots.matter) && (
                   <div className="mt-1.5 rounded bg-[var(--c-surface2)] border border-[var(--c-accent)] px-2.5 py-2 text-xs leading-relaxed">
                     <div className="font-semibold mb-0.5">Case Description</div>
