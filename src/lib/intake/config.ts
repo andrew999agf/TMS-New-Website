@@ -463,6 +463,109 @@ export const BRANCHES: Branch[] = [
     ],
   },
   {
+    id: "wreck-pd",
+    label: "Vehicle wreck — property damage only",
+    blurb: "My car was damaged; nobody was seriously hurt",
+    practiceSlug: "personal-injury-wrongful-death",
+    summaryNoun: "a vehicle-wreck property-damage claim",
+    keywords: [
+      "property damage", "car damage", "vehicle damage", "fender bender", "totaled", "total loss",
+      "hit my car", "hit my truck", "body shop", "repair estimate", "diminished value",
+      "insurance won't pay", "lowball", "claim denied", "other driver's insurance", "deductible",
+      "hit and run", "parked car", "uninsured driver property damage",
+    ],
+    steps: [
+      {
+        id: "wreck",
+        title: "About the wreck",
+        fields: [
+          { name: "accidentDate", label: "When did it happen?", type: "date" },
+          {
+            name: "accidentWhere",
+            label: "Where did it happen?",
+            type: "text",
+            placeholder: "Street or intersection, city, and county",
+            help: "The county matters — it decides which court a claim would be filed in.",
+          },
+          {
+            name: "damageSeverity",
+            label: "How bad is the damage?",
+            type: "radio",
+            options: ["Totaled / not drivable", "Major — drivable but serious damage", "Moderate — panels, bumper, dents", "Minor / cosmetic"],
+            required: true,
+          },
+          {
+            name: "anyoneHurt",
+            label: "Was anyone hurt in the wreck?",
+            type: "radio",
+            options: ["No — property damage only", "Some soreness, but nothing treated", "Yes, someone was treated"],
+          },
+        ],
+      },
+      {
+        id: "claim",
+        title: "The insurance side",
+        subtitle: "Where things stand tells us how to help fastest.",
+        fields: [
+          {
+            name: "faultDriver",
+            label: "Whose fault was it?",
+            type: "radio",
+            options: ["The other driver", "Disputed", "Partly both", "Not sure"],
+          },
+          {
+            name: "claimStatus",
+            label: "Where does the insurance claim stand?",
+            type: "radio",
+            options: [
+              "Haven't filed a claim yet",
+              "Filed — waiting / being delayed",
+              "Offer feels too low",
+              "Claim denied",
+              "Other driver is uninsured or fled",
+            ],
+          },
+        ],
+      },
+      {
+        id: "photos",
+        title: "Photos of the damage",
+        fields: [
+          { name: "hasPhotos", label: "Do you have photos of the damage or the scene?", type: "yesno" },
+          {
+            name: "wreckPhotos",
+            label: "Upload your photos",
+            type: "files",
+            max: 5,
+            help: "Phone photos are perfect — the damage, the scene, the other vehicle, or the repair estimate. Up to 5 files, 20 MB each.",
+            showIf: { field: "hasPhotos", equals: "Yes" },
+          },
+        ],
+      },
+    ],
+    // Near the end: if injuries surface later, would they pursue them?
+    commonOverrides: {
+      details: {
+        id: "details",
+        title: "Anything else we should know?",
+        fields: [
+          {
+            name: "message",
+            label: "In your own words",
+            type: "textarea",
+            placeholder: "A few sentences about what is going on.",
+          },
+          {
+            name: "piInterest",
+            label: "Sometimes injuries show up days or weeks after a wreck. If it turned out you had a personal-injury claim worth pursuing, would you consider filing it?",
+            type: "radio",
+            options: ["Yes, I'd consider it", "Maybe — I'd want to talk it through", "No — property damage only"],
+          },
+        ],
+      },
+    },
+  },
+  {
     id: "criminal",
     label: "Criminal charge or investigation",
     blurb: "I'm facing the State",
