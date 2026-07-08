@@ -287,7 +287,7 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
               <h2 className="font-[family-name:var(--font-display)] text-xl">Manual Entry</h2>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Matter/Client">
-                  <Combobox value={manual.matter} onChange={(v) => setManual((f) => ({ ...f, matter: v }))} options={matterList} placeholder="Start typing to search matters…" />
+                  <Combobox value={manual.matter} onChange={(v) => setManual((f) => ({ ...f, matter: v }))} options={matterList} descriptions={matterDesc} placeholder="Search by client, number, or anything in the description…" />
                   {matterDesc[manual.matter] && <Desc text={matterDesc[manual.matter]} />}
                 </Field>
                 <Field label="Category"><Combobox value={manual.category} onChange={(v) => setManual((f) => ({ ...f, category: v }))} options={categoryNames} placeholder="Start typing category…" /></Field>
@@ -309,7 +309,7 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
               <h2 className="font-[family-name:var(--font-display)] text-xl">Timer Mode</h2>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Matter/Client">
-                  <Combobox value={tform.matter} onChange={(v) => setTform((f) => ({ ...f, matter: v }))} options={matterList} placeholder="Start typing to search matters…" />
+                  <Combobox value={tform.matter} onChange={(v) => setTform((f) => ({ ...f, matter: v }))} options={matterList} descriptions={matterDesc} placeholder="Search by client, number, or anything in the description…" />
                   {matterDesc[tform.matter] && <Desc text={matterDesc[tform.matter]} />}
                 </Field>
                 <Field label="Category"><Combobox value={tform.category} onChange={(v) => setTform((f) => ({ ...f, category: v }))} options={categoryNames} placeholder="Start typing category…" /></Field>
@@ -468,9 +468,16 @@ function Modal({ children, onClose, wide }: { children: React.ReactNode; onClose
     </div>
   );
 }
-function Combobox({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) {
+function Combobox({ value, onChange, options, placeholder, descriptions }: { value: string; onChange: (v: string) => void; options: string[]; placeholder?: string; descriptions?: Record<string, string> }) {
   const [open, setOpen] = useState(false); const [hi, setHi] = useState(-1); const ref = useRef<HTMLDivElement>(null);
-  const q = value.toLowerCase(); const matches = open ? (q ? options.filter((o) => o.toLowerCase().includes(q)) : options) : [];
+  // Every typed word must appear in the option OR its description, so a
+  // matter is findable by client name, number, docket no., opposing party, ...
+  const words = value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = (o: string) => {
+    const hay = `${o} ${descriptions?.[o] ?? ""}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  };
+  const matches = open ? (words.length ? options.filter(hit) : options) : [];
   useEffect(() => { function d(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); } document.addEventListener("mousedown", d); return () => document.removeEventListener("mousedown", d); }, []);
   const select = (v: string) => { onChange(v); setOpen(false); setHi(-1); };
   return (
@@ -481,7 +488,12 @@ function Combobox({ value, onChange, options, placeholder }: { value: string; on
       <ChevronDown size={15} className={`absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)] pointer-events-none transition-transform ${open ? "rotate-180" : ""}`} />
       {open && matches.length > 0 && (
         <div className="absolute left-0 right-0 top-full z-30 max-h-52 overflow-y-auto rounded-b-md border border-t-0 border-[var(--c-accent)] bg-[var(--c-surface)] shadow-lg">
-          {matches.map((o, i) => <div key={o} onClick={() => select(o)} onMouseEnter={() => setHi(i)} className={`px-3 py-2 text-sm cursor-pointer border-b border-[var(--c-border)] last:border-0 ${i === hi ? "bg-[var(--c-surface2)]" : ""}`}>{o}</div>)}
+          {matches.map((o, i) => (
+            <div key={o} onClick={() => select(o)} onMouseEnter={() => setHi(i)} className={`px-3 py-2 cursor-pointer border-b border-[var(--c-border)] last:border-0 ${i === hi ? "bg-[var(--c-surface2)]" : ""}`}>
+              <div className="text-sm">{o}</div>
+              {descriptions?.[o] && <div className="truncate text-xs text-[var(--c-ink-muted)]">{descriptions[o]}</div>}
+            </div>
+          ))}
         </div>
       )}
     </div>
