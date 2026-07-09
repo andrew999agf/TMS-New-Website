@@ -12,11 +12,13 @@ function elapsed(sinceIso: string, now: number): string {
 }
 
 /**
- * The hourly time clock: a single clear button pinned to the top-right of the
- * admin. Green "Clock In" when off the clock; red "Clock Out" with a live
- * elapsed timer while on it. Rendered only for accounts marked hourly.
+ * The hourly time clock: a single clear button at the top of the admin
+ * sidebar, just below the firm name — on every page, phone included. Green
+ * "Clock In" when off the clock; red "Clock Out" with a live elapsed timer
+ * while on it. Collapsed sidebar shows the compact icon version. Rendered
+ * only for accounts marked hourly.
  */
-export function TimeClockButton({ initialOpenSince }: { initialOpenSince: string | null }) {
+export function TimeClockButton({ initialOpenSince, collapsed = false }: { initialOpenSince: string | null; collapsed?: boolean }) {
   const [openSince, setOpenSince] = useState<string | null>(initialOpenSince);
   const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
@@ -24,29 +26,21 @@ export function TimeClockButton({ initialOpenSince }: { initialOpenSince: string
   useEffect(() => {
     if (!openSince) return;
     const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, [openSince]);
-
-  function toggle() {
-    start(async () => {
-      const state = openSince ? await clockOut() : await clockIn();
-      setOpenSince(state.openSince);
-      setNow(Date.now());
-    });
-  }
-
-  return (
+    return (
     <button
       onClick={toggle}
       disabled={pending}
-      title={openSince ? `On the clock since ${new Date(openSince).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Start your shift"}
-      style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
-      className={`fixed right-3 z-50 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-60 sm:right-4 ${
-        openSince ? "bg-[var(--c-error,#b91c1c)]" : "bg-[var(--c-success,#15803d)]"
-      }`}
+      title={
+        openSince
+          ? `On the clock since ${new Date(openSince).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — tap to clock out`
+          : "Clock in"
+      }
+      className={`flex items-center justify-center gap-2 rounded-lg font-semibold text-white shadow transition hover:brightness-110 disabled:opacity-60 ${
+        collapsed ? "h-10 w-10 mx-auto" : "w-full px-3 py-2.5 text-sm"
+      } ${openSince ? "bg-[var(--c-error,#b91c1c)]" : "bg-[var(--c-success,#15803d)]"}`}
     >
-      <Clock size={15} className={openSince ? "animate-pulse" : ""} />
-      {pending ? "…" : openSince ? `Clock Out · ${elapsed(openSince, now)}` : "Clock In"}
+      <Clock size={collapsed ? 17 : 15} className={openSince ? "animate-pulse" : ""} />
+      {!collapsed && (pending ? "…" : openSince ? `Clock Out · ${elapsed(openSince, now)}` : "Clock In")}
     </button>
   );
 }

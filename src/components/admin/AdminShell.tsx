@@ -114,6 +114,11 @@ export function AdminShell({
           </button>
         </div>
 
+        {timeclock && (
+          <div className={`border-b border-[var(--c-dark-border)] ${collapsed ? "px-2 py-3" : "px-4 py-3"}`}>
+            <TimeClockButton initialOpenSince={timeclock.openSince} collapsed={collapsed} />
+          </div>
+        )}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
           {nav.map((item) => {
             const active =
@@ -172,10 +177,7 @@ export function AdminShell({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">
-        {timeclock && <TimeClockButton initialOpenSince={timeclock.openSince} />}
-        {children}
-      </main>
+      <main className="flex-1 min-w-0">{children}</main>
     </div>
   );
 }
