@@ -40,7 +40,8 @@ export function TimeClockButton({ initialOpenSince }: { initialOpenSince: string
       onClick={toggle}
       disabled={pending}
       title={openSince ? `On the clock since ${new Date(openSince).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Start your shift"}
-      className={`fixed right-4 top-3 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-60 ${
+      style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
+      className={`fixed right-3 z-50 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-60 sm:right-4 ${
         openSince ? "bg-[var(--c-error,#b91c1c)]" : "bg-[var(--c-success,#15803d)]"
       }`}
     >
