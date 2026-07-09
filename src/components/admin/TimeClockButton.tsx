@@ -26,7 +26,18 @@ export function TimeClockButton({ initialOpenSince, collapsed = false }: { initi
   useEffect(() => {
     if (!openSince) return;
     const t = setInterval(() => setNow(Date.now()), 30_000);
-    return (
+    return () => clearInterval(t);
+  }, [openSince]);
+
+  function toggle() {
+    start(async () => {
+      const state = openSince ? await clockOut() : await clockIn();
+      setOpenSince(state.openSince);
+      setNow(Date.now());
+    });
+  }
+
+  return (
     <button
       onClick={toggle}
       disabled={pending}
