@@ -40,6 +40,8 @@ export const admins = pgTable("admins", {
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  /** Hourly staff see the Clock In / Clock Out button in the admin portal. */
+  hourly: boolean("hourly").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -368,6 +370,15 @@ export const timeMatters = pgTable("time_matters", {
   displayNumber: text("display_number").notNull(),
   description: text("description").notNull().default(""),
   sort: integer("sort").notNull().default(0),
+});
+
+/** Hourly time-clock punches (distinct from billable time entries): one row
+ *  per shift; clock_out stays null while the person is on the clock. */
+export const timeClockPunches = pgTable("time_clock_punches", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id").notNull(),
+  clockIn: timestamp("clock_in", { withTimezone: true }).notNull().defaultNow(),
+  clockOut: timestamp("clock_out", { withTimezone: true }),
 });
 
 /* ----------------------------------------------------------------------------

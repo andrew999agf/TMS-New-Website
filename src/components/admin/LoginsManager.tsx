@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react";
 import { Plus, Trash2, KeyRound, Check, Mail, SlidersHorizontal, GraduationCap } from "lucide-react";
 import {
-  createLogin, resetLoginPassword, updateLoginRole, deleteLogin,
+  createLogin, resetLoginPassword, updateLoginRole, updateLoginHourly, deleteLogin,
   updateLoginPermissions, sendSetupLink, setUserActivityDefault,
 } from "@/app/admin/(panel)/logins/actions";
 import { TOGGLEABLE_SECTIONS, isFullAdminRole } from "@/lib/admin-sections";
 import { UserTrainingPanel } from "@/components/admin/training/UserTrainingPanel";
 
-type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null };
+type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null; hourly: boolean };
 type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["timekeeper", "editor", "owner"];
 const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (full access)", owner: "Owner (full access)" };
@@ -103,6 +103,20 @@ export function LoginsManager({ initial, selfId, activityUsers = [], ttDefaults 
                     </button>
                   </div>
                   <div className="text-xs text-[var(--c-ink-muted)] truncate">{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleDateString()}` : " · never signed in"}</div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="text-[11px] text-[var(--c-ink-muted)]">Hourly (time clock):</span>
+                    <button
+                      role="switch"
+                      aria-checked={u.hourly}
+                      disabled={pending}
+                      onClick={() => startTransition(() => { void updateLoginHourly(u.id, !u.hourly); })}
+                      title="Hourly staff see the Clock In / Clock Out button and appear on the weekly hours email"
+                      className={`relative h-5 w-9 rounded-full transition-colors ${u.hourly ? "bg-[var(--c-success,#15803d)]" : "bg-[var(--c-border)]"}`}
+                    >
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left] ${u.hourly ? "left-[18px]" : "left-0.5"}`} />
+                    </button>
+                    <span className="text-[11px] font-medium">{u.hourly ? "Yes" : "No"}</span>
+                  </div>
                   {activityUsers.length > 0 && (
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <span className="text-[11px] text-[var(--c-ink-muted)]">Time Tracker:</span>

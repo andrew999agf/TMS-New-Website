@@ -91,6 +91,17 @@ export async function updateLoginPermissions(id: number, permissions: string[]) 
   return { ok: true };
 }
 
+/** Mark a login as hourly staff (shows the Clock In / Clock Out time-clock
+ *  button in their portal and includes them in the weekly hours report). */
+export async function updateLoginHourly(id: number, hourly: boolean) {
+  const session = await requireFullAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  await db.update(admins).set({ hourly }).where(eq(admins.id, id));
+  await audit(session.email, "update", "login", String(id), hourly ? "Marked hourly (time clock on)" : "Unmarked hourly (time clock off)");
+  revalidatePath("/admin/logins");
+  return { ok: true };
+}
+
 /** Generate a setup/reset link and email it from the office mailbox. If email
  *  isn't configured, returns the link so the admin can share it manually. */
 export async function sendSetupLink(id: number) {

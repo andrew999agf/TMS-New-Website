@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { TimeClockButton } from "./TimeClockButton";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -59,9 +60,12 @@ const NAV = [
 export function AdminShell({
   children,
   user,
+  timeclock = null,
 }: {
   children: React.ReactNode;
   user: { name: string; email: string; role: string; permissions: string[] };
+  /** Set for hourly staff: their current punch state. null = no clock button. */
+  timeclock?: { openSince: string | null } | null;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -168,7 +172,10 @@ export function AdminShell({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">{children}</main>
+      <main className="flex-1 min-w-0">
+        {timeclock && <TimeClockButton initialOpenSince={timeclock.openSince} />}
+        {children}
+      </main>
     </div>
   );
 }

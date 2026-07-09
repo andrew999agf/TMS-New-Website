@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { hasDb } from "@/db";
+import { hasDb, db } from "@/db";
+import { admins, timeClockPunches } from "@/db/schema";
+import { and, eq, isNull, desc } from "drizzle-orm";
 
 // Makes the admin installable as a home-screen app. The manifest is linked here
 // (only on admin pages) rather than via the root app/manifest.ts convention,
@@ -19,8 +21,29 @@ export default async function AdminPanelLayout({
 }) {
   const session = await requireAdmin();
 
+  // Hourly staff get the Clock In / Clock Out button (top right). Tolerates a
+  // database that hasn't had "Apply database updates" run yet.
+  let timeclock: { openSince: string | null } | null = null;
+  if (db) {
+    try {
+      const me = Number(session.sub);
+      const [a] = await db.select({ hourly: admins.hourly }).from(admins).where(eq(admins.id, me));
+      if (a?.hourly) {
+        const [open] = await db
+          .select({ clockIn: timeClockPunches.clockIn })
+          .from(timeClockPunches)
+          .where(and(eq(timeClockPunches.adminId, me), isNull(timeClockPunches.clockOut)))
+          .orderBy(desc(timeClockPunches.clockIn))
+          .limit(1);
+        timeclock = { openSince: open ? open.clockIn.toISOString() : null };
+      }
+    } catch {
+      /* hourly column not applied yet — no button */
+    }
+  }
+
   return (
-    <AdminShell user={{ name: session.name, email: session.email, role: session.role, permissions: session.permissions ?? [] }}>
+    <AdminShell user={{ name: session.name, email: session.email, role: session.role, permissions: session.permissions ?? [] }} timeclock={timeclock}>
       {!hasDb && (
         <div className="bg-[var(--c-error)] text-white px-8 py-2 text-sm">
           Database not configured — admin is read-only against seed defaults. Set{" "}

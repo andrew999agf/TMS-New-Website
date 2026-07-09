@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginsPage() {
   const session = await requireFullAdmin();
-  let rows: { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null }[] = [];
+  let rows: { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null; hourly: boolean }[] = [];
   let activityUsers: string[] = [];
   const ttDefaults = await getSetting<Record<string, string>>("tt.userDefaults", {});
   if (db) {
@@ -23,6 +23,7 @@ export default async function LoginsPage() {
         role: a.role,
         permissions: (a.permissions as string[]) ?? [],
         lastLoginAt: a.lastLoginAt ? a.lastLoginAt.toISOString() : null,
+        hourly: Boolean(a.hourly),
       }));
     } catch {
       /* run Apply database updates to add the new account columns */

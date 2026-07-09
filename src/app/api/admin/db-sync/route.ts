@@ -106,6 +106,13 @@ const DDL = [
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_token varchar(128)`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_expires timestamptz`,
+  `ALTER TABLE admins ADD COLUMN IF NOT EXISTS hourly boolean NOT NULL DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS time_clock_punches (
+    id serial PRIMARY KEY,
+    admin_id integer NOT NULL,
+    clock_in timestamptz NOT NULL DEFAULT now(),
+    clock_out timestamptz
+  )`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
