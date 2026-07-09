@@ -25,6 +25,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "documents", label: "Document Generator", href: "/admin/documents", toggleable: false },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
+  { key: "timeclock", label: "Time Clock", href: "/admin/timeclock", toggleable: false },
   { key: "training", label: "Training", href: "/admin/training", toggleable: false },
   { key: "appearance", label: "Appearance", href: "/admin/appearance", toggleable: true },
   { key: "logins", label: "User Management", href: "/admin/logins", toggleable: false },
@@ -44,7 +45,7 @@ export function allowedSections(role?: string, permissions?: string[]): string[]
   // Every account (including interns/timekeepers) gets Time Tracker 4.0, Training,
   // Intake, and the Document Generator by default, plus any granted sections. The
   // original Time Tracker (1.0) is admin-only.
-  return ["time-tracker-4", "training", "intake", "documents", ...(permissions ?? [])];
+  return ["time-tracker-4", "timeclock", "training", "intake", "documents", ...(permissions ?? [])];
 }
 
 /** Which section key a pathname belongs to (longest matching href wins). */
