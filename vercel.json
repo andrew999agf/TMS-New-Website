@@ -11,7 +11,11 @@
     },
     {
       "path": "/api/cron/timeclock-report",
-      "schedule": "0 6 * * 1"
+      "schedule": "0 1 * * 0"
+    },
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "0 2 * * *"
     }
   ]
 }

@@ -341,30 +341,6 @@ export const BRANCHES: Branch[] = [
         ],
       },
     ],
-    // Defense matters (evictions, debt defense, civil-litigation defense):
-    // near the end, ask for the papers themselves — reviewing the actual
-    // petition/complaint before the consult saves everyone a step.
-    commonOverrides: {
-      details: {
-        id: "details",
-        title: "Anything else we should know?",
-        fields: [
-          {
-            name: "message",
-            label: "In your own words",
-            type: "textarea",
-            placeholder: "A few sentences about what is going on.",
-          },
-          {
-            name: "lawsuitDocs",
-            label: "Upload the petition / complaint / lawsuit papers (optional)",
-            type: "files",
-            max: 5,
-            help: "The papers you were served — petition, complaint, citation, or eviction notice. Clear photos work as well as scans. PDF, Word, or images, up to 20 MB each.",
-          },
-        ],
-      },
-    },
   },
   {
     id: "sue",
@@ -531,14 +507,11 @@ export const BRANCHES: Branch[] = [
         id: "photos",
         title: "Photos of the damage",
         fields: [
-          { name: "hasPhotos", label: "Do you have photos of the damage or the scene?", type: "yesno" },
           {
-            name: "wreckPhotos",
-            label: "Upload your photos",
-            type: "files",
-            max: 5,
-            help: "Phone photos are perfect — the damage, the scene, the other vehicle, or the repair estimate. Up to 5 files, 20 MB each.",
-            showIf: { field: "hasPhotos", equals: "Yes" },
+            name: "hasPhotos",
+            label: "Do you have photos of the damage or the scene?",
+            type: "yesno",
+            help: "If yes, hold on to them — we'll ask you to email or text them to us after we're in touch. Please don't send anything through this form.",
           },
         ],
       },
