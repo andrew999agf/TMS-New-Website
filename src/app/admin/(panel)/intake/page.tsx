@@ -37,6 +37,7 @@ export default async function IntakeAdminPage() {
         feeExpected: r.feeExpected ?? false,
         feeAmount: r.feeAmount ?? null,
         createdAt: r.createdAt.toISOString(),
+        emailStatus: r.emailStatus ?? null,
         answers: (r.answers as Record<string, unknown>) ?? {},
       }));
     } catch {

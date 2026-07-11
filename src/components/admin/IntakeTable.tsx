@@ -21,6 +21,8 @@ export type IntakeRow = {
   feeExpected: boolean;
   feeAmount: string | null;
   createdAt: string;
+  /** Notification email outcome: "sent" or "failed: <reason>" (null = before tracking). */
+  emailStatus: string | null;
   answers: Record<string, unknown>;
 };
 
@@ -206,6 +208,11 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
                 {open === r.id && (
                   <tr className="bg-[var(--c-surface2)]">
                     <td colSpan={5} className="px-4 py-4">
+                      {r.emailStatus && (
+                        <p className={`mb-3 inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${r.emailStatus === "sent" ? "bg-green-600/10 text-green-700" : "bg-[var(--c-error)]/10 text-[var(--c-error)]"}`}>
+                          Notification email: {r.emailStatus}
+                        </p>
+                      )}
                       <dl className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
                         {Object.entries(r.answers).map(([k, v]) => (
                           <div key={k} className="flex gap-2">

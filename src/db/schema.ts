@@ -396,6 +396,8 @@ export const intakeStatus = pgEnum("intake_status", [
 export const intakeSubmissions = pgTable(
   "intake_submissions",
   {
+    /** Outcome of the notification email: sent / failed:… */
+    emailStatus: varchar("email_status", { length: 255 }),
     id: serial("id").primaryKey(),
     branch: varchar("branch", { length: 64 }).notNull(),
     practiceSlug: varchar("practice_slug", { length: 128 }),

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
@@ -271,6 +272,18 @@ export async function POST(req: Request) {
       subject: `Thank you for contacting ${firmName}`,
       html: ackHtml,
     });
+  }
+
+  // Record the notification outcome on the submission so a silent email
+  // failure (bad SMTP credentials, unconfigured sender) shows in the admin
+  // instead of being a mystery.
+  if (db && id != null) {
+    try {
+      const status = emailResult.sent ? "sent" : `failed: ${emailResult.reason ?? "unknown"}`;
+      await db.update(intakeSubmissions).set({ emailStatus: status.slice(0, 255) }).where(eq(intakeSubmissions.id, id));
+    } catch {
+      /* email_status column not applied yet */
+    }
   }
 
   return NextResponse.json({ ok: true, id, emailed: emailResult.sent });

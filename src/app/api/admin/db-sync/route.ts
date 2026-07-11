@@ -118,6 +118,7 @@ const DDL = [
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS banner_focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS email_status varchar(255)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS referred_to varchar(191)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS fee_expected boolean NOT NULL DEFAULT false`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS fee_amount varchar(64)`,
