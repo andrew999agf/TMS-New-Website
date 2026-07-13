@@ -196,4 +196,44 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     practiceSlug: "personal-injury-wrongful-death",
     sort: 18,
   },
+  {
+    category: "appellate",
+    title: "Consumer credit-card appeals against national banks",
+    stat: "3 appeals",
+    statLabel: "Consumer-side appeals vs. national card issuers",
+    year: "2023–2026",
+    summary:
+      "Appellate counsel for consumers in credit-card collection cases against national issuers — a restricted appeal from a default judgment, and direct appeals from contract judgments out of Tarrant, Dallas, and Grayson County courts.",
+    detail:
+      "Diaz v. Capital One Bank (USA), N.A., No. 02-23-00481-CV (Second Court of Appeals, Fort Worth, from the 96th District Court, Tarrant County, 2023); Smegner v. Discover Bank, No. 05-25-00189-CV (Fifth Court of Appeals, restricted appeal from the 101st Judicial District Court, Dallas County, 2025); Anderson v. Discover Bank, No. 05-26-00818-CV (Fifth Court of Appeals, from Grayson County Court at Law No. 1, 2026).",
+    cite: "Nos. 02-23-00481-CV; 05-25-00189-CV; 05-26-00818-CV",
+    practiceSlug: "consumer-debt-defense",
+    sort: 19,
+  },
+  {
+    category: "appellate",
+    title: "Criminal appeal and petition for discretionary review",
+    year: "2024–2025",
+    summary:
+      "Briefed a criminal direct appeal in the Fort Worth Court of Appeals — a prohibited-substance-in-a-correctional-facility conviction out of Parker County — then took the fight to the Court of Criminal Appeals on a petition for discretionary review.",
+    detail:
+      "Cox v. The State of Texas, No. 02-24-00045-CR (Second Court of Appeals, Fort Worth, from the 43rd District Court, Parker County); petition for discretionary review, No. PD-0128-25 (Tex. Crim. App. 2025).",
+    cite: "No. 02-24-00045-CR; Tex. Crim. App. No. PD-0128-25",
+    practiceSlug: "criminal-defense",
+    sort: 20,
+  },
+  {
+    category: "appellate",
+    title: "Petition practice in the Supreme Court of Texas",
+    stat: "3 petitions",
+    statLabel: "Petitions for review in the Supreme Court of Texas",
+    year: "2023–2026",
+    summary:
+      "Repeat petition-for-review practice before the Supreme Court of Texas, spanning commercial-finance, governmental-immunity, and real-property appeals.",
+    detail:
+      "M.D.H. Oilfield Services LLC v. De Lage Landen Financial Services, Inc., No. 23-0531 (2023, from No. 02-22-00139-CV, Tarrant County); Nelson v. City of Lubbock, No. 25-0453 (2025, from No. 07-23-00209-CV, Lubbock County); Fofanah v. Rockwall Rental Properties, LP, No. 26-0119 (2026, from No. 05-24-01265-CV, Kaufman County).",
+    cite: "Tex. Nos. 23-0531; 25-0453; 26-0119",
+    practiceSlug: "appellate-law",
+    sort: 21,
+  },
 ];
