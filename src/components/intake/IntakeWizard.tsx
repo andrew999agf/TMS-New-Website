@@ -92,6 +92,7 @@ export function IntakeWizard({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileGen, setTurnstileGen] = useState(0); // bump to remount the widget for a fresh token
   // Honeypot: hidden field humans never see; bots that fill it are dropped server-side.
   const [honeypot, setHoneypot] = useState("");
 
@@ -189,7 +190,24 @@ export function IntakeWizard({
           company: honeypot,
         }),
       });
-      if (!res.ok) throw new Error("Submission failed");
+      if (!res.ok) {
+        // Turnstile tokens expire after ~5 minutes; a failed verification
+        // needs a FRESH token, so remount the widget before the retry.
+        let msg = "";
+        try {
+          msg = ((await res.json()) as { error?: string }).error ?? "";
+        } catch {
+          /* non-JSON error body */
+        }
+        if (/verification/i.test(msg)) {
+          setTurnstileToken(null);
+          setTurnstileGen((g) => g + 1);
+          setError("The security check expired — it has been refreshed. Please press Submit again.");
+        } else {
+          setError(msg || "Something went wrong. Please call us or try again.");
+        }
+        return;
+      }
       setDone(true);
     } catch {
       setError("Something went wrong. Please call us or try again.");
@@ -325,7 +343,7 @@ export function IntakeWizard({
       </div>
 
       {currentStep.id === "consent" && turnstileSiteKey && (
-        <Turnstile siteKey={turnstileSiteKey} onToken={setTurnstileToken} />
+        <Turnstile key={turnstileGen} siteKey={turnstileSiteKey} onToken={setTurnstileToken} />
       )}
 
       {error && <p className="mt-6 text-[var(--c-error)]">{error}</p>}
