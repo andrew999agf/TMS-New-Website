@@ -21,6 +21,7 @@ function elapsed(sinceIso: string, now: number): string {
 export function TimeClockButton({ initialOpenSince, collapsed = false }: { initialOpenSince: string | null; collapsed?: boolean }) {
   const [openSince, setOpenSince] = useState<string | null>(initialOpenSince);
   const [now, setNow] = useState(() => Date.now());
+  const [flash, setFlash] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   useEffect(() => {
@@ -30,14 +31,27 @@ export function TimeClockButton({ initialOpenSince, collapsed = false }: { initi
   }, [openSince]);
 
   function toggle() {
+    setFlash(null);
     start(async () => {
-      const state = openSince ? await clockOut() : await clockIn();
-      setOpenSince(state.openSince);
+      // A transient failure keeps the current state and shows a small note —
+      // it must never blow up the page (the actions also never throw).
+      try {
+        const state = openSince ? await clockOut() : await clockIn();
+        if (state.error) {
+          setFlash(state.error);
+        } else {
+          setOpenSince(state.openSince);
+        }
+      } catch {
+        setFlash("Didn't go through — tap again.");
+      }
       setNow(Date.now());
+      setTimeout(() => setFlash(null), 5000);
     });
   }
 
   return (
+    <div className={collapsed ? "" : "space-y-1.5"}>
     <button
       onClick={toggle}
       disabled={pending}
@@ -53,5 +67,7 @@ export function TimeClockButton({ initialOpenSince, collapsed = false }: { initi
       <Clock size={collapsed ? 17 : 15} className={openSince ? "animate-pulse" : ""} />
       {!collapsed && (pending ? "…" : openSince ? `Clock Out · ${elapsed(openSince, now)}` : "Clock In")}
     </button>
+    {flash && !collapsed && <p className="text-[10px] leading-snug text-amber-400">{flash}</p>}
+    </div>
   );
 }
