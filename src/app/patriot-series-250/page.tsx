@@ -1,22 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Tv, ImageIcon, Lock } from "lucide-react";
+import { ImageIcon, Trophy, Newspaper } from "lucide-react";
 import { PatriotHeader } from "./PatriotHeader";
-import { PatriotLiveProvider, LiveFeedTag } from "./PatriotLive";
 import styles from "./patriot.module.css";
-import { BroadcastStage } from "./BroadcastStage";
-import { PATRIOT_OVERLAY_FONTS_LINK } from "./PatriotOverlay";
 import { getSetting } from "@/lib/content";
 import { PATRIOT_BRANDING_KEY, PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotBranding, type PatriotTeam } from "@/lib/patriot/settings";
-import { patriotAdminPath } from "@/lib/patriot/hosts";
+import { patriotPublicPath } from "@/lib/patriot/hosts";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const b = await getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {});
   return {
-    title: "Patriot Series 250 — Wiffle Ball Tournament · Live Feed",
-    description: "Live feed for the Patriot Series 250 Wiffle Ball Tournament.",
+    title: "Patriot Series 250 — Wiffle Ball Tournament",
+    description: "The Patriot Series Wiffle Ball Tournament — champions, news, teams, and the record book.",
     robots: { index: false, follow: false },
     ...(b.favicon ? { icons: { icon: b.favicon } } : {}),
     ...(b.socialShare
@@ -26,20 +23,19 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function PatriotSeries250Page() {
-  const wsUrl = process.env.PATRIOT_WS_URL ?? "";
   const [branding, savedTeams] = await Promise.all([
     getSetting<PatriotBranding>(PATRIOT_BRANDING_KEY, {}),
     getSetting<PatriotTeam[]>(PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS),
   ]);
   const teams = savedTeams.length > 0 ? savedTeams : DEFAULT_PATRIOT_TEAMS;
   const ticker = [...teams, ...teams]; // duplicate for a seamless marquee loop
-  const adminHref = await patriotAdminPath();
+  const [newsHref, bracketHref] = await Promise.all([
+    patriotPublicPath("/news/2026-minutemen-repeat-champions"),
+    patriotPublicPath("/past-tournaments"),
+  ]);
 
   return (
-    <PatriotLiveProvider>
     <div className={styles.page}>
-      {/* Broadcast overlay fonts (Bebas Neue + Roboto Condensed/Mono) */}
-      <link rel="stylesheet" href={PATRIOT_OVERLAY_FONTS_LINK} />
       {/* Top bar */}
       <PatriotHeader active="/" />
 
@@ -56,15 +52,28 @@ export default async function PatriotSeries250Page() {
               <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--psx-faint)]">Upload your tournament logo in the admin panel.</p>
             </div>
           )}
-          <LiveFeedTag />
         </section>
 
-        {/* Live video feed */}
+        {/* 2026 champions callout (the broadcast returns on game day) */}
         <section className="mt-8">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[color:var(--psx-muted)]">
-            <Tv size={16} className="text-[color:var(--psx-accent)]" /> Live Video Feed
+          <div className="mx-auto flex max-w-2xl flex-col items-center gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/[0.06] px-6 py-8 text-center sm:flex-row sm:text-left">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/30 bg-yellow-400/10 text-yellow-500">
+              <Trophy size={26} strokeWidth={1.5} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[color:var(--psx-accent)]">19th Annual · USA 250</p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--psx-fg)]">2026 Champions: The Minutemen</p>
+              <p className="mt-1 text-sm text-[color:var(--psx-muted)]">Back-to-back titles, sealed 4–1 in the if-necessary game.</p>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2">
+              <Link href={newsHref} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-red-600 px-4 py-2 text-xs font-semibold text-white hover:brightness-110">
+                <Newspaper size={13} /> Read the story
+              </Link>
+              <Link href={bracketHref} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--psx-border)] px-4 py-2 text-xs font-semibold text-[color:var(--psx-fg)] hover:border-[color:var(--psx-accent)]">
+                <Trophy size={13} /> Full bracket
+              </Link>
+            </div>
           </div>
-          <BroadcastStage wsUrl={wsUrl} />
         </section>
 
         {/* Tournament Teams ticker */}
@@ -95,17 +104,7 @@ export default async function PatriotSeries250Page() {
           </p>
         </section>
 
-        {/* Operator entry point */}
-        <footer className="mt-16 border-t border-[color:var(--psx-border)] pt-6 text-center">
-          <Link
-            href={adminHref}
-            className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--psx-muted)] transition-colors hover:text-[color:var(--psx-fg)]"
-          >
-            <Lock size={12} /> Switchboard operator login
-          </Link>
-        </footer>
       </main>
     </div>
-    </PatriotLiveProvider>
   );
 }
