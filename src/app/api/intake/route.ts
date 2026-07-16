@@ -10,6 +10,8 @@ import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
 import { FIRM } from "@/lib/firm";
+import { LEGAL_DOCS } from "@/lib/documents/legal-specs";
+import { renderDoc, wrapForWord } from "@/lib/documents/legal";
 
 export const runtime = "nodejs";
 
@@ -184,6 +186,39 @@ export async function POST(req: Request) {
       }</p>
     </div>`;
 
+  // Estate submissions: auto-generate a DRAFT of every document the client
+  // selected (will, trusts, POAs, ...) from their answers, and attach the
+  // Word versions to this full-data email for the intake team. Drafts only —
+  // blanks render as highlighted placeholders; attorney review required.
+  // Never attached to the client acknowledgment or the short summary email.
+  const draftDocs: { filename: string; content: string }[] = [];
+  const draftNames: string[] = [];
+  try {
+    const triggered = LEGAL_DOCS.filter((spec) => {
+      if (!spec.trigger) return false;
+      const v = a[spec.trigger.field];
+      const arr = Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
+      return arr.includes(spec.trigger.value);
+    });
+    const who = (str("testatorFullName") || str("name") || "client").replace(/[^\w \-'.]+/g, "").trim() || "client";
+    for (const spec of triggered.slice(0, 10)) {
+      const { body: docBody, footnotes } = renderDoc(spec, a, {});
+      draftDocs.push({
+        filename: `DRAFT ${spec.label} - ${who}.doc`,
+        content: "\ufeff" + wrapForWord(spec, docBody, footnotes, str("testatorFullName") ?? ""),
+      });
+      draftNames.push(spec.label);
+    }
+  } catch (err) {
+    console.error("[intake] draft document generation failed:", err);
+  }
+  const htmlWithDrafts = draftNames.length
+    ? html.replace(
+        "Full data attached as CSV.",
+        `<strong>Drafts attached (${draftNames.length}):</strong> ${draftNames.map(esc).join("; ")} — generated from the client's answers, blanks shown as placeholders, attorney review required. Full data attached as CSV.`,
+      )
+    : html;
+
   // Resolve recipients from the admin-managed list (scoped by intake branch),
   // falling back to the default address if none are configured.
   const managed = await recipientsForBranch(branch);
@@ -193,8 +228,8 @@ export async function POST(req: Request) {
     to,
     fromName: `${FIRM.name} — Intake`,
     subject: `${isUrgent ? "[URGENT] " : ""}New consultation: ${branchLabel}`,
-    html,
-    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }],
+    html: htmlWithDrafts,
+    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
   });
 
   // Second email: a clean, professional summary the team can forward — no raw
