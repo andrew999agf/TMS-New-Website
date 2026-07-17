@@ -9,6 +9,7 @@ import {
   BRANCHES,
   COMMON_STEPS,
   condMet,
+  condMetAll,
   type Branch,
   type Field,
   type Step,
@@ -128,7 +129,7 @@ export function IntakeWizard({
   const allSteps: Step[] = branch
     ? [...branch.steps, ...COMMON_STEPS.map((s) => branch.commonOverrides?.[s.id] ?? s)]
     : [];
-  const steps: Step[] = allSteps.filter((s) => condMet(s.showIf, answers));
+  const steps: Step[] = allSteps.filter((s) => condMet(s.showIf, answers) && condMetAll(s.requireIf, answers));
   const totalSteps = steps.length;
   // Selections can change which steps exist; never index past the end.
   const safeIndex = Math.min(stepIndex, Math.max(0, totalSteps - 1));

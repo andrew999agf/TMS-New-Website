@@ -64,6 +64,8 @@ export type Step = {
   fields: Field[];
   /** Show this step only when the condition(s) are met (array = OR). */
   showIf?: Condition | Condition[];
+  /** ALL of these must also hold (AND) — combined with showIf's OR list. */
+  requireIf?: Condition | Condition[];
 };
 
 /**
@@ -84,6 +86,16 @@ function oneCondMet(c: Condition, answers: Record<string, unknown>): boolean {
   }
   if (c.equals !== undefined) return v === c.equals;
   return Array.isArray(v) ? v.length > 0 : Boolean(v && String(v).trim());
+}
+
+/** True when EVERY condition in the array is satisfied (AND). */
+export function condMetAll(
+  cond: Condition | Condition[] | undefined,
+  answers: Record<string, unknown>,
+): boolean {
+  if (!cond) return true;
+  const list = Array.isArray(cond) ? cond : [cond];
+  return list.every((c) => oneCondMet(c, answers));
 }
 
 /** True when the condition (or any condition in the array) is satisfied. */
@@ -245,6 +257,13 @@ export const EP = {
  * intake" picker and by the deep link that pre-checks them in the wizard. Each
  * maps to the document-picker field/option in the estate branch above.
  */
+/** Estate intake depth: full drafting questionnaire vs. a basic request. */
+export const ESTATE_DEPTH = {
+  FULL: "Provide comprehensive information for my estate plan — the full questionnaire, so document drafts can be prepared from my answers",
+  BASIC: "Request basic information — just take my details and what I need, and the firm will follow up with me",
+} as const;
+const ESTATE_FULL_ONLY: Condition = { field: "estateDepth", equals: ESTATE_DEPTH.FULL };
+
 export const ESTATE_PRACTICE_SLUG = "estate-succession-planning";
 
 export const ESTATE_DOCS = [
@@ -630,6 +649,22 @@ export const BRANCHES: Branch[] = [
     steps: [
       // 1) The document picker — grouped "bubbles" in a fixed, logical order:
       //    Estate Planning › Wills › Trusts › Powers of Attorney › Deeds & Guardianship.
+      // 0) How deep does the client want to go today?
+      {
+        id: "depth",
+        title: "How would you like to start?",
+        subtitle: "Either way, a licensed attorney reviews everything — nothing is final today.",
+        fields: [
+          {
+            name: "estateDepth",
+            label: "Choose one",
+            type: "radio",
+            required: true,
+            options: [ESTATE_DEPTH.FULL, ESTATE_DEPTH.BASIC],
+            help: "The comprehensive path walks through the same questionnaire we use to prepare drafts (about 10–15 minutes). The basic path just captures who you are and what you need.",
+          },
+        ],
+      },
       {
         id: "documents",
         title: "What would you like to set up?",
@@ -650,6 +685,7 @@ export const BRANCHES: Branch[] = [
       // 2) Testator / principal — the person the documents are for (every doc needs this).
       {
         id: "testator",
+        requireIf: ESTATE_FULL_ONLY,
         title: "About you",
         subtitle: "These details go at the top of every document, exactly as you write them here.",
         fields: [
@@ -667,6 +703,7 @@ export const BRANCHES: Branch[] = [
       // 3) Family — needed for wills, trusts, and guardian declarations.
       {
         id: "family",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Your family",
         subtitle: "Who should the plan provide for or protect?",
         showIf: NEEDS_FAMILY,
@@ -692,6 +729,7 @@ export const BRANCHES: Branch[] = [
       // 4) Will details — also used when a testamentary trust is created in the will.
       {
         id: "willDetails",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Your will",
         subtitle: "Who carries it out, and who receives what.",
         showIf: NEEDS_WILL,
@@ -720,6 +758,7 @@ export const BRANCHES: Branch[] = [
       // 5) Trust details — living and/or testamentary trust.
       {
         id: "trustDetails",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Your trust",
         subtitle: "Who manages it and who benefits.",
         showIf: NEEDS_TRUST,
@@ -747,6 +786,7 @@ export const BRANCHES: Branch[] = [
       // 6) Financial POA.
       {
         id: "financialPoa",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Financial power of attorney",
         subtitle: "Who can handle your finances, and which powers they have.",
         showIf: { field: "docsPoa", includesAny: [EP.FIN_POA] },
@@ -784,6 +824,7 @@ export const BRANCHES: Branch[] = [
       // 7) Medical POA / Directive / HIPAA.
       {
         id: "medicalPoa",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Health-care documents",
         subtitle: "Who speaks for your care, and your wishes.",
         showIf: { field: "docsPoa", includesAny: [EP.MED_POA, EP.DIRECTIVE, EP.HIPAA] },
@@ -814,6 +855,7 @@ export const BRANCHES: Branch[] = [
       // 8) Declaration of guardian.
       {
         id: "guardianDeclaration",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Declaration of guardian",
         subtitle: "Who you'd want — and not want — if a guardianship ever became necessary.",
         showIf: { field: "docsOther", includesAny: [EP.GUARDIAN_DECL] },
@@ -825,6 +867,7 @@ export const BRANCHES: Branch[] = [
       // 9) Lady Bird / TOD deed.
       {
         id: "deed",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Lady Bird / Transfer-on-Death deed",
         subtitle: "Pass real property at death without probate.",
         showIf: { field: "docsOther", includesAny: [EP.LADYBIRD] },
@@ -836,6 +879,7 @@ export const BRANCHES: Branch[] = [
       // 10) Asset inventory — for wills and trusts.
       {
         id: "assets",
+        requireIf: ESTATE_FULL_ONLY,
         title: "Your assets",
         subtitle: "A rough inventory — estimates are fine. This helps us draft and fund the plan.",
         showIf: NEEDS_ASSETS,

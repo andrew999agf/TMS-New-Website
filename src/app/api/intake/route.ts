@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
-import { getBranch } from "@/lib/intake/config";
+import { getBranch, ESTATE_DEPTH } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -194,7 +194,9 @@ export async function POST(req: Request) {
   const draftDocs: { filename: string; content: string }[] = [];
   const draftNames: string[] = [];
   try {
-    const triggered = LEGAL_DOCS.filter((spec) => {
+    // Basic estate requests skip drafts — placeholders-only documents are noise.
+    const basicRequest = a.estateDepth === ESTATE_DEPTH.BASIC;
+    const triggered = basicRequest ? [] : LEGAL_DOCS.filter((spec) => {
       if (!spec.trigger) return false;
       const v = a[spec.trigger.field];
       const arr = Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
