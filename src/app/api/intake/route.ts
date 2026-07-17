@@ -30,6 +30,7 @@ const schema = z.object({
   answers: z.record(z.unknown()),
   referrer: z.string().optional(),
   turnstileToken: z.string().optional(),
+  resumeToken: z.string().min(16).max(64).regex(/^[\w-]+$/).optional(),
   // Honeypot — must be empty.
   company: z.string().optional(),
 });
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid submission" }, { status: 400 });
   }
 
-  const { branch, practiceSlug, answers, referrer, company, turnstileToken } = parsed.data;
+  const { branch, practiceSlug, answers, referrer, company, turnstileToken, resumeToken } = parsed.data;
 
   // Honeypot tripped — pretend success, drop silently.
   if (company && company.trim()) {
@@ -117,6 +118,37 @@ export async function POST(req: Request) {
   let id: number | null = null;
   if (db) {
     try {
+      // A saved-progress questionnaire completes its existing row rather than
+      // creating a duplicate; the incomplete flag clears on final submit.
+      let progressId: number | null = null;
+      if (resumeToken) {
+        const [prev] = await db
+          .select({ id: intakeSubmissions.id })
+          .from(intakeSubmissions)
+          .where(eq(intakeSubmissions.resumeToken, resumeToken));
+        progressId = prev?.id ?? null;
+      }
+      if (progressId != null) {
+        await db
+          .update(intakeSubmissions)
+          .set({
+            practiceSlug: practiceSlug ?? branchDef?.practiceSlug,
+            answers: a,
+            name: str("name"),
+            email: str("email"),
+            phone: str("phone"),
+            county: str("county"),
+            preferredContact: str("preferredContact"),
+            opposingParty: str("opposingParty"),
+            deadline,
+            isUrgent,
+            message: str("message") || str("description"),
+            referrer,
+            incomplete: false,
+          })
+          .where(eq(intakeSubmissions.id, progressId));
+        id = progressId;
+      } else {
       const [row] = await db
         .insert(intakeSubmissions)
         .values({
@@ -133,9 +165,11 @@ export async function POST(req: Request) {
           isUrgent,
           message: str("message") || str("description"),
           referrer,
+          resumeToken: resumeToken ?? null,
         })
         .returning({ id: intakeSubmissions.id });
       id = row?.id ?? null;
+      }
     } catch (err) {
       console.error("[intake] persist failed:", err);
     }

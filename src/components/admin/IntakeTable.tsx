@@ -23,6 +23,8 @@ export type IntakeRow = {
   createdAt: string;
   /** Notification email outcome: "sent" or "failed: <reason>" (null = before tracking). */
   emailStatus: string | null;
+  /** Saved-progress estate questionnaire that was never finished. */
+  incomplete: boolean;
   answers: Record<string, unknown>;
 };
 
@@ -152,6 +154,11 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
                     <div className="flex items-center gap-2">
                       {r.isUrgent && <span className="h-2 w-2 rounded-full bg-[var(--c-error)]" />}
                       <span className="font-medium">{r.name ?? "—"}</span>
+                      {r.incomplete && (
+                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title="Started the comprehensive estate questionnaire but hasn't finished — answers so far are saved below">
+                          Incomplete
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-[var(--c-ink-muted)] break-all">{r.email}</div>
                     {r.email && (

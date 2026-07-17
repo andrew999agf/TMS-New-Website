@@ -398,6 +398,10 @@ export const intakeSubmissions = pgTable(
   {
     /** Outcome of the notification email: sent / failed:… */
     emailStatus: varchar("email_status", { length: 255 }),
+    /** True while a comprehensive estate questionnaire is saved but unfinished. */
+    incomplete: boolean("incomplete").notNull().default(false),
+    /** Browser resume token for saved-progress estate questionnaires. */
+    resumeToken: varchar("resume_token", { length: 64 }),
     id: serial("id").primaryKey(),
     branch: varchar("branch", { length: 64 }).notNull(),
     practiceSlug: varchar("practice_slug", { length: 128 }),

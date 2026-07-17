@@ -10,6 +10,7 @@ import {
   COMMON_STEPS,
   condMet,
   condMetAll,
+  ESTATE_DEPTH,
   type Branch,
   type Field,
   type Step,
@@ -96,6 +97,70 @@ export function IntakeWizard({
   const [turnstileGen, setTurnstileGen] = useState(0); // bump to remount the widget for a fresh token
   // Honeypot: hidden field humans never see; bots that fill it are dropped server-side.
   const [honeypot, setHoneypot] = useState("");
+
+  /* ---- Saved progress (comprehensive estate questionnaire only) ----
+   * Each completed step is saved server-side (flagged incomplete for the
+   * intake team) and mirrored in localStorage so THIS browser can offer
+   * "continue where you left off". No emails are involved. */
+  const RESUME_KEY = "tms_intake_resume_v1";
+  type ResumeRecord = { token: string; branchId: string; answers: Answers; stepIndex: number; savedAt: string };
+  const resumeTokenRef = useRef<string | null>(null);
+  const [resumeOffer, setResumeOffer] = useState<ResumeRecord | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RESUME_KEY);
+      if (!raw) return;
+      const rec = JSON.parse(raw) as ResumeRecord;
+      const fresh = Date.now() - new Date(rec.savedAt).getTime() < 14 * 86_400_000;
+      const eligible = rec?.token && rec.branchId === "estate" && rec.answers?.estateDepth === ESTATE_DEPTH.FULL;
+      if (fresh && eligible && BRANCHES.some((b) => b.id === rec.branchId)) setResumeOffer(rec);
+      else localStorage.removeItem(RESUME_KEY);
+    } catch {
+      /* corrupt record — ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function resumeSaved() {
+    if (!resumeOffer) return;
+    const b = BRANCHES.find((x) => x.id === resumeOffer.branchId);
+    if (!b) return;
+    resumeTokenRef.current = resumeOffer.token;
+    setBranch(b);
+    setAnswers(resumeOffer.answers);
+    setStepIndex(resumeOffer.stepIndex);
+    setResumeOffer(null);
+  }
+  function discardSaved() {
+    localStorage.removeItem(RESUME_KEY);
+    setResumeOffer(null);
+  }
+
+  const savingEligible = branch?.id === "estate" && answers.estateDepth === ESTATE_DEPTH.FULL;
+  useEffect(() => {
+    if (!savingEligible || done || stepIndex === 0) return;
+    if (!resumeTokenRef.current) resumeTokenRef.current = crypto.randomUUID().replace(/-/g, "");
+    const rec: ResumeRecord = {
+      token: resumeTokenRef.current,
+      branchId: "estate",
+      answers,
+      stepIndex,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem(RESUME_KEY, JSON.stringify(rec));
+    } catch {
+      /* storage full/blocked */
+    }
+    void fetch("/api/intake/progress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: rec.token, branch: "estate", step: stepIndex, answers }),
+    }).catch(() => {});
+    // Saves fire when the visitor advances to a new step (latest answers included).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex, savingEligible, done]);
 
   // Each step renders in place (it's not a real page load), so scroll the new
   // step's questions into view when advancing/going back — except on first load.
@@ -188,6 +253,7 @@ export function IntakeWizard({
           answers: cleanAnswers,
           referrer: typeof document !== "undefined" ? document.referrer : "",
           turnstileToken: turnstileToken ?? undefined,
+          resumeToken: resumeTokenRef.current ?? undefined,
           company: honeypot,
         }),
       });
@@ -208,6 +274,11 @@ export function IntakeWizard({
           setError(msg || "Something went wrong. Please call us or try again.");
         }
         return;
+      }
+      try {
+        localStorage.removeItem(RESUME_KEY);
+      } catch {
+        /* ignore */
       }
       setDone(true);
     } catch {
@@ -241,6 +312,24 @@ export function IntakeWizard({
     return (
       <div>
         <RepNotice />
+        {resumeOffer && (
+          <div className="mb-6 max-w-xl border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 p-5">
+            <p className="font-[family-name:var(--font-ui)] font-semibold">Welcome back — pick up where you left off?</p>
+            <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
+              You have an estate-planning questionnaire in progress from{" "}
+              {new Date(resumeOffer.savedAt).toLocaleDateString(undefined, { month: "long", day: "numeric" })}. Your answers
+              were saved.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={resumeSaved} className="btn btn-accent px-4 py-2 text-sm">
+                Continue where I left off
+              </button>
+              <button onClick={discardSaved} className="btn btn-outline px-4 py-2 text-sm">
+                Start fresh
+              </button>
+            </div>
+          </div>
+        )}
         <div className="relative max-w-xl">
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)]" />
           <input
