@@ -164,13 +164,13 @@ export async function getPunchRange(fromIso: string, toIso: string): Promise<{ p
           clockOut: p.clockOut ? p.clockOut.toISOString() : null,
         })),
     };
-  } catch {
+  } catch (err) {
+    console.error("[timeclock] range fetch failed:", err);
     return { punches: [], error: "Couldn't load that range — try again." };
   }
 }
 
 import { PAYROLL_KEY, type PayrollSchedule } from "./payroll";
-export type { PayrollSchedule };
 
 /** Save the firm's payroll pattern (drives the payday/deadline banner). */
 export async function savePayrollSchedule(cfg: PayrollSchedule) {
@@ -188,7 +188,8 @@ export async function savePayrollSchedule(cfg: PayrollSchedule) {
         .values({ key: PAYROLL_KEY, value, updatedAt: new Date() })
         .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } }),
     );
-  } catch {
+  } catch (err) {
+    console.error("[timeclock] payroll save failed:", err);
     return { ok: false as const, error: "Couldn't save — database hiccup, try again." };
   }
   await audit(session.email, "update", "timeclock", PAYROLL_KEY, `Payroll: ${cfg.frequency}, anchor ${cfg.anchorPayday}, lead ${leadDays}d`);

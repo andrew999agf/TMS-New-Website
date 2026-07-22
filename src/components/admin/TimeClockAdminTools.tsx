@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CalendarClock, Check, Download, Printer } from "lucide-react";
-import { getPunchRange, savePayrollSchedule, type PayrollSchedule, type RangePunch } from "@/app/admin/(panel)/timeclock/actions";
+import { getPunchRange, savePayrollSchedule, type RangePunch } from "@/app/admin/(panel)/timeclock/actions";
+import type { PayrollSchedule } from "@/app/admin/(panel)/timeclock/payroll";
 
 const IN = "border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1.5 text-xs";
 const CT = "America/Chicago";
@@ -62,10 +63,10 @@ export function PayrollScheduleCard({ initial }: { initial: PayrollSchedule }) {
           setSaved(true);
           setTimeout(() => setSaved(false), 2200);
         }
-      } catch {
-        // Never escalate to the error page — a stale tab after a deploy is the
-        // usual culprit; a refresh re-links the form to the live server.
-        setError("Save didn't go through. Refresh this page and try again.");
+      } catch (err) {
+        // Surface the real cause (stale tab, network, auth) — never the error page.
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Save didn't go through (${msg.slice(0, 140)}). Refresh this page and try again.`);
       }
     });
   }
@@ -140,8 +141,9 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
     let res: Awaited<ReturnType<typeof getPunchRange>>;
     try {
       res = await getPunchRange(`${from}T00:00:00`, `${to}T23:59:59`);
-    } catch {
-      setError("Couldn't load the data. Refresh this page and try again.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Couldn't load the data (${msg.slice(0, 140)}). Refresh this page and try again.`);
       return null;
     }
     if (res.error) {
