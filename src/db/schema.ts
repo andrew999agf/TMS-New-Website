@@ -379,6 +379,10 @@ export const timeClockPunches = pgTable("time_clock_punches", {
   adminId: integer("admin_id").notNull(),
   clockIn: timestamp("clock_in", { withTimezone: true }).notNull().defaultNow(),
   clockOut: timestamp("clock_out", { withTimezone: true }),
+  /** Clock-out was set automatically at midnight (forgotten punch) — needs review. */
+  autoClosed: boolean("auto_closed").notNull().default(false),
+  /** Punch was auto-started at midnight to continue a shift open across midnight. */
+  autoOpen: boolean("auto_open").notNull().default(false),
 });
 
 /* ----------------------------------------------------------------------------

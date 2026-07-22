@@ -20,6 +20,21 @@ export function ctDate(now: Date): { y: number; m: number; d: number; dow: numbe
   return { y, m, d, dow: Math.max(dow, 0), iso };
 }
 
+/** The first CT midnight strictly AFTER an instant — robust across month/DST
+ *  boundaries (used to split a shift that runs past midnight). */
+export function ctNextMidnight(after: Date): Date {
+  const { y, m, d } = ctDate(after);
+  const start = ctMidnight(y, m, d); // midnight of `after`'s CT day (≤ after)
+  const nd = ctDate(new Date(start.getTime() + 25 * 3_600_000)); // safely into the next CT day
+  return ctMidnight(nd.y, nd.m, nd.d);
+}
+
+/** CT midnight of the day that ended at `mid` (i.e., the previous CT day's start). */
+export function ctPrevMidnight(mid: Date): Date {
+  const prev = ctDate(new Date(mid.getTime() - 3_600_000)); // an hour before → yesterday CT
+  return ctMidnight(prev.y, prev.m, prev.d);
+}
+
 /** Midnight CT at the start of the current CT week (Monday). */
 export function ctWeekStart(now: Date): Date {
   const { y, m, d, dow } = ctDate(now);

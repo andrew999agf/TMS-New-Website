@@ -137,7 +137,7 @@ export async function deletePunch(id: number) {
 import { gte, lt } from "drizzle-orm";
 import { settings } from "@/db/schema";
 
-export type RangePunch = { id: number; adminId: number; name: string; clockIn: string; clockOut: string | null };
+export type RangePunch = { id: number; adminId: number; name: string; clockIn: string; clockOut: string | null; autoClosed?: boolean; autoOpen?: boolean };
 
 /** Punches in [from, to] for the report builder (full admins only). */
 export async function getPunchRange(fromIso: string, toIso: string): Promise<{ punches: RangePunch[]; error?: string }> {
@@ -162,6 +162,8 @@ export async function getPunchRange(fromIso: string, toIso: string): Promise<{ p
           name: names.get(p.adminId) ?? `User ${p.adminId}`,
           clockIn: p.clockIn.toISOString(),
           clockOut: p.clockOut ? p.clockOut.toISOString() : null,
+          autoClosed: p.autoClosed,
+          autoOpen: p.autoOpen,
         })),
     };
   } catch (err) {
@@ -180,7 +182,8 @@ export async function savePayrollSchedule(cfg: PayrollSchedule) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cfg.anchorPayday)) return { ok: false as const, error: "Pick the anchor payday date." };
   if (!["weekly", "biweekly", "semimonthly", "monthly"].includes(cfg.frequency)) return { ok: false as const, error: "Invalid frequency." };
   const leadDays = Math.max(0, Math.min(14, Math.round(cfg.leadDays)));
-  const value = { anchorPayday: cfg.anchorPayday, frequency: cfg.frequency, leadDays };
+  const alertHours = Math.max(4, Math.min(24, Math.round(cfg.alertHours ?? 11)));
+  const value = { anchorPayday: cfg.anchorPayday, frequency: cfg.frequency, leadDays, alertHours };
   try {
     await withRetry(() =>
       db!

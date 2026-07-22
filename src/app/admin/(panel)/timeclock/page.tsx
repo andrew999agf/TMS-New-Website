@@ -37,6 +37,8 @@ export default async function TimeClockPage() {
         name: names.get(p.adminId) ?? `User ${p.adminId}`,
         clockIn: p.clockIn.toISOString(),
         clockOut: p.clockOut ? p.clockOut.toISOString() : null,
+        autoClosed: p.autoClosed,
+        autoOpen: p.autoOpen,
       }));
     } catch {
       /* run Apply database updates first */

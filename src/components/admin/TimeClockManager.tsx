@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Plus, Trash2, Check, AlertTriangle } from "lucide-react";
 import { updatePunch, addPunch, deletePunch } from "@/app/admin/(panel)/timeclock/actions";
 
-export type PunchView = { id: number; adminId: number; name: string; clockIn: string; clockOut: string | null };
+export type PunchView = { id: number; adminId: number; name: string; clockIn: string; clockOut: string | null; autoClosed?: boolean; autoOpen?: boolean };
 
 const CT = "America/Chicago";
 const IN = "border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1.5 text-xs";
@@ -54,7 +54,17 @@ function PunchRow({ p, canEdit, showName }: { p: PunchView; canEdit: boolean; sh
   return (
     <tr className="border-t border-[var(--c-border)]">
       {showName && <td className="px-3 py-2 text-sm font-medium whitespace-nowrap">{p.name}</td>}
-      <td className="px-3 py-2 text-xs text-[var(--c-ink-muted)] whitespace-nowrap">{fmtDay(p.clockIn)}</td>
+      <td className="px-3 py-2 text-xs text-[var(--c-ink-muted)] whitespace-nowrap">
+        {fmtDay(p.clockIn)}
+        {(p.autoClosed || p.autoOpen) && (
+          <span
+            className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 align-middle dark:bg-amber-500/15 dark:text-amber-400"
+            title={p.autoOpen ? "Auto-started at midnight — a shift ran past midnight. Verify the real times." : "Auto-closed at midnight — a forgotten clock-out. Verify the real times."}
+          >
+            auto · review
+          </span>
+        )}
+      </td>
       <td className="px-3 py-2">
         {canEdit ? <input type="datetime-local" value={inVal} onChange={(e) => setInVal(e.target.value)} className={IN} /> : new Date(p.clockIn).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
       </td>

@@ -16,6 +16,14 @@
     {
       "path": "/api/cron/daily-summary",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/timeclock-rollover",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/payroll-deadline",
+      "schedule": "0 13 * * *"
     }
   ]
 }

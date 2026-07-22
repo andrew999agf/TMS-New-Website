@@ -103,10 +103,19 @@ export function PayrollScheduleCard({ initial }: { initial: PayrollSchedule }) {
           <span className="mb-1 block text-[var(--c-ink-muted)]">Finalize payroll (days before)</span>
           <input type="number" min={0} max={14} value={cfg.leadDays} onChange={(e) => setCfg((c) => ({ ...c, leadDays: parseInt(e.target.value, 10) || 0 }))} className={`${IN} w-24`} />
         </label>
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Alert if a day exceeds (hrs)</span>
+          <input type="number" min={4} max={24} value={cfg.alertHours ?? 11} onChange={(e) => setCfg((c) => ({ ...c, alertHours: parseInt(e.target.value, 10) || 11 }))} className={`${IN} w-24`} />
+        </label>
         <button onClick={save} disabled={pending} className="rounded bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
           {saved ? <Check size={12} className="mr-0.5 inline" /> : null} {saved ? "Saved" : "Save schedule"}
         </button>
       </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
+        On the deadline day, the office mailbox is emailed the previous cycle&apos;s report automatically. Anyone still clocked in
+        past midnight is clocked out for that day and back in for the next, and the billing recipients are alerted — as is any day
+        over the hours above.
+      </p>
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
     </div>
   );
@@ -171,17 +180,18 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
     start(async () => {
       const groups = await collect();
       if (!groups || groups.length === 0) return;
-      const lines = ["Person,Date,Day,Clock In,Clock Out,Hours"];
+      const lines = ["Person,Date,Day,Clock In,Clock Out,Hours,Note"];
       let grand = 0;
       for (const g of groups) {
         for (const p of g.rows) {
           const h = hoursOf(p);
-          lines.push([g.name, fmtDate(p.clockIn), fmtDay(p.clockIn), fmtTime(p.clockIn), p.clockOut ? fmtTime(p.clockOut) : "STILL CLOCKED IN", h != null ? h.toFixed(2) : ""].map(csvCell).join(","));
+          const note = p.autoClosed || p.autoOpen ? "auto — verify" : "";
+          lines.push([g.name, fmtDate(p.clockIn), fmtDay(p.clockIn), fmtTime(p.clockIn), p.clockOut ? fmtTime(p.clockOut) : "STILL CLOCKED IN", h != null ? h.toFixed(2) : "", note].map(csvCell).join(","));
         }
-        lines.push([g.name, "TOTAL", "", "", "", g.total.toFixed(2)].map(csvCell).join(","));
+        lines.push([g.name, "TOTAL", "", "", "", g.total.toFixed(2), ""].map(csvCell).join(","));
         grand += g.total;
       }
-      lines.push(["ALL SELECTED", "TOTAL", "", "", "", grand.toFixed(2)].map(csvCell).join(","));
+      lines.push(["ALL SELECTED", "TOTAL", "", "", "", grand.toFixed(2), ""].map(csvCell).join(","));
       const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const aEl = document.createElement("a");
@@ -203,12 +213,13 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
           const rows = g.rows
             .map((p) => {
               const h = hoursOf(p);
-              return `<tr><td>${fmtDay(p.clockIn)}</td><td>${fmtTime(p.clockIn)}</td><td>${p.clockOut ? fmtTime(p.clockOut) : "<em>still clocked in</em>"}</td><td class="r">${h != null ? h.toFixed(2) : "—"}</td></tr>`;
+              const note = p.autoClosed || p.autoOpen ? `<span class="flag">auto — verify</span>` : "";
+              return `<tr><td>${fmtDay(p.clockIn)}</td><td>${fmtTime(p.clockIn)}</td><td>${p.clockOut ? fmtTime(p.clockOut) : "<em>still clocked in</em>"}</td><td class="r">${h != null ? h.toFixed(2) : "—"}</td><td>${note}</td></tr>`;
             })
             .join("");
           return `<h2>${esc(g.name)} <span class="tot">${g.total.toFixed(2)} hrs</span></h2>${
             g.rows.length
-              ? `<table><tr><th>Day</th><th>In</th><th>Out</th><th class="r">Hours</th></tr>${rows}</table>`
+              ? `<table><tr><th>Day</th><th>In</th><th>Out</th><th class="r">Hours</th><th></th></tr>${rows}</table>`
               : `<p class="none">No punches in this period.</p>`
           }`;
         })
@@ -229,6 +240,7 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
         th{color:#777;text-align:left;font-weight:600;padding:3px 10px 3px 0;border-bottom:1px solid #ddd}
         td{padding:3px 10px 3px 0;border-bottom:1px solid #f0f0f0}
         .r{text-align:right}
+        .flag{color:#b45309;font-size:11px;font-weight:600}
         .grand{margin-top:18px;font-size:14px;font-weight:bold;border-top:2px solid #7a1f2b;padding-top:8px}
         .none{color:#888;font-size:12px;margin:2px 0 0}
         @media print{body{margin:0 auto}}
