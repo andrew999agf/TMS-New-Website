@@ -1,5 +1,8 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { TimeClockManager, type PunchView } from "@/components/admin/TimeClockManager";
+import { PayrollScheduleCard, TimeClockReportCard } from "@/components/admin/TimeClockAdminTools";
+import { getSetting } from "@/lib/content";
+import { PAYROLL_KEY, PAYROLL_DEFAULT, type PayrollSchedule } from "./payroll";
 import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { admins, timeClockPunches } from "@/db/schema";
@@ -13,6 +16,8 @@ export default async function TimeClockPage() {
   const session = await requireAdmin();
   const admin = isFullAdmin(session.role);
   const me = Number(session.sub);
+  // Handbook default: biweekly Fridays, payroll finalized two days ahead.
+  const payroll = await getSetting<PayrollSchedule>(PAYROLL_KEY, PAYROLL_DEFAULT);
 
   let punches: PunchView[] = [];
   let people: { id: number; name: string }[] = [];
@@ -48,7 +53,9 @@ export default async function TimeClockPage() {
             : "Your hourly punches for the last six weeks. Ask an administrator to correct anything that looks off."
         }
       />
-      <div className="max-w-4xl p-8">
+      <div className="max-w-4xl space-y-4 p-8">
+        {admin && <PayrollScheduleCard initial={payroll} />}
+        {admin && <TimeClockReportCard people={people} />}
         <TimeClockManager punches={punches} people={people} canEdit={admin} />
       </div>
     </>

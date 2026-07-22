@@ -131,3 +131,61 @@ export async function deletePunch(id: number) {
   revalidatePath("/admin/timeclock");
   return { ok: true as const };
 }
+
+/* ---------------- reporting + payroll schedule (full admins) ---------------- */
+
+import { gte, lt } from "drizzle-orm";
+import { settings } from "@/db/schema";
+
+export type RangePunch = { id: number; adminId: number; name: string; clockIn: string; clockOut: string | null };
+
+/** Punches in [from, to] for the report builder (full admins only). */
+export async function getPunchRange(fromIso: string, toIso: string): Promise<{ punches: RangePunch[]; error?: string }> {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return { punches: [], error: "Admins only." };
+  if (!db) return { punches: [], error: "Database not configured." };
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  if (isNaN(from.getTime()) || isNaN(to.getTime()) || to <= from) return { punches: [], error: "Invalid date range." };
+  if (to.getTime() - from.getTime() > 400 * 86_400_000) return { punches: [], error: "Range too large (max ~13 months)." };
+  try {
+    const names = new Map((await db.select({ id: admins.id, name: admins.name }).from(admins)).map((x) => [x.id, x.name]));
+    const rows = await withRetry(() =>
+      db!.select().from(timeClockPunches).where(and(gte(timeClockPunches.clockIn, from), lt(timeClockPunches.clockIn, to))),
+    );
+    return {
+      punches: rows
+        .sort((a, b) => a.clockIn.getTime() - b.clockIn.getTime())
+        .map((p) => ({
+          id: p.id,
+          adminId: p.adminId,
+          name: names.get(p.adminId) ?? `User ${p.adminId}`,
+          clockIn: p.clockIn.toISOString(),
+          clockOut: p.clockOut ? p.clockOut.toISOString() : null,
+        })),
+    };
+  } catch {
+    return { punches: [], error: "Couldn't load that range — try again." };
+  }
+}
+
+import { PAYROLL_KEY, type PayrollSchedule } from "./payroll";
+export type { PayrollSchedule };
+
+/** Save the firm's payroll pattern (drives the payday/deadline banner). */
+export async function savePayrollSchedule(cfg: PayrollSchedule) {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return { ok: false as const, error: "Admins only." };
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cfg.anchorPayday)) return { ok: false as const, error: "Pick the anchor payday date." };
+  if (!["weekly", "biweekly", "semimonthly", "monthly"].includes(cfg.frequency)) return { ok: false as const, error: "Invalid frequency." };
+  const leadDays = Math.max(0, Math.min(14, Math.round(cfg.leadDays)));
+  const value = { anchorPayday: cfg.anchorPayday, frequency: cfg.frequency, leadDays };
+  await db
+    .insert(settings)
+    .values({ key: PAYROLL_KEY, value, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
+  await audit(session.email, "update", "timeclock", PAYROLL_KEY, `Payroll: ${cfg.frequency}, anchor ${cfg.anchorPayday}, lead ${leadDays}d`);
+  revalidatePath("/admin/timeclock");
+  return { ok: true as const };
+}
