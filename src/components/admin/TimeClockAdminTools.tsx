@@ -55,11 +55,17 @@ export function PayrollScheduleCard({ initial }: { initial: PayrollSchedule }) {
   function save() {
     setError(null);
     start(async () => {
-      const res = await savePayrollSchedule(cfg);
-      if (!res.ok) setError(res.error ?? "Couldn't save.");
-      else {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2200);
+      try {
+        const res = await savePayrollSchedule(cfg);
+        if (!res.ok) setError(res.error ?? "Couldn't save.");
+        else {
+          setSaved(true);
+          setTimeout(() => setSaved(false), 2200);
+        }
+      } catch {
+        // Never escalate to the error page — a stale tab after a deploy is the
+        // usual culprit; a refresh re-links the form to the live server.
+        setError("Save didn't go through. Refresh this page and try again.");
       }
     });
   }
@@ -131,7 +137,13 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
   /** Fetch, filter by the people mode, and group per person. */
   async function collect(): Promise<{ name: string; rows: RangePunch[]; total: number }[] | null> {
     setError(null);
-    const res = await getPunchRange(`${from}T00:00:00`, `${to}T23:59:59`);
+    let res: Awaited<ReturnType<typeof getPunchRange>>;
+    try {
+      res = await getPunchRange(`${from}T00:00:00`, `${to}T23:59:59`);
+    } catch {
+      setError("Couldn't load the data. Refresh this page and try again.");
+      return null;
+    }
     if (res.error) {
       setError(res.error);
       return null;

@@ -181,10 +181,16 @@ export async function savePayrollSchedule(cfg: PayrollSchedule) {
   if (!["weekly", "biweekly", "semimonthly", "monthly"].includes(cfg.frequency)) return { ok: false as const, error: "Invalid frequency." };
   const leadDays = Math.max(0, Math.min(14, Math.round(cfg.leadDays)));
   const value = { anchorPayday: cfg.anchorPayday, frequency: cfg.frequency, leadDays };
-  await db
-    .insert(settings)
-    .values({ key: PAYROLL_KEY, value, updatedAt: new Date() })
-    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
+  try {
+    await withRetry(() =>
+      db!
+        .insert(settings)
+        .values({ key: PAYROLL_KEY, value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } }),
+    );
+  } catch {
+    return { ok: false as const, error: "Couldn't save — database hiccup, try again." };
+  }
   await audit(session.email, "update", "timeclock", PAYROLL_KEY, `Payroll: ${cfg.frequency}, anchor ${cfg.anchorPayday}, lead ${leadDays}d`);
   revalidatePath("/admin/timeclock");
   return { ok: true as const };
