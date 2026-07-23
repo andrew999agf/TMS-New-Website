@@ -260,7 +260,10 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
         Confidentiality &amp; clawback notice: This message and the linked documents are confidential and may be protected by the attorney-client privilege, the attorney work-product doctrine, or other applicable privileges and protections. They are intended solely for the named recipient. If you are not the intended recipient, you are hereby notified that any review, use, disclosure, copying, or distribution is strictly prohibited. Please notify ${esc(FIRM.name)} immediately at <a href="mailto:${REISSUE_CONTACT}" style="color:#8a8a8a">${REISSUE_CONTACT}</a>, do not open or access the documents, and permanently delete and purge all copies from your files and systems. Any inadvertent disclosure of privileged or protected material is not intended to and shall not operate as a waiver of any privilege or protection, and ${esc(FIRM.name)} expressly reserves the right to demand the return or destruction of such material pursuant to Texas Rule of Civil Procedure 193.3(d) and Texas Rule of Evidence 511.
       </p>
     </div>`;
-  return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with you`, html });
+  // A per-recipient subject keeps Gmail from threading separate invites (to
+  // different people, CC'd to the same person) into one conversation.
+  const recipientLabel = name.trim() || email;
+  return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with ${recipientLabel}`, html });
 }
 
 export async function addRecipient(folderId: number, email: string, name: string, permission: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {

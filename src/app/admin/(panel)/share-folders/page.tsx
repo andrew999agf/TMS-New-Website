@@ -16,7 +16,12 @@ export default async function ShareFoldersPage() {
   if (db) {
     try {
       matters = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
-      const rows = await db.select().from(shareFolders).orderBy(desc(shareFolders.updatedAt));
+      // Select only the columns the list needs, so newer columns that haven't
+      // been created yet (before a Database Sync) can't make the list go blank.
+      const rows = await db
+        .select({ id: shareFolders.id, caseNumber: shareFolders.caseNumber, name: shareFolders.name, matter: shareFolders.matter, court: shareFolders.court, type: shareFolders.type, archived: shareFolders.archived, updatedAt: shareFolders.updatedAt })
+        .from(shareFolders)
+        .orderBy(desc(shareFolders.updatedAt));
       const fc = await db.select({ fid: shareFiles.folderId, n: sql<number>`count(*)::int` }).from(shareFiles).groupBy(shareFiles.folderId);
       const rc = await db
         .select({ fid: shareRecipients.folderId, n: sql<number>`count(*)::int` })
