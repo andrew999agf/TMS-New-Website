@@ -8,7 +8,7 @@ import {
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus,
 } from "lucide-react";
 import { Lock } from "lucide-react";
-import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, securityForKind, defaultSecureForKind, type ShareFolderMeta } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
@@ -61,18 +61,28 @@ function SecurityToggle({ folder }: { folder: FolderData }) {
   const [on, setOn] = useState(folder.requireAuth);
   const [pending, start] = useTransition();
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-      <input
-        type="checkbox"
-        checked={on}
-        disabled={pending}
-        onChange={(e) => { const v = e.target.checked; setOn(v); start(async () => { await updateFolder(folder.id, { requireAuth: v }); router.refresh(); }); }}
-        className="mt-0.5"
-      />
-      <div className="text-sm">
-        <span className="font-medium text-[var(--c-ink)]">Require sign-in to open{pending && <Loader2 size={12} className="ml-1 inline animate-spin" />}</span>
-        <p className="text-xs text-[var(--c-ink-muted)]">Recipients must verify their identity with a password or a one-time email code before viewing. Turn on for privileged, protected, or sensitive folders; leave off for public records.</p>
-      </div>
+    <div className={`rounded-lg border p-3 ${on ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/50 bg-amber-500/10"}`}>
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={pending}
+          onChange={(e) => { const v = e.target.checked; setOn(v); start(async () => { await updateFolder(folder.id, { requireAuth: v }); router.refresh(); }); }}
+          className="mt-0.5"
+        />
+        <span className="text-sm">
+          <span className="inline-flex items-center gap-1.5 font-medium text-[var(--c-ink)]"><Lock size={13} className={on ? "text-emerald-600" : "text-[var(--c-ink-muted)]"} /> Require sign-in to open {pending && <Loader2 size={12} className="inline animate-spin" />}</span>
+          <span className="mt-0.5 block text-xs text-[var(--c-ink-muted)]">
+            On (recommended): recipients must verify their identity with a password or a one-time email code before viewing.
+          </span>
+        </span>
+      </label>
+      {!on && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span><strong>Open link — anyone with the URL can view this, no sign-in.</strong> Only do this for public, non-confidential material (e.g., discovery produced to opposing counsel, or documents to a witness). <strong>Never turn this off for privileged, confidential, client, or co-counsel communications.</strong></span>
+        </p>
+      )}
     </div>
   );
 }
@@ -297,10 +307,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
   const [name, setName] = useState("");
   const [permission, setPermission] = useState("download");
   const [kind, setKind] = useState(defaultKindForType(typeKey));
-  const [secure, setSecure] = useState(() => { const k = defaultKindForType(typeKey); return securityForKind(k) === "required" ? true : defaultSecureForKind(k); });
   const [ack, setAck] = useState(false);
-  const mustSecure = securityForKind(kind) === "required";
-  function changeKind(k: string) { setKind(k); setSecure(securityForKind(k) === "required" ? true : defaultSecureForKind(k)); }
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -317,7 +324,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
     setOkMsg(null);
     if (hasDanger && !ack) { setError("Please confirm the warning below before sharing."); return; }
     start(async () => {
-      const res = await addRecipient(folderId, email, name, permission, kind, mustSecure ? true : secure, hasDanger ? ack : true);
+      const res = await addRecipient(folderId, email, name, permission, kind, hasDanger ? ack : true);
       if (res.ok) {
         setOkMsg(res.error ?? `Invite sent to ${email.trim().toLowerCase()}.`);
         setEmail(""); setName(""); setAck(false);
@@ -338,7 +345,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" className={`${input} w-full`} />
         </label>
         <label className="text-xs min-w-[9rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Who is this?</span>
-          <select value={kind} onChange={(e) => changeKind(e.target.value)} className={`${input} w-full`}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className={`${input} w-full`}>
             {RECIPIENT_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
           </select>
         </label>
@@ -351,21 +358,6 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />} Share
         </button>
       </div>
-
-      {/* How to send: locked for your side, a choice for the other side / witnesses */}
-      {mustSecure ? (
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-700 dark:text-emerald-300">
-          <Lock size={13} /> Secure sign-in required — this is your side of the case.
-        </p>
-      ) : (
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] px-3 py-2 text-xs">
-          <span className="text-[var(--c-ink-muted)]">How should this be sent?</span>
-          <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
-            <button onClick={() => setSecure(true)} className={`inline-flex items-center gap-1 px-2.5 py-1 ${secure ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink)] hover:bg-[var(--c-surface)]"}`}><Lock size={12} /> Secure sign-in</button>
-            <button onClick={() => setSecure(false)} className={`inline-flex items-center gap-1 px-2.5 py-1 ${!secure ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink)] hover:bg-[var(--c-surface)]"}`}><Link2 size={12} /> Just a link</button>
-          </div>
-        </div>
-      )}
 
       {warnings.length > 0 && (
         <div className="mt-2 space-y-1.5">
@@ -403,7 +395,6 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
           <span className="truncate text-sm font-medium text-[var(--c-ink)]">{r.email}</span>
           {r.name && <span className="text-xs text-[var(--c-ink-muted)]">{r.name}</span>}
           {r.kind && <span className="rounded-full border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--c-ink-muted)]">{kindLabel(r.kind)}</span>}
-          {r.requireAuth ? <span title="Requires sign-in" className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600"><Lock size={11} /> secure</span> : <span title="Plain link" className="inline-flex items-center gap-0.5 text-[10px] text-[var(--c-ink-muted)]"><Link2 size={11} /> link</span>}
           {r.revoked && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">revoked</span>}
           {!r.revoked && r.expiresAt && new Date(r.expiresAt) < new Date() && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">expired</span>}
         </div>
