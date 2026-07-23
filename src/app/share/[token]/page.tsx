@@ -8,6 +8,7 @@ import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
+import { getBlocks } from "@/lib/content";
 import { ShieldCheck, Clock, Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +17,17 @@ export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robo
 const REISSUE = "max@texaslawsmith.com";
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, logo }: { children: React.ReactNode; logo?: string }) {
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
       <div className="mx-auto max-w-2xl px-5 py-10">
         <div className="mb-6 border-b border-[var(--c-border)] pb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--c-accent)]">{FIRM.name}</p>
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt={FIRM.name} className="mb-2 h-9 w-auto max-w-[240px] object-contain" />
+          ) : (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--c-accent)]">{FIRM.name}</p>
+          )}
           <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Secure document share</p>
         </div>
         {children}
@@ -34,9 +40,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Closed({ title, body }: { title: string; body: React.ReactNode }) {
+function Closed({ title, body, logo }: { title: string; body: React.ReactNode; logo?: string }) {
   return (
-    <Shell>
+    <Shell logo={logo}>
       <h1 className="text-lg font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-[var(--c-ink-muted)]">{body}</p>
     </Shell>
@@ -47,16 +53,18 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const { token } = await params;
   if (!db) return <Closed title="Temporarily unavailable" body="This share can't be opened right now. Please try again shortly." />;
 
+  const logo = (await getBlocks("global").catch(() => ({}) as Record<string, string>))["global.logoDark"] || "";
+
   const [rec] = await db.select().from(shareRecipients).where(eq(shareRecipients.token, token));
   if (!rec || rec.revoked) {
-    return <Closed title="This link is no longer active" body={<>Access to this folder has been closed or the link is invalid. To have it re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
+    return <Closed logo={logo} title="This link is no longer active" body={<>Access to this folder has been closed or the link is invalid. To have it re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
   }
   if (rec.expiresAt && rec.expiresAt < new Date()) {
-    return <Closed title="This link has expired" body={<>For security, share links expire after a set period. To have this one re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
+    return <Closed logo={logo} title="This link has expired" body={<>For security, share links expire after a set period. To have this one re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
   }
 
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
-  if (!folder) return <Closed title="Unavailable" body="This folder is no longer available." />;
+  if (!folder) return <Closed logo={logo} title="Unavailable" body="This folder is no longer available." />;
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
   const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
@@ -69,7 +77,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   }
 
   return (
-    <Shell>
+    <Shell logo={logo}>
       <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
         <ShieldCheck size={14} /> Shared securely with {rec.email}
       </div>

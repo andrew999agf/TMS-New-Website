@@ -64,11 +64,17 @@ export function AdminShell({
   children,
   user,
   timeclock = null,
+  logoLight = "",
+  logoDark = "",
 }: {
   children: React.ReactNode;
   user: { name: string; email: string; role: string; permissions: string[] };
   /** Set for hourly staff: their current punch state. null = no clock button. */
   timeclock?: { openSince: string | null } | null;
+  /** White/light logo shown in the (dark) sidebar header; falls back to the main
+   *  logo rendered white, then to the firm name text. */
+  logoLight?: string;
+  logoDark?: string;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -101,9 +107,16 @@ export function AdminShell({
         >
           {!collapsed && (
             <div className="min-w-0">
-              <div className="font-[family-name:var(--font-display)] text-lg leading-tight truncate">
-                T. Maxwell Smith
-              </div>
+              {logoLight ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoLight} alt="T. Maxwell Smith" className="h-8 w-auto max-w-[172px] object-contain" />
+              ) : logoDark ? (
+                // The main logo rendered white for the dark sidebar.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoDark} alt="T. Maxwell Smith" className="h-8 w-auto max-w-[172px] object-contain brightness-0 invert" />
+              ) : (
+                <div className="font-[family-name:var(--font-display)] text-lg leading-tight truncate">T. Maxwell Smith</div>
+              )}
               <div className="text-xs text-[var(--c-dark-ink-muted)] mt-0.5">Content Management</div>
             </div>
           )}
