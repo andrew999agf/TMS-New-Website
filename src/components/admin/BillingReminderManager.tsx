@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, X, Check, Loader2, Mail } from "lucide-react";
-import { saveSetting } from "@/app/admin/(panel)/settings/actions";
+import { Plus, X, Check, Loader2, Mail, Send } from "lucide-react";
+import { saveSetting, sendBillingReminderTest } from "@/app/admin/(panel)/settings/actions";
 import { BILLING_REMINDER_KEY, type BillingReminder } from "@/lib/billing-reminder";
 
 export function BillingReminderManager({ initial }: { initial: BillingReminder }) {
@@ -11,6 +11,22 @@ export function BillingReminderManager({ initial }: { initial: BillingReminder }
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, startTest] = useTransition();
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+
+  function sendTest() {
+    setTestMsg(null);
+    setError(null);
+    startTest(async () => {
+      try {
+        const res = await sendBillingReminderTest();
+        if (res.ok) setTestMsg(`Test sent to ${res.sentTo} — check your inbox (two emails: your reminder with the PDF, and the department roster).`);
+        else setError(res.error ?? "Test failed.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Test failed.");
+      }
+    });
+  }
 
   function add() {
     const e = draft.trim();
@@ -39,8 +55,10 @@ export function BillingReminderManager({ initial }: { initial: BillingReminder }
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--c-ink-muted)]">
-        On the last day of each month (~4 PM Central), the billing department gets a prompt to start assembling that
-        month&apos;s bills. Optionally, everyone with unbilled time entries also gets a reminder to submit their billing.
+        On the last day of each month at 4 PM Central, the billing department gets a prompt to start assembling that
+        month&apos;s bills. Everyone who logged billable hours that month (counting archived entries too) also gets a
+        nicely formatted reminder with a letterhead PDF of the cases they worked and the hours on each — billable,
+        non-billable, and total. No dollar figures appear on the report.
       </p>
 
       <label className="flex items-center gap-2 text-sm">
@@ -91,13 +109,21 @@ export function BillingReminderManager({ initial }: { initial: BillingReminder }
       </div>
 
       {error && <p className="text-sm text-[var(--c-error)]">{error}</p>}
+      {testMsg && <p className="text-sm text-green-600">{testMsg}</p>}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={save} disabled={pending} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save reminder
         </button>
         {saved && <span className="text-sm text-green-600">Saved</span>}
+        <button onClick={sendTest} disabled={testing} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-4 py-2 text-sm hover:bg-[var(--c-surface2)] disabled:opacity-50">
+          {testing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send test to me
+        </button>
       </div>
+      <p className="text-xs text-[var(--c-ink-muted)]">
+        The test sends both emails to your own address using this month&apos;s data (or a sample if you have none), so you can
+        see exactly what they look like — no need to wait for month-end.
+      </p>
     </div>
   );
 }

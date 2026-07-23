@@ -54,7 +54,7 @@ function fromAddress(fromName?: string) {
   return process.env.SMTP_FROM || process.env.RESEND_FROM || `${FIRM.name} <${SENDER_ADDRESS}>`;
 }
 
-type Attachment = { filename: string; content: string };
+type Attachment = { filename: string; content: string | Buffer; contentType?: string };
 
 export async function sendEmail({
   to,
@@ -81,7 +81,7 @@ export async function sendEmail({
         to: recipients,
         subject,
         html,
-        attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
+        attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
       });
       return { sent: true };
     } catch (err) {
@@ -100,7 +100,7 @@ export async function sendEmail({
         html,
         attachments: attachments?.map((a) => ({
           filename: a.filename,
-          content: Buffer.from(a.content).toString("base64"),
+          content: (Buffer.isBuffer(a.content) ? a.content : Buffer.from(a.content)).toString("base64"),
         })),
       });
       return { sent: true };

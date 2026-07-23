@@ -9,7 +9,7 @@ export type BillingReminder = {
   enabled: boolean;
   /** The billing department's addresses (the "start assembling bills" prompt). */
   recipients: string[];
-  /** Also email each person who has unbilled time entries to submit their billing. */
+  /** Also email each person who logged billable hours this month a reminder + PDF. */
   notifyStaff: boolean;
 };
 
