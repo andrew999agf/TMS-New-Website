@@ -38,21 +38,25 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
   if (!db) return { ok: false as const, error: "Database not configured." };
   const name = input.name.trim();
   if (!name) return { ok: false as const, error: "Enter the client name." };
-  if (!shareType(input.type)) return { ok: false as const, error: "Pick a folder type." };
-  const [row] = await db
-    .insert(shareFolders)
-    .values({
-      caseNumber: input.caseNumber.trim(),
-      name,
-      matter: (input.matter ?? "").trim(),
-      court: (input.court ?? "").trim(),
-      type: input.type,
-      createdBy: session.email,
-    })
-    .returning({ id: shareFolders.id });
-  await audit(session.email, "create", "share-folder", String(row.id), `${input.type} folder: ${name}`);
-  revalidatePath("/admin/share-folders");
-  return { ok: true as const, id: row.id };
+  try {
+    const [row] = await db
+      .insert(shareFolders)
+      .values({
+        caseNumber: input.caseNumber.trim(),
+        name,
+        matter: (input.matter ?? "").trim(),
+        court: (input.court ?? "").trim(),
+        type: input.type,
+        createdBy: session.email,
+      })
+      .returning({ id: shareFolders.id });
+    await audit(session.email, "create", "share-folder", String(row.id), `${input.type} folder: ${name}`);
+    revalidatePath("/admin/share-folders");
+    return { ok: true as const, id: row.id };
+  } catch (err) {
+    console.error("[share] createFolder failed:", err);
+    return { ok: false as const, error: "Couldn't create the folder. Open Settings → Database updates, click it once, then try again." };
+  }
 }
 
 export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; type?: string; notes?: string }) {
@@ -65,36 +69,51 @@ export async function updateFolder(id: number, patch: { caseNumber?: string; nam
   if (patch.court !== undefined) set.court = patch.court.trim();
   if (patch.type !== undefined && shareType(patch.type)) set.type = patch.type;
   if (patch.notes !== undefined) set.notes = patch.notes;
-  await db.update(shareFolders).set(set).where(eq(shareFolders.id, id));
-  await audit(session.email, "update", "share-folder", String(id), "Updated folder");
-  revalidatePath("/admin/share-folders");
-  revalidatePath(`/admin/share-folders/${id}`);
-  return { ok: true as const };
+  try {
+    await db.update(shareFolders).set(set).where(eq(shareFolders.id, id));
+    await audit(session.email, "update", "share-folder", String(id), "Updated folder");
+    revalidatePath("/admin/share-folders");
+    revalidatePath(`/admin/share-folders/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] updateFolder failed:", err);
+    return { ok: false as const, error: "Couldn't save changes. Try Settings → Database updates, then retry." };
+  }
 }
 
 export async function archiveFolder(id: number, archived: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  await db.update(shareFolders).set({ archived, updatedAt: new Date() }).where(eq(shareFolders.id, id));
-  await audit(session.email, "update", "share-folder", String(id), archived ? "Archived" : "Unarchived");
-  revalidatePath("/admin/share-folders");
-  revalidatePath(`/admin/share-folders/${id}`);
-  return { ok: true as const };
+  try {
+    await db.update(shareFolders).set({ archived, updatedAt: new Date() }).where(eq(shareFolders.id, id));
+    await audit(session.email, "update", "share-folder", String(id), archived ? "Archived" : "Unarchived");
+    revalidatePath("/admin/share-folders");
+    revalidatePath(`/admin/share-folders/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] archiveFolder failed:", err);
+    return { ok: false as const, error: "Couldn't update the folder — try again." };
+  }
 }
 
 export async function deleteFolder(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, id));
-  for (const f of files) {
-    try { await del(f.url); } catch { /* best-effort */ }
+  try {
+    const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, id));
+    for (const f of files) {
+      try { await del(f.url); } catch { /* best-effort */ }
+    }
+    await db.delete(shareFiles).where(eq(shareFiles.folderId, id));
+    await db.delete(shareRecipients).where(eq(shareRecipients.folderId, id));
+    await db.delete(shareFolders).where(eq(shareFolders.id, id));
+    await audit(session.email, "delete", "share-folder", String(id), `Deleted folder (${files.length} files)`);
+    revalidatePath("/admin/share-folders");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] deleteFolder failed:", err);
+    return { ok: false as const, error: "Couldn't delete the folder — try again." };
   }
-  await db.delete(shareFiles).where(eq(shareFiles.folderId, id));
-  await db.delete(shareRecipients).where(eq(shareRecipients.folderId, id));
-  await db.delete(shareFolders).where(eq(shareFolders.id, id));
-  await audit(session.email, "delete", "share-folder", String(id), `Deleted folder (${files.length} files)`);
-  revalidatePath("/admin/share-folders");
-  return { ok: true as const };
 }
 
 /* ---------------------------------- files ---------------------------------- */
@@ -102,33 +121,43 @@ export async function deleteFolder(id: number) {
 export async function registerShareFile(folderId: number, file: { url: string; pathname: string; filename: string; contentType?: string; size?: number }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const [row] = await db
-    .insert(shareFiles)
-    .values({
-      folderId,
-      url: file.url,
-      pathname: file.pathname,
-      filename: file.filename.slice(0, 255),
-      contentType: file.contentType ?? null,
-      sizeBytes: file.size ?? null,
-      uploadedBy: session.email,
-    })
-    .returning({ id: shareFiles.id });
-  await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
-  revalidatePath(`/admin/share-folders/${folderId}`);
-  return { ok: true as const, id: row.id };
+  try {
+    const [row] = await db
+      .insert(shareFiles)
+      .values({
+        folderId,
+        url: file.url,
+        pathname: file.pathname,
+        filename: file.filename.slice(0, 255),
+        contentType: file.contentType ?? null,
+        sizeBytes: file.size ?? null,
+        uploadedBy: session.email,
+      })
+      .returning({ id: shareFiles.id });
+    await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const, id: row.id };
+  } catch (err) {
+    console.error("[share] registerShareFile failed:", err);
+    return { ok: false as const, error: "The file uploaded but couldn't be recorded. Run Settings → Database updates, then re-upload." };
+  }
 }
 
 export async function deleteFile(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const [f] = await db.select().from(shareFiles).where(eq(shareFiles.id, id));
-  if (!f) return { ok: false as const, error: "Not found." };
-  try { await del(f.url); } catch { /* best-effort */ }
-  await db.delete(shareFiles).where(eq(shareFiles.id, id));
-  await audit(session.email, "delete", "share-file", String(id), f.filename);
-  revalidatePath(`/admin/share-folders/${f.folderId}`);
-  return { ok: true as const };
+  try {
+    const [f] = await db.select().from(shareFiles).where(eq(shareFiles.id, id));
+    if (!f) return { ok: false as const, error: "Not found." };
+    try { await del(f.url); } catch { /* best-effort */ }
+    await db.delete(shareFiles).where(eq(shareFiles.id, id));
+    await audit(session.email, "delete", "share-file", String(id), f.filename);
+    revalidatePath(`/admin/share-folders/${f.folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] deleteFile failed:", err);
+    return { ok: false as const, error: "Couldn't remove the file — try again." };
+  }
 }
 
 /* -------------------------------- recipients ------------------------------- */
@@ -158,45 +187,60 @@ export async function addRecipient(folderId: number, email: string, name: string
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(cleanEmail)) return { ok: false, error: "Enter a valid email address." };
-  const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
-  if (!folder) return { ok: false, error: "Folder not found." };
+  try {
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false, error: "Folder not found." };
 
-  // Server-side re-check of the safety warnings — a danger requires acknowledgment.
-  const warnings = recipientWarnings(folder.type, cleanEmail, FIRM.domain);
-  if (warnings.some((w) => w.level === "danger") && !acknowledged) {
-    return { ok: false, needsAck: true, warnings };
+    // Server-side re-check of the safety warnings — a danger requires acknowledgment.
+    const warnings = recipientWarnings(folder.type, cleanEmail, FIRM.domain);
+    if (warnings.some((w) => w.level === "danger") && !acknowledged) {
+      return { ok: false, needsAck: true, warnings };
+    }
+
+    const [dupe] = await db.select({ id: shareRecipients.id }).from(shareRecipients).where(and(eq(shareRecipients.folderId, folderId), eq(shareRecipients.email, cleanEmail)));
+    if (dupe) return { ok: false, error: "That email already has access to this folder." };
+
+    const token = randomBytes(24).toString("base64url");
+    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, invitedBy: session.email });
+    await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token);
+    await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
+  } catch (err) {
+    console.error("[share] addRecipient failed:", err);
+    return { ok: false, error: "Couldn't share. Try Settings → Database updates, then retry." };
   }
-
-  const [dupe] = await db.select({ id: shareRecipients.id }).from(shareRecipients).where(and(eq(shareRecipients.folderId, folderId), eq(shareRecipients.email, cleanEmail)));
-  if (dupe) return { ok: false, error: "That email already has access to this folder." };
-
-  const token = randomBytes(24).toString("base64url");
-  await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, invitedBy: session.email });
-  await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
-  const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token);
-  await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
-  revalidatePath(`/admin/share-folders/${folderId}`);
-  return { ok: true, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
 }
 
 export async function resendInvite(recipientId: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
-  if (!r) return { ok: false as const, error: "Not found." };
-  const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, r.folderId));
-  if (!folder) return { ok: false as const, error: "Folder not found." };
-  const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token);
-  return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
+  try {
+    const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
+    if (!r) return { ok: false as const, error: "Not found." };
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, r.folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token);
+    return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
+  } catch (err) {
+    console.error("[share] resendInvite failed:", err);
+    return { ok: false as const, error: "Couldn't resend — try again." };
+  }
 }
 
 export async function setRecipientRevoked(recipientId: number, revoked: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
-  if (!r) return { ok: false as const, error: "Not found." };
-  await db.update(shareRecipients).set({ revoked }).where(eq(shareRecipients.id, recipientId));
-  await audit(session.email, "update", "share-recipient", String(recipientId), revoked ? `Revoked ${r.email}` : `Restored ${r.email}`);
-  revalidatePath(`/admin/share-folders/${r.folderId}`);
-  return { ok: true as const };
+  try {
+    const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
+    if (!r) return { ok: false as const, error: "Not found." };
+    await db.update(shareRecipients).set({ revoked }).where(eq(shareRecipients.id, recipientId));
+    await audit(session.email, "update", "share-recipient", String(recipientId), revoked ? `Revoked ${r.email}` : `Restored ${r.email}`);
+    revalidatePath(`/admin/share-folders/${r.folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] setRecipientRevoked failed:", err);
+    return { ok: false as const, error: "Couldn't update access — try again." };
+  }
 }

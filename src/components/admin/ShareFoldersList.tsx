@@ -147,9 +147,13 @@ function NewFolderForm({ matters, onDone }: { matters: MatterOption[]; onDone: (
   function submit() {
     setError(null);
     start(async () => {
-      const res = await createFolder({ caseNumber, name, matter, court, type });
-      if (res.ok) onDone(res.id);
-      else setError(res.error ?? "Couldn't create the folder.");
+      try {
+        const res = await createFolder({ caseNumber, name, matter, court, type });
+        if (res.ok) onDone(res.id);
+        else setError(res.error ?? "Couldn't create the folder.");
+      } catch {
+        setError("Couldn't create the folder. Open Settings → Database updates, click it once, then try again.");
+      }
     });
   }
 
