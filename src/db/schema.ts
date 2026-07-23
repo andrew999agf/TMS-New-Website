@@ -447,6 +447,8 @@ export const shareRecipients = pgTable(
     permission: varchar("permission", { length: 16 }).notNull().default("download"),
     /** Relationship on this matter: client | opposing | co-counsel | expert | witness | prose | consultant | other. */
     kind: varchar("kind", { length: 24 }).notNull().default(""),
+    /** This specific recipient must authenticate before viewing (set by policy at send time). */
+    requireAuth: boolean("require_auth").notNull().default(false),
     invitedBy: varchar("invited_by", { length: 255 }),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     /** The link stops working after this instant (per-folder-type lifetime). */

@@ -138,6 +138,30 @@ export function kindLabel(k: string): string {
   return KIND_LABEL.get(k) ?? "";
 }
 
+/**
+ * Whether a plain link is acceptable for a recipient type, or a secure sign-in
+ * is mandatory. YOUR SIDE OF THE FENCE (client, co-counsel, expert, consultant)
+ * is always secured — no question asked. The other side and neutral third parties
+ * (opposing counsel, pro se opponents, witnesses) may get a plain link, so the
+ * sender is asked. Unknown/"other" is asked but defaults to secure.
+ */
+export function securityForKind(kind: string): "required" | "ask" {
+  switch (kind) {
+    case "client":
+    case "co-counsel":
+    case "expert":
+    case "consultant":
+      return "required";
+    default:
+      return "ask"; // opposing, witness, prose, other
+  }
+}
+
+/** When the sender is asked, what to default the choice to (true = secure). */
+export function defaultSecureForKind(kind: string): boolean {
+  return !(kind === "opposing" || kind === "witness" || kind === "prose");
+}
+
 /** A sensible default recipient kind for a folder type. */
 export function defaultKindForType(typeKey: string): string {
   switch (typeKey) {

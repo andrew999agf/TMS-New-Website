@@ -134,6 +134,7 @@ const DDL = [
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS require_auth boolean NOT NULL DEFAULT false`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS kind varchar(24) NOT NULL DEFAULT ''`,
+  `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS require_auth boolean NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS portal_users (
     id serial PRIMARY KEY,
     email varchar(255) NOT NULL UNIQUE,

@@ -12,7 +12,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, securityForKind, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
 import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
@@ -267,13 +267,15 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with ${recipientLabel}`, html });
 }
 
-export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
+export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, requireAuth: boolean, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
   const session = await guard();
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(cleanEmail)) return { ok: false, error: "Enter a valid email address." };
   const perm = ["view", "download", "upload", "manage"].includes(permission) ? permission : "download";
   const cleanKind = (kind || "").trim().slice(0, 24);
+  // Your side of the fence is always secured, regardless of what the client sent.
+  const secure = securityForKind(cleanKind) === "required" ? true : !!requireAuth;
   try {
     const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
     if (!folder) return { ok: false, error: "Folder not found." };
@@ -289,7 +291,7 @@ export async function addRecipient(folderId: number, email: string, name: string
 
     const token = randomBytes(24).toString("base64url");
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
-    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt });
+    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, requireAuth: secure, invitedBy: session.email, expiresAt });
     // Directory entry (one per person, keyed by email) — created if new.
     await db.insert(portalUsers).values({ email: cleanEmail, name: name.trim(), kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));

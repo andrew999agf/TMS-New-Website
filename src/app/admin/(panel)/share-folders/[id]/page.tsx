@@ -57,6 +57,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     expiresAt: r.expiresAt ? r.expiresAt.toISOString() : null,
     permission: r.permission,
     kind: r.kind,
+    requireAuth: r.requireAuth,
     revoked: r.revoked,
   }));
 

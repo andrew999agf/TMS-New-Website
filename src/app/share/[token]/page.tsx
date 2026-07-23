@@ -68,8 +68,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
   if (!folder) return <Closed logo={logo} title="Unavailable" body="This folder is no longer available." />;
 
-  // Sensitive folders require the recipient to authenticate as their invited email.
-  if (folder.requireAuth) {
+  // Sensitive folders — or recipients whose type requires it — must authenticate.
+  if (folder.requireAuth || rec.requireAuth) {
     const who = await portalEmail();
     if (!who || who !== rec.email.toLowerCase()) {
       const [pu] = await db.select({ passwordHash: portalUsers.passwordHash }).from(portalUsers).where(eq(portalUsers.email, rec.email.toLowerCase()));
