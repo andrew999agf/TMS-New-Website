@@ -11,8 +11,9 @@ export const runtime = "nodejs";
  * raw Blob URL — the file is streamed through here only after the token is
  * validated and the file is confirmed to belong to that recipient's folder.
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ token: string; fileId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ token: string; fileId: string }> }) {
   const { token, fileId } = await params;
+  const preview = new URL(req.url).searchParams.get("preview") === "1";
   if (!db) return NextResponse.json({ error: "Unavailable" }, { status: 503 });
 
   const [rec] = await db.select().from(shareRecipients).where(eq(shareRecipients.token, token));
@@ -37,9 +38,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   // download name should be just the base file name.
   const baseName = file.filename.split("/").pop() || file.filename;
   const safe = baseName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
-  // View-only recipients get the file inline (opens in the browser); download+
-  // recipients get it as an attachment.
-  const disposition = shareCan(rec.permission, "download") ? "attachment" : "inline";
+  // Preview requests open inline; otherwise view-only recipients get it inline
+  // and download+ recipients get an attachment.
+  const disposition = preview ? "inline" : shareCan(rec.permission, "download") ? "attachment" : "inline";
   const headers = new Headers();
   headers.set("Content-Type", file.contentType || "application/octet-stream");
   headers.set("Content-Disposition", `${disposition}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);

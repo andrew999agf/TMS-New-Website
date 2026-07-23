@@ -5,7 +5,7 @@ import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFiles, shareDirs, shareFolders, shareAccessLog } from "@/db/schema";
 import { resolveRecipient, cleanDirPath } from "@/lib/share/access";
-import { shareCan } from "@/lib/share/types";
+import { shareCan, normalizeMeta } from "@/lib/share/types";
 
 /** Record a file a recipient uploaded (after the Blob upload resolves). */
 export async function recipientRegisterFile(
@@ -34,6 +34,30 @@ export async function recipientRegisterFile(
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't save the file." };
+  }
+}
+
+/** A viewer with upload/manage rights checks a to-do done (or reopens it),
+ *  stamping their name/initials and the date. */
+export async function recipientToggleTodo(token: string, todoId: string, done: boolean, who: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !shareCan(ctx.rec.permission, "upload")) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const meta = normalizeMeta(ctx.folder.meta);
+  const todo = (meta.todos ?? []).find((t) => t.id === todoId);
+  if (!todo) return { ok: false as const, error: "Task not found." };
+  if (done) {
+    todo.doneBy = (who || ctx.rec.name || ctx.rec.email).slice(0, 60);
+    todo.doneAt = new Date().toISOString();
+  } else {
+    delete todo.doneBy;
+    delete todo.doneAt;
+  }
+  try {
+    await db.update(shareFolders).set({ meta: meta as Record<string, unknown> }).where(eq(shareFolders.id, ctx.folder.id));
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the task." };
   }
 }
 

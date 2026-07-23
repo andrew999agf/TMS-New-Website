@@ -265,6 +265,33 @@ export function shareCan(permission: string, action: "download" | "upload" | "de
   return p === "manage"; // delete
 }
 
+/* --------------------------- folder workspace meta --------------------------- */
+
+export type ShareTodo = { id: string; text: string; doneBy?: string; doneAt?: string };
+
+/** Optional, viewer-facing extras an admin can turn on per folder. Each section
+ *  only appears in the viewer portal when enabled AND it has content. */
+export type ShareFolderMeta = {
+  causesEnabled?: boolean;
+  causes?: string[];
+  notesEnabled?: boolean;
+  notes?: string;
+  todosEnabled?: boolean;
+  todos?: ShareTodo[];
+};
+
+export function normalizeMeta(m: unknown): ShareFolderMeta {
+  const o = (m ?? {}) as ShareFolderMeta;
+  return {
+    causesEnabled: !!o.causesEnabled,
+    causes: Array.isArray(o.causes) ? o.causes.filter((x) => typeof x === "string") : [],
+    notesEnabled: !!o.notesEnabled,
+    notes: typeof o.notes === "string" ? o.notes : "",
+    todosEnabled: !!o.todosEnabled,
+    todos: Array.isArray(o.todos) ? o.todos.filter((t) => t && typeof t.id === "string" && typeof t.text === "string") : [],
+  };
+}
+
 export const FOLDER_SORTS = [
   { key: "updated", label: "Recent activity" },
   { key: "case", label: "Case number" },

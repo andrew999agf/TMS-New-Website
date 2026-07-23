@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2 } from "lucide-react";
+import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye } from "lucide-react";
 
 export type TreeFile = { id: number; path: string; sizeBytes: number | null };
 type Leaf = TreeFile & { base: string };
@@ -44,6 +44,7 @@ type Ctx = {
   deletingId?: number | null;
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
+  onPreview?: (file: { id: number; base: string }) => void;
   // drag-drop upload (optional)
   onUpload?: (destPath: string, dt: DataTransfer) => void;
   overPath: string | null;
@@ -51,7 +52,7 @@ type Ctx = {
   doDrop: (e: React.DragEvent, path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onUpload }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, onUpload }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -61,6 +62,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   deletingId?: number | null;
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
+  onPreview?: (file: { id: number; base: string }) => void;
   /** When provided, the tree becomes a drop target: drop onto a folder to add
    *  inside it, or onto empty space to add at the top level. */
   onUpload?: (destPath: string, dt: DataTransfer) => void;
@@ -71,7 +73,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, onUpload, overPath, setOver, doDrop };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -139,6 +141,11 @@ function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx })
       <FileText size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
       <a href={href} target={ctx.target} rel={ctx.target ? "noopener noreferrer" : undefined} className="min-w-0 flex-1 truncate text-sm hover:text-[var(--c-accent)]">{file.base}</a>
       <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{fmtSize(file.sizeBytes)}</span>
+      {ctx.onPreview && (
+        <button onClick={() => ctx.onPreview!({ id: file.id, base: file.base })} className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] hover:border-[var(--c-accent)]" title="Preview this document">
+          <Eye size={13} /><span className="hidden sm:inline">Preview</span>
+        </button>
+      )}
       {ctx.showDownload && (
         <a href={href} className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" title="Download this document">
           <Download size={13} /><span className="hidden sm:inline">Download</span>

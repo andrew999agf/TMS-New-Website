@@ -5,7 +5,8 @@ import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
 import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
-import { shareCan } from "@/lib/share/types";
+import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
+import { shareCan, rolePhrase, normalizeMeta } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
 import { ShieldCheck, Clock, Download } from "lucide-react";
 
@@ -75,7 +76,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
       <h1 className="mt-2 text-xl font-semibold">{folder.name}</h1>
       {folder.caseNumber && <p className="mt-0.5 text-sm text-[var(--c-ink-muted)]">Case {folder.caseNumber}</p>}
       {folder.court && <p className="text-sm text-[var(--c-ink-muted)]">{folder.court}</p>}
-      <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Documents shared by {FIRM.name}</p>
+      <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Shared with you as {rolePhrase(folder.type)} by {FIRM.name}</p>
 
       {rec.expiresAt && (
         <p className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs text-[var(--c-ink-muted)]">
@@ -88,6 +89,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
       )}
 
       <ShareUploadStatus token={token} />
+
+      <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} />
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>

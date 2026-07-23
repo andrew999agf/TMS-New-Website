@@ -12,7 +12,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, type ShareWarning } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
 import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
@@ -164,6 +164,20 @@ export async function clearUpload(folderId: number) {
     await db.update(shareFolders).set({ uploadTotal: 0, uploadDone: 0, uploadAt: null }).where(eq(shareFolders.id, folderId));
   } catch { /* best-effort */ }
   return { ok: true as const };
+}
+
+export async function updateFolderMeta(folderId: number, meta: ShareFolderMeta) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.update(shareFolders).set({ meta: normalizeMeta(meta) as Record<string, unknown>, updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    await audit(session.email, "update", "share-folder", String(folderId), "Updated folder info & tasks");
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] updateFolderMeta failed:", err);
+    return { ok: false as const, error: "Couldn't save — try Settings → Database updates, then retry." };
+  }
 }
 
 export async function createDir(folderId: number, path: string) {

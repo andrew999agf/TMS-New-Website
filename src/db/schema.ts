@@ -403,6 +403,8 @@ export const shareFolders = pgTable(
     court: varchar("court", { length: 191 }).notNull().default(""), // court / location
     type: varchar("type", { length: 32 }).notNull(), // SHARE_TYPES key (discovery, client, expert, …)
     notes: text("notes"),
+    /** Optional viewer-facing workspace: causes of action, notes, to-do tasks. */
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
     archived: boolean("archived").notNull().default(false),
     /** Live upload progress so anyone viewing the folder sees "N of M uploading". */
     uploadTotal: integer("upload_total").notNull().default(0),

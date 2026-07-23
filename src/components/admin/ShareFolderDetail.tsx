@@ -7,9 +7,10 @@ import {
   Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus,
 } from "lucide-react";
-import { SHARE_TYPES, SHARE_PERMISSIONS, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, shareType, audienceStyle, recipientWarnings, classifyEmail, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
+import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, deleteFile, deleteDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
@@ -17,7 +18,7 @@ import {
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
-export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; archived: boolean };
+export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; meta: ShareFolderMeta; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
 export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; revoked: boolean };
 
@@ -42,6 +43,8 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, matters, bl
       </div>
 
       <FolderHeader folder={folder} matters={matters} />
+
+      <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} />
 
       <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
 

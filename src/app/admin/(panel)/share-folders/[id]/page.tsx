@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters } from "@/db/schema";
 import { asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
+import { normalizeMeta } from "@/lib/share/types";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     court: folder.court,
     type: folder.type,
     notes: folder.notes ?? "",
+    meta: normalizeMeta(folder.meta),
     archived: folder.archived,
   };
   const fileRows: FileRow[] = files.map((f) => ({
