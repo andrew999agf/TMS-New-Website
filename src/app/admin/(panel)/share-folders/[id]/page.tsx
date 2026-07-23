@@ -50,6 +50,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     token: r.token,
     invitedAt: r.invitedAt.toISOString(),
     lastAccessAt: r.lastAccessAt ? r.lastAccessAt.toISOString() : null,
+    expiresAt: r.expiresAt ? r.expiresAt.toISOString() : null,
     revoked: r.revoked,
   }));
 

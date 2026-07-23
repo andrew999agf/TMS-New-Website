@@ -10,8 +10,18 @@ import { shareFolders, shareFiles, shareRecipients } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
+import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, type ShareWarning } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, type ShareWarning } from "@/lib/share/types";
+import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
+
+const REISSUE_CONTACT = "max@texaslawsmith.com";
+const fmtExpiry = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+async function shareCc(): Promise<string[]> {
+  const cc = await getSetting<string[]>(SHARE_CC_KEY, SHARE_CC_DEFAULT);
+  return (Array.isArray(cc) ? cc : SHARE_CC_DEFAULT).map((s) => s.trim()).filter(Boolean);
+}
 
 async function guard() {
   const session = await requireAdmin();
@@ -162,11 +172,11 @@ export async function deleteFile(id: number) {
 
 /* -------------------------------- recipients ------------------------------- */
 
-async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string) {
+async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[]) {
   const link = `${await baseUrl()}/share/${token}`;
-  const t = shareType(typeKey);
   const who = name.trim() ? esc(name.trim()) : "there";
   const caseLine = caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(caseNumber)}</p>` : "";
+  const days = expiryDaysForType(typeKey);
   const html = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
@@ -177,9 +187,10 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
       <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open the folder</a></p>
       <p style="margin:0 0 8px;font-size:13px;color:#777">Or paste this link into your browser:</p>
       <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#444">For security, this link will <strong>automatically expire in ${days} days</strong> — on <strong>${fmtExpiry(expiresAt)}</strong>. If you need it re-issued after that, contact <a href="mailto:${REISSUE_CONTACT}" style="color:#7a1f2b">${REISSUE_CONTACT}</a>.</p>
       <p style="margin:0;font-size:12px;color:#999">This link is unique to you — please don't forward it. If you weren't expecting this, you can ignore this email.</p>
     </div>`;
-  return sendEmail({ to: email, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with you`, html });
+  return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with you`, html });
 }
 
 export async function addRecipient(folderId: number, email: string, name: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
@@ -201,9 +212,10 @@ export async function addRecipient(folderId: number, email: string, name: string
     if (dupe) return { ok: false, error: "That email already has access to this folder." };
 
     const token = randomBytes(24).toString("base64url");
-    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, invitedBy: session.email });
+    const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
+    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, invitedBy: session.email, expiresAt });
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token);
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc());
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
     revalidatePath(`/admin/share-folders/${folderId}`);
     return { ok: true, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
@@ -221,7 +233,11 @@ export async function resendInvite(recipientId: number) {
     if (!r) return { ok: false as const, error: "Not found." };
     const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, r.folderId));
     if (!folder) return { ok: false as const, error: "Folder not found." };
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token);
+    // Re-issuing resets the clock and clears any prior expiry/revocation.
+    const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
+    await db.update(shareRecipients).set({ expiresAt, revoked: false }).where(eq(shareRecipients.id, r.id));
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc());
+    revalidatePath(`/admin/share-folders/${r.folderId}`);
     return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
   } catch (err) {
     console.error("[share] resendInvite failed:", err);

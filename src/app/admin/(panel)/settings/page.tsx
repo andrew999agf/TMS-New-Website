@@ -8,6 +8,8 @@ import { ContentRefreshButton } from "@/components/admin/ContentRefreshButton";
 import { IntakeNotifyManager } from "@/components/admin/IntakeNotifyManager";
 import { BillingReminderManager } from "@/components/admin/BillingReminderManager";
 import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
+import { ShareCcManager } from "@/components/admin/ShareCcManager";
+import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 import { FIRM } from "@/lib/firm";
@@ -21,6 +23,7 @@ export default async function SettingsPage() {
   const logo = await getSetting<string>("logo", "");
   const intakeNotify = await getSetting<string[]>("intake.statusNotify", [FIRM.email]);
   const billingReminder = await getSetting<BillingReminder>(BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT);
+  const shareCc = await getSetting<string[]>(SHARE_CC_KEY, SHARE_CC_DEFAULT);
 
   const envState = [
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
@@ -62,6 +65,11 @@ export default async function SettingsPage() {
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Monthly billing reminder</h2>
           <BillingReminderManager initial={billingReminder ?? BILLING_REMINDER_DEFAULT} />
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Share folder emails (CC)</h2>
+          <ShareCcManager initial={Array.isArray(shareCc) ? shareCc : SHARE_CC_DEFAULT} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

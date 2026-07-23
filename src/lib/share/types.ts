@@ -96,6 +96,30 @@ export function shareType(key: string): ShareTypeDef {
   return BY_KEY.get(key) ?? SHARE_TYPES[SHARE_TYPES.length - 1];
 }
 
+/**
+ * How long a share link stays live, by folder type. Discovery to the other side
+ * is short-lived (21 days); relationships we work with over the life of a case
+ * — clients, co-counsel, experts — get long windows (120 days). A re-issue
+ * resets the clock.
+ */
+export function expiryDaysForType(typeKey: string): number {
+  switch (typeKey) {
+    case "discovery":
+    case "opposing":
+      return 21;
+    case "client":
+    case "client-drop":
+    case "co-counsel":
+    case "expert":
+    case "consultant":
+      return 120;
+    case "prospective":
+      return 30;
+    default:
+      return 60;
+  }
+}
+
 /** Tailwind class bundle per audience — the visual "this is what kind of folder". */
 export type AudienceStyle = { badge: string; ring: string; banner: string; dot: string };
 export function audienceStyle(audience: ShareAudience): AudienceStyle {

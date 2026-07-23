@@ -437,6 +437,8 @@ export const shareRecipients = pgTable(
     token: varchar("token", { length: 64 }).notNull().unique(),
     invitedBy: varchar("invited_by", { length: 255 }),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The link stops working after this instant (per-folder-type lifetime). */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
     revoked: boolean("revoked").notNull().default(false),
   },

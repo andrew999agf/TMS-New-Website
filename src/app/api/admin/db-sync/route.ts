@@ -155,6 +155,7 @@ const DDL = [
     revoked boolean NOT NULL DEFAULT false
   )`,
   `CREATE INDEX IF NOT EXISTS share_recipients_folder_idx ON share_recipients (folder_id)`,
+  `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS expires_at timestamptz`,
   `CREATE TABLE IF NOT EXISTS share_access_log (
     id serial PRIMARY KEY,
     folder_id integer,

@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import {
-  Upload, File as FileIcon, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
+  Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2,
 } from "lucide-react";
 import { SHARE_TYPES, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { ShareFileTree } from "./ShareFileTree";
 import {
   registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked,
   archiveFolder, deleteFolder, updateFolder,
@@ -16,11 +17,10 @@ import {
 
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
-export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; revoked: boolean };
+export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; revoked: boolean };
 
 const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
-const fmtSize = (n: number | null) => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
 export function ShareFolderDetail({ folder, files, recipients, matters, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; matters: MatterOption[]; blobReady: boolean }) {
@@ -182,6 +182,13 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  function handleDelete(id: number) {
+    if (!confirm("Remove this file?")) return;
+    setDeletingId(id);
+    deleteFile(id).then(() => { setDeletingId(null); router.refresh(); }).catch(() => setDeletingId(null));
+  }
 
   // React has no typed prop for directory selection — set the attributes directly.
   useEffect(() => {
@@ -252,31 +259,16 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
       </div>
 
       {files.length > 0 && (
-        <ul className="mt-3 divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)]">
-          {files.map((f) => <FileRowItem key={f.id} f={f} />)}
-        </ul>
+        <div className="mt-3">
+          <ShareFileTree
+            files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, url: f.url }))}
+            mode="admin"
+            onDelete={handleDelete}
+            deletingId={deletingId}
+          />
+        </div>
       )}
     </section>
-  );
-}
-
-function FileRowItem({ f }: { f: FileRow }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  return (
-    <li className="flex items-center gap-3 p-2.5">
-      <FileIcon size={16} className="shrink-0 text-[var(--c-ink-muted)]" />
-      <a href={f.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-sm text-[var(--c-ink)] hover:text-[var(--c-accent)]">{f.filename}</a>
-      <span className="shrink-0 text-xs text-[var(--c-ink-muted)]">{fmtSize(f.sizeBytes)}</span>
-      <span className="hidden shrink-0 text-xs text-[var(--c-ink-muted)] sm:inline">{fmtDate(f.createdAt)}</span>
-      <button
-        onClick={() => { if (confirm(`Remove "${f.filename}"?`)) start(async () => { await deleteFile(f.id); router.refresh(); }); }}
-        disabled={pending}
-        className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600 disabled:opacity-50"
-      >
-        {pending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-      </button>
-    </li>
   );
 }
 
@@ -380,9 +372,11 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
           <span className="truncate text-sm font-medium text-[var(--c-ink)]">{r.email}</span>
           {r.name && <span className="text-xs text-[var(--c-ink-muted)]">{r.name}</span>}
           {r.revoked && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">revoked</span>}
+          {!r.revoked && r.expiresAt && new Date(r.expiresAt) < new Date() && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">expired</span>}
         </div>
         <p className="text-[11px] text-[var(--c-ink-muted)]">
           Invited {fmtDate(r.invitedAt)} · {r.lastAccessAt ? `last opened ${fmtDate(r.lastAccessAt)}` : "not opened yet"}
+          {r.expiresAt && ` · ${new Date(r.expiresAt) < new Date() ? "expired" : `expires ${fmtDate(r.expiresAt)}`}`}
         </p>
       </div>
       <button onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy the private link" className="shrink-0 rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">

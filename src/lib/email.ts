@@ -58,12 +58,14 @@ type Attachment = { filename: string; content: string | Buffer; contentType?: st
 
 export async function sendEmail({
   to,
+  cc,
   subject,
   html,
   attachments,
   fromName,
 }: {
   to: string | string[];
+  cc?: string | string[];
   subject: string;
   html: string;
   attachments?: Attachment[];
@@ -71,6 +73,7 @@ export async function sendEmail({
 }): Promise<{ sent: boolean; reason?: string }> {
   const recipients = (Array.isArray(to) ? to : [to]).map((s) => s.trim()).filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: "no-recipients" };
+  const ccList = (Array.isArray(cc) ? cc : cc ? [cc] : []).map((s) => s.trim()).filter(Boolean);
 
   // 1) Google Workspace SMTP (preferred).
   const tx = getTransport();
@@ -79,6 +82,7 @@ export async function sendEmail({
       await tx.sendMail({
         from: fromAddress(fromName),
         to: recipients,
+        cc: ccList.length ? ccList : undefined,
         subject,
         html,
         attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
@@ -96,6 +100,7 @@ export async function sendEmail({
       await resend.emails.send({
         from: fromAddress(fromName),
         to: recipients,
+        cc: ccList.length ? ccList : undefined,
         subject,
         html,
         attachments: attachments?.map((a) => ({

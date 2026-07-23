@@ -3,53 +3,58 @@ import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareAccessLog } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
-import { shareType } from "@/lib/share/types";
-import { FileText, Download, ShieldCheck } from "lucide-react";
+import { ShareFileTree } from "@/components/admin/ShareFileTree";
+import { ShieldCheck, Clock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robots: { index: false, follow: false } };
 
-const fmtSize = (n: number | null) => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const REISSUE = "max@texaslawsmith.com";
+const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto min-h-screen max-w-2xl px-5 py-10">
-      <div className="mb-6 border-b border-black/10 pb-4 dark:border-white/10">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7a1f2b]">{FIRM.name}</p>
-        <p className="mt-0.5 text-xs text-neutral-500">Secure document share</p>
+    <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
+      <div className="mx-auto max-w-2xl px-5 py-10">
+        <div className="mb-6 border-b border-[var(--c-border)] pb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--c-accent)]">{FIRM.name}</p>
+          <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Secure document share</p>
+        </div>
+        {children}
+        <p className="mt-10 border-t border-[var(--c-border)] pt-4 text-[11px] text-[var(--c-ink-muted)]">
+          This is a private link intended only for you. Please don&apos;t forward it. Questions? Contact {FIRM.name} at{" "}
+          <a href={`mailto:${FIRM.email}`} className="text-[var(--c-accent)]">{FIRM.email}</a>.
+        </p>
       </div>
-      {children}
-      <p className="mt-10 border-t border-black/10 pt-4 text-[11px] text-neutral-400 dark:border-white/10">
-        This is a private link intended only for you. Please don&apos;t forward it. Questions? Contact {FIRM.name} at {FIRM.email}.
-      </p>
     </main>
+  );
+}
+
+function Closed({ title, body }: { title: string; body: React.ReactNode }) {
+  return (
+    <Shell>
+      <h1 className="text-lg font-semibold">{title}</h1>
+      <p className="mt-2 text-sm text-[var(--c-ink-muted)]">{body}</p>
+    </Shell>
   );
 }
 
 export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-
-  if (!db) {
-    return <Shell><p className="text-sm text-neutral-600">This share is temporarily unavailable.</p></Shell>;
-  }
+  if (!db) return <Closed title="Temporarily unavailable" body="This share can't be opened right now. Please try again shortly." />;
 
   const [rec] = await db.select().from(shareRecipients).where(eq(shareRecipients.token, token));
   if (!rec || rec.revoked) {
-    return (
-      <Shell>
-        <h1 className="text-lg font-semibold">This link is no longer active</h1>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">Access to this folder has been closed or the link is invalid. If you believe this is a mistake, contact {FIRM.name} at {FIRM.email}.</p>
-      </Shell>
-    );
+    return <Closed title="This link is no longer active" body={<>Access to this folder has been closed or the link is invalid. To have it re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
+  }
+  if (rec.expiresAt && rec.expiresAt < new Date()) {
+    return <Closed title="This link has expired" body={<>For security, share links expire after a set period. To have this one re-issued, contact <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.</>} />;
   }
 
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
-  if (!folder) {
-    return <Shell><p className="text-sm text-neutral-600">This folder is no longer available.</p></Shell>;
-  }
+  if (!folder) return <Closed title="Unavailable" body="This folder is no longer available." />;
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
 
-  // Record the view (best-effort).
   try {
     await db.update(shareRecipients).set({ lastAccessAt: new Date() }).where(eq(shareRecipients.id, rec.id));
     await db.insert(shareAccessLog).values({ folderId: folder.id, recipientId: rec.id, action: "view" });
@@ -57,39 +62,29 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
     /* logging is best-effort */
   }
 
-  const t = shareType(folder.type);
-
   return (
     <Shell>
-      <div className="flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+      <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
         <ShieldCheck size={14} /> Shared securely with {rec.email}
       </div>
-      <h1 className="mt-2 text-xl font-semibold text-neutral-900 dark:text-neutral-50">{folder.name}</h1>
-      {folder.caseNumber && <p className="mt-0.5 text-sm text-neutral-500">Case {folder.caseNumber}</p>}
-      {folder.court && <p className="text-sm text-neutral-500">{folder.court}</p>}
-      <p className="mt-1 text-xs text-neutral-400">{t.audience === "adversary" ? "Documents produced by" : "Documents shared by"} {FIRM.name}</p>
+      <h1 className="mt-2 text-xl font-semibold">{folder.name}</h1>
+      {folder.caseNumber && <p className="mt-0.5 text-sm text-[var(--c-ink-muted)]">Case {folder.caseNumber}</p>}
+      {folder.court && <p className="text-sm text-[var(--c-ink-muted)]">{folder.court}</p>}
+      <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Documents shared by {FIRM.name}</p>
 
-      <div className="mt-6">
+      {rec.expiresAt && (
+        <p className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs text-[var(--c-ink-muted)]">
+          <Clock size={13} /> Access expires {fmtDate(rec.expiresAt)}. Need more time? Email <a href={`mailto:${REISSUE}`} className="text-[var(--c-accent)]">{REISSUE}</a>.
+        </p>
+      )}
+
+      <div className="mt-5">
         {files.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-black/15 p-8 text-center text-sm text-neutral-500 dark:border-white/15">
-            No documents have been added yet. Please check back — you&apos;ll keep access with this same link.
+          <div className="rounded-lg border border-dashed border-[var(--c-border)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
+            No documents have been added yet. You&apos;ll keep access with this same link — please check back.
           </div>
         ) : (
-          <ul className="divide-y divide-black/10 rounded-lg border border-black/10 dark:divide-white/10 dark:border-white/10">
-            {files.map((f) => (
-              <li key={f.id} className="flex items-center gap-3 p-3">
-                <FileText size={17} className="shrink-0 text-neutral-400" />
-                <span className="min-w-0 flex-1 truncate text-sm text-neutral-800 dark:text-neutral-100">{f.filename}</span>
-                <span className="shrink-0 text-xs text-neutral-400">{fmtSize(f.sizeBytes)}</span>
-                <a
-                  href={`/share/${token}/file/${f.id}`}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
-                >
-                  <Download size={13} /> Download
-                </a>
-              </li>
-            ))}
-          </ul>
+          <ShareFileTree files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))} mode="share" token={token} />
         )}
       </div>
     </Shell>

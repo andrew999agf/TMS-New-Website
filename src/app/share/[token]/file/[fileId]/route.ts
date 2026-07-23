@@ -16,6 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 
   const [rec] = await db.select().from(shareRecipients).where(eq(shareRecipients.token, token));
   if (!rec || rec.revoked) return NextResponse.json({ error: "This link is no longer active." }, { status: 403 });
+  if (rec.expiresAt && rec.expiresAt < new Date()) return NextResponse.json({ error: "This link has expired. Contact max@texaslawsmith.com to have it re-issued." }, { status: 403 });
 
   const id = Number(fileId);
   if (!Number.isFinite(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
