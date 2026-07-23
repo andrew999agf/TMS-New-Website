@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import {
@@ -138,29 +138,72 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
+type PickedFile = { file: File; path: string };
+const isJunk = (name: string) => name === ".DS_Store" || name === "Thumbs.db" || name.startsWith("._");
+
+/** Read every File out of a dropped item list, walking into folders (and their
+ *  subfolders) via the webkitGetAsEntry API. Entries must be captured
+ *  synchronously during the drop, so we grab them before any await. */
+async function filesFromDrop(dt: DataTransfer): Promise<PickedFile[]> {
+  const roots: FileSystemEntry[] = [];
+  for (let i = 0; i < dt.items.length; i++) {
+    const entry = dt.items[i].webkitGetAsEntry?.();
+    if (entry) roots.push(entry);
+  }
+  if (roots.length === 0) {
+    // Browser without the entry API — fall back to the flat file list.
+    return Array.from(dt.files).filter((f) => !isJunk(f.name)).map((f) => ({ file: f, path: f.name }));
+  }
+  const out: PickedFile[] = [];
+  const readDir = (reader: FileSystemDirectoryReader) =>
+    new Promise<FileSystemEntry[]>((resolve, reject) => {
+      const acc: FileSystemEntry[] = [];
+      const step = () => reader.readEntries((batch) => { if (!batch.length) return resolve(acc); acc.push(...batch); step(); }, reject);
+      step();
+    });
+  async function walk(entry: FileSystemEntry, prefix: string): Promise<void> {
+    if (entry.isFile) {
+      const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+      if (!isJunk(file.name)) out.push({ file, path: prefix + file.name });
+    } else if (entry.isDirectory) {
+      const children = await readDir((entry as FileSystemDirectoryEntry).createReader());
+      for (const child of children) await walk(child, `${prefix}${entry.name}/`);
+    }
+  }
+  for (const r of roots) await walk(r, "");
+  return out;
+}
+
 function FilesSection({ folderId, files, blobReady }: { folderId: number; files: FileRow[]; blobReady: boolean }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
 
-  async function handleFiles(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
+  // React has no typed prop for directory selection — set the attributes directly.
+  useEffect(() => {
+    const el = folderInput.current;
+    if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
+  }, []);
+
+  async function uploadAll(picked: PickedFile[]) {
+    const items = picked.filter((p) => !isJunk(p.file.name));
+    if (items.length === 0) return;
     setError(null);
     setBusy(true);
-    const items = Array.from(fileList);
     try {
       for (let i = 0; i < items.length; i++) {
-        const file = items[i];
-        setProgress(`Uploading ${i + 1} of ${items.length}: ${file.name}`);
-        const blob = await upload(`share/${folderId}/${file.name}`, file, {
+        const { file, path } = items[i];
+        setProgress(`Uploading ${i + 1} of ${items.length}: ${path}`);
+        const blob = await upload(`share/${folderId}/${path}`, file, {
           access: "public",
           handleUploadUrl: "/api/admin/share-upload",
           clientPayload: String(folderId),
         });
-        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: file.name, contentType: file.type || blob.contentType, size: file.size });
+        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: path, contentType: file.type || blob.contentType, size: file.size });
       }
       router.refresh();
     } catch (err) {
@@ -169,7 +212,20 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
       setBusy(false);
       setProgress(null);
       if (fileInput.current) fileInput.current.value = "";
+      if (folderInput.current) folderInput.current.value = "";
     }
+  }
+
+  function fromInput(list: FileList | null): PickedFile[] {
+    return Array.from(list ?? []).map((f) => ({ file: f, path: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name }));
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDrag(false);
+    if (!blobReady || busy) return;
+    const picked = await filesFromDrop(e.dataTransfer);
+    await uploadAll(picked);
   }
 
   return (
@@ -178,15 +234,19 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
       <div
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); if (blobReady && !busy) handleFiles(e.dataTransfer.files); }}
+        onDrop={onDrop}
         className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${drag ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"} ${!blobReady ? "opacity-60" : ""}`}
       >
         <Upload size={22} className="mx-auto mb-1.5 text-[var(--c-ink-muted)]" />
-        <p className="text-sm text-[var(--c-ink-muted)]">Drag files here, or{" "}
-          <button onClick={() => fileInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">browse</button>.
+        <p className="text-sm text-[var(--c-ink-muted)]">Drag files or whole folders here, or{" "}
+          <button onClick={() => fileInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">browse files</button>
+          {" "}·{" "}
+          <button onClick={() => folderInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">choose a folder</button>.
         </p>
+        <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Folders keep their structure (e.g. subfolder/file.pdf).</p>
         {!blobReady && <p className="mt-1 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
-        <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+        <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
+        <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
         {progress && <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</p>}
         {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       </div>

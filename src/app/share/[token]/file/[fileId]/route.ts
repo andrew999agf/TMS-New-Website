@@ -31,10 +31,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const upstream = await fetch(file.url);
   if (!upstream.ok || !upstream.body) return NextResponse.json({ error: "File unavailable." }, { status: 502 });
 
-  const safe = file.filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  // Files uploaded from a folder keep their relative path in `filename`; the
+  // download name should be just the base file name.
+  const baseName = file.filename.split("/").pop() || file.filename;
+  const safe = baseName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
   const headers = new Headers();
   headers.set("Content-Type", file.contentType || "application/octet-stream");
-  headers.set("Content-Disposition", `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+  headers.set("Content-Disposition", `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);
   if (file.sizeBytes) headers.set("Content-Length", String(file.sizeBytes));
   headers.set("Cache-Control", "private, no-store");
   return new NextResponse(upstream.body, { status: 200, headers });
