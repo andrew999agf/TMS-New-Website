@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { SHARE_TYPES, SHARE_PERMISSIONS, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
-import { ShareFileTree, folderPaths } from "./ShareFileTree";
+import { ShareFileTree } from "./ShareFileTree";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir,
@@ -146,20 +146,16 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
-  const [drag, setDrag] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [dest, setDest] = useState("");
   const [newDir, setNewDir] = useState("");
   const [creatingDir, setCreatingDir] = useState(false);
-  const destinations = useMemo(() => folderPaths(files.map((f) => ({ path: f.filename })), dirs), [files, dirs]);
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
 
   function addFolder() {
     const name = newDir.trim();
     if (!name) return;
-    const full = dest ? `${dest}/${name}` : name;
     setCreatingDir(true);
-    createDir(folderId, full).then(() => { setNewDir(""); setCreatingDir(false); router.refresh(); }).catch(() => setCreatingDir(false));
+    createDir(folderId, name).then(() => { setNewDir(""); setCreatingDir(false); router.refresh(); }).catch(() => setCreatingDir(false));
   }
 
   function handleDelete(id: number) {
@@ -168,13 +164,12 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
     deleteFile(id).then(() => { setDeletingId(null); router.refresh(); }).catch(() => setDeletingId(null));
   }
 
-  // React has no typed prop for directory selection — set the attributes directly.
   useEffect(() => {
     const el = folderInput.current;
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
   }, []);
 
-  async function uploadAll(picked: PickedFile[]) {
+  async function uploadTo(destPath: string, picked: PickedFile[]) {
     const items = picked.filter((p) => !isJunk(p.file.name));
     if (items.length === 0) return;
     setError(null);
@@ -182,13 +177,9 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
     try {
       for (let i = 0; i < items.length; i++) {
         const { file, path } = items[i];
-        const fullPath = dest ? `${dest}/${path}` : path;
+        const fullPath = destPath ? `${destPath}/${path}` : path;
         setProgress(`Uploading ${i + 1} of ${items.length}: ${fullPath}`);
-        const blob = await upload(`share/${folderId}/${fullPath}`, file, {
-          access: "public",
-          handleUploadUrl: "/api/admin/share-upload",
-          clientPayload: String(folderId),
-        });
+        const blob = await upload(`share/${folderId}/${fullPath}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
         await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size });
       }
       router.refresh();
@@ -202,64 +193,41 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
     }
   }
 
-  async function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDrag(false);
+  async function onUpload(destPath: string, dt: DataTransfer) {
     if (!blobReady || busy) return;
-    const picked = await filesFromDrop(e.dataTransfer);
-    await uploadAll(picked);
+    await uploadTo(destPath, await filesFromDrop(dt));
   }
 
   return (
     <section>
       <h3 className="mb-2 text-sm font-semibold text-[var(--c-ink)]">Documents ({files.length})</h3>
 
-      {/* Destination + new folder */}
+      {/* One folder-like surface: a slim toolbar, then the drop-target tree */}
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-[var(--c-ink-muted)]">Upload into:</span>
-        <select value={dest} onChange={(e) => setDest(e.target.value)} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5">
-          <option value="">Top level</option>
-          {destinations.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <button onClick={() => fileInput.current?.click()} disabled={!blobReady || busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add files</button>
+        <button onClick={() => folderInput.current?.click()} disabled={!blobReady || busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add folder</button>
         <input value={newDir} onChange={(e) => setNewDir(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFolder(); } }} placeholder="New folder name…" className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5" />
         <button onClick={addFolder} disabled={creatingDir || !newDir.trim()} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50">
           {creatingDir ? <Loader2 size={13} className="animate-spin" /> : <FolderPlus size={13} />} New folder
         </button>
+        {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
+      <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
+      {!blobReady && <p className="mb-2 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
 
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={onDrop}
-        className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${drag ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"} ${!blobReady ? "opacity-60" : ""}`}
-      >
-        <Upload size={22} className="mx-auto mb-1.5 text-[var(--c-ink-muted)]" />
-        <p className="text-sm text-[var(--c-ink-muted)]">Drag files or whole folders here, or{" "}
-          <button onClick={() => fileInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">browse files</button>
-          {" "}·{" "}
-          <button onClick={() => folderInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">choose a folder</button>.
-        </p>
-        <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Folders keep their structure{dest ? ` — added under “${dest}”` : ""}.</p>
-        {!blobReady && <p className="mt-1 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
-        <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
-        <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
-        {progress && <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</p>}
-        {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-      </div>
-
-      {(files.length > 0 || dirs.length > 0) && (
-        <div className="mt-3">
-          <ShareFileTree
-            files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
-            dirs={dirs}
-            hrefFor={(id) => urlById.get(id) ?? "#"}
-            target="_blank"
-            showDownload={false}
-            onDelete={handleDelete}
-            deletingId={deletingId}
-          />
-        </div>
-      )}
+      <ShareFileTree
+        files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
+        dirs={dirs}
+        hrefFor={(id) => urlById.get(id) ?? "#"}
+        target="_blank"
+        showDownload={false}
+        onDelete={handleDelete}
+        deletingId={deletingId}
+        onUpload={blobReady ? onUpload : undefined}
+      />
+      {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+      <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
+      <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
     </section>
   );
 }
