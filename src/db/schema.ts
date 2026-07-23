@@ -435,6 +435,8 @@ export const shareRecipients = pgTable(
     email: varchar("email", { length: 255 }).notNull(),
     name: varchar("name", { length: 191 }).notNull().default(""),
     token: varchar("token", { length: 64 }).notNull().unique(),
+    /** view | download | upload | manage — what this person can do in the folder. */
+    permission: varchar("permission", { length: 16 }).notNull().default("download"),
     invitedBy: varchar("invited_by", { length: 255 }),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     /** The link stops working after this instant (per-folder-type lifetime). */
@@ -443,6 +445,20 @@ export const shareRecipients = pgTable(
     revoked: boolean("revoked").notNull().default(false),
   },
   (t) => ({ folderIdx: index("share_recipients_folder_idx").on(t.folderId) }),
+);
+
+/** Explicitly-created (possibly empty) folders inside a share, so recipients and
+ *  staff can organize documents Dropbox-style even before files land in them. */
+export const shareDirs = pgTable(
+  "share_dirs",
+  {
+    id: serial("id").primaryKey(),
+    folderId: integer("folder_id").notNull(),
+    path: varchar("path", { length: 512 }).notNull(), // e.g. "Correspondence/2026"
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ folderIdx: index("share_dirs_folder_idx").on(t.folderId) }),
 );
 
 export const shareAccessLog = pgTable("share_access_log", {

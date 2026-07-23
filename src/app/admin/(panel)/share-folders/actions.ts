@@ -6,13 +6,14 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, type ShareWarning } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, type ShareWarning } from "@/lib/share/types";
+import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
 const REISSUE_CONTACT = "max@texaslawsmith.com";
@@ -153,6 +154,22 @@ export async function registerShareFile(folderId: number, file: { url: string; p
   }
 }
 
+export async function createDir(folderId: number, path: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const clean = cleanDirPath(path);
+  if (!clean) return { ok: false as const, error: "Enter a folder name." };
+  try {
+    const existing = await db.select({ id: shareDirs.id }).from(shareDirs).where(and(eq(shareDirs.folderId, folderId), eq(shareDirs.path, clean)));
+    if (existing.length === 0) await db.insert(shareDirs).values({ folderId, path: clean, createdBy: session.email });
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] createDir failed:", err);
+    return { ok: false as const, error: "Couldn't create the folder — try again." };
+  }
+}
+
 export async function deleteFile(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
@@ -193,11 +210,12 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with you`, html });
 }
 
-export async function addRecipient(folderId: number, email: string, name: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
+export async function addRecipient(folderId: number, email: string, name: string, permission: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
   const session = await guard();
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(cleanEmail)) return { ok: false, error: "Enter a valid email address." };
+  const perm = ["view", "download", "upload", "manage"].includes(permission) ? permission : "download";
   try {
     const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
     if (!folder) return { ok: false, error: "Folder not found." };
@@ -213,7 +231,7 @@ export async function addRecipient(folderId: number, email: string, name: string
 
     const token = randomBytes(24).toString("base64url");
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
-    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, invitedBy: session.email, expiresAt });
+    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, invitedBy: session.email, expiresAt });
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
     const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc());
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
@@ -242,6 +260,23 @@ export async function resendInvite(recipientId: number) {
   } catch (err) {
     console.error("[share] resendInvite failed:", err);
     return { ok: false as const, error: "Couldn't resend — try again." };
+  }
+}
+
+export async function setRecipientPermission(recipientId: number, permission: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!["view", "download", "upload", "manage"].includes(permission)) return { ok: false as const, error: "Invalid access level." };
+  try {
+    const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
+    if (!r) return { ok: false as const, error: "Not found." };
+    await db.update(shareRecipients).set({ permission }).where(eq(shareRecipients.id, recipientId));
+    await audit(session.email, "update", "share-recipient", String(recipientId), `Access → ${permissionLabel(permission)} for ${r.email}`);
+    revalidatePath(`/admin/share-folders/${r.folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] setRecipientPermission failed:", err);
+    return { ok: false as const, error: "Couldn't update access — try again." };
   }
 }
 

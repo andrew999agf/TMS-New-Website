@@ -219,6 +219,30 @@ export function recipientWarnings(typeKey: string, email: string, firmDomain: st
   return out;
 }
 
+/* ------------------------------ permissions ------------------------------ */
+
+export type SharePermission = "view" | "download" | "upload" | "manage";
+
+export const SHARE_PERMISSIONS: { key: SharePermission; label: string; blurb: string }[] = [
+  { key: "view", label: "View only", blurb: "Can open and read documents (no download button)." },
+  { key: "download", label: "View & download", blurb: "Can open and download documents." },
+  { key: "upload", label: "View, download & upload", blurb: "Can also add files and create folders." },
+  { key: "manage", label: "View, download, upload & delete", blurb: "Full access, including deleting files and folders." },
+];
+
+const PERM_LABEL = new Map(SHARE_PERMISSIONS.map((p) => [p.key, p.label]));
+export function permissionLabel(p: string): string {
+  return PERM_LABEL.get(p as SharePermission) ?? "View & download";
+}
+
+/** What a given permission level is allowed to do. */
+export function shareCan(permission: string, action: "download" | "upload" | "delete"): boolean {
+  const p = (PERM_LABEL.has(permission as SharePermission) ? permission : "download") as SharePermission;
+  if (action === "download") return p === "download" || p === "upload" || p === "manage";
+  if (action === "upload") return p === "upload" || p === "manage"; // upload also permits creating folders
+  return p === "manage"; // delete
+}
+
 export const FOLDER_SORTS = [
   { key: "updated", label: "Recent activity" },
   { key: "case", label: "Case number" },

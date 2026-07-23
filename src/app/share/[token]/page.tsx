@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareAccessLog } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, shareAccessLog } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
-import { ShareFileTree } from "@/components/admin/ShareFileTree";
+import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
+import { shareCan } from "@/lib/share/types";
+import { isBlobConfigured } from "@/lib/blob";
 import { ShieldCheck, Clock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +56,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
   if (!folder) return <Closed title="Unavailable" body="This folder is no longer available." />;
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
+  const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
+  const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
 
   try {
     await db.update(shareRecipients).set({ lastAccessAt: new Date() }).where(eq(shareRecipients.id, rec.id));
@@ -78,14 +82,18 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
         </p>
       )}
 
+      {caps.upload && (
+        <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files you no longer need" : ""}.</p>
+      )}
+
       <div className="mt-5">
-        {files.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[var(--c-border)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
-            No documents have been added yet. You&apos;ll keep access with this same link — please check back.
-          </div>
-        ) : (
-          <ShareFileTree files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))} mode="share" token={token} />
-        )}
+        <ShareRecipientPanel
+          token={token}
+          files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
+          dirs={dirs}
+          caps={caps}
+          blobReady={isBlobConfigured()}
+        />
       </div>
     </Shell>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { shareFiles, shareRecipients, shareAccessLog } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { shareCan } from "@/lib/share/types";
 
 export const runtime = "nodejs";
 
@@ -36,9 +37,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   // download name should be just the base file name.
   const baseName = file.filename.split("/").pop() || file.filename;
   const safe = baseName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  // View-only recipients get the file inline (opens in the browser); download+
+  // recipients get it as an attachment.
+  const disposition = shareCan(rec.permission, "download") ? "attachment" : "inline";
   const headers = new Headers();
   headers.set("Content-Type", file.contentType || "application/octet-stream");
-  headers.set("Content-Disposition", `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);
+  headers.set("Content-Disposition", `${disposition}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);
   if (file.sizeBytes) headers.set("Content-Length", String(file.sizeBytes));
   headers.set("Cache-Control", "private, no-store");
   return new NextResponse(upstream.body, { status: 200, headers });

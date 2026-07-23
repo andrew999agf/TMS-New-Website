@@ -5,25 +5,26 @@ import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import {
   Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
-  Archive, ArchiveRestore, Pencil, AlertTriangle, Link2,
+  Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus,
 } from "lucide-react";
-import { SHARE_TYPES, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
-import { ShareFileTree } from "./ShareFileTree";
+import { ShareFileTree, folderPaths } from "./ShareFileTree";
+import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked,
+  registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir,
   archiveFolder, deleteFolder, updateFolder,
 } from "@/app/admin/(panel)/share-folders/actions";
 
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
-export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; revoked: boolean };
+export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; revoked: boolean };
 
 const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
-export function ShareFolderDetail({ folder, files, recipients, matters, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; matters: MatterOption[]; blobReady: boolean }) {
+export function ShareFolderDetail({ folder, files, recipients, dirs, matters, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; matters: MatterOption[]; blobReady: boolean }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -41,7 +42,7 @@ export function ShareFolderDetail({ folder, files, recipients, matters, blobRead
 
       <FolderHeader folder={folder} matters={matters} />
 
-      <FilesSection folderId={folder.id} files={files} blobReady={blobReady} />
+      <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} />
     </div>
@@ -138,43 +139,7 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
-type PickedFile = { file: File; path: string };
-const isJunk = (name: string) => name === ".DS_Store" || name === "Thumbs.db" || name.startsWith("._");
-
-/** Read every File out of a dropped item list, walking into folders (and their
- *  subfolders) via the webkitGetAsEntry API. Entries must be captured
- *  synchronously during the drop, so we grab them before any await. */
-async function filesFromDrop(dt: DataTransfer): Promise<PickedFile[]> {
-  const roots: FileSystemEntry[] = [];
-  for (let i = 0; i < dt.items.length; i++) {
-    const entry = dt.items[i].webkitGetAsEntry?.();
-    if (entry) roots.push(entry);
-  }
-  if (roots.length === 0) {
-    // Browser without the entry API — fall back to the flat file list.
-    return Array.from(dt.files).filter((f) => !isJunk(f.name)).map((f) => ({ file: f, path: f.name }));
-  }
-  const out: PickedFile[] = [];
-  const readDir = (reader: FileSystemDirectoryReader) =>
-    new Promise<FileSystemEntry[]>((resolve, reject) => {
-      const acc: FileSystemEntry[] = [];
-      const step = () => reader.readEntries((batch) => { if (!batch.length) return resolve(acc); acc.push(...batch); step(); }, reject);
-      step();
-    });
-  async function walk(entry: FileSystemEntry, prefix: string): Promise<void> {
-    if (entry.isFile) {
-      const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
-      if (!isJunk(file.name)) out.push({ file, path: prefix + file.name });
-    } else if (entry.isDirectory) {
-      const children = await readDir((entry as FileSystemDirectoryEntry).createReader());
-      for (const child of children) await walk(child, `${prefix}${entry.name}/`);
-    }
-  }
-  for (const r of roots) await walk(r, "");
-  return out;
-}
-
-function FilesSection({ folderId, files, blobReady }: { folderId: number; files: FileRow[]; blobReady: boolean }) {
+function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; files: FileRow[]; dirs: string[]; blobReady: boolean }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -183,6 +148,19 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
   const [progress, setProgress] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [dest, setDest] = useState("");
+  const [newDir, setNewDir] = useState("");
+  const [creatingDir, setCreatingDir] = useState(false);
+  const destinations = useMemo(() => folderPaths(files.map((f) => ({ path: f.filename })), dirs), [files, dirs]);
+  const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
+
+  function addFolder() {
+    const name = newDir.trim();
+    if (!name) return;
+    const full = dest ? `${dest}/${name}` : name;
+    setCreatingDir(true);
+    createDir(folderId, full).then(() => { setNewDir(""); setCreatingDir(false); router.refresh(); }).catch(() => setCreatingDir(false));
+  }
 
   function handleDelete(id: number) {
     if (!confirm("Remove this file?")) return;
@@ -204,13 +182,14 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
     try {
       for (let i = 0; i < items.length; i++) {
         const { file, path } = items[i];
-        setProgress(`Uploading ${i + 1} of ${items.length}: ${path}`);
-        const blob = await upload(`share/${folderId}/${path}`, file, {
+        const fullPath = dest ? `${dest}/${path}` : path;
+        setProgress(`Uploading ${i + 1} of ${items.length}: ${fullPath}`);
+        const blob = await upload(`share/${folderId}/${fullPath}`, file, {
           access: "public",
           handleUploadUrl: "/api/admin/share-upload",
           clientPayload: String(folderId),
         });
-        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: path, contentType: file.type || blob.contentType, size: file.size });
+        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size });
       }
       router.refresh();
     } catch (err) {
@@ -221,10 +200,6 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
       if (fileInput.current) fileInput.current.value = "";
       if (folderInput.current) folderInput.current.value = "";
     }
-  }
-
-  function fromInput(list: FileList | null): PickedFile[] {
-    return Array.from(list ?? []).map((f) => ({ file: f, path: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name }));
   }
 
   async function onDrop(e: React.DragEvent) {
@@ -238,6 +213,20 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
   return (
     <section>
       <h3 className="mb-2 text-sm font-semibold text-[var(--c-ink)]">Documents ({files.length})</h3>
+
+      {/* Destination + new folder */}
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-[var(--c-ink-muted)]">Upload into:</span>
+        <select value={dest} onChange={(e) => setDest(e.target.value)} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5">
+          <option value="">Top level</option>
+          {destinations.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <input value={newDir} onChange={(e) => setNewDir(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFolder(); } }} placeholder="New folder name…" className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5" />
+        <button onClick={addFolder} disabled={creatingDir || !newDir.trim()} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50">
+          {creatingDir ? <Loader2 size={13} className="animate-spin" /> : <FolderPlus size={13} />} New folder
+        </button>
+      </div>
+
       <div
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
@@ -250,7 +239,7 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
           {" "}·{" "}
           <button onClick={() => folderInput.current?.click()} disabled={!blobReady || busy} className="font-medium text-[var(--c-accent)] disabled:opacity-50">choose a folder</button>.
         </p>
-        <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Folders keep their structure (e.g. subfolder/file.pdf).</p>
+        <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Folders keep their structure{dest ? ` — added under “${dest}”` : ""}.</p>
         {!blobReady && <p className="mt-1 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
         <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
         <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadAll(fromInput(e.target.files))} />
@@ -258,11 +247,14 @@ function FilesSection({ folderId, files, blobReady }: { folderId: number; files:
         {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       </div>
 
-      {files.length > 0 && (
+      {(files.length > 0 || dirs.length > 0) && (
         <div className="mt-3">
           <ShareFileTree
-            files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, url: f.url }))}
-            mode="admin"
+            files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
+            dirs={dirs}
+            hrefFor={(id) => urlById.get(id) ?? "#"}
+            target="_blank"
+            showDownload={false}
             onDelete={handleDelete}
             deletingId={deletingId}
           />
@@ -294,6 +286,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [permission, setPermission] = useState("download");
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -311,7 +304,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
     setOkMsg(null);
     if (hasDanger && !ack) { setError("Please confirm the warning below before sharing."); return; }
     start(async () => {
-      const res = await addRecipient(folderId, email, name, hasDanger ? ack : true);
+      const res = await addRecipient(folderId, email, name, permission, hasDanger ? ack : true);
       if (res.ok) {
         setOkMsg(res.error ?? `Invite sent to ${email.trim().toLowerCase()}.`);
         setEmail(""); setName(""); setAck(false);
@@ -330,6 +323,11 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
         </label>
         <label className="text-xs flex-1 min-w-[10rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Name (optional)</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" className={`${input} w-full`} />
+        </label>
+        <label className="text-xs min-w-[13rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Access level</span>
+          <select value={permission} onChange={(e) => setPermission(e.target.value)} className={`${input} w-full`}>
+            {SHARE_PERMISSIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
         </label>
         <button onClick={submit} disabled={pending || !email.trim()} className="btn btn-accent inline-flex items-center gap-1.5 text-sm disabled:opacity-50">
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />} Share
@@ -379,6 +377,15 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
           {r.expiresAt && ` · ${new Date(r.expiresAt) < new Date() ? "expired" : `expires ${fmtDate(r.expiresAt)}`}`}
         </p>
       </div>
+      <select
+        value={r.permission}
+        onChange={(e) => start(async () => { await setRecipientPermission(r.id, e.target.value); router.refresh(); })}
+        disabled={pending}
+        title="Access level"
+        className="shrink-0 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-[11px] disabled:opacity-50"
+      >
+        {SHARE_PERMISSIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+      </select>
       <button onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy the private link" className="shrink-0 rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
         {copied ? <Check size={14} className="text-green-600" /> : <Link2 size={14} />}
       </button>

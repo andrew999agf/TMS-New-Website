@@ -156,6 +156,15 @@ const DDL = [
   )`,
   `CREATE INDEX IF NOT EXISTS share_recipients_folder_idx ON share_recipients (folder_id)`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS expires_at timestamptz`,
+  `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS permission varchar(16) NOT NULL DEFAULT 'download'`,
+  `CREATE TABLE IF NOT EXISTS share_dirs (
+    id serial PRIMARY KEY,
+    folder_id integer NOT NULL,
+    path varchar(512) NOT NULL,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_dirs_folder_idx ON share_dirs (folder_id)`,
   `CREATE TABLE IF NOT EXISTS share_access_log (
     id serial PRIMARY KEY,
     folder_id integer,
