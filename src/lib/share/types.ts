@@ -120,6 +120,46 @@ export function expiryDaysForType(typeKey: string): number {
   }
 }
 
+/* ------------------------------ recipient kinds ------------------------------ */
+
+/** The one list of relationship types — filter chips, not separate buckets. */
+export const RECIPIENT_KINDS: { key: string; label: string }[] = [
+  { key: "client", label: "Client" },
+  { key: "co-counsel", label: "Co-counsel" },
+  { key: "opposing", label: "Opposing counsel" },
+  { key: "expert", label: "Expert" },
+  { key: "witness", label: "Witness" },
+  { key: "prose", label: "Pro se party" },
+  { key: "consultant", label: "Consultant" },
+  { key: "other", label: "Other" },
+];
+const KIND_LABEL = new Map(RECIPIENT_KINDS.map((k) => [k.key, k.label]));
+export function kindLabel(k: string): string {
+  return KIND_LABEL.get(k) ?? "";
+}
+
+/** A sensible default recipient kind for a folder type. */
+export function defaultKindForType(typeKey: string): string {
+  switch (typeKey) {
+    case "discovery":
+    case "opposing":
+      return "opposing";
+    case "client":
+    case "client-drop":
+      return "client";
+    case "prospective":
+      return "client";
+    case "co-counsel":
+      return "co-counsel";
+    case "expert":
+      return "expert";
+    case "consultant":
+      return "consultant";
+    default:
+      return "other";
+  }
+}
+
 /** How to address a recipient in the invite email, based on the folder type. */
 export function rolePhrase(typeKey: string): string {
   switch (typeKey) {

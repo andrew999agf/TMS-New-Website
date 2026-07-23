@@ -36,6 +36,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     type: folder.type,
     notes: folder.notes ?? "",
     meta: normalizeMeta(folder.meta),
+    requireAuth: folder.requireAuth,
     archived: folder.archived,
   };
   const fileRows: FileRow[] = files.map((f) => ({
@@ -55,6 +56,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     lastAccessAt: r.lastAccessAt ? r.lastAccessAt.toISOString() : null,
     expiresAt: r.expiresAt ? r.expiresAt.toISOString() : null,
     permission: r.permission,
+    kind: r.kind,
     revoked: r.revoked,
   }));
 

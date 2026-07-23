@@ -7,7 +7,7 @@ import {
   Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus,
 } from "lucide-react";
-import { SHARE_TYPES, SHARE_PERMISSIONS, shareType, audienceStyle, recipientWarnings, classifyEmail, type ShareFolderMeta } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
@@ -18,9 +18,9 @@ import {
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
-export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; meta: ShareFolderMeta; archived: boolean };
+export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
-export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; revoked: boolean };
+export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; revoked: boolean };
 
 const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
@@ -44,11 +44,34 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, matters, bl
 
       <FolderHeader folder={folder} matters={matters} />
 
+      <SecurityToggle folder={folder} />
+
       <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} />
 
       <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} />
+    </div>
+  );
+}
+
+function SecurityToggle({ folder }: { folder: FolderData }) {
+  const router = useRouter();
+  const [on, setOn] = useState(folder.requireAuth);
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={pending}
+        onChange={(e) => { const v = e.target.checked; setOn(v); start(async () => { await updateFolder(folder.id, { requireAuth: v }); router.refresh(); }); }}
+        className="mt-0.5"
+      />
+      <div className="text-sm">
+        <span className="font-medium text-[var(--c-ink)]">Require sign-in to open{pending && <Loader2 size={12} className="ml-1 inline animate-spin" />}</span>
+        <p className="text-xs text-[var(--c-ink-muted)]">Recipients must verify their identity with a password or a one-time email code before viewing. Turn on for privileged, protected, or sensitive folders; leave off for public records.</p>
+      </div>
     </div>
   );
 }
@@ -272,6 +295,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [permission, setPermission] = useState("download");
+  const [kind, setKind] = useState(defaultKindForType(typeKey));
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -289,7 +313,7 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
     setOkMsg(null);
     if (hasDanger && !ack) { setError("Please confirm the warning below before sharing."); return; }
     start(async () => {
-      const res = await addRecipient(folderId, email, name, permission, hasDanger ? ack : true);
+      const res = await addRecipient(folderId, email, name, permission, kind, hasDanger ? ack : true);
       if (res.ok) {
         setOkMsg(res.error ?? `Invite sent to ${email.trim().toLowerCase()}.`);
         setEmail(""); setName(""); setAck(false);
@@ -308,6 +332,11 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
         </label>
         <label className="text-xs flex-1 min-w-[10rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Name (optional)</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" className={`${input} w-full`} />
+        </label>
+        <label className="text-xs min-w-[9rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Who is this?</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className={`${input} w-full`}>
+            {RECIPIENT_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </select>
         </label>
         <label className="text-xs min-w-[13rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Access level</span>
           <select value={permission} onChange={(e) => setPermission(e.target.value)} className={`${input} w-full`}>
@@ -354,6 +383,7 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span className="truncate text-sm font-medium text-[var(--c-ink)]">{r.email}</span>
           {r.name && <span className="text-xs text-[var(--c-ink-muted)]">{r.name}</span>}
+          {r.kind && <span className="rounded-full border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--c-ink-muted)]">{kindLabel(r.kind)}</span>}
           {r.revoked && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">revoked</span>}
           {!r.revoked && r.expiresAt && new Date(r.expiresAt) < new Date() && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">expired</span>}
         </div>

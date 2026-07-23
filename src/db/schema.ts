@@ -405,6 +405,8 @@ export const shareFolders = pgTable(
     notes: text("notes"),
     /** Optional viewer-facing workspace: causes of action, notes, to-do tasks. */
     meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    /** Require the recipient to authenticate (password or one-time code) before viewing. */
+    requireAuth: boolean("require_auth").notNull().default(false),
     archived: boolean("archived").notNull().default(false),
     /** Live upload progress so anyone viewing the folder sees "N of M uploading". */
     uploadTotal: integer("upload_total").notNull().default(0),
@@ -443,6 +445,8 @@ export const shareRecipients = pgTable(
     token: varchar("token", { length: 64 }).notNull().unique(),
     /** view | download | upload | manage — what this person can do in the folder. */
     permission: varchar("permission", { length: 16 }).notNull().default("download"),
+    /** Relationship on this matter: client | opposing | co-counsel | expert | witness | prose | consultant | other. */
+    kind: varchar("kind", { length: 24 }).notNull().default(""),
     invitedBy: varchar("invited_by", { length: 255 }),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     /** The link stops working after this instant (per-folder-type lifetime). */
@@ -476,9 +480,28 @@ export const shareAccessLog = pgTable("share_access_log", {
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** External portal users (recipients who can log in). One row per person, keyed
+ *  by email — identity that persists across every folder shared with them. Their
+ *  per-matter role and permission live on the share_recipients grant. */
+export const portalUsers = pgTable("portal_users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  name: varchar("name", { length: 191 }).notNull().default(""),
+  /** Their usual type (for the one-list, filter-by-type directory). */
+  kind: varchar("kind", { length: 24 }).notNull().default(""),
+  passwordHash: text("password_hash"),
+  verified: boolean("verified").notNull().default(false),
+  otpHash: varchar("otp_hash", { length: 128 }),
+  otpExpires: timestamp("otp_expires", { withTimezone: true }),
+  otpAttempts: integer("otp_attempts").notNull().default(0),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type ShareFolder = typeof shareFolders.$inferSelect;
 export type ShareFile = typeof shareFiles.$inferSelect;
 export type ShareRecipient = typeof shareRecipients.$inferSelect;
+export type PortalUser = typeof portalUsers.$inferSelect;
 
 /* ----------------------------------------------------------------------------
  * Intake submissions

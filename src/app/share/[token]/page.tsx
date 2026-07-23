@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, shareAccessLog } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, shareAccessLog, portalUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
@@ -9,6 +9,8 @@ import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
 import { getBlocks } from "@/lib/content";
+import { portalEmail } from "@/lib/share/portal-session";
+import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
 import { ShieldCheck, Clock, Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +67,20 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
 
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
   if (!folder) return <Closed logo={logo} title="Unavailable" body="This folder is no longer available." />;
+
+  // Sensitive folders require the recipient to authenticate as their invited email.
+  if (folder.requireAuth) {
+    const who = await portalEmail();
+    if (!who || who !== rec.email.toLowerCase()) {
+      const [pu] = await db.select({ passwordHash: portalUsers.passwordHash }).from(portalUsers).where(eq(portalUsers.email, rec.email.toLowerCase()));
+      return (
+        <Shell logo={logo}>
+          <ShareAuthGate token={token} email={rec.email} hasPassword={!!pu?.passwordHash} />
+        </Shell>
+      );
+    }
+  }
+
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
   const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };

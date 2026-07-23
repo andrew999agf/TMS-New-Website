@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, portalUsers } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
@@ -70,7 +70,7 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
   }
 }
 
-export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; type?: string; notes?: string }) {
+export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; type?: string; notes?: string; requireAuth?: boolean }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -80,6 +80,7 @@ export async function updateFolder(id: number, patch: { caseNumber?: string; nam
   if (patch.court !== undefined) set.court = patch.court.trim();
   if (patch.type !== undefined && shareType(patch.type)) set.type = patch.type;
   if (patch.notes !== undefined) set.notes = patch.notes;
+  if (patch.requireAuth !== undefined) set.requireAuth = patch.requireAuth;
   try {
     await db.update(shareFolders).set(set).where(eq(shareFolders.id, id));
     await audit(session.email, "update", "share-folder", String(id), "Updated folder");
@@ -266,12 +267,13 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with ${recipientLabel}`, html });
 }
 
-export async function addRecipient(folderId: number, email: string, name: string, permission: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
+export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
   const session = await guard();
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
   if (!EMAIL_RE.test(cleanEmail)) return { ok: false, error: "Enter a valid email address." };
   const perm = ["view", "download", "upload", "manage"].includes(permission) ? permission : "download";
+  const cleanKind = (kind || "").trim().slice(0, 24);
   try {
     const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
     if (!folder) return { ok: false, error: "Folder not found." };
@@ -287,7 +289,9 @@ export async function addRecipient(folderId: number, email: string, name: string
 
     const token = randomBytes(24).toString("base64url");
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
-    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, invitedBy: session.email, expiresAt });
+    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt });
+    // Directory entry (one per person, keyed by email) — created if new.
+    await db.insert(portalUsers).values({ email: cleanEmail, name: name.trim(), kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
     const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc());
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
