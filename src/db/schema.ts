@@ -404,6 +404,10 @@ export const shareFolders = pgTable(
     type: varchar("type", { length: 32 }).notNull(), // SHARE_TYPES key (discovery, client, expert, …)
     notes: text("notes"),
     archived: boolean("archived").notNull().default(false),
+    /** Live upload progress so anyone viewing the folder sees "N of M uploading". */
+    uploadTotal: integer("upload_total").notNull().default(0),
+    uploadDone: integer("upload_done").notNull().default(0),
+    uploadAt: timestamp("upload_at", { withTimezone: true }),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

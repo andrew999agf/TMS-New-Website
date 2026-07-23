@@ -6,7 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { Upload, FolderPlus, Loader2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
-import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir } from "@/app/share/[token]/actions";
+import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir, recipientClearUpload } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
@@ -35,12 +35,12 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
       for (let i = 0; i < picked.length; i++) {
         const { file, path } = picked[i];
         const rel = destPath ? `${destPath}/${path}` : path;
-        setProgress(`Uploading document ${i + 1} of ${picked.length}…`);
+        setProgress(`Uploading ${i + 1} / ${picked.length}`);
         const parts = rel.split("/");
         const base = parts.pop() as string;
         const dir = parts.join("/");
         const blob = await upload(`share-recipient/${rel}`, file, { access: "public", handleUploadUrl: `/api/share/${token}/upload` });
-        const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: file.type || blob.contentType, size: file.size });
+        const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: file.type || blob.contentType, size: file.size }, { total: picked.length, done: i + 1 });
         if (!res.ok) throw new Error(res.error ?? "Upload failed.");
       }
       router.refresh();
@@ -49,6 +49,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     } finally {
       setBusy(false);
       setProgress(null);
+      recipientClearUpload(token).catch(() => {});
       if (fileInput.current) fileInput.current.value = "";
       if (folderInput.current) folderInput.current.value = "";
     }

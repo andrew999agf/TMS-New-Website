@@ -131,6 +131,9 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS share_folders_archived_idx ON share_folders (archived)`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS matter text NOT NULL DEFAULT ''`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS court varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_total integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_done integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_at timestamptz`,
   `CREATE TABLE IF NOT EXISTS share_files (
     id serial PRIMARY KEY,
     folder_id integer NOT NULL,

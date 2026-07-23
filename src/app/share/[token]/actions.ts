@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { shareFiles, shareDirs, shareAccessLog } from "@/db/schema";
+import { shareFiles, shareDirs, shareFolders, shareAccessLog } from "@/db/schema";
 import { resolveRecipient, cleanDirPath } from "@/lib/share/access";
 import { shareCan } from "@/lib/share/types";
 
@@ -11,6 +11,7 @@ import { shareCan } from "@/lib/share/types";
 export async function recipientRegisterFile(
   token: string,
   file: { url: string; pathname: string; filename: string; contentType?: string; size?: number; dir?: string },
+  progress?: { total: number; done: number },
 ) {
   const ctx = await resolveRecipient(token);
   if (!ctx || !shareCan(ctx.rec.permission, "upload")) return { ok: false as const, error: "Not allowed." };
@@ -29,10 +30,21 @@ export async function recipientRegisterFile(
       uploadedBy: ctx.rec.email,
     });
     await db.insert(shareAccessLog).values({ folderId: ctx.folder.id, recipientId: ctx.rec.id, action: "upload" });
+    if (progress) await db.update(shareFolders).set({ uploadTotal: progress.total, uploadDone: progress.done, uploadAt: new Date() }).where(eq(shareFolders.id, ctx.folder.id));
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't save the file." };
   }
+}
+
+/** Clear the live upload indicator when a recipient's batch finishes. */
+export async function recipientClearUpload(token: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !db) return { ok: false as const };
+  try {
+    await db.update(shareFolders).set({ uploadTotal: 0, uploadDone: 0, uploadAt: null }).where(eq(shareFolders.id, ctx.folder.id));
+  } catch { /* best-effort */ }
+  return { ok: true as const };
 }
 
 /** Create an (empty) folder inside the share. */

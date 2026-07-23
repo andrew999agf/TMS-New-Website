@@ -129,7 +129,7 @@ export async function deleteFolder(id: number) {
 
 /* ---------------------------------- files ---------------------------------- */
 
-export async function registerShareFile(folderId: number, file: { url: string; pathname: string; filename: string; contentType?: string; size?: number }) {
+export async function registerShareFile(folderId: number, file: { url: string; pathname: string; filename: string; contentType?: string; size?: number }, progress?: { total: number; done: number }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -145,13 +145,25 @@ export async function registerShareFile(folderId: number, file: { url: string; p
         uploadedBy: session.email,
       })
       .returning({ id: shareFiles.id });
-    await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    if (progress) { set.uploadTotal = progress.total; set.uploadDone = progress.done; set.uploadAt = new Date(); }
+    await db.update(shareFolders).set(set).where(eq(shareFolders.id, folderId));
     revalidatePath(`/admin/share-folders/${folderId}`);
     return { ok: true as const, id: row.id };
   } catch (err) {
     console.error("[share] registerShareFile failed:", err);
     return { ok: false as const, error: "The file uploaded but couldn't be recorded. Run Settings → Database updates, then re-upload." };
   }
+}
+
+/** Clear the live upload indicator once a batch finishes (or is aborted). */
+export async function clearUpload(folderId: number) {
+  await guard();
+  if (!db) return { ok: false as const };
+  try {
+    await db.update(shareFolders).set({ uploadTotal: 0, uploadDone: 0, uploadAt: null }).where(eq(shareFolders.id, folderId));
+  } catch { /* best-effort */ }
+  return { ok: true as const };
 }
 
 export async function createDir(folderId: number, path: string) {

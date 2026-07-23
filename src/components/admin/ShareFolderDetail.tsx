@@ -12,7 +12,7 @@ import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, deleteDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir,
+  registerShareFile, deleteFile, deleteDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -186,9 +186,9 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
       for (let i = 0; i < items.length; i++) {
         const { file, path } = items[i];
         const fullPath = destPath ? `${destPath}/${path}` : path;
-        setProgress(`Uploading document ${i + 1} of ${items.length}…`);
+        setProgress(`Uploading ${i + 1} / ${items.length}`);
         const blob = await upload(`share/${folderId}/${fullPath}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
-        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size });
+        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size }, { total: items.length, done: i + 1 });
       }
       router.refresh();
     } catch (err) {
@@ -196,6 +196,7 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
     } finally {
       setBusy(false);
       setProgress(null);
+      clearUpload(folderId).catch(() => {});
       if (fileInput.current) fileInput.current.value = "";
       if (folderInput.current) folderInput.current.value = "";
     }

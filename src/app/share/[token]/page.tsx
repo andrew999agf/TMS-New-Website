@@ -4,6 +4,7 @@ import { shareFolders, shareFiles, shareRecipients, shareDirs, shareAccessLog } 
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
+import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { shareCan } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
 import { ShieldCheck, Clock, Download } from "lucide-react";
@@ -85,6 +86,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
       {caps.upload && (
         <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files or folders you no longer need" : ""}.</p>
       )}
+
+      <ShareUploadStatus token={token} />
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
