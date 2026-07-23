@@ -8,7 +8,7 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
-import { buildOwnerReport, buildMonthReports, loadLogoBytes, renderTimeSummaryPdf, reminderEmailHtml, deptSummaryHtml, sampleReport } from "@/lib/billing/report";
+import { buildMonthReports, loadLogoBytes, renderTimeSummaryPdf, reminderEmailHtml, deptSummaryHtml, sampleReport } from "@/lib/billing/report";
 
 export async function saveSetting(key: string, value: unknown) {
   const session = await requireAdmin();
@@ -40,8 +40,11 @@ export async function sendBillingReminderTest() {
   const recipients = (cfg?.recipients ?? []).filter(Boolean);
 
   try {
-    const { month, report } = await buildOwnerReport(ownerId, now);
-    const rep = report ?? sampleReport(name, email, ownerId);
+    const { month, people } = await buildMonthReports(now);
+    // Preview with the tester's own worker report if we can find it (matched by
+    // email or name); otherwise a sample so the layout is still visible.
+    const mine = people.find((p) => (p.email && p.email.toLowerCase() === email.toLowerCase()) || p.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const rep = mine ?? sampleReport(name, email);
     const logo = await loadLogoBytes();
     const pdf = await renderTimeSummaryPdf(rep, month, logo);
     const personal = await sendEmail({
@@ -51,12 +54,11 @@ export async function sendBillingReminderTest() {
       html: reminderEmailHtml(rep, month, recipients, true),
       attachments: [{ filename: `Time Summary — ${rep.name} — ${month.monthLabel}.pdf`, content: pdf, contentType: "application/pdf" }],
     });
-    const { owners } = await buildMonthReports(now);
     const dept = await sendEmail({
       to: [email],
       fromName: "T. Maxwell Smith, PLLC — Office",
       subject: `[TEST] Month-end billing — prepare ${month.monthLabel} bills`,
-      html: deptSummaryHtml(owners.length ? owners : [rep], month, true),
+      html: deptSummaryHtml(people.length ? people : [rep], month, true),
     });
     if (!personal.sent && !dept.sent) {
       return { ok: false as const, error: personal.reason === "not-configured" ? "Email isn't configured on the server yet." : `Send failed (${personal.reason ?? "unknown"}).` };

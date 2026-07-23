@@ -2,7 +2,7 @@ import "server-only";
 import { and, gte, lte } from "drizzle-orm";
 import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFFont, type PDFPage } from "pdf-lib";
 import { db } from "@/db";
-import { admins, timeEntries } from "@/db/schema";
+import { admins, timeEntries, timeActivityUsers } from "@/db/schema";
 import { getSetting, getBlocks } from "@/lib/content";
 import { FIRM, PRINCIPAL_OFFICE } from "@/lib/firm";
 import { CT } from "@/lib/ct-time";
@@ -20,8 +20,9 @@ import { CT } from "@/lib/ct-time";
  */
 
 export type MatterLine = { matter: string; billable: number; nonBillable: number; total: number };
-export type OwnerReport = {
-  ownerId: number;
+/** One person's monthly work — keyed by the ACTIVITY USER (who did the work),
+ *  not the login that typed it in. `email` is where their report is sent. */
+export type PersonReport = {
   name: string;
   email: string;
   matters: MatterLine[];
@@ -30,6 +31,8 @@ export type OwnerReport = {
   total: number;
 };
 export type MonthInfo = { y: number; m: number; monthLabel: string; firstIso: string; lastIso: string; lastDay: number };
+
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const MAROON = rgb(0.478, 0.122, 0.169); // #7a1f2b — the firm accent
@@ -51,48 +54,48 @@ export function ctHour(now: Date): number {
   return Number(new Intl.DateTimeFormat("en-US", { timeZone: CT, hour: "2-digit", hour12: false }).format(now)) % 24;
 }
 
-function accumulate(entries: { ownerId: number; matter: string; quantity: number; nonBillable: boolean }[], names: Map<number, string>, emails: Map<number, string>): OwnerReport[] {
-  const byOwner = new Map<number, Map<string, MatterLine>>();
+function accumulate(entries: { user: string; matter: string; quantity: number; nonBillable: boolean }[], resolveEmail: (user: string) => string): PersonReport[] {
+  const byUser = new Map<string, Map<string, MatterLine>>();
   for (const e of entries) {
+    const userKey = (e.user || "").trim() || "(no activity user)";
     const matterKey = (e.matter || "").trim() || "(no matter specified)";
-    const matters = byOwner.get(e.ownerId) ?? new Map<string, MatterLine>();
+    const matters = byUser.get(userKey) ?? new Map<string, MatterLine>();
     const line = matters.get(matterKey) ?? { matter: matterKey, billable: 0, nonBillable: 0, total: 0 };
     if (e.nonBillable) line.nonBillable += e.quantity;
     else line.billable += e.quantity;
     line.total += e.quantity;
     matters.set(matterKey, line);
-    byOwner.set(e.ownerId, matters);
+    byUser.set(userKey, matters);
   }
-  const reports: OwnerReport[] = [];
-  for (const [ownerId, matters] of byOwner) {
+  const reports: PersonReport[] = [];
+  for (const [user, matters] of byUser) {
     const lines = [...matters.values()].sort((a, b) => b.total - a.total);
     const billable = lines.reduce((n, l) => n + l.billable, 0);
     const nonBillable = lines.reduce((n, l) => n + l.nonBillable, 0);
     const total = lines.reduce((n, l) => n + l.total, 0);
-    reports.push({ ownerId, name: names.get(ownerId) ?? `User ${ownerId}`, email: emails.get(ownerId) ?? "", matters: lines, billable, nonBillable, total });
+    reports.push({ name: user, email: resolveEmail(user), matters: lines, billable, nonBillable, total });
   }
   return reports.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Every person's monthly report, filtered to those with billable hours. */
-export async function buildMonthReports(now: Date): Promise<{ month: MonthInfo; owners: OwnerReport[] }> {
+/** Every person's monthly report (by activity user), filtered to those with
+ *  billable hours. Spans active AND archived entries for the month. */
+export async function buildMonthReports(now: Date): Promise<{ month: MonthInfo; people: PersonReport[] }> {
   const month = ctMonthInfo(now);
-  if (!db) return { month, owners: [] };
+  if (!db) return { month, people: [] };
   const rows = await db
     .select()
     .from(timeEntries)
     .where(and(gte(timeEntries.entryDate, month.firstIso), lte(timeEntries.entryDate, month.lastIso)));
-  const staff = await db.select({ id: admins.id, name: admins.name, email: admins.email }).from(admins);
-  const names = new Map(staff.map((s) => [s.id, s.name]));
-  const emails = new Map(staff.map((s) => [s.id, s.email]));
-  const all = accumulate(rows.map((r) => ({ ownerId: r.ownerId, matter: r.matter, quantity: r.quantity, nonBillable: r.nonBillable })), names, emails);
-  return { month, owners: all.filter((o) => o.billable > 0) };
-}
-
-/** One person's monthly report (used by the test button); null if no entries. */
-export async function buildOwnerReport(ownerId: number, now: Date): Promise<{ month: MonthInfo; report: OwnerReport | null }> {
-  const { month, owners } = await buildMonthReports(now);
-  return { month, report: owners.find((o) => o.ownerId === ownerId) ?? null };
+  // Resolve each activity user's email: the address set on the activity user
+  // wins; otherwise fall back to an admin whose name matches.
+  const activityUsers = await db.select({ name: timeActivityUsers.name, email: timeActivityUsers.email }).from(timeActivityUsers);
+  const staff = await db.select({ name: admins.name, email: admins.email }).from(admins);
+  const auMap = new Map(activityUsers.map((u) => [norm(u.name), (u.email || "").trim()]));
+  const adminMap = new Map(staff.map((a) => [norm(a.name), (a.email || "").trim()]));
+  const resolveEmail = (user: string) => auMap.get(norm(user)) || adminMap.get(norm(user)) || "";
+  const all = accumulate(rows.map((r) => ({ user: r.activityUserName, matter: r.matter, quantity: r.quantity, nonBillable: r.nonBillable })), resolveEmail);
+  return { month, people: all.filter((p) => p.billable > 0) };
 }
 
 /* ------------------------------ logo (letterhead) ------------------------------ */
@@ -159,7 +162,7 @@ function truncate(text: string, maxW: number, size: number, font: PDFFont): stri
 }
 
 /** Render the letterhead time-summary PDF for one person. No dollar figures. */
-export async function renderTimeSummaryPdf(report: OwnerReport, month: MonthInfo, logo: { bytes: Uint8Array; type: "png" | "jpg" } | null): Promise<Buffer> {
+export async function renderTimeSummaryPdf(report: PersonReport, month: MonthInfo, logo: { bytes: Uint8Array; type: "png" | "jpg" } | null): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -269,7 +272,7 @@ function shell(inner: string): string {
 }
 
 /** The personal reminder to a staffer with billable hours (PDF attached). */
-export function reminderEmailHtml(report: OwnerReport, month: MonthInfo, deptRecipients: string[], isTest = false): string {
+export function reminderEmailHtml(report: PersonReport, month: MonthInfo, deptRecipients: string[], isTest = false): string {
   const dept = deptRecipients.length ? deptRecipients.join(", ") : "the billing department";
   const inner = `
     ${isTest ? `<p style="margin:0 0 14px;display:inline-block;background:#fdeaea;color:#7a1f2b;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;padding:4px 10px;border-radius:3px">TEST — this is a preview</p>` : ""}
@@ -294,18 +297,18 @@ export function reminderEmailHtml(report: OwnerReport, month: MonthInfo, deptRec
 }
 
 /** The billing-department prompt (roster of everyone's monthly hours). */
-export function deptSummaryHtml(owners: OwnerReport[], month: MonthInfo, isTest = false): string {
-  const rows = owners.length
-    ? owners
+export function deptSummaryHtml(people: PersonReport[], month: MonthInfo, isTest = false): string {
+  const rows = people.length
+    ? people
         .map(
           (o) =>
             `<tr><td style="padding:8px 12px 8px 0;border-top:1px solid #eee">${esc(o.name)}</td><td style="padding:8px 12px 8px 0;border-top:1px solid #eee;text-align:right">${o.billable.toFixed(2)}</td><td style="padding:8px 12px 8px 0;border-top:1px solid #eee;text-align:right">${o.nonBillable.toFixed(2)}</td><td style="padding:8px 0;border-top:1px solid #eee;text-align:right;font-weight:bold">${o.total.toFixed(2)}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="4" style="padding:8px 0;color:#777">No billable time recorded this month.</td></tr>`;
-  const tB = owners.reduce((n, o) => n + o.billable, 0);
-  const tN = owners.reduce((n, o) => n + o.nonBillable, 0);
-  const tT = owners.reduce((n, o) => n + o.total, 0);
+  const tB = people.reduce((n, o) => n + o.billable, 0);
+  const tN = people.reduce((n, o) => n + o.nonBillable, 0);
+  const tT = people.reduce((n, o) => n + o.total, 0);
   const inner = `
     ${isTest ? `<p style="margin:0 0 14px;display:inline-block;background:#fdeaea;color:#7a1f2b;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;padding:4px 10px;border-radius:3px">TEST — this is a preview</p>` : ""}
     <h1 style="margin:0 0 4px;font-size:20px;color:#161616">Time to prepare ${esc(month.monthLabel)} bills</h1>
@@ -323,13 +326,13 @@ export function deptSummaryHtml(owners: OwnerReport[], month: MonthInfo, isTest 
 /* ------------------------------ orchestration ------------------------------ */
 
 /** A believable sample so the test email/PDF isn't empty when the tester has no entries. */
-export function sampleReport(name: string, email: string, ownerId: number): OwnerReport {
+export function sampleReport(name: string, email: string): PersonReport {
   const matters: MatterLine[] = [
     { matter: "Doe v. Roe — Cause No. 141-000000-26", billable: 6.5, nonBillable: 1.0, total: 7.5 },
     { matter: "Estate of Sample — Probate Administration", billable: 3.25, nonBillable: 0.5, total: 3.75 },
     { matter: "Acme LLC — Contract Review & Demand", billable: 2.0, nonBillable: 0, total: 2.0 },
   ];
-  return { ownerId, name, email, matters, billable: 11.75, nonBillable: 1.5, total: 13.25 };
+  return { name, email, matters, billable: 11.75, nonBillable: 1.5, total: 13.25 };
 }
 
 export { loadLogoBytes };

@@ -35,7 +35,7 @@ export type EntryView = {
   activityUserName: string; nonBillable: boolean; status: "active" | "archived";
   exportedAt: string | null; exportedBy: string | null;
 };
-type AUser = { id: number; name: string; rate: number };
+type AUser = { id: number; name: string; rate: number; email?: string };
 type Me = { id: number; name: string; admin: boolean };
 
 const CSV_HEADERS = ["matter", "date", "activity_description", "note", "price", "quantity", "type", "activity_user", "non_billable", "ultims_activity_code", "ultims_task_code", "ultims_expense_code"];
@@ -387,11 +387,11 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
           <div className="space-y-8">
             <div>
               <h4 className="font-medium text-[var(--c-accent)] mb-1">Activity Users</h4>
-              <p className="text-xs text-[var(--c-ink-muted)] mb-3">Shared list with default rates. Users without a login can still be listed here.</p>
+              <p className="text-xs text-[var(--c-ink-muted)] mb-3">Shared list with default rates. Users without a login can still be listed here. The email is where this person&apos;s monthly billing report is sent — set it for anyone who logs billable time.</p>
               <ul className="space-y-2">
-                {activityUsers.map((u) => <ActivityUserRow key={u.id} user={u} input={input} onSave={(name, rate) => run(() => updateActivityUser(u.id, name, rate))} onRemove={() => run(() => deleteActivityUser(u.id))} />)}
+                {activityUsers.map((u) => <ActivityUserRow key={u.id} user={u} input={input} onSave={(name, rate, email) => run(() => updateActivityUser(u.id, name, rate, email))} onRemove={() => run(() => deleteActivityUser(u.id))} />)}
               </ul>
-              <AddRow placeholder="User name (e.g., John Smith (Attorney))" withRate input={input} onAdd={(name, rate) => run(() => addActivityUser(name, rate ?? 145))} />
+              <AddRow placeholder="User name (e.g., John Smith (Attorney))" withRate withEmail input={input} onAdd={(name, rate, email) => run(() => addActivityUser(name, rate ?? 145, email))} />
             </div>
             <div>
               <h4 className="font-medium text-[var(--c-accent)] mb-1">Categories</h4>
@@ -499,14 +499,15 @@ function Combobox({ value, onChange, options, placeholder, descriptions }: { val
     </div>
   );
 }
-function ActivityUserRow({ user, input, onSave, onRemove }: { user: AUser; input: string; onSave: (n: string, r: number) => void; onRemove: () => void }) {
-  const [name, setName] = useState(user.name); const [rate, setRate] = useState(String(user.rate));
-  const dirty = name !== user.name || rate !== String(user.rate);
+function ActivityUserRow({ user, input, onSave, onRemove }: { user: AUser; input: string; onSave: (n: string, r: number, email: string) => void; onRemove: () => void }) {
+  const [name, setName] = useState(user.name); const [rate, setRate] = useState(String(user.rate)); const [email, setEmail] = useState(user.email ?? "");
+  const dirty = name !== user.name || rate !== String(user.rate) || email !== (user.email ?? "");
   return (
-    <li className="flex items-center gap-2 bg-[var(--c-surface2)] rounded p-2">
-      <input className={input} value={name} onChange={(e) => setName(e.target.value)} />
-      <input type="number" step="0.01" className={`${input} w-28`} value={rate} onChange={(e) => setRate(e.target.value)} />
-      {dirty && <button onClick={() => onSave(name.trim(), parseFloat(rate) || 0)} className="text-xs px-2 py-1 rounded text-white shrink-0" style={{ background: "var(--c-success)" }}>Save</button>}
+    <li className="flex flex-wrap items-center gap-2 bg-[var(--c-surface2)] rounded p-2">
+      <input className={`${input} min-w-[10rem] flex-1`} value={name} onChange={(e) => setName(e.target.value)} />
+      <input type="number" step="0.01" className={`${input} w-24`} value={rate} onChange={(e) => setRate(e.target.value)} />
+      <input type="email" placeholder="email for billing report" className={`${input} min-w-[12rem] flex-1`} value={email} onChange={(e) => setEmail(e.target.value)} />
+      {dirty && <button onClick={() => onSave(name.trim(), parseFloat(rate) || 0, email.trim())} className="text-xs px-2 py-1 rounded text-white shrink-0" style={{ background: "var(--c-success)" }}>Save</button>}
       <button onClick={() => { if (confirm("Remove this user?")) onRemove(); }} className="text-xs px-2 py-1 rounded text-white shrink-0" style={{ background: "var(--c-error)" }}>Remove</button>
     </li>
   );
@@ -521,13 +522,14 @@ function CategoryRow({ name, input, onSave, onRemove }: { name: string; input: s
     </li>
   );
 }
-function AddRow({ placeholder, withRate, input, onAdd }: { placeholder: string; withRate?: boolean; input: string; onAdd: (name: string, rate?: number) => void }) {
-  const [name, setName] = useState(""); const [rate, setRate] = useState("");
+function AddRow({ placeholder, withRate, withEmail, input, onAdd }: { placeholder: string; withRate?: boolean; withEmail?: boolean; input: string; onAdd: (name: string, rate?: number, email?: string) => void }) {
+  const [name, setName] = useState(""); const [rate, setRate] = useState(""); const [email, setEmail] = useState("");
   return (
-    <div className="flex gap-2 mt-3">
-      <input className={input} placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} />
-      {withRate && <input type="number" step="0.01" className={`${input} w-28`} placeholder="Rate ($)" value={rate} onChange={(e) => setRate(e.target.value)} />}
-      <button onClick={() => { if (!name.trim()) { alert("Enter a value"); return; } onAdd(name.trim(), withRate ? parseFloat(rate) || 145 : undefined); setName(""); setRate(""); }} className="btn btn-accent text-sm shrink-0">Add</button>
+    <div className="flex flex-wrap gap-2 mt-3">
+      <input className={`${input} min-w-[10rem] flex-1`} placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} />
+      {withRate && <input type="number" step="0.01" className={`${input} w-24`} placeholder="Rate ($)" value={rate} onChange={(e) => setRate(e.target.value)} />}
+      {withEmail && <input type="email" className={`${input} min-w-[12rem] flex-1`} placeholder="email (for billing report)" value={email} onChange={(e) => setEmail(e.target.value)} />}
+      <button onClick={() => { if (!name.trim()) { alert("Enter a value"); return; } onAdd(name.trim(), withRate ? parseFloat(rate) || 145 : undefined, withEmail ? email.trim() : undefined); setName(""); setRate(""); setEmail(""); }} className="btn btn-accent text-sm shrink-0">Add</button>
     </div>
   );
 }

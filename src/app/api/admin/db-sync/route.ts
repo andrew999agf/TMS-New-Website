@@ -115,6 +115,7 @@ const DDL = [
   )`,
   `ALTER TABLE time_clock_punches ADD COLUMN IF NOT EXISTS auto_closed boolean NOT NULL DEFAULT false`,
   `ALTER TABLE time_clock_punches ADD COLUMN IF NOT EXISTS auto_open boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE time_activity_users ADD COLUMN IF NOT EXISTS email varchar(255) NOT NULL DEFAULT ''`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,

@@ -80,16 +80,16 @@ async function requireFull() {
   return true;
 }
 
-export async function addActivityUser(name: string, rate: number) {
+export async function addActivityUser(name: string, rate: number, email = "") {
   if (!db || !(await requireFull())) return { ok: false, error: "Not allowed." };
   const existing = await db.select({ id: timeActivityUsers.id }).from(timeActivityUsers);
-  await db.insert(timeActivityUsers).values({ name: name.trim(), rate, sort: existing.length });
+  await db.insert(timeActivityUsers).values({ name: name.trim(), rate, email: email.trim(), sort: existing.length });
   revalidatePath("/admin/time-tracker");
   return { ok: true };
 }
-export async function updateActivityUser(id: number, name: string, rate: number) {
+export async function updateActivityUser(id: number, name: string, rate: number, email = "") {
   if (!db || !(await requireFull())) return { ok: false, error: "Not allowed." };
-  await db.update(timeActivityUsers).set({ name: name.trim(), rate }).where(eq(timeActivityUsers.id, id));
+  await db.update(timeActivityUsers).set({ name: name.trim(), rate, email: email.trim() }).where(eq(timeActivityUsers.id, id));
   revalidatePath("/admin/time-tracker");
   return { ok: true };
 }

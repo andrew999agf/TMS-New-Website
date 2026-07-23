@@ -38,39 +38,39 @@ export async function GET(req: Request) {
   const cfg = await getSetting<BillingReminder>(BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT);
   if (!cfg?.enabled) return NextResponse.json({ ok: true, note: "reminder disabled" });
 
-  const { owners } = await buildMonthReports(now);
+  const { people } = await buildMonthReports(now);
   const recipients = (cfg.recipients ?? []).filter(Boolean);
   let deptSent = false;
   let staffSent = 0;
 
   // 1. Billing-department roster.
   if (recipients.length) {
-    const tB = owners.reduce((n, o) => n + o.billable, 0);
+    const tB = people.reduce((n, p) => n + p.billable, 0);
     const res = await sendEmail({
       to: recipients,
       fromName: "T. Maxwell Smith, PLLC — Office",
       subject: `Month-end billing — prepare ${month.monthLabel} bills (${tB.toFixed(2)} billable hrs)`,
-      html: deptSummaryHtml(owners, month),
+      html: deptSummaryHtml(people, month),
     });
     deptSent = res.sent;
   }
 
-  // 2. Personal reminders with the letterhead PDF.
+  // 2. Personal reminders (to the person who did the work) with the PDF.
   if (cfg.notifyStaff) {
     const logo = await loadLogoBytes();
-    for (const o of owners) {
-      if (!o.email) continue;
-      const pdf = await renderTimeSummaryPdf(o, month, logo);
+    for (const p of people) {
+      if (!p.email) continue;
+      const pdf = await renderTimeSummaryPdf(p, month, logo);
       const res = await sendEmail({
-        to: [o.email],
+        to: [p.email],
         fromName: "T. Maxwell Smith, PLLC — Office",
-        subject: `Submit your ${month.monthLabel} billing (${o.billable.toFixed(2)} billable hrs)`,
-        html: reminderEmailHtml(o, month, recipients),
-        attachments: [{ filename: `Time Summary — ${o.name} — ${month.monthLabel}.pdf`, content: pdf, contentType: "application/pdf" }],
+        subject: `Submit your ${month.monthLabel} billing (${p.billable.toFixed(2)} billable hrs)`,
+        html: reminderEmailHtml(p, month, recipients),
+        attachments: [{ filename: `Time Summary — ${p.name} — ${month.monthLabel}.pdf`, content: pdf, contentType: "application/pdf" }],
       });
       if (res.sent) staffSent += 1;
     }
   }
 
-  return NextResponse.json({ ok: true, month: month.monthLabel, deptSent, staffReminders: staffSent, staffWithBillable: owners.length });
+  return NextResponse.json({ ok: true, month: month.monthLabel, deptSent, staffReminders: staffSent, staffWithBillable: people.length });
 }

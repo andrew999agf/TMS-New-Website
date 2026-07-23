@@ -356,6 +356,8 @@ export const timeActivityUsers = pgTable("time_activity_users", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   rate: real("rate").notNull().default(145),
+  /** Where this person's monthly billing report is sent (they may have no login). */
+  email: varchar("email", { length: 255 }).notNull().default(""),
   sort: integer("sort").notNull().default(0),
 });
 

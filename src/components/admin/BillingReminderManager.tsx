@@ -56,9 +56,14 @@ export function BillingReminderManager({ initial }: { initial: BillingReminder }
     <div className="space-y-3">
       <p className="text-sm text-[var(--c-ink-muted)]">
         On the last day of each month at 4 PM Central, the billing department gets a prompt to start assembling that
-        month&apos;s bills. Everyone who logged billable hours that month (counting archived entries too) also gets a
+        month&apos;s bills. Everyone credited with billable hours that month (counting archived entries too) also gets a
         nicely formatted reminder with a letterhead PDF of the cases they worked and the hours on each — billable,
         non-billable, and total. No dollar figures appear on the report.
+      </p>
+      <p className="text-xs text-[var(--c-ink-muted)]">
+        Reports follow the <strong>activity user</strong> (whoever the time is credited to), not the person who typed it in —
+        so if one person enters another&apos;s time, it goes to the right inbox. Set each person&apos;s email under Time
+        Tracker → Settings → Activity Users.
       </p>
 
       <label className="flex items-center gap-2 text-sm">
