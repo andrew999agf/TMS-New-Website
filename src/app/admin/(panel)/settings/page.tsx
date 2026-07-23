@@ -6,6 +6,8 @@ import { PaymentLinkSetting } from "@/components/admin/PaymentLinkSetting";
 import { DbSyncButton } from "@/components/admin/DbSyncButton";
 import { ContentRefreshButton } from "@/components/admin/ContentRefreshButton";
 import { IntakeNotifyManager } from "@/components/admin/IntakeNotifyManager";
+import { BillingReminderManager } from "@/components/admin/BillingReminderManager";
+import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
 import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 import { FIRM } from "@/lib/firm";
@@ -18,6 +20,7 @@ export default async function SettingsPage() {
   const paymentUrl = paymentBlocks["payment.url"] ?? "";
   const logo = await getSetting<string>("logo", "");
   const intakeNotify = await getSetting<string[]>("intake.statusNotify", [FIRM.email]);
+  const billingReminder = await getSetting<BillingReminder>(BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT);
 
   const envState = [
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
@@ -54,6 +57,11 @@ export default async function SettingsPage() {
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Intake status notifications</h2>
           <IntakeNotifyManager initial={Array.isArray(intakeNotify) ? intakeNotify : [FIRM.email]} />
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Monthly billing reminder</h2>
+          <BillingReminderManager initial={billingReminder ?? BILLING_REMINDER_DEFAULT} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
