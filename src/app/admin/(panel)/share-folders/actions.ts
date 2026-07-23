@@ -33,27 +33,36 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /* --------------------------------- folders --------------------------------- */
 
-export async function createFolder(input: { caseNumber: string; name: string; type: string }) {
+export async function createFolder(input: { caseNumber: string; name: string; matter?: string; court?: string; type: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const name = input.name.trim();
-  if (!name) return { ok: false as const, error: "Enter a client / matter name." };
+  if (!name) return { ok: false as const, error: "Enter the client name." };
   if (!shareType(input.type)) return { ok: false as const, error: "Pick a folder type." };
   const [row] = await db
     .insert(shareFolders)
-    .values({ caseNumber: input.caseNumber.trim(), name, type: input.type, createdBy: session.email })
+    .values({
+      caseNumber: input.caseNumber.trim(),
+      name,
+      matter: (input.matter ?? "").trim(),
+      court: (input.court ?? "").trim(),
+      type: input.type,
+      createdBy: session.email,
+    })
     .returning({ id: shareFolders.id });
   await audit(session.email, "create", "share-folder", String(row.id), `${input.type} folder: ${name}`);
   revalidatePath("/admin/share-folders");
   return { ok: true as const, id: row.id };
 }
 
-export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; type?: string; notes?: string }) {
+export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; type?: string; notes?: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.caseNumber !== undefined) set.caseNumber = patch.caseNumber.trim();
   if (patch.name !== undefined) set.name = patch.name.trim();
+  if (patch.matter !== undefined) set.matter = patch.matter.trim();
+  if (patch.court !== undefined) set.court = patch.court.trim();
   if (patch.type !== undefined && shareType(patch.type)) set.type = patch.type;
   if (patch.notes !== undefined) set.notes = patch.notes;
   await db.update(shareFolders).set(set).where(eq(shareFolders.id, id));

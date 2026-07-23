@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import { Plus, Search, Archive, ArchiveRestore, FileText, Users, Loader2, FolderPlus } from "lucide-react";
 import { SHARE_TYPES, shareType, audienceStyle, FOLDER_SORTS, type FolderSort } from "@/lib/share/types";
 import { createFolder, archiveFolder } from "@/app/admin/(panel)/share-folders/actions";
+import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 
 export type FolderRow = {
   id: number;
   caseNumber: string;
-  name: string;
+  name: string; // client name
+  matter: string;
+  court: string;
   type: string;
   archived: boolean;
   updatedAt: string;
@@ -20,7 +23,7 @@ export type FolderRow = {
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export function ShareFoldersList({ folders }: { folders: FolderRow[] }) {
+export function ShareFoldersList({ folders, matters }: { folders: FolderRow[]; matters: MatterOption[] }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -32,7 +35,7 @@ export function ShareFoldersList({ folders }: { folders: FolderRow[] }) {
     const needle = q.trim().toLowerCase();
     let out = folders.filter((f) => f.archived === showArchived);
     if (typeFilter) out = out.filter((f) => f.type === typeFilter);
-    if (needle) out = out.filter((f) => `${f.caseNumber} ${f.name} ${shareType(f.type).label}`.toLowerCase().includes(needle));
+    if (needle) out = out.filter((f) => `${f.caseNumber} ${f.name} ${f.matter} ${f.court} ${shareType(f.type).label}`.toLowerCase().includes(needle));
     const by: Record<FolderSort, (a: FolderRow, b: FolderRow) => number> = {
       updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
       case: (a, b) => a.caseNumber.localeCompare(b.caseNumber, undefined, { numeric: true }),
@@ -74,7 +77,7 @@ export function ShareFoldersList({ folders }: { folders: FolderRow[] }) {
         </button>
       </div>
 
-      {creating && <NewFolderForm onDone={(id) => { setCreating(false); if (id) router.push(`/admin/share-folders/${id}`); }} />}
+      {creating && <NewFolderForm matters={matters} onDone={(id) => { setCreating(false); if (id) router.push(`/admin/share-folders/${id}`); }} />}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 text-[11px] text-[var(--c-ink-muted)]">
@@ -111,6 +114,7 @@ function FolderCard({ f }: { f: FolderRow }) {
           <span className="font-semibold text-[var(--c-ink)]">{f.name}</span>
           {f.caseNumber && <span className="text-xs text-[var(--c-ink-muted)]">· {f.caseNumber}</span>}
         </div>
+        {(f.matter || f.court) && <div className="mt-0.5 truncate text-xs text-[var(--c-ink-muted)]">{[f.matter, f.court].filter(Boolean).join("  ·  ")}</div>}
         <div className="mt-0.5 flex items-center gap-3 text-[11px] text-[var(--c-ink-muted)]">
           <span className="inline-flex items-center gap-1"><FileText size={12} /> {f.fileCount} file{f.fileCount === 1 ? "" : "s"}</span>
           <span className="inline-flex items-center gap-1"><Users size={12} /> {f.recipientCount} recipient{f.recipientCount === 1 ? "" : "s"}</span>
@@ -129,9 +133,11 @@ function FolderCard({ f }: { f: FolderRow }) {
   );
 }
 
-function NewFolderForm({ onDone }: { onDone: (id?: number) => void }) {
+function NewFolderForm({ matters, onDone }: { matters: MatterOption[]; onDone: (id?: number) => void }) {
   const [caseNumber, setCaseNumber] = useState("");
   const [name, setName] = useState("");
+  const [matter, setMatter] = useState("");
+  const [court, setCourt] = useState("");
   const [type, setType] = useState(SHARE_TYPES[0].key);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -141,7 +147,7 @@ function NewFolderForm({ onDone }: { onDone: (id?: number) => void }) {
   function submit() {
     setError(null);
     start(async () => {
-      const res = await createFolder({ caseNumber, name, type });
+      const res = await createFolder({ caseNumber, name, matter, court, type });
       if (res.ok) onDone(res.id);
       else setError(res.error ?? "Couldn't create the folder.");
     });
@@ -152,12 +158,20 @@ function NewFolderForm({ onDone }: { onDone: (id?: number) => void }) {
       <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold"><FolderPlus size={15} className="text-[var(--c-accent)]" /> New share folder</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs">
-          <span className="mb-1 block text-[var(--c-ink-muted)]">Case number</span>
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Client name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., John Smith" className={`${input} w-full`} />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(from your Clio list)</span></span>
+          <MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter by number or client…" />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span>
           <input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="e.g., 141-350557-24" className={`${input} w-full`} />
         </label>
         <label className="text-xs">
-          <span className="mb-1 block text-[var(--c-ink-muted)]">Client / matter name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Smith v. Jones" className={`${input} w-full`} />
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span>
+          <input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="e.g., 141st District Court, Tarrant County" className={`${input} w-full`} />
         </label>
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Folder type</span>

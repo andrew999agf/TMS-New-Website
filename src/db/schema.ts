@@ -398,7 +398,9 @@ export const shareFolders = pgTable(
   {
     id: serial("id").primaryKey(),
     caseNumber: varchar("case_number", { length: 191 }).notNull().default(""),
-    name: varchar("name", { length: 191 }).notNull(), // client / matter name
+    name: varchar("name", { length: 191 }).notNull(), // client name (the folder's display name)
+    matter: text("matter").notNull().default(""), // Clio/Time-Tracker matter reference
+    court: varchar("court", { length: 191 }).notNull().default(""), // court / location
     type: varchar("type", { length: 32 }).notNull(), // SHARE_TYPES key (discovery, client, expert, …)
     notes: text("notes"),
     archived: boolean("archived").notNull().default(false),

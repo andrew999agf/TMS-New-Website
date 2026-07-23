@@ -8,12 +8,13 @@ import {
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2,
 } from "lucide-react";
 import { SHARE_TYPES, shareType, audienceStyle, recipientWarnings, classifyEmail } from "@/lib/share/types";
+import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import {
   registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked,
   archiveFolder, deleteFolder, updateFolder,
 } from "@/app/admin/(panel)/share-folders/actions";
 
-export type FolderData = { id: number; caseNumber: string; name: string; type: string; notes: string; archived: boolean };
+export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
 export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; revoked: boolean };
 
@@ -22,7 +23,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 const fmtSize = (n: number | null) => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
-export function ShareFolderDetail({ folder, files, recipients, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; blobReady: boolean }) {
+export function ShareFolderDetail({ folder, files, recipients, matters, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; matters: MatterOption[]; blobReady: boolean }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -38,7 +39,7 @@ export function ShareFolderDetail({ folder, files, recipients, blobReady }: { fo
         <p className="mt-1.5 text-sm font-medium">{t.banner}</p>
       </div>
 
-      <FolderHeader folder={folder} />
+      <FolderHeader folder={folder} matters={matters} />
 
       <FilesSection folderId={folder.id} files={files} blobReady={blobReady} />
 
@@ -49,17 +50,19 @@ export function ShareFolderDetail({ folder, files, recipients, blobReady }: { fo
 
 /* ------------------------------ header / meta ------------------------------ */
 
-function FolderHeader({ folder }: { folder: FolderData }) {
+function FolderHeader({ folder, matters }: { folder: FolderData; matters: MatterOption[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [caseNumber, setCaseNumber] = useState(folder.caseNumber);
   const [name, setName] = useState(folder.name);
+  const [matter, setMatter] = useState(folder.matter);
+  const [court, setCourt] = useState(folder.court);
   const [type, setType] = useState(folder.type);
   const [pending, start] = useTransition();
 
   function save() {
     start(async () => {
-      await updateFolder(folder.id, { caseNumber, name, type });
+      await updateFolder(folder.id, { caseNumber, name, matter, court, type });
       setEditing(false);
       router.refresh();
     });
@@ -69,8 +72,10 @@ function FolderHeader({ folder }: { folder: FolderData }) {
     <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
       {editing ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Case number</span><input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} /></label>
-          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Client / matter</span><input value={name} onChange={(e) => setName(e.target.value)} className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Client name</span><input value={name} onChange={(e) => setName(e.target.value)} className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(Clio list)</span></span><MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter…" /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span><input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span><input value={court} onChange={(e) => setCourt(e.target.value)} className={`${input} w-full`} /></label>
           <label className="text-xs sm:col-span-2"><span className="mb-1 block text-[var(--c-ink-muted)]">Folder type</span>
             <select value={type} onChange={(e) => setType(e.target.value)} className={`${input} w-full`}>
               {SHARE_TYPES.map((tt) => <option key={tt.key} value={tt.key}>{tt.label}</option>)}
@@ -83,9 +88,13 @@ function FolderHeader({ folder }: { folder: FolderData }) {
         </div>
       ) : (
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-[var(--c-ink)]">{folder.name}</h2>
-            {folder.caseNumber && <p className="text-sm text-[var(--c-ink-muted)]">Case {folder.caseNumber}</p>}
+            <div className="mt-0.5 space-y-0.5 text-sm text-[var(--c-ink-muted)]">
+              {folder.matter && <p>Matter: {folder.matter}</p>}
+              {folder.caseNumber && <p>Case {folder.caseNumber}</p>}
+              {folder.court && <p>{folder.court}</p>}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]"><Pencil size={13} /> Edit</button>

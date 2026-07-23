@@ -2,17 +2,20 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { ShareFoldersList, type FolderRow } from "@/components/admin/ShareFoldersList";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients } from "@/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { shareFolders, shareFiles, shareRecipients, timeMatters } from "@/db/schema";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
+import type { MatterOption } from "@/components/admin/MatterCombobox";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShareFoldersPage() {
   await requireAdmin();
   let folders: FolderRow[] = [];
+  let matters: MatterOption[] = [];
   if (db) {
     try {
+      matters = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
       const rows = await db.select().from(shareFolders).orderBy(desc(shareFolders.updatedAt));
       const fc = await db.select({ fid: shareFiles.folderId, n: sql<number>`count(*)::int` }).from(shareFiles).groupBy(shareFiles.folderId);
       const rc = await db
@@ -26,6 +29,8 @@ export default async function ShareFoldersPage() {
         id: f.id,
         caseNumber: f.caseNumber,
         name: f.name,
+        matter: f.matter,
+        court: f.court,
         type: f.type,
         archived: f.archived,
         updatedAt: f.updatedAt.toISOString(),
@@ -49,7 +54,7 @@ export default async function ShareFoldersPage() {
             File storage isn&apos;t connected yet. Folders and invites work, but uploading documents needs a Vercel Blob store on this project.
           </p>
         )}
-        <ShareFoldersList folders={folders} />
+        <ShareFoldersList folders={folders} matters={matters} />
       </div>
     </>
   );

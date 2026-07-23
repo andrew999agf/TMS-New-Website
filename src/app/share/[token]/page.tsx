@@ -66,6 +66,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
       </div>
       <h1 className="mt-2 text-xl font-semibold text-neutral-900 dark:text-neutral-50">{folder.name}</h1>
       {folder.caseNumber && <p className="mt-0.5 text-sm text-neutral-500">Case {folder.caseNumber}</p>}
+      {folder.court && <p className="text-sm text-neutral-500">{folder.court}</p>}
       <p className="mt-1 text-xs text-neutral-400">{t.audience === "adversary" ? "Documents produced by" : "Documents shared by"} {FIRM.name}</p>
 
       <div className="mt-6">
