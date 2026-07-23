@@ -5,7 +5,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { ShareFolderDetail, type FolderData, type FileRow, type RecipientRow } from "@/components/admin/ShareFolderDetail";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters, portalUsers } from "@/db/schema";
 import { asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import { normalizeMeta } from "@/lib/share/types";
@@ -25,6 +25,20 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, fid)).orderBy(desc(shareFiles.createdAt));
   const recipients = await db.select().from(shareRecipients).where(eq(shareRecipients.folderId, fid)).orderBy(asc(shareRecipients.invitedAt));
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, fid))).map((d) => d.path);
+
+  // Firm-wide contact book for the invite autocomplete, ranked by how often
+  // each person has been invited; names come from the portal-user directory.
+  const allInvites = await db.select({ email: shareRecipients.email, name: shareRecipients.name }).from(shareRecipients);
+  const pu = await db.select({ email: portalUsers.email, name: portalUsers.name }).from(portalUsers);
+  const freq = new Map<string, number>();
+  const nameOf = new Map<string, string>();
+  for (const r of allInvites) { freq.set(r.email, (freq.get(r.email) ?? 0) + 1); if (r.name && !nameOf.get(r.email)) nameOf.set(r.email, r.name); }
+  for (const u of pu) { if (u.name) nameOf.set(u.email, u.name); if (!freq.has(u.email)) freq.set(u.email, 0); }
+  const contacts = [...freq.entries()]
+    .map(([email, count]) => ({ email, name: nameOf.get(email) ?? "", count }))
+    .sort((a, b) => b.count - a.count || a.email.localeCompare(b.email))
+    .slice(0, 500)
+    .map(({ email, name }) => ({ email, name }));
   const matters: MatterOption[] = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
 
   const data: FolderData = {
@@ -68,7 +82,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
         <Link href="/admin/share-folders" className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
           <ChevronLeft size={15} /> All folders
         </Link>
-        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} matters={matters} blobReady={isBlobConfigured()} />
+        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} matters={matters} contacts={contacts} blobReady={isBlobConfigured()} />
       </div>
     </>
   );

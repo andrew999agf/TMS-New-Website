@@ -27,7 +27,9 @@ const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
-export function ShareFolderDetail({ folder, files, recipients, dirs, matters, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; matters: MatterOption[]; blobReady: boolean }) {
+export type Contact = { email: string; name: string };
+
+export function ShareFolderDetail({ folder, files, recipients, dirs, matters, contacts, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -51,7 +53,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, matters, bl
 
       <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
 
-      <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} />
+      <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
   );
 }
@@ -285,11 +287,11 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
 
 /* ------------------------------- recipients ------------------------------- */
 
-function RecipientsSection({ folderId, typeKey, recipients }: { folderId: number; typeKey: string; recipients: RecipientRow[] }) {
+function RecipientsSection({ folderId, typeKey, recipients, contacts }: { folderId: number; typeKey: string; recipients: RecipientRow[]; contacts: Contact[] }) {
   return (
     <section>
       <h3 className="mb-2 text-sm font-semibold text-[var(--c-ink)]">Shared with ({recipients.filter((r) => !r.revoked).length})</h3>
-      <AddRecipient folderId={folderId} typeKey={typeKey} />
+      <AddRecipient folderId={folderId} typeKey={typeKey} contacts={contacts} />
       {recipients.length > 0 ? (
         <ul className="mt-3 divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)]">
           {recipients.map((r) => <RecipientRowItem key={r.id} r={r} />)}
@@ -301,13 +303,31 @@ function RecipientsSection({ folderId, typeKey, recipients }: { folderId: number
   );
 }
 
-function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string }) {
+function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeKey: string; contacts: Contact[] }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [permission, setPermission] = useState("download");
   const [kind, setKind] = useState(defaultKindForType(typeKey));
   const [ack, setAck] = useState(false);
+  const [openSug, setOpenSug] = useState(false);
+  const sugRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = email.trim().toLowerCase();
+    if (!openSug) return [];
+    const pool = q ? contacts.filter((c) => c.email.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)) : contacts;
+    // Don't suggest an exact match that's already fully typed.
+    return pool.filter((c) => c.email.toLowerCase() !== q).slice(0, 8);
+  }, [contacts, email, openSug]);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) { if (sugRef.current && !sugRef.current.contains(e.target as Node)) setOpenSug(false); }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  function pick(c: Contact) { setEmail(c.email); setName(c.name); setAck(false); setOpenSug(false); }
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -339,7 +359,26 @@ function AddRecipient({ folderId, typeKey }: { folderId: number; typeKey: string
     <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs flex-1 min-w-[12rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Email to invite</span>
-          <input value={email} onChange={(e) => { setEmail(e.target.value); setAck(false); }} placeholder="name@example.com" className={`${input} w-full`} />
+          <div ref={sugRef} className="relative">
+            <input
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setAck(false); setOpenSug(true); }}
+              onFocus={() => setOpenSug(true)}
+              placeholder="name@example.com"
+              autoComplete="off"
+              className={`${input} w-full`}
+            />
+            {suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] shadow-lg">
+                {suggestions.map((c) => (
+                  <button key={c.email} type="button" onClick={() => pick(c)} className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-[var(--c-surface2)]">
+                    <span className="text-sm text-[var(--c-ink)]">{c.name || c.email}</span>
+                    {c.name && <span className="text-[11px] text-[var(--c-ink-muted)]">{c.email}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </label>
         <label className="text-xs flex-1 min-w-[10rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Name (optional)</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" className={`${input} w-full`} />

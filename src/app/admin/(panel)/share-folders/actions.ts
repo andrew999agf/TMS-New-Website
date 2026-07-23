@@ -291,8 +291,14 @@ export async function addRecipient(folderId: number, email: string, name: string
     const token = randomBytes(24).toString("base64url");
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
     await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt });
-    // Directory entry (one per person, keyed by email) — created if new.
-    await db.insert(portalUsers).values({ email: cleanEmail, name: name.trim(), kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
+    // Directory entry (one per person, keyed by email) — created if new. When a
+    // name is provided we remember it (so a corrected name sticks for next time);
+    // an empty name never blanks an existing one.
+    if (name.trim()) {
+      await db.insert(portalUsers).values({ email: cleanEmail, name: name.trim(), kind: cleanKind }).onConflictDoUpdate({ target: portalUsers.email, set: { name: name.trim() } });
+    } else {
+      await db.insert(portalUsers).values({ email: cleanEmail, name: "", kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
+    }
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
     const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc());
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
