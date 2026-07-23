@@ -236,4 +236,18 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     practiceSlug: "appellate-law",
     sort: 21,
   },
+  {
+    category: "appellate",
+    title: "No-evidence summary judgment defended on appeal",
+    stat: "Affirmed",
+    statLabel: "Take-nothing judgment affirmed in full",
+    year: "2026",
+    summary:
+      "Appellate counsel for the property owners (appellees). After a no-evidence summary judgment dismissed the neighbors' negligence and gross-negligence claims over a fallen tree limb, defended that judgment on appeal — and the court affirmed in every respect, taxing all appellate costs against the appellants.",
+    detail:
+      "Posey v. Crocker, No. 12-26-00107-CV (Twelfth Court of Appeals, Tyler, mem. op. July 22, 2026), affirming a take-nothing no-evidence summary judgment from the 173rd District Court, Henderson County (Tr. Ct. No. CV23-0171-392). The court held the appellants presented nothing for review on the merits of the summary judgment and that their response evidence suffered substantive defects — unauthenticated exhibits and untimely-disclosed witnesses — that were not curable by continuance under Rule 166a(f). Judgment affirmed; all appellate costs taxed against the appellants.",
+    cite: "Twelfth Court of Appeals, No. 12-26-00107-CV",
+    practiceSlug: "appellate-law",
+    sort: 22,
+  },
 ];
