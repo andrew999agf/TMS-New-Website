@@ -120,6 +120,28 @@ export function expiryDaysForType(typeKey: string): number {
   }
 }
 
+/** How to address a recipient in the invite email, based on the folder type. */
+export function rolePhrase(typeKey: string): string {
+  switch (typeKey) {
+    case "discovery":
+    case "opposing":
+      return "opposing counsel";
+    case "client":
+    case "client-drop":
+      return "the client";
+    case "prospective":
+      return "a prospective client";
+    case "co-counsel":
+      return "co-counsel";
+    case "expert":
+      return "a retained expert";
+    case "consultant":
+      return "a consultant";
+    default:
+      return "an authorized recipient";
+  }
+}
+
 /** Tailwind class bundle per audience — the visual "this is what kind of folder". */
 export type AudienceStyle = { badge: string; ring: string; banner: string; dot: string };
 export function audienceStyle(audience: ShareAudience): AudienceStyle {

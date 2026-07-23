@@ -42,6 +42,8 @@ type Ctx = {
   showDownload: boolean;
   onDelete?: (id: number) => void;
   deletingId?: number | null;
+  onDeleteDir?: (path: string) => void;
+  deletingDir?: string | null;
   // drag-drop upload (optional)
   onUpload?: (destPath: string, dt: DataTransfer) => void;
   overPath: string | null;
@@ -49,7 +51,7 @@ type Ctx = {
   doDrop: (e: React.DragEvent, path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onUpload }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onUpload }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -57,6 +59,8 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   showDownload?: boolean;
   onDelete?: (id: number) => void;
   deletingId?: number | null;
+  onDeleteDir?: (path: string) => void;
+  deletingDir?: string | null;
   /** When provided, the tree becomes a drop target: drop onto a folder to add
    *  inside it, or onto empty space to add at the top level. */
   onUpload?: (destPath: string, dt: DataTransfer) => void;
@@ -67,7 +71,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onUpload, overPath, setOver, doDrop };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -110,12 +114,19 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
       onDrop={(e) => ctx.doDrop(e, fullPath)}
       className={`rounded ${hot ? "bg-[var(--c-accent)]/10 outline outline-1 outline-[var(--c-accent)]" : ""}`}
     >
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--c-surface2)]" style={{ paddingLeft: 8 + depth * 16 }}>
-        <ChevronRight size={14} className={`shrink-0 text-[var(--c-ink-muted)] transition-transform ${open ? "rotate-90" : ""}`} />
-        {open ? <FolderOpen size={15} className="shrink-0 text-[var(--c-accent)]" /> : <FolderIcon size={15} className="shrink-0 text-[var(--c-accent)]" />}
-        <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
-        <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
-      </button>
+      <div className="flex items-center gap-1 rounded pr-1 hover:bg-[var(--c-surface2)]">
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: 8 + depth * 16 }}>
+          <ChevronRight size={14} className={`shrink-0 text-[var(--c-ink-muted)] transition-transform ${open ? "rotate-90" : ""}`} />
+          {open ? <FolderOpen size={15} className="shrink-0 text-[var(--c-accent)]" /> : <FolderIcon size={15} className="shrink-0 text-[var(--c-accent)]" />}
+          <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
+          <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
+        </button>
+        {ctx.onDeleteDir && (
+          <button onClick={() => ctx.onDeleteDir!(fullPath)} disabled={ctx.deletingDir === fullPath} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600 disabled:opacity-50" title="Delete this folder and everything in it">
+            {ctx.deletingDir === fullPath ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          </button>
+        )}
+      </div>
       {open && <NodeBody node={node} depth={depth + 1} basePath={fullPath} ctx={ctx} />}
     </div>
   );
@@ -128,7 +139,11 @@ function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx })
       <FileText size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
       <a href={href} target={ctx.target} rel={ctx.target ? "noopener noreferrer" : undefined} className="min-w-0 flex-1 truncate text-sm hover:text-[var(--c-accent)]">{file.base}</a>
       <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{fmtSize(file.sizeBytes)}</span>
-      {ctx.showDownload && <a href={href} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Download"><Download size={14} /></a>}
+      {ctx.showDownload && (
+        <a href={href} className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" title="Download this document">
+          <Download size={13} /><span className="hidden sm:inline">Download</span>
+        </a>
+      )}
       {ctx.onDelete && (
         <button onClick={() => ctx.onDelete!(file.id)} disabled={ctx.deletingId === file.id} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600 disabled:opacity-50" title="Remove">
           {ctx.deletingId === file.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}

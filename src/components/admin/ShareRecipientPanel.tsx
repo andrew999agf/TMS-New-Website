@@ -6,7 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { Upload, FolderPlus, Loader2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
-import { recipientRegisterFile, recipientMkdir, recipientDeleteFile } from "@/app/share/[token]/actions";
+import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
@@ -20,6 +20,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
   const [newDir, setNewDir] = useState("");
   const [creatingDir, setCreatingDir] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingDir, setDeletingDir] = useState<string | null>(null);
 
   useEffect(() => {
     const el = folderInput.current;
@@ -34,7 +35,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
       for (let i = 0; i < picked.length; i++) {
         const { file, path } = picked[i];
         const rel = destPath ? `${destPath}/${path}` : path;
-        setProgress(`Uploading ${i + 1} of ${picked.length}: ${rel}`);
+        setProgress(`Uploading document ${i + 1} of ${picked.length}…`);
         const parts = rel.split("/");
         const base = parts.pop() as string;
         const dir = parts.join("/");
@@ -71,6 +72,12 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     recipientDeleteFile(token, id).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't remove."); setDeletingId(null); router.refresh(); }).catch(() => setDeletingId(null));
   }
 
+  function handleDeleteDir(path: string) {
+    if (!confirm(`Delete the folder “${path}” and everything inside it?`)) return;
+    setDeletingDir(path);
+    recipientDeleteDir(token, path).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't remove folder."); setDeletingDir(null); router.refresh(); }).catch(() => setDeletingDir(null));
+  }
+
   return (
     <div className="space-y-2">
       {caps.upload && (
@@ -99,6 +106,8 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         showDownload={caps.download}
         onDelete={caps.delete ? handleDelete : undefined}
         deletingId={deletingId}
+        onDeleteDir={caps.delete ? handleDeleteDir : undefined}
+        deletingDir={deletingDir}
         onUpload={caps.upload && blobReady ? onUpload : undefined}
       />
     </div>

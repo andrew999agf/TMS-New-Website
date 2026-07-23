@@ -12,9 +12,10 @@ import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir,
+  registerShareFile, deleteFile, deleteDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir,
   archiveFolder, deleteFolder, updateFolder,
 } from "@/app/admin/(panel)/share-folders/actions";
+import { Download } from "lucide-react";
 
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
@@ -147,6 +148,7 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [newDir, setNewDir] = useState("");
   const [creatingDir, setCreatingDir] = useState(false);
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
@@ -164,6 +166,12 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
     deleteFile(id).then(() => { setDeletingId(null); router.refresh(); }).catch(() => setDeletingId(null));
   }
 
+  function handleDeleteDir(path: string) {
+    if (!confirm(`Delete the folder “${path}” and everything inside it? This can't be undone.`)) return;
+    setDeletingDir(path);
+    deleteDir(folderId, path).then(() => { setDeletingDir(null); router.refresh(); }).catch(() => setDeletingDir(null));
+  }
+
   useEffect(() => {
     const el = folderInput.current;
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
@@ -178,7 +186,7 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
       for (let i = 0; i < items.length; i++) {
         const { file, path } = items[i];
         const fullPath = destPath ? `${destPath}/${path}` : path;
-        setProgress(`Uploading ${i + 1} of ${items.length}: ${fullPath}`);
+        setProgress(`Uploading document ${i + 1} of ${items.length}…`);
         const blob = await upload(`share/${folderId}/${fullPath}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
         await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size });
       }
@@ -210,6 +218,9 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
         <button onClick={addFolder} disabled={creatingDir || !newDir.trim()} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50">
           {creatingDir ? <Loader2 size={13} className="animate-spin" /> : <FolderPlus size={13} />} New folder
         </button>
+        {files.length > 0 && (
+          <a href={`/admin/share-folders/${folderId}/zip`} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><Download size={13} /> Download all</a>
+        )}
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
@@ -223,6 +234,8 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
         showDownload={false}
         onDelete={handleDelete}
         deletingId={deletingId}
+        onDeleteDir={handleDeleteDir}
+        deletingDir={deletingDir}
         onUpload={blobReady ? onUpload : undefined}
       />
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}

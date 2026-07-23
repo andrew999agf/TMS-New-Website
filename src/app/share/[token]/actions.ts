@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFiles, shareDirs, shareAccessLog } from "@/db/schema";
@@ -48,6 +48,28 @@ export async function recipientMkdir(token: string, path: string) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't create the folder." };
+  }
+}
+
+/** Delete a folder (and everything inside it) — manage permission only. */
+export async function recipientDeleteDir(token: string, path: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !shareCan(ctx.rec.permission, "delete")) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const clean = cleanDirPath(path);
+  if (!clean) return { ok: false as const, error: "Invalid folder." };
+  const prefix = `${clean}/`;
+  try {
+    const allFiles = await db.select().from(shareFiles).where(eq(shareFiles.folderId, ctx.folder.id));
+    const victims = allFiles.filter((f) => f.filename === clean || f.filename.startsWith(prefix));
+    for (const f of victims) { try { await del(f.url); } catch { /* best-effort */ } }
+    if (victims.length) await db.delete(shareFiles).where(inArray(shareFiles.id, victims.map((f) => f.id)));
+    const allDirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, ctx.folder.id));
+    const deadDirs = allDirs.filter((d) => d.path === clean || d.path.startsWith(prefix));
+    if (deadDirs.length) await db.delete(shareDirs).where(inArray(shareDirs.id, deadDirs.map((d) => d.id)));
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't delete the folder." };
   }
 }
 

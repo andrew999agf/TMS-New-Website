@@ -3,7 +3,7 @@
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareDirs } from "@/db/schema";
@@ -12,7 +12,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, type ShareWarning } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, type ShareWarning } from "@/lib/share/types";
 import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
@@ -170,6 +170,29 @@ export async function createDir(folderId: number, path: string) {
   }
 }
 
+export async function deleteDir(folderId: number, path: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const clean = cleanDirPath(path);
+  if (!clean) return { ok: false as const, error: "Invalid folder." };
+  const prefix = `${clean}/`;
+  try {
+    const allFiles = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folderId));
+    const victims = allFiles.filter((f) => f.filename === clean || f.filename.startsWith(prefix));
+    for (const f of victims) { try { await del(f.url); } catch { /* best-effort */ } }
+    if (victims.length) await db.delete(shareFiles).where(inArray(shareFiles.id, victims.map((f) => f.id)));
+    const allDirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, folderId));
+    const deadDirs = allDirs.filter((d) => d.path === clean || d.path.startsWith(prefix));
+    if (deadDirs.length) await db.delete(shareDirs).where(inArray(shareDirs.id, deadDirs.map((d) => d.id)));
+    await audit(session.email, "delete", "share-folder", String(folderId), `Deleted folder "${clean}" (${victims.length} files)`);
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] deleteDir failed:", err);
+    return { ok: false as const, error: "Couldn't delete the folder — try again." };
+  }
+}
+
 export async function deleteFile(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
@@ -194,18 +217,22 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   const who = name.trim() ? esc(name.trim()) : "there";
   const caseLine = caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(caseNumber)}</p>` : "";
   const days = expiryDaysForType(typeKey);
+  const role = rolePhrase(typeKey);
   const html = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
       <p style="margin:0 0 14px">Hello ${who},</p>
-      <p style="margin:0 0 6px">${esc(FIRM.name)} has shared a secure document folder with you:</p>
+      <p style="margin:0 0 6px">${esc(FIRM.name)} has shared a secure document folder with you as <strong>${role}</strong> in this matter:</p>
       <p style="margin:0 0 4px;font-size:16px;font-weight:bold">${esc(folderName)}</p>
       ${caseLine}
       <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open the folder</a></p>
       <p style="margin:0 0 8px;font-size:13px;color:#777">Or paste this link into your browser:</p>
       <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
       <p style="margin:0 0 8px;font-size:13px;color:#444">For security, this link will <strong>automatically expire in ${days} days</strong> — on <strong>${fmtExpiry(expiresAt)}</strong>. If you need it re-issued after that, contact <a href="mailto:${REISSUE_CONTACT}" style="color:#7a1f2b">${REISSUE_CONTACT}</a>.</p>
-      <p style="margin:0;font-size:12px;color:#999">This link is unique to you — please don't forward it. If you weren't expecting this, you can ignore this email.</p>
+      <p style="margin:0 0 16px;font-size:12px;color:#999">This link is unique to you — please don't forward it.</p>
+      <p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #e5e5e5;font-style:italic;font-size:10px;line-height:1.5;color:#8a8a8a">
+        Confidentiality &amp; clawback notice: This message and the linked documents are confidential and may be protected by the attorney-client privilege, the attorney work-product doctrine, or other applicable privileges and protections. They are intended solely for the named recipient. If you are not the intended recipient, you are hereby notified that any review, use, disclosure, copying, or distribution is strictly prohibited. Please notify ${esc(FIRM.name)} immediately at <a href="mailto:${REISSUE_CONTACT}" style="color:#8a8a8a">${REISSUE_CONTACT}</a>, do not open or access the documents, and permanently delete and purge all copies from your files and systems. Any inadvertent disclosure of privileged or protected material is not intended to and shall not operate as a waiver of any privilege or protection, and ${esc(FIRM.name)} expressly reserves the right to demand the return or destruction of such material pursuant to Texas Rule of Civil Procedure 193.3(d) and Texas Rule of Evidence 511.
+      </p>
     </div>`;
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with you`, html });
 }

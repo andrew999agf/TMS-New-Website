@@ -6,7 +6,7 @@ import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
 import { shareCan } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
-import { ShieldCheck, Clock } from "lucide-react";
+import { ShieldCheck, Clock, Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robots: { index: false, follow: false } };
@@ -83,10 +83,19 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
       )}
 
       {caps.upload && (
-        <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files you no longer need" : ""}.</p>
+        <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files or folders you no longer need" : ""}.</p>
       )}
 
-      <div className="mt-5">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
+        {caps.download && files.length > 0 && (
+          <a href={`/share/${token}/zip`} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110">
+            <Download size={14} /> Download all (ZIP)
+          </a>
+        )}
+      </div>
+
+      <div className="mt-3">
         <ShareRecipientPanel
           token={token}
           files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
