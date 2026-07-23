@@ -388,6 +388,73 @@ export const timeClockPunches = pgTable("time_clock_punches", {
 });
 
 /* ----------------------------------------------------------------------------
+ * Secure share folders — case documents shared with specific people (co-counsel,
+ * opposing counsel, clients, experts) by email invitation only. Each recipient
+ * gets an unguessable token link; access is per-recipient and revocable.
+ * ------------------------------------------------------------------------- */
+
+export const shareFolders = pgTable(
+  "share_folders",
+  {
+    id: serial("id").primaryKey(),
+    caseNumber: varchar("case_number", { length: 191 }).notNull().default(""),
+    name: varchar("name", { length: 191 }).notNull(), // client / matter name
+    type: varchar("type", { length: 32 }).notNull(), // SHARE_TYPES key (discovery, client, expert, …)
+    notes: text("notes"),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ archivedIdx: index("share_folders_archived_idx").on(t.archived) }),
+);
+
+export const shareFiles = pgTable(
+  "share_files",
+  {
+    id: serial("id").primaryKey(),
+    folderId: integer("folder_id").notNull(),
+    url: text("url").notNull(),
+    pathname: text("pathname").notNull(),
+    filename: varchar("filename", { length: 255 }).notNull(),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    uploadedBy: varchar("uploaded_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ folderIdx: index("share_files_folder_idx").on(t.folderId) }),
+);
+
+export const shareRecipients = pgTable(
+  "share_recipients",
+  {
+    id: serial("id").primaryKey(),
+    folderId: integer("folder_id").notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    name: varchar("name", { length: 191 }).notNull().default(""),
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    invitedBy: varchar("invited_by", { length: 255 }),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
+    revoked: boolean("revoked").notNull().default(false),
+  },
+  (t) => ({ folderIdx: index("share_recipients_folder_idx").on(t.folderId) }),
+);
+
+export const shareAccessLog = pgTable("share_access_log", {
+  id: serial("id").primaryKey(),
+  folderId: integer("folder_id"),
+  recipientId: integer("recipient_id"),
+  action: varchar("action", { length: 16 }).notNull(), // view | download
+  fileId: integer("file_id"),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ShareFolder = typeof shareFolders.$inferSelect;
+export type ShareFile = typeof shareFiles.$inferSelect;
+export type ShareRecipient = typeof shareRecipients.$inferSelect;
+
+/* ----------------------------------------------------------------------------
  * Intake submissions
  * ------------------------------------------------------------------------- */
 

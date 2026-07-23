@@ -116,6 +116,51 @@ const DDL = [
   `ALTER TABLE time_clock_punches ADD COLUMN IF NOT EXISTS auto_closed boolean NOT NULL DEFAULT false`,
   `ALTER TABLE time_clock_punches ADD COLUMN IF NOT EXISTS auto_open boolean NOT NULL DEFAULT false`,
   `ALTER TABLE time_activity_users ADD COLUMN IF NOT EXISTS email varchar(255) NOT NULL DEFAULT ''`,
+  // Secure share folders.
+  `CREATE TABLE IF NOT EXISTS share_folders (
+    id serial PRIMARY KEY,
+    case_number varchar(191) NOT NULL DEFAULT '',
+    name varchar(191) NOT NULL,
+    type varchar(32) NOT NULL,
+    notes text,
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_folders_archived_idx ON share_folders (archived)`,
+  `CREATE TABLE IF NOT EXISTS share_files (
+    id serial PRIMARY KEY,
+    folder_id integer NOT NULL,
+    url text NOT NULL,
+    pathname text NOT NULL,
+    filename varchar(255) NOT NULL,
+    content_type varchar(128),
+    size_bytes integer,
+    uploaded_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_files_folder_idx ON share_files (folder_id)`,
+  `CREATE TABLE IF NOT EXISTS share_recipients (
+    id serial PRIMARY KEY,
+    folder_id integer NOT NULL,
+    email varchar(255) NOT NULL,
+    name varchar(191) NOT NULL DEFAULT '',
+    token varchar(64) NOT NULL UNIQUE,
+    invited_by varchar(255),
+    invited_at timestamptz NOT NULL DEFAULT now(),
+    last_access_at timestamptz,
+    revoked boolean NOT NULL DEFAULT false
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_recipients_folder_idx ON share_recipients (folder_id)`,
+  `CREATE TABLE IF NOT EXISTS share_access_log (
+    id serial PRIMARY KEY,
+    folder_id integer,
+    recipient_id integer,
+    action varchar(16) NOT NULL,
+    file_id integer,
+    at timestamptz NOT NULL DEFAULT now()
+  )`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
