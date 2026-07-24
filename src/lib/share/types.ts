@@ -16,38 +16,15 @@ export type ShareTypeDef = {
   banner: string; // the explicit banner shown on the folder
 };
 
+// Listed alphabetically by label (the order the New Folder dropdown shows).
 export const SHARE_TYPES: ShareTypeDef[] = [
   {
-    key: "discovery",
-    label: "Discovery — produced to Opposing Counsel",
-    short: "DISCOVERY",
-    audience: "adversary",
-    blurb: "Documents produced to the other side in litigation.",
-    banner: "This folder is produced to the OTHER SIDE (opposing counsel). Everything placed here is being handed to your opponent.",
-  },
-  {
-    key: "opposing",
-    label: "Opposing Counsel — general",
-    short: "OPPOSING",
-    audience: "adversary",
-    blurb: "General sharing with opposing counsel outside formal discovery.",
-    banner: "This folder is shared with OPPOSING COUNSEL. Treat everything here as going to the other side.",
-  },
-  {
     key: "client",
-    label: "Client Folder",
+    label: "Client Documents (collect and provide documents to and from the client)",
     short: "CLIENT",
     audience: "client",
-    blurb: "Private documents shared with your client.",
+    blurb: "Documents shared with — and collected from — your client. Limit their upload access if you don't want them adding files.",
     banner: "CLIENT ONLY. The opposing side must never receive access to this folder.",
-  },
-  {
-    key: "client-drop",
-    label: "Client Drop — collect documents from a client",
-    short: "CLIENT DROP",
-    audience: "client",
-    blurb: "A place for a client to send documents to you.",
-    banner: "CLIENT ONLY — for collecting documents from your client. Keep the other side out.",
   },
   {
     key: "co-counsel",
@@ -58,6 +35,22 @@ export const SHARE_TYPES: ShareTypeDef[] = [
     banner: "Shared with CO-COUNSEL on your side. Privileged work product — not for the other side.",
   },
   {
+    key: "consultant",
+    label: "Consultant",
+    short: "CONSULTANT",
+    audience: "ally",
+    blurb: "Materials shared with a consultant.",
+    banner: "Shared with a CONSULTANT on your side. Often privileged — not for the other side.",
+  },
+  {
+    key: "discovery",
+    label: "Discovery Production (produced to opposing counsel)",
+    short: "DISCOVERY",
+    audience: "adversary",
+    blurb: "Documents produced to the other side in litigation.",
+    banner: "This folder is produced to the OTHER SIDE (opposing counsel). Everything placed here is being handed to your opponent.",
+  },
+  {
     key: "expert",
     label: "Expert",
     short: "EXPERT",
@@ -66,12 +59,20 @@ export const SHARE_TYPES: ShareTypeDef[] = [
     banner: "Shared with a retained EXPERT on your side. May be consulting/privileged — keep off the other side.",
   },
   {
-    key: "consultant",
-    label: "Consultant",
-    short: "CONSULTANT",
-    audience: "ally",
-    blurb: "Materials shared with a consultant.",
-    banner: "Shared with a CONSULTANT on your side. Often privileged — not for the other side.",
+    key: "opposing",
+    label: "Opposing Counsel (general)",
+    short: "OPPOSING",
+    audience: "adversary",
+    blurb: "General sharing with opposing counsel outside formal discovery.",
+    banner: "This folder is shared with OPPOSING COUNSEL. Treat everything here as going to the other side.",
+  },
+  {
+    key: "other",
+    label: "Other / General",
+    short: "OTHER",
+    audience: "neutral",
+    blurb: "Anything that doesn't fit the categories above.",
+    banner: "General shared folder. Double-check who you invite before sending.",
   },
   {
     key: "prospective",
@@ -82,18 +83,20 @@ export const SHARE_TYPES: ShareTypeDef[] = [
     banner: "PROSPECTIVE CLIENT. Confidential — keep off the other side.",
   },
   {
-    key: "other",
-    label: "Other / General",
-    short: "OTHER",
+    key: "witness",
+    label: "Witness (documents to and from a witness)",
+    short: "WITNESS",
     audience: "neutral",
-    blurb: "Anything that doesn't fit the categories above.",
-    banner: "General shared folder. Double-check who you invite before sending.",
+    blurb: "Documents shared with, or collected from, a witness.",
+    banner: "Shared with a WITNESS. Confidential — share only what is appropriate for this witness.",
   },
 ];
 
 const BY_KEY = new Map(SHARE_TYPES.map((t) => [t.key, t]));
+// Retired keys map onto their replacements so existing folders still render.
+const TYPE_ALIAS: Record<string, string> = { "client-drop": "client" };
 export function shareType(key: string): ShareTypeDef {
-  return BY_KEY.get(key) ?? SHARE_TYPES[SHARE_TYPES.length - 1];
+  return BY_KEY.get(TYPE_ALIAS[key] ?? key) ?? BY_KEY.get("other")!;
 }
 
 /**
@@ -115,6 +118,8 @@ export function expiryDaysForType(typeKey: string): number {
       return 120;
     case "prospective":
       return 30;
+    case "witness":
+      return 60;
     default:
       return 60;
   }
@@ -179,6 +184,8 @@ export function defaultKindForType(typeKey: string): string {
       return "expert";
     case "consultant":
       return "consultant";
+    case "witness":
+      return "witness";
     default:
       return "other";
   }
@@ -201,6 +208,8 @@ export function rolePhrase(typeKey: string): string {
       return "a retained expert";
     case "consultant":
       return "a consultant";
+    case "witness":
+      return "a witness";
     default:
       return "an authorized recipient";
   }
