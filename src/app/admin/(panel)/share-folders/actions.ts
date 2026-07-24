@@ -240,24 +240,28 @@ export async function deleteFile(id: number) {
 
 /* -------------------------------- recipients ------------------------------- */
 
-async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[]) {
+async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[], secure: boolean) {
   const link = `${await baseUrl()}/share/${token}`;
   const who = name.trim() ? esc(name.trim()) : "there";
   const caseLine = caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(caseNumber)}</p>` : "";
   const days = expiryDaysForType(typeKey);
   const role = rolePhrase(typeKey);
+  const openLabel = secure ? "Sign in to open the folder" : "Open the folder";
+  const accessNote = secure
+    ? `This access is specific to you. Opening the folder requires you to sign in with your password or a one-time code emailed to <strong>${esc(email)}</strong>, so a forwarded link will not work for anyone else. If someone else at your firm or office needs access, they must be invited separately — please have them request it, or email <a href="mailto:${REISSUE_CONTACT}" style="color:#7a1f2b">${REISSUE_CONTACT}</a> and we will send a link directly to them.`
+    : `This is a private link that opens without a sign-in, so anyone who has it can view these documents — please do not forward or share it. If someone else needs access, email <a href="mailto:${REISSUE_CONTACT}" style="color:#7a1f2b">${REISSUE_CONTACT}</a> so we can send them their own link.`;
   const html = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
       <p style="margin:0 0 14px">Hello ${who},</p>
-      <p style="margin:0 0 6px">${esc(FIRM.name)} has shared a secure document folder with you as <strong>${role}</strong> in this matter:</p>
+      <p style="margin:0 0 6px">${esc(FIRM.name)} has shared documents with you as <strong>${role}</strong> in this matter:</p>
       <p style="margin:0 0 4px;font-size:16px;font-weight:bold">${esc(folderName)}</p>
       ${caseLine}
-      <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open the folder</a></p>
+      <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">${openLabel}</a></p>
       <p style="margin:0 0 8px;font-size:13px;color:#777">Or paste this link into your browser:</p>
       <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
       <p style="margin:0 0 8px;font-size:13px;color:#444">For security, this link will <strong>automatically expire in ${days} days</strong> — on <strong>${fmtExpiry(expiresAt)}</strong>. If you need it re-issued after that, contact <a href="mailto:${REISSUE_CONTACT}" style="color:#7a1f2b">${REISSUE_CONTACT}</a>.</p>
-      <p style="margin:0 0 16px;font-size:12px;color:#999">This link is unique to you — please don't forward it.</p>
+      <p style="margin:0 0 16px;font-size:12px;color:#666">${accessNote}</p>
       <p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #e5e5e5;font-style:italic;font-size:10px;line-height:1.5;color:#8a8a8a">
         Confidentiality &amp; clawback notice: This message and the linked documents are confidential and may be protected by the attorney-client privilege, the attorney work-product doctrine, or other applicable privileges and protections. They are intended solely for the named recipient. If you are not the intended recipient, you are hereby notified that any review, use, disclosure, copying, or distribution is strictly prohibited. Please notify ${esc(FIRM.name)} immediately at <a href="mailto:${REISSUE_CONTACT}" style="color:#8a8a8a">${REISSUE_CONTACT}</a>, do not open or access the documents, and permanently delete and purge all copies from your files and systems. Any inadvertent disclosure of privileged or protected material is not intended to and shall not operate as a waiver of any privilege or protection, and ${esc(FIRM.name)} expressly reserves the right to demand the return or destruction of such material pursuant to Texas Rule of Civil Procedure 193.3(d) and Texas Rule of Evidence 511.
       </p>
@@ -300,7 +304,7 @@ export async function addRecipient(folderId: number, email: string, name: string
       await db.insert(portalUsers).values({ email: cleanEmail, name: "", kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
     }
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc());
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc(), folder.requireAuth);
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
     revalidatePath(`/admin/share-folders/${folderId}`);
     return { ok: true, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
@@ -321,7 +325,7 @@ export async function resendInvite(recipientId: number) {
     // Re-issuing resets the clock and clears any prior expiry/revocation.
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
     await db.update(shareRecipients).set({ expiresAt, revoked: false }).where(eq(shareRecipients.id, r.id));
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc());
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth);
     revalidatePath(`/admin/share-folders/${r.folderId}`);
     return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
   } catch (err) {

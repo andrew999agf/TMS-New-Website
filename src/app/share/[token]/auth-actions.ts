@@ -61,9 +61,9 @@ export async function portalRequestCode(token: string): Promise<Result> {
   const html = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:520px;line-height:1.55">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${FIRM.name}</p>
-      <p style="margin:0 0 10px">Your one-time access code is:</p>
+      <p style="margin:0 0 10px">Here is your one-time code to open the documents ${FIRM.name} shared with you:</p>
       <p style="margin:0 0 12px;font-size:30px;font-weight:bold;letter-spacing:6px;font-family:Menlo,Consolas,monospace">${code}</p>
-      <p style="margin:0;font-size:13px;color:#777">It expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
+      <p style="margin:0;font-size:13px;color:#777">This code is specific to you (${ctx.rec.email}) and expires in 10 minutes. If you didn't request it, you can ignore this email — no one can get in without it.</p>
     </div>`;
   const res = await sendEmail({ to: ctx.rec.email, fromName: `${FIRM.name} — Secure Share`, subject: `Your access code: ${code}`, html });
   return res.sent ? { ok: true } : { ok: false, error: "Couldn't send the code — please try again." };
