@@ -23,39 +23,47 @@ import {
   Users,
   Award,
   Clock,
-  Sparkles, AlarmClock,
+  AlarmClock,
+  Globe,
   GraduationCap,
   FileSignature,
   FolderLock,
   KeyRound,
   PanelLeftClose,
   PanelLeftOpen,
+  type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
 import { allowedSections, sectionForPath } from "@/lib/admin-sections";
 import { PwaInstall } from "@/components/admin/PwaInstall";
 
+// The website-editing sections, grouped under one "Website Management" entry
+// with a sub-tab bar (keeps the left sidebar from getting cluttered).
+const WEBSITE_TABS: { label: string; href: string; section: string; icon: LucideIcon }[] = [
+  { label: "Pages", href: "/admin/pages", section: "pages", icon: FileText },
+  { label: "Team", href: "/admin/team", section: "team", icon: Users },
+  { label: "Home Banner", href: "/admin/banner", section: "banner", icon: Film },
+  { label: "Badges", href: "/admin/badges", section: "badges", icon: Award },
+  { label: "Practice Areas", href: "/admin/practice-areas", section: "practice-areas", icon: Scale },
+  { label: "Results", href: "/admin/results", section: "results", icon: Trophy },
+  { label: "Blog", href: "/admin/blog", section: "blog", icon: Newspaper },
+  { label: "Glossary", href: "/admin/glossary", section: "glossary", icon: BookMarked },
+  { label: "Texas Rules", href: "/admin/texas-rules", section: "texas-rules", icon: Gavel },
+  { label: "Testimonials", href: "/admin/testimonials", section: "testimonials", icon: Quote },
+  { label: "Media", href: "/admin/media", section: "media", icon: ImageIcon },
+  { label: "Appearance", href: "/admin/appearance", section: "appearance", icon: Palette },
+];
+const WEBSITE_SECTIONS = new Set(WEBSITE_TABS.map((t) => t.section));
+
 const NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Pages", href: "/admin/pages", icon: FileText },
-  { label: "Our Team", href: "/admin/team", icon: Users },
-  { label: "Home Banner", href: "/admin/banner", icon: Film },
-  { label: "Badges", href: "/admin/badges", icon: Award },
-  { label: "Practice Areas", href: "/admin/practice-areas", icon: Scale },
-  { label: "Results", href: "/admin/results", icon: Trophy },
-  { label: "Blog", href: "/admin/blog", icon: Newspaper },
-  { label: "Glossary", href: "/admin/glossary", icon: BookMarked },
-  { label: "Texas Rules", href: "/admin/texas-rules", icon: Gavel },
-  { label: "Testimonials", href: "/admin/testimonials", icon: Quote },
-  { label: "Media", href: "/admin/media", icon: ImageIcon },
+  { label: "Website Management", href: "/admin/pages", icon: Globe },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Document Generator", href: "/admin/documents", icon: FileSignature },
   { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
-  { label: "Time Tracker", href: "/admin/time-tracker", icon: Clock },
-  { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Sparkles },
+  { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Clock },
   { label: "Time Clock", href: "/admin/timeclock", icon: AlarmClock },
   { label: "Training", href: "/admin/training", icon: GraduationCap },
-  { label: "Appearance", href: "/admin/appearance", icon: Palette },
   { label: "User Management", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
@@ -79,7 +87,11 @@ export function AdminShell({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const allowed = new Set(allowedSections(user.role, user.permissions));
-  const nav = NAV.filter((i) => allowed.has(sectionForPath(i.href) ?? ""));
+  const websiteTabs = WEBSITE_TABS.filter((t) => allowed.has(t.section));
+  const canWebsite = websiteTabs.length > 0;
+  const websiteHref = websiteTabs[0]?.href ?? "/admin/pages";
+  const onWebsite = WEBSITE_SECTIONS.has(sectionForPath(pathname) ?? "");
+  const nav = NAV.filter((i) => (i.label === "Website Management" ? canWebsite : allowed.has(sectionForPath(i.href) ?? "")));
 
   // Restore the saved preference on mount, and persist changes.
   useEffect(() => {
@@ -137,15 +149,18 @@ export function AdminShell({
         )}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
           {nav.map((item) => {
-            const active =
-              item.href === "/admin"
+            const isWebsite = item.label === "Website Management";
+            const href = isWebsite ? websiteHref : item.href;
+            const active = isWebsite
+              ? onWebsite
+              : item.href === "/admin"
                 ? pathname === "/admin"
                 : pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 title={collapsed ? item.label : undefined}
                 className={`flex items-center gap-3 py-2.5 text-sm transition-colors ${
                   collapsed ? "justify-center px-0" : "px-5"
@@ -193,7 +208,32 @@ export function AdminShell({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">{children}</main>
+      <main className="flex-1 min-w-0">
+        {onWebsite && <WebsiteSubnav tabs={websiteTabs} pathname={pathname} />}
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function WebsiteSubnav({ tabs, pathname }: { tabs: { label: string; href: string; icon: LucideIcon }[]; pathname: string }) {
+  return (
+    <div className="sticky top-0 z-20 flex gap-1 overflow-x-auto border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2">
+      {tabs.map((t) => {
+        const active = pathname === t.href || pathname.startsWith(t.href + "/");
+        const Icon = t.icon;
+        return (
+          <Link
+            key={t.href}
+            href={t.href}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              active ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-ink)]"
+            }`}
+          >
+            <Icon size={14} /> {t.label}
+          </Link>
+        );
+      })}
     </div>
   );
 }

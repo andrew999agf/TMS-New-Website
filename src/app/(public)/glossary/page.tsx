@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PageHero } from "@/components/site/PageHero";
 import { GlossaryIndex } from "@/components/site/GlossaryIndex";
-import { getGlossaryTerms, getBlocks } from "@/lib/content";
+import { getGlossaryTerms, getBlocks, getPracticeAreas } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Glossary",
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function GlossaryPage() {
-  const [terms, page] = await Promise.all([getGlossaryTerms(), getBlocks("glossary")]);
+  const [terms, page, practices] = await Promise.all([getGlossaryTerms(), getBlocks("glossary"), getPracticeAreas()]);
   return (
     <>
       <PageHero
@@ -29,7 +29,9 @@ export default async function GlossaryPage() {
             term: t.term,
             definition: t.definition,
             hypothetical: t.hypothetical,
+            practices: t.relatedPractices ?? [],
           }))}
+          practiceAreas={practices.map((p) => ({ slug: p.slug, title: p.title }))}
         />
       </div>
     </>
