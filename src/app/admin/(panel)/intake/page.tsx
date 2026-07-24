@@ -1,5 +1,6 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
+import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
 import { db, hasDb } from "@/db";
@@ -17,10 +18,12 @@ export default async function IntakeAdminPage() {
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
 
   let rows: IntakeRow[] = [];
+  let leads: LeadPoint[] = [];
   let attorneys: string[] = [];
   if (db) {
     try {
       const data = await db.select().from(intakeSubmissions).orderBy(desc(intakeSubmissions.createdAt));
+      leads = data.map((r) => ({ createdAt: r.createdAt.toISOString(), source: r.referralSource ?? null }));
       rows = data.map((r) => ({
         id: r.id,
         branch: r.branch,
@@ -67,6 +70,7 @@ export default async function IntakeAdminPage() {
           emailConfigured={emailConfigured}
           senderFrom={senderFrom}
         />
+        <LeadSources leads={leads} />
         <IntakeTable rows={rows} attorneys={attorneys} />
       </div>
     </>

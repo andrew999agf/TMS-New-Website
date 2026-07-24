@@ -524,6 +524,8 @@ export const intakeSubmissions = pgTable(
     emailStatus: varchar("email_status", { length: 255 }),
     /** True while a comprehensive estate questionnaire is saved but unfinished. */
     incomplete: boolean("incomplete").notNull().default(false),
+    /** "How did you hear about us?" — the canonical option chosen (for lead-source analytics). */
+    referralSource: varchar("referral_source", { length: 191 }),
     /** Browser resume token for saved-progress estate questionnaires. */
     resumeToken: varchar("resume_token", { length: 64 }),
     id: serial("id").primaryKey(),

@@ -200,6 +200,7 @@ const DDL = [
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS email_status varchar(255)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS incomplete boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS referral_source varchar(191)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS resume_token varchar(64)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS referred_to varchar(191)`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS fee_expected boolean NOT NULL DEFAULT false`,

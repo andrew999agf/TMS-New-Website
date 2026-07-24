@@ -111,6 +111,8 @@ export async function POST(req: Request) {
     str("inCustody") === "Yes" ||
     str("served") === "Yes";
 
+  const referralSource = str("referralSource") || undefined;
+
   const branchDef = getBranch(branch);
   const branchLabel = branchDef?.label ?? branch;
 
@@ -144,6 +146,7 @@ export async function POST(req: Request) {
             isUrgent,
             message: str("message") || str("description"),
             referrer,
+            referralSource,
             incomplete: false,
           })
           .where(eq(intakeSubmissions.id, progressId));
@@ -165,6 +168,7 @@ export async function POST(req: Request) {
           isUrgent,
           message: str("message") || str("description"),
           referrer,
+          referralSource,
           resumeToken: resumeToken ?? null,
         })
         .returning({ id: intakeSubmissions.id });

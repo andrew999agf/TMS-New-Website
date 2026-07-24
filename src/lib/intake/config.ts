@@ -190,6 +190,36 @@ export const COMMON_STEPS: Step[] = [
     ],
   },
   {
+    id: "referral",
+    title: "How did you hear about us?",
+    subtitle: "This just helps us know what's working — pick the closest option.",
+    fields: [
+      {
+        name: "referralSource",
+        label: "How did you find us?",
+        type: "radio",
+        options: [
+          "Google or web search",
+          "Referred by friend or family",
+          "Referred by another attorney",
+          "Referred by a past client",
+          "Facebook or Instagram",
+          "Online review (Google, Avvo, etc.)",
+          "Saw a sign or billboard",
+          "Returning client",
+          "Other",
+        ],
+      },
+      {
+        name: "referralOther",
+        label: "Tell us how",
+        type: "text",
+        placeholder: "How you heard about us",
+        showIf: { field: "referralSource", equals: "Other" },
+      },
+    ],
+  },
+  {
     id: "consent",
     title: "One last thing.",
     fields: [
