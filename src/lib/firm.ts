@@ -135,7 +135,7 @@ export const OPPOSING_GROUPS: { title: string; items: string[] }[] = [
       "LVNV Funding, LLC",
       "Midland Credit Management, Inc.",
       "Cavalry SPV I, LLC",
-      "Selene Finance, L.P.",
+      "Elan Financial Services (U.S. Bank N.A.)",
     ],
   },
   {
