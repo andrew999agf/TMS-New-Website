@@ -15,24 +15,32 @@ export async function generateMetadata(): Promise<Metadata> {
   // icon (the same graphic the PWA manifest uses). Always emit ONE concrete icon
   // so the public site and the admin portal show the identical favicon.
   const favicon = blocks["global.favicon"] || "/icon-512.png";
+  const description = "A Texas trial firm. Hundreds of matters — jury trials, bench trials, and appeals. Preparing for trial from day one.";
+  // Android / WhatsApp / most non-Apple previewers are stricter than iMessage:
+  // they want a declared image type and dimensions, an absolute URL, and og
+  // title + description present. Declare the MIME type from the file extension.
+  const ogType = /\.png($|\?)/i.test(socialImage) ? "image/png" : /\.(jpg|jpeg)($|\?)/i.test(socialImage) ? "image/jpeg" : /\.webp($|\?)/i.test(socialImage) ? "image/webp" : undefined;
   return {
     metadataBase: new URL(baseUrl),
     title: {
       default: `${name} — ${tagline}`,
       template: `%s | ${name}`,
     },
-    description:
-      "A Texas trial firm. Hundreds of matters — jury trials, bench trials, and appeals. Preparing for trial from day one.",
+    description,
     icons: { icon: [{ url: favicon }], shortcut: [{ url: favicon }], apple: [{ url: favicon }] },
     openGraph: {
       type: "website",
       siteName: name,
       title: `${name} — ${tagline}`,
+      description,
+      url: baseUrl,
       locale: "en_US",
-      ...(socialImage ? { images: [{ url: socialImage, width: 1200, height: 630 }] } : {}),
+      ...(socialImage ? { images: [{ url: socialImage, width: 1200, height: 630, alt: name, ...(ogType ? { type: ogType } : {}) }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
+      title: `${name} — ${tagline}`,
+      description,
       ...(socialImage ? { images: [socialImage] } : {}),
     },
     robots: { index: true, follow: true },
