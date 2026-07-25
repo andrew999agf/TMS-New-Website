@@ -118,16 +118,49 @@ export const FEDERAL_COURTS = [
   "U.S. Court of Appeals for the Fifth Circuit",
 ];
 
-/** Banks / debt buyers litigated opposite (Section 6.3). */
-export const OPPOSING_INSTITUTIONS = [
-  "Discover Bank",
-  "Capital One",
-  "Bank of America",
-  "JPMorgan Chase",
-  "Barclays",
-  "LVNV Funding",
-  "Midland Credit Management",
+/**
+ * Institutions and entities litigated opposite, grouped for the Results page.
+ * Legal entity names used where verified. (Section 6.3.)
+ */
+export const OPPOSING_GROUPS: { title: string; items: string[] }[] = [
+  {
+    title: "Banks & debt buyers",
+    items: [
+      "Discover Bank",
+      "Capital One",
+      "Bank of America",
+      "JPMorgan Chase",
+      "Barclays",
+      "Synchrony Bank",
+      "LVNV Funding, LLC",
+      "Midland Credit Management, Inc.",
+      "Cavalry SPV I, LLC",
+      "Selene Finance, L.P.",
+    ],
+  },
+  {
+    title: "Insurance carriers",
+    items: [
+      "State Farm Mutual Automobile Insurance Company",
+      "Allstate Insurance Company",
+      "The Hartford (Hartford Fire Insurance Company)",
+      "Farmers Insurance Exchange",
+    ],
+  },
+  {
+    title: "Corporations & industries",
+    items: [
+      "Energy Transfer LP",
+      "Avis Rent A Car System, LLC",
+      "Interstate pipeline companies",
+      "Interstate trucking companies",
+      "National rideshare companies",
+    ],
+  },
 ];
+
+/** Flat list kept for back-compat. */
+export const OPPOSING_INSTITUTIONS = OPPOSING_GROUPS.flatMap((g) => g.items);
 
 export const BAR_ADMISSIONS = [
   { court: "State Bar of Texas", year: "2018" },

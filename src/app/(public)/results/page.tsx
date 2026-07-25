@@ -7,7 +7,7 @@ import { getResults, getBlocks, getPracticeAreas } from "@/lib/content";
 import {
   LITIGATION_COUNTIES,
   FEDERAL_COURTS,
-  OPPOSING_INSTITUTIONS,
+  OPPOSING_GROUPS,
 } from "@/lib/firm";
 
 export const metadata: Metadata = {
@@ -181,13 +181,18 @@ export default async function ResultsPage() {
           </div>
           <div>
             <h2 className="h3 border-b border-[var(--c-border)] pb-3">We have litigated opposite</h2>
-            <ul className="mt-6 grid grid-cols-2 gap-y-2 gap-x-6">
-              {OPPOSING_INSTITUTIONS.map((b) => (
-                <li key={b} className="text-[var(--c-ink-muted)]">
-                  {b}
-                </li>
+            <div className="mt-6 space-y-6">
+              {OPPOSING_GROUPS.map((group) => (
+                <div key={group.title}>
+                  <p className="eyebrow text-[var(--c-ink-muted)] mb-2">{group.title}</p>
+                  <ul className="grid grid-cols-1 gap-y-1.5 gap-x-6 sm:grid-cols-2">
+                    {group.items.map((b) => (
+                      <li key={b} className="text-[var(--c-ink-muted)]">{b}</li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </section>
 
