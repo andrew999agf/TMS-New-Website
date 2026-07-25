@@ -15,6 +15,10 @@ export async function resolveRecipient(token: string) {
   return { rec, folder };
 }
 
+/** How long after the first new upload the "new documents" digest is sent, so a
+ *  burst of uploads becomes one calm email instead of many. */
+export const DIGEST_DELAY_MS = 12 * 60 * 60 * 1000;
+
 /** Normalize a user-supplied folder path: strip leading/trailing slashes, drop
  *  "." / ".." and empty segments, cap depth and length. Returns "" for root. */
 export function cleanDirPath(input: string): string {

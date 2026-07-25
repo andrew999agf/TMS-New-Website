@@ -412,6 +412,8 @@ export const shareFolders = pgTable(
     uploadTotal: integer("upload_total").notNull().default(0),
     uploadDone: integer("upload_done").notNull().default(0),
     uploadAt: timestamp("upload_at", { withTimezone: true }),
+    /** Armed when the first new file lands; the digest cron sends ~12h later. */
+    notifyDueAt: timestamp("notify_due_at", { withTimezone: true }),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -430,6 +432,8 @@ export const shareFiles = pgTable(
     contentType: varchar("content_type", { length: 128 }),
     sizeBytes: integer("size_bytes"),
     uploadedBy: varchar("uploaded_by", { length: 255 }),
+    /** False until included in a "new documents" digest to recipients. */
+    notified: boolean("notified").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ folderIdx: index("share_files_folder_idx").on(t.folderId) }),

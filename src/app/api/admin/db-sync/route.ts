@@ -163,6 +163,11 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS share_files_folder_idx ON share_files (folder_id)`,
+  `ALTER TABLE share_files ADD COLUMN IF NOT EXISTS notified boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS notify_due_at timestamptz`,
+  // One-time: treat everything already uploaded as already-notified so the first
+  // digest only covers genuinely new files (not the whole back catalogue).
+  `UPDATE share_files SET notified = true WHERE notified = false AND created_at < now() - interval '1 hour'`,
   `CREATE TABLE IF NOT EXISTS share_recipients (
     id serial PRIMARY KEY,
     folder_id integer NOT NULL,

@@ -3,7 +3,7 @@
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareDirs, portalUsers } from "@/db/schema";
@@ -13,7 +13,7 @@ import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
 import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
-import { cleanDirPath } from "@/lib/share/access";
+import { cleanDirPath, DIGEST_DELAY_MS } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
 const REISSUE_CONTACT = "max@texaslawsmith.com";
@@ -150,6 +150,9 @@ export async function registerShareFile(folderId: number, file: { url: string; p
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (progress) { set.uploadTotal = progress.total; set.uploadDone = progress.done; set.uploadAt = new Date(); }
     await db.update(shareFolders).set(set).where(eq(shareFolders.id, folderId));
+    // Arm the "new documents" digest clock — only if not already armed (so a burst
+    // of uploads doesn't keep resetting it).
+    await db.update(shareFolders).set({ notifyDueAt: new Date(Date.now() + DIGEST_DELAY_MS) }).where(and(eq(shareFolders.id, folderId), isNull(shareFolders.notifyDueAt)));
     revalidatePath(`/admin/share-folders/${folderId}`);
     return { ok: true as const, id: row.id };
   } catch (err) {

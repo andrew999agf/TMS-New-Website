@@ -1,10 +1,10 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFiles, shareDirs, shareFolders, shareAccessLog } from "@/db/schema";
-import { resolveRecipient, cleanDirPath } from "@/lib/share/access";
+import { resolveRecipient, cleanDirPath, DIGEST_DELAY_MS } from "@/lib/share/access";
 import { shareCan, normalizeMeta } from "@/lib/share/types";
 
 /** Record a file a recipient uploaded (after the Blob upload resolves). */
@@ -31,6 +31,8 @@ export async function recipientRegisterFile(
     });
     await db.insert(shareAccessLog).values({ folderId: ctx.folder.id, recipientId: ctx.rec.id, action: "upload" });
     if (progress) await db.update(shareFolders).set({ uploadTotal: progress.total, uploadDone: progress.done, uploadAt: new Date() }).where(eq(shareFolders.id, ctx.folder.id));
+    // Arm the "new documents" digest clock (only if not already armed).
+    await db.update(shareFolders).set({ notifyDueAt: new Date(Date.now() + DIGEST_DELAY_MS) }).where(and(eq(shareFolders.id, ctx.folder.id), isNull(shareFolders.notifyDueAt)));
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't save the file." };
