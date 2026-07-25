@@ -1122,6 +1122,24 @@ export const BRANCHES: Branch[] = [
   },
 ];
 
+/**
+ * Every free-text (textarea) field across all flows, as {name, label} — used to
+ * render ALL of a submission's narrative answers (their words, timeline, injuries,
+ * etc.) in the summary email, not just one, so nothing gets lost.
+ */
+export const NARRATIVE_FIELDS: { name: string; label: string }[] = (() => {
+  const seen = new Map<string, string>();
+  const add = (step: Step) => {
+    for (const f of step.fields) if (f.type === "textarea" && !seen.has(f.name)) seen.set(f.name, f.label);
+  };
+  for (const s of COMMON_STEPS) add(s);
+  for (const b of BRANCHES) {
+    for (const s of b.steps) add(s);
+    if (b.commonOverrides) for (const s of Object.values(b.commonOverrides)) add(s);
+  }
+  return [...seen.entries()].map(([name, label]) => ({ name, label }));
+})();
+
 export function getBranch(id: string): Branch | undefined {
   return BRANCHES.find((b) => b.id === id);
 }

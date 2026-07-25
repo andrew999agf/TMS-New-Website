@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
-import { getBranch, ESTATE_DEPTH } from "@/lib/intake/config";
+import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -286,10 +286,19 @@ export async function POST(req: Request) {
   const court = str("court") || str("trialCourt") || str("courtNamed");
   // For the subject: prefer the exact court, then any county captured, then city.
   const location = court || str("chargeCounty") || str("deathCounty") || county || "";
-  const message = str("message") || str("description");
-
   const row = (label: string, val?: string) =>
     val ? `<tr><td style="padding:3px 18px 3px 0;color:#777;white-space:nowrap;vertical-align:top">${label}</td><td style="padding:3px 0">${esc(val)}</td></tr>` : "";
+
+  // Show EVERY narrative answer they wrote (their words, timeline, injuries, …),
+  // each clearly labeled — so the clean email isn't missing half the story. The
+  // conflict-check party names are surfaced as a table row instead of here.
+  const narrativeBlocks = NARRATIVE_FIELDS.filter((f) => f.name !== "opposingParty" && str(f.name))
+    .map(
+      (f) =>
+        `<p style="margin:0 0 4px;color:#777;font-size:13px">${esc(f.label)}:</p>` +
+        `<p style="margin:0 0 16px;padding:12px 16px;background:#f6f4f1;border-left:3px solid #7a1f2b;white-space:pre-wrap">${esc(str(f.name) as string)}</p>`,
+    )
+    .join("");
 
   const summaryHtml = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px;line-height:1.55;font-size:15px">
@@ -304,8 +313,10 @@ export async function POST(req: Request) {
         ${row("Email", email)}
         ${row("Court", court)}
         ${row("County / City", county)}
+        ${row("Other side", str("opposingParty"))}
+        ${row("How they heard", referralSource === "Other" ? str("referralOther") || "Other" : referralSource)}
       </table>
-      ${message ? `<p style="margin:0 0 6px;color:#777;font-size:13px">In their words:</p><p style="margin:0 0 18px;padding:12px 16px;background:#f6f4f1;border-left:3px solid #7a1f2b;font-style:italic">${esc(message)}</p>` : ""}
+      ${narrativeBlocks}
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 
