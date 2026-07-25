@@ -19,6 +19,8 @@ export const maxDuration = 60;
  */
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const baseUrl = () => process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`;
+// Just the document's own name — not the whole folder path it lives under.
+const docName = (path: string) => path.split("/").pop() || path;
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -55,8 +57,8 @@ export async function GET(req: Request) {
         const rows = theirs
           .map(
             (f) =>
-              `<tr><td style="padding:6px 14px 6px 0;font-size:14px">${esc(f.filename)}</td>` +
-              `<td style="padding:6px 0;text-align:right"><a href="${link}" style="font-size:12px;color:#7a1f2b;text-decoration:none">View →</a></td></tr>`,
+              `<tr><td style="padding:5px 14px 5px 0;font-size:14px;border-top:1px solid #eee">${esc(docName(f.filename))}</td>` +
+              `<td style="padding:5px 0;text-align:right;border-top:1px solid #eee;white-space:nowrap"><a href="${link}" style="font-size:12px;color:#7a1f2b;text-decoration:none">View &rarr;</a></td></tr>`,
           )
           .join("");
         const html = `
@@ -75,7 +77,7 @@ export async function GET(req: Request) {
       const fromRecipients = files.filter((f) => recipientEmails.has((f.uploadedBy ?? "").toLowerCase()));
       if (fromRecipients.length > 0 && cc.length > 0) {
         const adminLink = `${base}/admin/share-folders/${folder.id}`;
-        const rows = fromRecipients.map((f) => `<tr><td style="padding:5px 14px 5px 0;font-size:14px">${esc(f.filename)}</td><td style="padding:5px 0;color:#777;font-size:12px">${esc(f.uploadedBy ?? "")}</td></tr>`).join("");
+        const rows = fromRecipients.map((f) => `<tr><td style="padding:5px 14px 5px 0;font-size:14px">${esc(docName(f.filename))}</td><td style="padding:5px 0;color:#777;font-size:12px">${esc(f.uploadedBy ?? "")}</td></tr>`).join("");
         const html = `
           <div style="font-family:system-ui,sans-serif;color:#1a1a1a;max-width:560px;line-height:1.5">
             <p style="margin:0 0 10px"><strong>${fromRecipients.length}</strong> document${fromRecipients.length === 1 ? "" : "s"} were uploaded by a recipient to <strong>${esc(folder.name)}</strong>${folder.caseNumber ? ` (Case ${esc(folder.caseNumber)})` : ""}:</p>
