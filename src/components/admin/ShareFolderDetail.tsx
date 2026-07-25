@@ -11,6 +11,7 @@ import { Lock } from "lucide-react";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree } from "./ShareFileTree";
+import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
@@ -190,6 +191,7 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [newDir, setNewDir] = useState("");
   const [creatingDir, setCreatingDir] = useState(false);
+  const [preview, setPreview] = useState<PreviewFile | null>(null);
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
 
   function addFolder() {
@@ -271,7 +273,8 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
         dirs={dirs}
         hrefFor={(id) => urlById.get(id) ?? "#"}
         target="_blank"
-        showDownload={false}
+        showDownload
+        onPreview={(f) => { const url = urlById.get(f.id); if (url) setPreview({ name: f.base, previewUrl: url, downloadUrl: url }); }}
         onDelete={handleDelete}
         deletingId={deletingId}
         onDeleteDir={handleDeleteDir}
@@ -281,6 +284,7 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
       <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
+      <ShareFilePreview file={preview} onClose={() => setPreview(null)} />
     </section>
   );
 }
