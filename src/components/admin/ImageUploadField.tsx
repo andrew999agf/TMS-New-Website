@@ -10,6 +10,38 @@ import { uploadToBlob } from "@/lib/upload-client";
  * paste a URL (secondary). Shows a live preview and the recommended dimensions
  * for the given slot. Image values get an optional one-click background remover.
  */
+/** Convert any uploadable image to a fixed size + widely-accepted format via a
+ *  canvas (cover-crop, centered, white matte behind any transparency). Used for
+ *  the social-share image so previews render everywhere, not just iMessage. */
+async function normalizeImage(file: File, width: number, height: number, format: "jpeg" | "png"): Promise<File> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const el = new Image();
+      el.onload = () => res(el);
+      el.onerror = () => rej(new Error("Could not read that image"));
+      el.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas unavailable");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight);
+    const dw = img.naturalWidth * scale;
+    const dh = img.naturalHeight * scale;
+    ctx.drawImage(img, (width - dw) / 2, (height - dh) / 2, dw, dh);
+    const mime = format === "png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, mime, 0.85));
+    if (!blob) throw new Error("Could not convert image");
+    return new File([blob], `social.${format === "png" ? "png" : "jpg"}`, { type: mime });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function ImageUploadField({
   value,
   onChange,
@@ -18,6 +50,7 @@ export function ImageUploadField({
   folder = "uploads",
   label,
   allowRemoveBg = true,
+  normalize,
 }: {
   value: string;
   onChange: (url: string) => void;
@@ -26,6 +59,8 @@ export function ImageUploadField({
   folder?: string;
   label?: string;
   allowRemoveBg?: boolean;
+  /** When set, the uploaded image is resized/re-encoded before saving. */
+  normalize?: { width: number; height: number; format: "jpeg" | "png" };
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -41,7 +76,16 @@ export function ImageUploadField({
     setUploading(true);
     setError(null);
     try {
-      const url = await uploadToBlob(file, folder);
+      let toUpload = file;
+      if (normalize) {
+        try {
+          toUpload = await normalizeImage(file, normalize.width, normalize.height, normalize.format);
+        } catch {
+          // HEIC and other undecodable formats can't be converted in-browser —
+          // fall back to the original so the upload still succeeds.
+        }
+      }
+      const url = await uploadToBlob(toUpload, folder);
       onChange(url);
     } catch (e) {
       setError((e as Error).message || "Upload failed");
@@ -175,6 +219,11 @@ export function ImageUploadField({
           />
         )}
         {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+        {normalize && (
+          <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">
+            Uploads are automatically resized to {normalize.width}×{normalize.height} and saved as {normalize.format === "png" ? "PNG" : "JPEG"} for the widest compatibility (Android, WhatsApp, Facebook, etc.).
+          </p>
+        )}
       </div>
       <input
         ref={inputRef}

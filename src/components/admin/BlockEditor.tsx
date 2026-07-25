@@ -93,6 +93,8 @@ export function BlockEditor({
                           slot={slotForKey(b.key)}
                           accept={b.type === "video" ? "video/*" : "image/*"}
                           folder="brand"
+                          allowRemoveBg={b.key !== "global.socialImage"}
+                          normalize={b.key === "global.socialImage" ? { width: 1200, height: 630, format: "jpeg" } : undefined}
                         />
                         {hasFocal(b.key) && values[b.key] && (
                           <div className="mt-2.5">
