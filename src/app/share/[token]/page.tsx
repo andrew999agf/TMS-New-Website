@@ -114,7 +114,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
 
       <ShareUploadStatus token={token} />
 
-      <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} />
+      <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} blobReady={isBlobConfigured()} />
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>

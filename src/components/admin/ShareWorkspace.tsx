@@ -2,15 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus } from "lucide-react";
+import { upload } from "@vercel/blob/client";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp } from "lucide-react";
 import { normalizeMeta, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
-import { updateFolderMeta } from "@/app/admin/(panel)/share-folders/actions";
-import { recipientToggleTodo } from "@/app/share/[token]/actions";
+import { updateFolderMeta, createDir, notifyAssignee } from "@/app/admin/(panel)/share-folders/actions";
+import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload } from "@/app/share/[token]/actions";
+import { fromInput } from "@/lib/share/drop";
 
 export type Contact = { name: string; email: string };
 
-/** Add-a-person input with autocomplete from everyone the system already knows. */
-function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; exclude: string[]; onAdd: (name: string) => void }) {
+/** Add-a-person input with autocomplete from everyone the system already knows.
+ *  Reports the picked/typed name plus the matching email (when we know one) so
+ *  the caller can notify the assignee. */
+function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; exclude: string[]; onAdd: (name: string, email?: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -25,7 +29,15 @@ function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; excl
       .filter((c) => { const k = c.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
       .slice(0, 6);
   }, [contacts, q, open, exclude]);
-  const add = (name: string) => { const n = name.trim(); if (n) onAdd(n); setQ(""); setOpen(false); };
+  const add = (name: string, email?: string) => {
+    const n = name.trim();
+    if (!n) return;
+    // If typed freehand, try to recover an email from the contact book by name.
+    const em = email ?? contacts.find((c) => c.name.toLowerCase() === n.toLowerCase())?.email;
+    onAdd(n, em || undefined);
+    setQ("");
+    setOpen(false);
+  };
   return (
     <div ref={ref} className="relative">
       <input
@@ -39,7 +51,7 @@ function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; excl
       {suggestions.length > 0 && (
         <div className="absolute left-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] shadow-lg">
           {suggestions.map((c) => (
-            <button key={c.email || c.name} type="button" onClick={() => add(c.name)} className="flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-[var(--c-surface2)]">
+            <button key={c.email || c.name} type="button" onClick={() => add(c.name, c.email)} className="flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-[var(--c-surface2)]">
               <span className="text-xs text-[var(--c-ink)]">{c.name}</span>
               {c.email && <span className="text-[10px] text-[var(--c-ink-muted)]">{c.email}</span>}
             </button>
@@ -50,19 +62,55 @@ function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; excl
   );
 }
 
+/** Today's date as "YYYY.MM.DD" for the default upload-folder name. */
+function todayStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `t${Date.now()}${Math.floor(Math.random() * 1e6)}`);
 
 /* ------------------------------ admin editor ------------------------------ */
 
 export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { folderId: number; initial: ShareFolderMeta; contacts?: Contact[] }) {
+  const router = useRouter();
   const [m, setM] = useState<ShareFolderMeta>(normalizeMeta(initial));
   const setTodo = (id: string, patch: Partial<ShareTodo>) => setM((c) => ({ ...c, todos: (c.todos ?? []).map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   const [causeDraft, setCauseDraft] = useState("");
   const [todoDraft, setTodoDraft] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [note, setNote] = useState<string | null>(null);
 
   const set = (patch: Partial<ShareFolderMeta>) => setM((c) => ({ ...c, ...patch }));
+
+  // Add an assignee to a task and, when we have their email, notify them.
+  function addAssignee(t: ShareTodo, name: string, email?: string) {
+    setTodo(t.id, { assignees: [...(t.assignees ?? []), name] });
+    if (email) {
+      notifyAssignee(folderId, t.text, email, name)
+        .then((r) => setNote(r.ok ? `Notified ${name}.` : `Added ${name}, but couldn't email them.`))
+        .catch(() => setNote(`Added ${name}, but couldn't email them.`))
+        .finally(() => setTimeout(() => setNote(null), 3000));
+    } else {
+      setNote(`Added ${name}. (No email on file — not notified.)`);
+      setTimeout(() => setNote(null), 3000);
+    }
+  }
+
+  // Attach a dated upload folder to a task. The folder is created in the file
+  // list below so documents added for the task land there.
+  async function attachUploadDir(t: ShareTodo) {
+    const suggested = `${todayStamp()} - `;
+    const name = (window.prompt("Name the folder where documents for this task will go:", suggested) || "").trim();
+    if (!name) return;
+    setTodo(t.id, { uploadDir: name });
+    const res = await createDir(folderId, name);
+    if (res.ok) { router.refresh(); setNote(`Upload folder "${name}" added below.`); }
+    else setNote(res.error ?? "Couldn't create the folder.");
+    setTimeout(() => setNote(null), 3000);
+  }
 
   // Auto-save every change (add / edit / delete / toggle) to the folder — no Save
   // button to forget. Debounced so typing doesn't fire on every keystroke.
@@ -128,6 +176,14 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                   <div className="flex items-center gap-2 text-sm">
                     <input value={t.text} onChange={(e) => setTodo(t.id, { text: e.target.value })} className="flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm" />
                     {t.doneBy && <span className="whitespace-nowrap text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
+                    {t.uploadDir ? (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--c-accent)] bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] text-[var(--c-accent)]" title="Documents added for this task go to this folder below">
+                        <FolderUp size={11} /> {t.uploadDir}
+                        <button onClick={() => setTodo(t.id, { uploadDir: undefined })} title="Remove upload link (keeps the folder)" className="hover:text-[var(--c-error)]"><X size={11} /></button>
+                      </span>
+                    ) : (
+                      <button onClick={() => attachUploadDir(t)} title="Create a folder below for documents produced by this task" className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[var(--c-border)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"><FolderUp size={11} /> Include upload link</button>
+                    )}
                     <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Delete task" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -138,7 +194,7 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                         <button onClick={() => setTodo(t.id, { assignees: (t.assignees ?? []).filter((x) => x !== a) })} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={11} /></button>
                       </span>
                     ))}
-                    <AssigneeInput contacts={contacts} exclude={t.assignees ?? []} onAdd={(name) => setTodo(t.id, { assignees: [...(t.assignees ?? []), name] })} />
+                    <AssigneeInput contacts={contacts} exclude={t.assignees ?? []} onAdd={(name, email) => addAssignee(t, name, email)} />
                   </div>
                 </li>
               ))}
@@ -148,14 +204,15 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
             <input value={todoDraft} onChange={(e) => setTodoDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && todoDraft.trim()) { e.preventDefault(); set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} placeholder="Add a task…" className="w-full max-w-sm rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-sm" />
             <button onClick={() => { if (todoDraft.trim()) { set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--c-surface2)]"><Plus size={14} /> Add</button>
           </div>
-          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date.</p>
+          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date. Use <span className="whitespace-nowrap"><FolderUp size={10} className="inline" /> Include upload link</span> to add a dated folder for documents the task produces — assignees with an email on file are notified automatically.</p>
         </div>
       )}
 
-      <div className="mt-3 h-4 text-xs">
-        {status === "saving" && <span className="inline-flex items-center gap-1 text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Saving…</span>}
-        {status === "saved" && <span className="inline-flex items-center gap-1 text-green-600"><Check size={12} /> Saved</span>}
-        {status === "error" && <span className="text-[var(--c-error)]">Couldn&apos;t save — check your connection.</span>}
+      <div className="mt-3 min-h-4 text-xs">
+        {note && <span className="text-[var(--c-accent)]">{note}</span>}
+        {!note && status === "saving" && <span className="inline-flex items-center gap-1 text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Saving…</span>}
+        {!note && status === "saved" && <span className="inline-flex items-center gap-1 text-green-600"><Check size={12} /> Saved</span>}
+        {!note && status === "error" && <span className="text-[var(--c-error)]">Couldn&apos;t save — check your connection.</span>}
       </div>
     </div>
   );
@@ -163,7 +220,53 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
 
 /* ------------------------------ viewer display ------------------------------ */
 
-export function FolderWorkspaceView({ token, meta, canCheck }: { token: string; meta: ShareFolderMeta; canCheck: boolean }) {
+/** Upload control shown on a task that has an upload folder attached — files
+ *  land in that folder in the document list below. */
+function TaskUploader({ token, dir, blobReady }: { token: string; dir: string; blobReady: boolean }) {
+  const router = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function run(files: FileList | null) {
+    const picked = fromInput(files);
+    if (picked.length === 0) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      for (let i = 0; i < picked.length; i++) {
+        const { file, path } = picked[i];
+        const base = (path.split("/").pop() as string) || "file";
+        setMsg(`Uploading ${i + 1} / ${picked.length}`);
+        const blob = await upload(`share-recipient/${dir}/${base}`, file, { access: "public", handleUploadUrl: `/api/share/${token}/upload` });
+        const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: file.type || blob.contentType, size: file.size }, { total: picked.length, done: i + 1 });
+        if (!res.ok) throw new Error(res.error ?? "Upload failed.");
+      }
+      setMsg("Uploaded.");
+      router.refresh();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+      recipientClearUpload(token).catch(() => {});
+      if (input.current) input.current.value = "";
+      setTimeout(() => setMsg(null), 2500);
+    }
+  }
+
+  if (!blobReady) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button type="button" onClick={() => input.current?.click()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-accent)] px-2 py-0.5 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-50">
+        {busy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Upload
+      </button>
+      {msg && <span className="text-[11px] text-[var(--c-ink-muted)]">{msg}</span>}
+      <input ref={input} type="file" multiple className="hidden" onChange={(e) => run(e.target.files)} />
+    </span>
+  );
+}
+
+export function FolderWorkspaceView({ token, meta, canCheck, blobReady = false }: { token: string; meta: ShareFolderMeta; canCheck: boolean; blobReady?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const m = normalizeMeta(meta);
@@ -205,10 +308,13 @@ export function FolderWorkspaceView({ token, meta, canCheck }: { token: string; 
               return (
                 <li key={t.id} className="flex items-start gap-2 text-sm">
                   <input type="checkbox" checked={done} disabled={!canCheck || pending} onChange={(e) => toggle(t, e.target.checked)} className="mt-0.5" />
-                  <span className={done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}>
-                    {t.text}
-                    {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
-                    {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
+                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className={done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}>
+                      {t.text}
+                      {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
+                      {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
+                    </span>
+                    {t.uploadDir && canCheck && <TaskUploader token={token} dir={t.uploadDir} blobReady={blobReady} />}
                   </span>
                 </li>
               );

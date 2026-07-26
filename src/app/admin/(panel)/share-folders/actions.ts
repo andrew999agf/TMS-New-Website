@@ -185,6 +185,43 @@ export async function updateFolderMeta(folderId: number, meta: ShareFolderMeta) 
   }
 }
 
+/** Email a person that a task in this folder was assigned to them. Best-effort:
+ *  if we don't have an address it does nothing. When the person is already a
+ *  recipient of the folder we include their personal share link. */
+export async function notifyAssignee(folderId: number, taskText: string, email: string, name: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const addr = (email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(addr)) return { ok: false as const, error: "No email on file for that person." };
+  try {
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const [rec] = await db.select({ token: shareRecipients.token }).from(shareRecipients).where(and(eq(shareRecipients.folderId, folderId), eq(shareRecipients.email, addr)));
+    const who = name.trim() ? esc(name.trim()) : "there";
+    const caseLine = folder.caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(folder.caseNumber)}</p>` : "";
+    const linkBlock = rec
+      ? `<p style="margin:0 0 18px"><a href="${await baseUrl()}/share/${rec.token}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open the folder</a></p>`
+      : `<p style="margin:0 0 18px;font-size:13px;color:#444">The firm will send you a secure link to the folder if you need to upload or review documents for this task.</p>`;
+    const html = `
+      <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
+        <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
+        <p style="margin:0 0 14px">Hello ${who},</p>
+        <p style="margin:0 0 6px">You've been assigned a task in this matter:</p>
+        <p style="margin:0 0 4px;font-size:16px;font-weight:bold">${esc(folder.name)}</p>
+        ${caseLine}
+        <p style="margin:0 0 16px;padding:12px 14px;border-left:3px solid #7a1f2b;background:#faf6f2;font-size:14px">${esc(taskText)}</p>
+        ${linkBlock}
+        <p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #e5e5e5;font-size:11px;color:#8a8a8a">Sent by ${esc(FIRM.name)}. If you weren't expecting this, please contact <a href="mailto:${REISSUE_CONTACT}" style="color:#8a8a8a">${REISSUE_CONTACT}</a>.</p>
+      </div>`;
+    const res = await sendEmail({ to: addr, fromName: FIRM.name, subject: `Task assigned to you — ${folder.name}`, html });
+    await audit(session.email, "notify", "share-folder", String(folderId), `Task assigned to ${addr}`);
+    return res.sent ? { ok: true as const } : { ok: false as const, error: "Couldn't send the notification email." };
+  } catch (err) {
+    console.error("[share] notifyAssignee failed:", err);
+    return { ok: false as const, error: "Couldn't notify that person." };
+  }
+}
+
 export async function createDir(folderId: number, path: string) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
