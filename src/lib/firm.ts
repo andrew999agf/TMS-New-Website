@@ -152,9 +152,11 @@ export const OPPOSING_GROUPS: { title: string; items: string[] }[] = [
     items: [
       "Energy Transfer LP",
       "Avis Rent A Car System, LLC",
-      "Interstate pipeline companies",
-      "Interstate trucking companies",
+      "Intrastate pipeline companies",
+      "Intrastate trucking companies",
       "National rideshare companies",
+      "Commercial diesel auto shops",
+      "Title companies & title insurers",
     ],
   },
 ];
