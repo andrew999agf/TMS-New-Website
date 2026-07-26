@@ -299,9 +299,14 @@ function TaskUploader({ token, dir, blobReady }: { token: string; dir: string; b
   if (!blobReady) return null;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <button type="button" onClick={() => input.current?.click()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-accent)] px-2 py-0.5 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-50">
-        {busy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Upload
-      </button>
+      <span className="group relative inline-flex">
+        <button type="button" onClick={() => input.current?.click()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-accent)] px-2 py-0.5 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-50">
+          {busy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Upload
+        </button>
+        <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--c-ink)] px-2 py-1 text-[10px] font-medium text-[var(--c-bg)] shadow-lg group-hover:block">
+          Upload documents to “{dir}”
+        </span>
+      </span>
       {msg && <span className="text-[11px] text-[var(--c-ink-muted)]">{msg}</span>}
       <input ref={input} type="file" multiple className="hidden" onChange={(e) => run(e.target.files)} />
     </span>
