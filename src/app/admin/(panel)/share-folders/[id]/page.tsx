@@ -5,7 +5,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { ShareFolderDetail, type FolderData, type FileRow, type RecipientRow } from "@/components/admin/ShareFolderDetail";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters, portalUsers } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters, portalUsers, intakeSubmissions } from "@/db/schema";
 import { asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import { normalizeMeta } from "@/lib/share/types";
@@ -30,9 +30,12 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
   // each person has been invited; names come from the portal-user directory.
   const allInvites = await db.select({ email: shareRecipients.email, name: shareRecipients.name }).from(shareRecipients);
   const pu = await db.select({ email: portalUsers.email, name: portalUsers.name }).from(portalUsers);
+  // Also remember people from intake submissions (clients who've typed in their info).
+  const intakePeople = await db.select({ email: intakeSubmissions.email, name: intakeSubmissions.name }).from(intakeSubmissions);
   const freq = new Map<string, number>();
   const nameOf = new Map<string, string>();
   for (const r of allInvites) { freq.set(r.email, (freq.get(r.email) ?? 0) + 1); if (r.name && !nameOf.get(r.email)) nameOf.set(r.email, r.name); }
+  for (const p of intakePeople) { const em = (p.email ?? "").trim().toLowerCase(); if (!em) continue; freq.set(em, (freq.get(em) ?? 0) + 1); if (p.name && !nameOf.get(em)) nameOf.set(em, p.name); }
   for (const u of pu) { if (u.name) nameOf.set(u.email, u.name); if (!freq.has(u.email)) freq.set(u.email, 0); }
   const contacts = [...freq.entries()]
     .map(([email, count]) => ({ email, name: nameOf.get(email) ?? "", count }))
