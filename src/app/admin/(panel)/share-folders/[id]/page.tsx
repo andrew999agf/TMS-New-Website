@@ -24,7 +24,19 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
 
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, fid)).orderBy(desc(shareFiles.createdAt));
   const recipients = await db.select().from(shareRecipients).where(eq(shareRecipients.folderId, fid)).orderBy(asc(shareRecipients.invitedAt));
-  const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, fid))).map((d) => d.path);
+  const dirRows = await db.select({ path: shareDirs.path, createdBy: shareDirs.createdBy, createdAt: shareDirs.createdAt }).from(shareDirs).where(eq(shareDirs.folderId, fid));
+  const dirs = dirRows.map((d) => d.path);
+
+  // Resolve an uploader/creator email to a display name. A folder recipient shows
+  // their own name (or email); anyone else — i.e. firm staff — shows as "admin".
+  const recipNames = new Map(recipients.map((r) => [r.email.toLowerCase(), r.name?.trim() || r.email]));
+  const who = (email?: string | null): string => {
+    const e = (email ?? "").trim().toLowerCase();
+    if (!e) return "";
+    return recipNames.get(e) ?? "admin";
+  };
+  const dirInfo: Record<string, { by?: string; at?: string }> = {};
+  for (const d of dirRows) dirInfo[d.path] = { by: who(d.createdBy), at: d.createdAt.toISOString() };
 
   // Firm-wide contact book for the invite autocomplete, ranked by how often
   // each person has been invited; names come from the portal-user directory.
@@ -63,6 +75,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     contentType: f.contentType,
     sizeBytes: f.sizeBytes,
     createdAt: f.createdAt.toISOString(),
+    by: who(f.uploadedBy),
   }));
   const recRows: RecipientRow[] = recipients.map((r) => ({
     id: r.id,
@@ -85,7 +98,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
         <Link href="/admin/share-folders" className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
           <ChevronLeft size={15} /> All folders
         </Link>
-        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} matters={matters} contacts={contacts} blobReady={isBlobConfigured()} />
+        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} dirInfo={dirInfo} matters={matters} contacts={contacts} blobReady={isBlobConfigured()} />
       </div>
     </>
   );

@@ -10,7 +10,7 @@ import {
 import { Lock } from "lucide-react";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
-import { ShareFileTree } from "./ShareFileTree";
+import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
@@ -21,7 +21,7 @@ import {
 import { Download } from "lucide-react";
 
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
-export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string };
+export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string; by: string };
 export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; requireAuth: boolean; revoked: boolean };
 
 const FIRM_DOMAIN = "texaslawsmith.com";
@@ -30,7 +30,7 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(
 
 export type Contact = { email: string; name: string };
 
-export function ShareFolderDetail({ folder, files, recipients, dirs, matters, contacts, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean }) {
+export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, matters, contacts, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; dirInfo?: DirInfo; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -52,7 +52,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, matters, co
 
       <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
 
-      <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
+      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
@@ -180,7 +180,7 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
-function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; files: FileRow[]; dirs: string[]; blobReady: boolean }) {
+function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId: number; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -269,8 +269,9 @@ function FilesSection({ folderId, files, dirs, blobReady }: { folderId: number; 
       {!blobReady && <p className="mb-2 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
 
       <ShareFileTree
-        files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes }))}
+        files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, by: f.by, at: f.createdAt }))}
         dirs={dirs}
+        dirInfo={dirInfo}
         hrefFor={(id) => urlById.get(id) ?? "#"}
         target="_blank"
         showDownload

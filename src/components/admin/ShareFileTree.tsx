@@ -3,11 +3,23 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye } from "lucide-react";
 
-export type TreeFile = { id: number; path: string; sizeBytes: number | null };
+export type TreeFile = { id: number; path: string; sizeBytes: number | null; by?: string; at?: string };
+export type DirInfo = Record<string, { by?: string; at?: string }>;
 type Leaf = TreeFile & { base: string };
 type FolderNode = { name: string; children: Map<string, FolderNode>; files: Leaf[] };
 
 const fmtSize = (n: number | null) => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const fmtWhen = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+
+/** Italic "created by / uploaded by X · date" — quiet, skipped when unknown. */
+function Attribution({ by, at, verb }: { by?: string; at?: string; verb: string }) {
+  if (!by && !at) return null;
+  return (
+    <span className="text-[10px] italic text-[var(--c-ink-muted)]">
+      {by ? `${verb} ${by}` : ""}{by && at ? " · " : ""}{fmtWhen(at)}
+    </span>
+  );
+}
 
 function ensureDir(root: FolderNode, parts: string[]): FolderNode {
   let node = root;
@@ -45,6 +57,7 @@ type Ctx = {
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
   onPreview?: (file: { id: number; base: string }) => void;
+  dirInfo?: DirInfo;
   // drag-drop upload (optional)
   onUpload?: (destPath: string, dt: DataTransfer) => void;
   overPath: string | null;
@@ -52,7 +65,7 @@ type Ctx = {
   doDrop: (e: React.DragEvent, path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, onUpload }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, onUpload, dirInfo }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -63,6 +76,8 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
   onPreview?: (file: { id: number; base: string }) => void;
+  /** Per-folder "created by / when" attribution, keyed by full path. */
+  dirInfo?: DirInfo;
   /** When provided, the tree becomes a drop target: drop onto a folder to add
    *  inside it, or onto empty space to add at the top level. */
   onUpload?: (destPath: string, dt: DataTransfer) => void;
@@ -73,7 +88,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onPreview, dirInfo, onUpload, overPath, setOver, doDrop };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -109,6 +124,7 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
   const [open, setOpen] = useState(depth < 1);
   const fullPath = basePath ? `${basePath}/${node.name}` : node.name;
   const n = countFiles(node);
+  const info = ctx.dirInfo?.[fullPath];
   const hot = ctx.onUpload && ctx.overPath === fullPath;
   return (
     <div
@@ -120,8 +136,11 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
         <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: 8 + depth * 16 }}>
           <ChevronRight size={14} className={`shrink-0 text-[var(--c-ink-muted)] transition-transform ${open ? "rotate-90" : ""}`} />
           {open ? <FolderOpen size={15} className="shrink-0 text-[var(--c-accent)]" /> : <FolderIcon size={15} className="shrink-0 text-[var(--c-accent)]" />}
-          <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
-          <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-medium">{node.name}</span>
+            {info && <Attribution by={info.by} at={info.at} verb="created by" />}
+          </span>
+          <span className="shrink-0 self-center text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
         </button>
         {ctx.onDeleteDir && (
           <button onClick={() => ctx.onDeleteDir!(fullPath)} disabled={ctx.deletingDir === fullPath} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600 disabled:opacity-50" title="Delete this folder and everything in it">
@@ -139,8 +158,11 @@ function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx })
   return (
     <div className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--c-surface2)]" style={{ paddingLeft: 8 + depth * 16 + 18 }}>
       <FileText size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
-      <a href={href} target={ctx.target} rel={ctx.target ? "noopener noreferrer" : undefined} className="min-w-0 flex-1 truncate text-sm hover:text-[var(--c-accent)]">{file.base}</a>
-      <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{fmtSize(file.sizeBytes)}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <a href={href} target={ctx.target} rel={ctx.target ? "noopener noreferrer" : undefined} className="truncate text-sm hover:text-[var(--c-accent)]">{file.base}</a>
+        {(file.by || file.at) && <Attribution by={file.by} at={file.at} verb="uploaded by" />}
+      </span>
+      <span className="shrink-0 self-center text-[11px] text-[var(--c-ink-muted)]">{fmtSize(file.sizeBytes)}</span>
       {ctx.onPreview && (
         <button onClick={() => ctx.onPreview!({ id: file.id, base: file.base })} className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] hover:border-[var(--c-accent)]" title="Preview this document">
           <Eye size={13} /><span className="hidden sm:inline">Preview</span>
