@@ -504,9 +504,28 @@ export const portalUsers = pgTable("portal_users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Generated management reports (to-do "tickler" and uploaded-documents digests)
+ *  for the share-folder system. The PDF lives in Blob; a small summary is kept
+ *  inline for the list view. Auto-archived after six months. */
+export const shareReports = pgTable("share_reports", {
+  id: serial("id").primaryKey(),
+  kind: varchar("kind", { length: 24 }).notNull(), // "todos" | "documents"
+  title: text("title").notNull(),
+  periodStart: timestamp("period_start", { withTimezone: true }),
+  periodEnd: timestamp("period_end", { withTimezone: true }),
+  pdfUrl: text("pdf_url"),
+  pdfPathname: text("pdf_pathname"),
+  summary: jsonb("summary"),
+  createdBy: varchar("created_by", { length: 255 }),
+  archived: boolean("archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type ShareFolder = typeof shareFolders.$inferSelect;
 export type ShareFile = typeof shareFiles.$inferSelect;
 export type ShareRecipient = typeof shareRecipients.$inferSelect;
+export type ShareReport = typeof shareReports.$inferSelect;
 export type PortalUser = typeof portalUsers.$inferSelect;
 
 /* ----------------------------------------------------------------------------

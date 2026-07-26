@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { FileBarChart } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { ShareFoldersList, type FolderRow } from "@/components/admin/ShareFoldersList";
 import { requireAdmin } from "@/lib/auth";
@@ -54,6 +56,11 @@ export default async function ShareFoldersPage() {
         description="Securely share case documents by email invitation — co-counsel, opposing counsel, clients, experts. Access is limited to the people you invite."
       />
       <div className="p-6">
+        <div className="mb-4 flex justify-end">
+          <Link href="/admin/share-folders/reports" className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:bg-[var(--c-surface2)]">
+            <FileBarChart size={15} /> Reports
+          </Link>
+        </div>
         {!isBlobConfigured() && (
           <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
             File storage isn&apos;t connected yet. Folders and invites work, but uploading documents needs a Vercel Blob store on this project.

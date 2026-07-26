@@ -198,6 +198,21 @@ const DDL = [
     file_id integer,
     at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS share_reports (
+    id serial PRIMARY KEY,
+    kind varchar(24) NOT NULL,
+    title text NOT NULL,
+    period_start timestamptz,
+    period_end timestamptz,
+    pdf_url text,
+    pdf_pathname text,
+    summary jsonb,
+    created_by varchar(255),
+    archived boolean NOT NULL DEFAULT false,
+    archived_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_reports_created_idx ON share_reports (created_at)`,
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
