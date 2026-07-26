@@ -60,19 +60,27 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
   const setTodo = (id: string, patch: Partial<ShareTodo>) => setM((c) => ({ ...c, todos: (c.todos ?? []).map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   const [causeDraft, setCauseDraft] = useState("");
   const [todoDraft, setTodoDraft] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const set = (patch: Partial<ShareFolderMeta>) => setM((c) => ({ ...c, ...patch }));
 
-  function save() {
-    setError(null);
-    start(async () => {
-      const res = await updateFolderMeta(folderId, m);
-      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000); } else setError(res.error ?? "Save failed.");
-    });
-  }
+  // Auto-save every change (add / edit / delete / toggle) to the folder — no Save
+  // button to forget. Debounced so typing doesn't fire on every keystroke.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    setStatus("saving");
+    const t = setTimeout(async () => {
+      try {
+        const res = await updateFolderMeta(folderId, m);
+        setStatus(res.ok ? "saved" : "error");
+        if (res.ok) setTimeout(() => setStatus("idle"), 1500);
+      } catch {
+        setStatus("error");
+      }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [m, folderId]);
 
   const cbClass = "flex items-center gap-2 text-sm font-medium";
   return (
@@ -87,7 +95,10 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
           {(m.causes ?? []).length > 0 && (
             <ul className="mb-2 space-y-1">
               {(m.causes ?? []).map((c, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm"><span className="flex-1">{c}</span><button onClick={() => set({ causes: (m.causes ?? []).filter((_, j) => j !== i) })} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button></li>
+                <li key={i} className="flex items-center gap-2 text-sm">
+                  <input value={c} onChange={(e) => set({ causes: (m.causes ?? []).map((x, j) => (j === i ? e.target.value : x)) })} className="flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-sm" />
+                  <button onClick={() => set({ causes: (m.causes ?? []).filter((_, j) => j !== i) })} title="Delete" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
+                </li>
               ))}
             </ul>
           )}
@@ -115,8 +126,9 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
               {(m.todos ?? []).map((t) => (
                 <li key={t.id} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="flex-1">{t.text}{t.doneBy && <span className="ml-2 text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}</span>
-                    <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Remove task" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
+                    <input value={t.text} onChange={(e) => setTodo(t.id, { text: e.target.value })} className="flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm" />
+                    {t.doneBy && <span className="whitespace-nowrap text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
+                    <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Delete task" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-[var(--c-ink-muted)]"><UserPlus size={11} className="mr-0.5 inline" />To be done by:</span>
@@ -140,10 +152,10 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
         </div>
       )}
 
-      {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-      <div className="mt-3 flex items-center gap-3">
-        <button onClick={save} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save</button>
-        {saved && <span className="text-sm text-green-600">Saved</span>}
+      <div className="mt-3 h-4 text-xs">
+        {status === "saving" && <span className="inline-flex items-center gap-1 text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Saving…</span>}
+        {status === "saved" && <span className="inline-flex items-center gap-1 text-green-600"><Check size={12} /> Saved</span>}
+        {status === "error" && <span className="text-[var(--c-error)]">Couldn&apos;t save — check your connection.</span>}
       </div>
     </div>
   );
