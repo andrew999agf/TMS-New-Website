@@ -340,7 +340,24 @@ export function shareCan(permission: string, action: "download" | "upload" | "de
 
 /* --------------------------- folder workspace meta --------------------------- */
 
-export type ShareTodo = { id: string; text: string; assignees?: string[]; uploadDir?: string; doneBy?: string; doneAt?: string };
+export type ShareTodo = { id: string; text: string; assignees?: string[]; uploadDir?: string; due?: string; dueSet?: string; doneBy?: string; doneAt?: string };
+
+/**
+ * Colour a task's goal date. Red once the date has passed; yellow once the
+ * remaining time is within the last 25% of the window from when it was set
+ * (e.g. 4 days out → yellow with 1 day left; 4 months out → yellow with 1
+ * month left). `due` is a "YYYY-MM-DD" date; `dueSet` is when it was set.
+ */
+export function taskDueStatus(due?: string, dueSet?: string, now: number = Date.now()): "overdue" | "soon" | null {
+  if (!due) return null;
+  const dueT = new Date(`${due}T23:59:59`).getTime();
+  if (!Number.isFinite(dueT)) return null;
+  if (now >= dueT) return "overdue";
+  const setT = dueSet ? new Date(dueSet).getTime() : now;
+  const span = dueT - setT;
+  if (span <= 0) return "soon";
+  return dueT - now <= span * 0.25 ? "soon" : null;
+}
 
 /** Optional, viewer-facing extras an admin can turn on per folder. Each section
  *  only appears in the viewer portal when enabled AND it has content. */
@@ -368,6 +385,8 @@ export function normalizeMeta(m: unknown): ShareFolderMeta {
             ...t,
             assignees: Array.isArray(t.assignees) ? t.assignees.filter((a) => typeof a === "string") : [],
             uploadDir: typeof t.uploadDir === "string" && t.uploadDir ? t.uploadDir : undefined,
+            due: typeof t.due === "string" && t.due ? t.due : undefined,
+            dueSet: typeof t.dueSet === "string" && t.dueSet ? t.dueSet : undefined,
           }))
       : [],
   };

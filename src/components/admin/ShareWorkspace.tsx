@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp } from "lucide-react";
-import { normalizeMeta, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock } from "lucide-react";
+import { normalizeMeta, taskDueStatus, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
 import { updateFolderMeta, createDir, notifyAssignee } from "@/app/admin/(panel)/share-folders/actions";
 import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload } from "@/app/share/[token]/actions";
 import { fromInput } from "@/lib/share/drop";
@@ -67,6 +67,15 @@ function todayStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
+const fmtDue = (d?: string) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+/** Colour classes for a goal date: red past due, amber when time's almost up. */
+function dueChip(due?: string, dueSet?: string): string {
+  const s = taskDueStatus(due, dueSet);
+  if (s === "overdue") return "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-300";
+  if (s === "soon") return "border-amber-500/60 bg-amber-500/15 text-amber-800 dark:text-amber-300";
+  return "border-[var(--c-border)] bg-[var(--c-surface2)] text-[var(--c-ink-muted)]";
 }
 
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
@@ -206,6 +215,29 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                       </span>
                     )}
                   </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]" title="Set a target completion date. It turns amber as the deadline nears and red once it passes.">
+                      <input
+                        type="checkbox"
+                        checked={!!t.due}
+                        onChange={(e) => setTodo(t.id, e.target.checked ? { due: todayStamp().replace(/\./g, "-"), dueSet: new Date().toISOString() } : { due: undefined, dueSet: undefined })}
+                      />
+                      <CalendarClock size={11} /> Goal completion date
+                    </label>
+                    {t.due && (
+                      <>
+                        <input
+                          type="date"
+                          value={t.due}
+                          onChange={(e) => setTodo(t.id, { due: e.target.value || undefined, dueSet: new Date().toISOString() })}
+                          className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-[11px]"
+                        />
+                        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${dueChip(t.due, t.dueSet)}`}>
+                          {taskDueStatus(t.due, t.dueSet) === "overdue" ? "Past due" : `Due ${fmtDue(t.due)}`}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -324,6 +356,11 @@ export function FolderWorkspaceView({ token, meta, canCheck, blobReady = false }
                       {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
                       {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
                     </span>
+                    {t.due && !done && (
+                      <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${dueChip(t.due, t.dueSet)}`}>
+                        <CalendarClock size={11} /> {taskDueStatus(t.due, t.dueSet) === "overdue" ? `Past due (${fmtDue(t.due)})` : `Due ${fmtDue(t.due)}`}
+                      </span>
+                    )}
                     {t.uploadDir && canCheck && <TaskUploader token={token} dir={t.uploadDir} blobReady={blobReady} />}
                   </span>
                 </li>
