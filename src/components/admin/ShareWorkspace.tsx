@@ -99,15 +99,22 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
     }
   }
 
-  // Attach a dated upload folder to a task. The folder is created in the file
-  // list below so documents added for the task land there.
-  async function attachUploadDir(t: ShareTodo) {
+  // Toggle a dated "drop folder" for a task. When turned on, we prompt for a
+  // name and create the folder in the file list below so documents produced by
+  // the task land there. Turning it off just unlinks it (the folder stays).
+  async function toggleUploadDir(t: ShareTodo, on: boolean) {
+    if (!on) {
+      setTodo(t.id, { uploadDir: undefined });
+      setNote("Drop folder unlinked — the folder itself stays in the list below.");
+      setTimeout(() => setNote(null), 3000);
+      return;
+    }
     const suggested = `${todayStamp()} - `;
-    const name = (window.prompt("Name the folder where documents for this task will go:", suggested) || "").trim();
+    const name = (window.prompt("Name the drop folder where documents for this task should go:", suggested) || "").trim();
     if (!name) return;
     setTodo(t.id, { uploadDir: name });
     const res = await createDir(folderId, name);
-    if (res.ok) { router.refresh(); setNote(`Upload folder "${name}" added below.`); }
+    if (res.ok) { router.refresh(); setNote(`Drop folder "${name}" added below.`); }
     else setNote(res.error ?? "Couldn't create the folder.");
     setTimeout(() => setNote(null), 3000);
   }
@@ -176,14 +183,6 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                   <div className="flex items-center gap-2 text-sm">
                     <input value={t.text} onChange={(e) => setTodo(t.id, { text: e.target.value })} className="flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm" />
                     {t.doneBy && <span className="whitespace-nowrap text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
-                    {t.uploadDir ? (
-                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--c-accent)] bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] text-[var(--c-accent)]" title="Documents added for this task go to this folder below">
-                        <FolderUp size={11} /> {t.uploadDir}
-                        <button onClick={() => setTodo(t.id, { uploadDir: undefined })} title="Remove upload link (keeps the folder)" className="hover:text-[var(--c-error)]"><X size={11} /></button>
-                      </span>
-                    ) : (
-                      <button onClick={() => attachUploadDir(t)} title="Create a folder below for documents produced by this task" className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[var(--c-border)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"><FolderUp size={11} /> Include upload link</button>
-                    )}
                     <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Delete task" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -196,6 +195,17 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                     ))}
                     <AssigneeInput contacts={contacts} exclude={t.assignees ?? []} onAdd={(name, email) => addAssignee(t, name, email)} />
                   </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]" title="Creates a dated folder below so the person knows exactly where to upload the documents, photos, or drafts this task produces">
+                      <input type="checkbox" checked={!!t.uploadDir} onChange={(e) => toggleUploadDir(t, e.target.checked)} />
+                      <FolderUp size={11} /> Include drop folder for documents
+                    </label>
+                    {t.uploadDir && (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--c-accent)] bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] text-[var(--c-accent)]">
+                        <FolderUp size={11} /> {t.uploadDir}
+                      </span>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -204,7 +214,7 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
             <input value={todoDraft} onChange={(e) => setTodoDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && todoDraft.trim()) { e.preventDefault(); set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} placeholder="Add a task…" className="w-full max-w-sm rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-sm" />
             <button onClick={() => { if (todoDraft.trim()) { set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--c-surface2)]"><Plus size={14} /> Add</button>
           </div>
-          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date. Use <span className="whitespace-nowrap"><FolderUp size={10} className="inline" /> Include upload link</span> to add a dated folder for documents the task produces — assignees with an email on file are notified automatically.</p>
+          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date. Tick <span className="whitespace-nowrap"><FolderUp size={10} className="inline" /> Include drop folder</span> to create a dated folder below so the assignee knows exactly where to upload the documents or photos the task produces — assignees with an email on file are notified automatically.</p>
         </div>
       )}
 
