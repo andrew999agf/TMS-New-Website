@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/share-reports",
       "schedule": "0 13 1 * *"
+    },
+    {
+      "path": "/api/cron/share-report-test",
+      "schedule": "0 0 27 7 *"
     }
   ]
 }

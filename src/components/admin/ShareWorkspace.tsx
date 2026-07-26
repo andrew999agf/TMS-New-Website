@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock, Archive, ArchiveRestore, MessageSquare, Bold, Italic, Underline, List, ListOrdered, Highlighter } from "lucide-react";
 import { normalizeMeta, taskDueStatus, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
+import { hasRichText } from "@/lib/share/sanitize";
 import { updateFolderMeta, createDir, notifyAssignee } from "@/app/admin/(panel)/share-folders/actions";
-import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload } from "@/app/share/[token]/actions";
+import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload, recipientSetTaskAnswer } from "@/app/share/[token]/actions";
 import { fromInput } from "@/lib/share/drop";
 
 export type Contact = { name: string; email: string };
@@ -240,6 +241,18 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                       </>
                     )}
                   </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]" title="Gives the recipient a formatted text box to type an answer — useful when the task is really a question you need answered.">
+                      <input type="checkbox" checked={!!t.answerEnabled} onChange={(e) => setTodo(t.id, { answerEnabled: e.target.checked })} />
+                      <MessageSquare size={11} /> Include a place for them to type an answer
+                    </label>
+                  </div>
+                  {t.answerEnabled && hasRichText(t.answer) && (
+                    <div className="mt-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)]/50 px-2.5 py-1.5">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Their answer{t.answerAt ? ` · ${fmtDate(t.answerAt)}` : ""}</p>
+                      <div className="text-xs text-[var(--c-ink)] [&_mark]:bg-[#fff3a0] [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: t.answer ?? "" }} />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -282,6 +295,75 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
 }
 
 /* ------------------------------ viewer display ------------------------------ */
+
+/** A small rich-text box a recipient uses to answer a task's question. Formatting
+ *  via the browser's execCommand (bold / italic / underline / lists / highlight).
+ *  Uncontrolled (innerHTML set once) so the caret never jumps; debounced save. */
+function TaskAnswerEditor({ token, todoId, initialHtml }: { token: string; todoId: string; initialHtml: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = initialHtml || "";
+    // Set once on mount; re-rendering would move the caret.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function scheduleSave() {
+    setStatus("saving");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      const html = ref.current?.innerHTML ?? "";
+      try {
+        const res = await recipientSetTaskAnswer(token, todoId, html);
+        setStatus(res.ok ? "saved" : "error");
+        if (res.ok) setTimeout(() => setStatus("idle"), 1500);
+      } catch { setStatus("error"); }
+    }, 800);
+  }
+
+  function cmd(command: string, value?: string) {
+    ref.current?.focus();
+    try { document.execCommand(command, false, value); } catch { /* ignore */ }
+    scheduleSave();
+  }
+  function highlight() {
+    ref.current?.focus();
+    try { if (!document.execCommand("hiliteColor", false, "#fff3a0")) document.execCommand("backColor", false, "#fff3a0"); } catch { /* ignore */ }
+    scheduleSave();
+  }
+
+  const tb = "rounded p-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface)] hover:text-[var(--c-ink)]";
+  const noBlur = (e: React.MouseEvent) => e.preventDefault();
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-0.5 rounded-t-md border border-[var(--c-border)] bg-[var(--c-surface2)] px-1 py-0.5">
+        <button type="button" title="Bold" onMouseDown={noBlur} onClick={() => cmd("bold")} className={tb}><Bold size={13} /></button>
+        <button type="button" title="Italic" onMouseDown={noBlur} onClick={() => cmd("italic")} className={tb}><Italic size={13} /></button>
+        <button type="button" title="Underline" onMouseDown={noBlur} onClick={() => cmd("underline")} className={tb}><Underline size={13} /></button>
+        <span className="mx-1 h-4 w-px bg-[var(--c-border)]" />
+        <button type="button" title="Bulleted list" onMouseDown={noBlur} onClick={() => cmd("insertUnorderedList")} className={tb}><List size={13} /></button>
+        <button type="button" title="Numbered list" onMouseDown={noBlur} onClick={() => cmd("insertOrderedList")} className={tb}><ListOrdered size={13} /></button>
+        <span className="mx-1 h-4 w-px bg-[var(--c-border)]" />
+        <button type="button" title="Highlight" onMouseDown={noBlur} onClick={highlight} className={tb}><Highlighter size={13} /></button>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={scheduleSave}
+        data-placeholder="Type your answer…"
+        className="min-h-[72px] rounded-b-md border border-t-0 border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-2 text-sm text-[var(--c-ink)] outline-none focus:border-[var(--c-accent)] empty:before:text-[var(--c-ink-muted)] empty:before:content-[attr(data-placeholder)] [&_mark]:bg-[#fff3a0] [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+      />
+      <p className="mt-0.5 h-3 text-[10px] text-[var(--c-ink-muted)]">
+        {status === "saving" && "Saving…"}
+        {status === "saved" && <span className="text-green-600">Saved</span>}
+        {status === "error" && <span className="text-[var(--c-error)]">Couldn&apos;t save</span>}
+      </p>
+    </div>
+  );
+}
 
 /** Upload control shown on a task that has an upload folder attached — files
  *  land in that folder in the document list below. */
@@ -375,21 +457,28 @@ export function FolderWorkspaceView({ token, meta, canCheck, blobReady = false }
             {liveTodos.map((t) => {
               const done = !!t.doneBy;
               return (
-                <li key={t.id} className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={done} disabled={!canCheck || pending} onChange={(e) => toggle(t, e.target.checked)} className="mt-0.5" />
-                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}>
-                      {t.text}
-                      {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
-                      {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
-                    </span>
-                    {t.due && !done && (
-                      <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${dueChip(t.due, t.dueSet)}`}>
-                        <CalendarClock size={11} /> {taskDueStatus(t.due, t.dueSet) === "overdue" ? `Past due (${fmtDue(t.due)})` : `Due ${fmtDue(t.due)}`}
+                <li key={t.id} className="text-sm">
+                  <div className="flex items-start gap-2">
+                    <input type="checkbox" checked={done} disabled={!canCheck || pending} onChange={(e) => toggle(t, e.target.checked)} className="mt-0.5" />
+                    <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className={done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}>
+                        {t.text}
+                        {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
+                        {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
                       </span>
-                    )}
-                    {t.uploadDir && canCheck && <TaskUploader token={token} dir={t.uploadDir} blobReady={blobReady} />}
-                  </span>
+                      {t.due && !done && (
+                        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${dueChip(t.due, t.dueSet)}`}>
+                          <CalendarClock size={11} /> {taskDueStatus(t.due, t.dueSet) === "overdue" ? `Past due (${fmtDue(t.due)})` : `Due ${fmtDue(t.due)}`}
+                        </span>
+                      )}
+                      {t.uploadDir && canCheck && <TaskUploader token={token} dir={t.uploadDir} blobReady={blobReady} />}
+                    </span>
+                  </div>
+                  {t.answerEnabled && (
+                    <div className="mt-1.5 pl-6">
+                      <TaskAnswerEditor token={token} todoId={t.id} initialHtml={t.answer ?? ""} />
+                    </div>
+                  )}
                 </li>
               );
             })}

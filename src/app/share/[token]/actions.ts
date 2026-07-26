@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { shareFiles, shareDirs, shareFolders, shareAccessLog } from "@/db/schema";
 import { resolveRecipient, cleanDirPath, DIGEST_DELAY_MS } from "@/lib/share/access";
 import { shareCan, normalizeMeta } from "@/lib/share/types";
+import { sanitizeRichText } from "@/lib/share/sanitize";
 
 /** Record a file a recipient uploaded (after the Blob upload resolves). */
 export async function recipientRegisterFile(
@@ -60,6 +61,26 @@ export async function recipientToggleTodo(token: string, todoId: string, done: b
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't update the task." };
+  }
+}
+
+/** A recipient types (or updates) their answer to a task's question. Any recipient
+ *  with access may answer — it's not gated on upload rights. HTML is sanitized. */
+export async function recipientSetTaskAnswer(token: string, todoId: string, html: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const meta = normalizeMeta(ctx.folder.meta);
+  const todo = (meta.todos ?? []).find((t) => t.id === todoId);
+  if (!todo || !todo.answerEnabled) return { ok: false as const, error: "This task doesn't take an answer." };
+  const clean = sanitizeRichText(html);
+  todo.answer = clean || undefined;
+  todo.answerAt = clean ? new Date().toISOString() : undefined;
+  try {
+    await db.update(shareFolders).set({ meta: meta as Record<string, unknown> }).where(eq(shareFolders.id, ctx.folder.id));
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't save your answer." };
   }
 }
 
