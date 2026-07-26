@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock } from "lucide-react";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock, Archive, ArchiveRestore } from "lucide-react";
 import { normalizeMeta, taskDueStatus, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
 import { updateFolderMeta, createDir, notifyAssignee } from "@/app/admin/(panel)/share-folders/actions";
 import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload } from "@/app/share/[token]/actions";
@@ -91,6 +91,7 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
   const [todoDraft, setTodoDraft] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [note, setNote] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const set = (patch: Partial<ShareFolderMeta>) => setM((c) => ({ ...c, ...patch }));
 
@@ -185,13 +186,14 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
       <label className={`${cbClass} mt-3`}><input type="checkbox" checked={!!m.todosEnabled} onChange={(e) => set({ todosEnabled: e.target.checked })} /><ListChecks size={14} className="text-[var(--c-accent)]" /> To-do tasks</label>
       {m.todosEnabled && (
         <div className="mb-3 mt-2 pl-6">
-          {(m.todos ?? []).length > 0 && (
+          {(m.todos ?? []).filter((t) => !t.archived).length > 0 && (
             <ul className="mb-2 space-y-1">
-              {(m.todos ?? []).map((t) => (
+              {(m.todos ?? []).filter((t) => !t.archived).map((t) => (
                 <li key={t.id} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
                   <div className="flex items-center gap-2 text-sm">
                     <input value={t.text} onChange={(e) => setTodo(t.id, { text: e.target.value })} className="flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm" />
                     {t.doneBy && <span className="whitespace-nowrap text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
+                    <button onClick={() => setTodo(t.id, { archived: true })} title="Archive task (hides it from the recipient; you can restore it later)" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Archive size={14} /></button>
                     <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Delete task" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -246,7 +248,26 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
             <input value={todoDraft} onChange={(e) => setTodoDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && todoDraft.trim()) { e.preventDefault(); set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} placeholder="Add a task…" className="w-full max-w-sm rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-sm" />
             <button onClick={() => { if (todoDraft.trim()) { set({ todos: [...(m.todos ?? []), { id: uid(), text: todoDraft.trim() } as ShareTodo] }); setTodoDraft(""); } }} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--c-surface2)]"><Plus size={14} /> Add</button>
           </div>
-          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date. Tick <span className="whitespace-nowrap"><FolderUp size={10} className="inline" /> Include drop folder</span> to create a dated folder below so the assignee knows exactly where to upload the documents or photos the task produces — assignees with an email on file are notified automatically.</p>
+          <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Recipients who can upload can check these off; the portal records their name and the date. Tick <span className="whitespace-nowrap"><FolderUp size={10} className="inline" /> Include drop folder</span> to create a dated folder below so the assignee knows exactly where to upload the documents or photos the task produces — assignees with an email on file are notified automatically. Archived tasks stay here for your records but disappear from the recipient&apos;s page.</p>
+
+          {(m.todos ?? []).some((t) => t.archived) && (
+            <div className="mt-3">
+              <button type="button" onClick={() => setShowArchived((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
+                <Archive size={11} /> Archived tasks ({(m.todos ?? []).filter((t) => t.archived).length}) {showArchived ? "▾" : "▸"}
+              </button>
+              {showArchived && (
+                <ul className="mt-2 space-y-1">
+                  {(m.todos ?? []).filter((t) => t.archived).map((t) => (
+                    <li key={t.id} className="flex items-center gap-2 rounded-md border border-dashed border-[var(--c-border)] bg-[var(--c-surface2)]/40 px-2 py-1.5 text-xs text-[var(--c-ink-muted)]">
+                      <span className="flex-1 truncate">{t.text}{t.doneBy && <span className="ml-1 text-green-600">✓</span>}</span>
+                      <button onClick={() => setTodo(t.id, { archived: false })} title="Restore to the recipient's list" className="shrink-0 hover:text-[var(--c-accent)]"><ArchiveRestore size={13} /></button>
+                      <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Delete permanently" className="shrink-0 hover:text-[var(--c-error)]"><X size={13} /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -317,9 +338,10 @@ export function FolderWorkspaceView({ token, meta, canCheck, blobReady = false }
   const router = useRouter();
   const [pending, start] = useTransition();
   const m = normalizeMeta(meta);
+  const liveTodos = (m.todos ?? []).filter((t) => !t.archived);
   const showCauses = m.causesEnabled && (m.causes ?? []).length > 0;
   const showNotes = m.notesEnabled && (m.notes ?? "").trim().length > 0;
-  const showTodos = m.todosEnabled && (m.todos ?? []).length > 0;
+  const showTodos = m.todosEnabled && liveTodos.length > 0;
   if (!showCauses && !showNotes && !showTodos) return null;
 
   function toggle(t: ShareTodo, done: boolean) {
@@ -350,7 +372,7 @@ export function FolderWorkspaceView({ token, meta, canCheck, blobReady = false }
         <div className={card}>
           <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-[var(--c-ink)]"><ListChecks size={14} className="text-[var(--c-accent)]" /> Tasks</p>
           <ul className="space-y-1.5">
-            {(m.todos ?? []).map((t) => {
+            {liveTodos.map((t) => {
               const done = !!t.doneBy;
               return (
                 <li key={t.id} className="flex items-start gap-2 text-sm">

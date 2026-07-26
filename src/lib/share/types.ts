@@ -340,7 +340,7 @@ export function shareCan(permission: string, action: "download" | "upload" | "de
 
 /* --------------------------- folder workspace meta --------------------------- */
 
-export type ShareTodo = { id: string; text: string; assignees?: string[]; uploadDir?: string; due?: string; dueSet?: string; doneBy?: string; doneAt?: string };
+export type ShareTodo = { id: string; text: string; assignees?: string[]; uploadDir?: string; due?: string; dueSet?: string; doneBy?: string; doneAt?: string; archived?: boolean };
 
 /**
  * Colour a task's goal date. Red once the date has passed; yellow once the
@@ -387,6 +387,7 @@ export function normalizeMeta(m: unknown): ShareFolderMeta {
             uploadDir: typeof t.uploadDir === "string" && t.uploadDir ? t.uploadDir : undefined,
             due: typeof t.due === "string" && t.due ? t.due : undefined,
             dueSet: typeof t.dueSet === "string" && t.dueSet ? t.dueSet : undefined,
+            archived: !!t.archived,
           }))
       : [],
   };

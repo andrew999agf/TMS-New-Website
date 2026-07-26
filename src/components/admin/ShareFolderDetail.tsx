@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import {
   Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
-  Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus,
+  Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus, Eye,
 } from "lucide-react";
 import { Lock } from "lucide-react";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
@@ -456,6 +456,9 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
       >
         {SHARE_PERMISSIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
       </select>
+      <a href={`/share/${r.token}?admin=1`} target="_blank" rel="noopener noreferrer" title="Preview the folder exactly as this person sees it (no sign-in, not recorded)" className="shrink-0 rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+        <Eye size={14} />
+      </a>
       <button onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy the private link" className="shrink-0 rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
         {copied ? <Check size={14} className="text-green-600" /> : <Link2 size={14} />}
       </button>

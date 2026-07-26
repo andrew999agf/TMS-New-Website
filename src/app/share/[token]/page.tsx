@@ -10,8 +10,9 @@ import { shareCan, rolePhrase, normalizeMeta } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
 import { getBlocks } from "@/lib/content";
 import { portalEmail } from "@/lib/share/portal-session";
+import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
-import { ShieldCheck, Clock, Download } from "lucide-react";
+import { ShieldCheck, Clock, Download, Eye } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robots: { index: false, follow: false } };
@@ -51,8 +52,15 @@ function Closed({ title, body, logo }: { title: string; body: React.ReactNode; l
   );
 }
 
-export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function SharePage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { token } = await params;
+  const sp = await searchParams;
+  // An admin can preview exactly what a recipient sees via ?admin=1 — this
+  // bypasses the sign-in gate (admins are already authenticated) but never
+  // records the recipient's access, so a preview doesn't look like they opened it.
+  const wantsPreview = sp.admin != null;
+  const adminSession = wantsPreview ? await getSession() : null;
+  const adminPreview = wantsPreview && !!adminSession && isFullAdmin(adminSession.role);
   if (!db) return <Closed title="Temporarily unavailable" body="This share can't be opened right now. Please try again shortly." />;
 
   const logo = (await getBlocks("global").catch(() => ({}) as Record<string, string>))["global.logoDark"] || "";
@@ -69,7 +77,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   if (!folder) return <Closed logo={logo} title="Unavailable" body="This folder is no longer available." />;
 
   // Sensitive folders — or recipients whose type requires it — must authenticate.
-  if (folder.requireAuth || rec.requireAuth) {
+  if ((folder.requireAuth || rec.requireAuth) && !adminPreview) {
     const who = await portalEmail();
     if (!who || who !== rec.email.toLowerCase()) {
       const [pu] = await db.select({ passwordHash: portalUsers.passwordHash }).from(portalUsers).where(eq(portalUsers.email, rec.email.toLowerCase()));
@@ -85,15 +93,22 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
   const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
 
-  try {
-    await db.update(shareRecipients).set({ lastAccessAt: new Date() }).where(eq(shareRecipients.id, rec.id));
-    await db.insert(shareAccessLog).values({ folderId: folder.id, recipientId: rec.id, action: "view" });
-  } catch {
-    /* logging is best-effort */
+  if (!adminPreview) {
+    try {
+      await db.update(shareRecipients).set({ lastAccessAt: new Date() }).where(eq(shareRecipients.id, rec.id));
+      await db.insert(shareAccessLog).values({ folderId: folder.id, recipientId: rec.id, action: "view" });
+    } catch {
+      /* logging is best-effort */
+    }
   }
 
   return (
     <Shell logo={logo}>
+      {adminPreview && (
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          <Eye size={14} /> Admin preview — this is exactly what <strong>{rec.email}</strong> sees. Their access isn&apos;t recorded, and the sign-in step is skipped for you.
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
         <ShieldCheck size={14} /> Shared securely with {rec.email}
       </div>
