@@ -50,7 +50,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, matters, co
 
       <SecurityToggle folder={folder} />
 
-      <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} />
+      <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
 
       <FilesSection folderId={folder.id} files={files} dirs={dirs} blobReady={blobReady} />
 

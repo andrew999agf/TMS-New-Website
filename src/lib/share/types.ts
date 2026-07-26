@@ -340,7 +340,7 @@ export function shareCan(permission: string, action: "download" | "upload" | "de
 
 /* --------------------------- folder workspace meta --------------------------- */
 
-export type ShareTodo = { id: string; text: string; doneBy?: string; doneAt?: string };
+export type ShareTodo = { id: string; text: string; assignees?: string[]; doneBy?: string; doneAt?: string };
 
 /** Optional, viewer-facing extras an admin can turn on per folder. Each section
  *  only appears in the viewer portal when enabled AND it has content. */
@@ -361,7 +361,11 @@ export function normalizeMeta(m: unknown): ShareFolderMeta {
     notesEnabled: !!o.notesEnabled,
     notes: typeof o.notes === "string" ? o.notes : "",
     todosEnabled: !!o.todosEnabled,
-    todos: Array.isArray(o.todos) ? o.todos.filter((t) => t && typeof t.id === "string" && typeof t.text === "string") : [],
+    todos: Array.isArray(o.todos)
+      ? o.todos
+          .filter((t) => t && typeof t.id === "string" && typeof t.text === "string")
+          .map((t) => ({ ...t, assignees: Array.isArray(t.assignees) ? t.assignees.filter((a) => typeof a === "string") : [] }))
+      : [],
   };
 }
 

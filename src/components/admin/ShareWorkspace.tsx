@@ -1,19 +1,63 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks } from "lucide-react";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus } from "lucide-react";
 import { normalizeMeta, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
 import { updateFolderMeta } from "@/app/admin/(panel)/share-folders/actions";
 import { recipientToggleTodo } from "@/app/share/[token]/actions";
+
+export type Contact = { name: string; email: string };
+
+/** Add-a-person input with autocomplete from everyone the system already knows. */
+function AssigneeInput({ contacts, exclude, onAdd }: { contacts: Contact[]; exclude: string[]; onAdd: (name: string) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { function d(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); } document.addEventListener("mousedown", d); return () => document.removeEventListener("mousedown", d); }, []);
+  const suggestions = useMemo(() => {
+    if (!open) return [];
+    const needle = q.trim().toLowerCase();
+    const taken = new Set(exclude.map((x) => x.toLowerCase()));
+    const seen = new Set<string>();
+    return contacts
+      .filter((c) => c.name && !taken.has(c.name.toLowerCase()) && (!needle || c.name.toLowerCase().includes(needle) || c.email.toLowerCase().includes(needle)))
+      .filter((c) => { const k = c.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .slice(0, 6);
+  }, [contacts, q, open, exclude]);
+  const add = (name: string) => { const n = name.trim(); if (n) onAdd(n); setQ(""); setOpen(false); };
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" && q.trim()) { e.preventDefault(); add(q); } }}
+        placeholder="Add person…"
+        className="w-36 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-xs outline-none focus:border-[var(--c-accent)]"
+      />
+      {suggestions.length > 0 && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] shadow-lg">
+          {suggestions.map((c) => (
+            <button key={c.email || c.name} type="button" onClick={() => add(c.name)} className="flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-[var(--c-surface2)]">
+              <span className="text-xs text-[var(--c-ink)]">{c.name}</span>
+              {c.email && <span className="text-[10px] text-[var(--c-ink-muted)]">{c.email}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `t${Date.now()}${Math.floor(Math.random() * 1e6)}`);
 
 /* ------------------------------ admin editor ------------------------------ */
 
-export function FolderWorkspaceEditor({ folderId, initial }: { folderId: number; initial: ShareFolderMeta }) {
+export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { folderId: number; initial: ShareFolderMeta; contacts?: Contact[] }) {
   const [m, setM] = useState<ShareFolderMeta>(normalizeMeta(initial));
+  const setTodo = (id: string, patch: Partial<ShareTodo>) => setM((c) => ({ ...c, todos: (c.todos ?? []).map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   const [causeDraft, setCauseDraft] = useState("");
   const [todoDraft, setTodoDraft] = useState("");
   const [saved, setSaved] = useState(false);
@@ -69,9 +113,21 @@ export function FolderWorkspaceEditor({ folderId, initial }: { folderId: number;
           {(m.todos ?? []).length > 0 && (
             <ul className="mb-2 space-y-1">
               {(m.todos ?? []).map((t) => (
-                <li key={t.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1">{t.text}{t.doneBy && <span className="ml-2 text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}</span>
-                  <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
+                <li key={t.id} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="flex-1">{t.text}{t.doneBy && <span className="ml-2 text-xs text-green-600">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}</span>
+                    <button onClick={() => set({ todos: (m.todos ?? []).filter((x) => x.id !== t.id) })} title="Remove task" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={14} /></button>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--c-ink-muted)]"><UserPlus size={11} className="mr-0.5 inline" />To be done by:</span>
+                    {(t.assignees ?? []).map((a) => (
+                      <span key={a} className="inline-flex items-center gap-1 rounded-full border border-[var(--c-border)] bg-[var(--c-surface2)] px-2 py-0.5 text-[11px]">
+                        {a}
+                        <button onClick={() => setTodo(t.id, { assignees: (t.assignees ?? []).filter((x) => x !== a) })} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={11} /></button>
+                      </span>
+                    ))}
+                    <AssigneeInput contacts={contacts} exclude={t.assignees ?? []} onAdd={(name) => setTodo(t.id, { assignees: [...(t.assignees ?? []), name] })} />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -139,6 +195,7 @@ export function FolderWorkspaceView({ token, meta, canCheck }: { token: string; 
                   <input type="checkbox" checked={done} disabled={!canCheck || pending} onChange={(e) => toggle(t, e.target.checked)} className="mt-0.5" />
                   <span className={done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}>
                     {t.text}
+                    {(t.assignees ?? []).length > 0 && <span className="ml-2 text-xs text-[var(--c-ink-muted)] no-underline">— {(t.assignees ?? []).join(", ")}</span>}
                     {done && <span className="ml-2 whitespace-nowrap text-xs text-green-600 no-underline">✓ {t.doneBy} · {fmtDate(t.doneAt)}</span>}
                   </span>
                 </li>
