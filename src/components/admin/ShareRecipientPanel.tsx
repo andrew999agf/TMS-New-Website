@@ -7,7 +7,7 @@ import { Upload, FolderPlus, Loader2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
 import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
-import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir, recipientClearUpload } from "@/app/share/[token]/actions";
+import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
@@ -81,6 +81,12 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     recipientDeleteDir(token, path).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't remove folder."); setDeletingDir(null); router.refresh(); }).catch(() => setDeletingDir(null));
   }
 
+  function handleRenameDir(path: string, currentName: string) {
+    const name = window.prompt("Rename this folder:", currentName);
+    if (name == null || !name.trim() || name.trim() === currentName) return;
+    recipientRenameDir(token, path, name.trim()).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't rename folder."); router.refresh(); }).catch(() => setError("Couldn't rename folder."));
+  }
+
   return (
     <div className="space-y-2">
       {caps.upload && (
@@ -111,6 +117,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         deletingId={deletingId}
         onDeleteDir={caps.delete ? handleDeleteDir : undefined}
         deletingDir={deletingDir}
+        onRenameDir={caps.delete ? handleRenameDir : undefined}
         onPreview={(f) => setPreview(f)}
         onUpload={caps.upload && blobReady ? onUpload : undefined}
       />

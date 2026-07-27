@@ -185,6 +185,38 @@ export async function recipientDeleteDir(token: string, path: string) {
   }
 }
 
+/** Rename a folder — recipients with full (manage) access only. */
+export async function recipientRenameDir(token: string, path: string, newName: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !shareCan(ctx.rec.permission, "delete")) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const oldClean = cleanDirPath(path);
+  if (!oldClean) return { ok: false as const, error: "Invalid folder." };
+  const seg = cleanDirPath((newName || "").replace(/[/\\]+/g, " "));
+  if (!seg) return { ok: false as const, error: "Enter a folder name." };
+  const parent = oldClean.split("/").slice(0, -1).join("/");
+  const newPath = parent ? `${parent}/${seg}` : seg;
+  if (newPath === oldClean) return { ok: true as const };
+  const prefix = `${oldClean}/`;
+  try {
+    const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, ctx.folder.id));
+    for (const f of files) {
+      if (f.filename === oldClean || f.filename.startsWith(prefix)) {
+        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 255) }).where(eq(shareFiles.id, f.id));
+      }
+    }
+    const dirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, ctx.folder.id));
+    for (const d of dirs) {
+      if (d.path === oldClean || d.path.startsWith(prefix)) {
+        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 512) }).where(eq(shareDirs.id, d.id));
+      }
+    }
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't rename the folder." };
+  }
+}
+
 /** Delete a file the recipient can manage (must belong to their folder). */
 export async function recipientDeleteFile(token: string, fileId: number) {
   const ctx = await resolveRecipient(token);

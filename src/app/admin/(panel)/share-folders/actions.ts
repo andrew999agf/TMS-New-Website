@@ -271,6 +271,41 @@ export async function deleteDir(folderId: number, path: string) {
   }
 }
 
+/** Rename a folder (and everything inside it) by rewriting the path prefix on
+ *  its files and sub-dirs. Blob objects are untouched — only the logical path. */
+export async function renameDir(folderId: number, path: string, newName: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const oldClean = cleanDirPath(path);
+  if (!oldClean) return { ok: false as const, error: "Invalid folder." };
+  const seg = cleanDirPath((newName || "").replace(/[/\\]+/g, " "));
+  if (!seg) return { ok: false as const, error: "Enter a folder name." };
+  const parent = oldClean.split("/").slice(0, -1).join("/");
+  const newPath = parent ? `${parent}/${seg}` : seg;
+  if (newPath === oldClean) return { ok: true as const };
+  const prefix = `${oldClean}/`;
+  try {
+    const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folderId));
+    for (const f of files) {
+      if (f.filename === oldClean || f.filename.startsWith(prefix)) {
+        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 255) }).where(eq(shareFiles.id, f.id));
+      }
+    }
+    const dirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, folderId));
+    for (const d of dirs) {
+      if (d.path === oldClean || d.path.startsWith(prefix)) {
+        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 512) }).where(eq(shareDirs.id, d.id));
+      }
+    }
+    await audit(session.email, "update", "share-folder", String(folderId), `Renamed folder "${oldClean}" → "${newPath}"`);
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] renameDir failed:", err);
+    return { ok: false as const, error: "Couldn't rename the folder — try again." };
+  }
+}
+
 export async function deleteFile(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
