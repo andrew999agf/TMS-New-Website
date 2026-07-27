@@ -31,7 +31,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     /* best-effort */
   }
 
-  const upstream = await fetch(file.url);
+  // Forward a Range request to Blob so video/audio can stream and seek in the
+  // preview player (browsers request byte ranges for media playback).
+  const range = req.headers.get("range");
+  const upstream = await fetch(file.url, range ? { headers: { Range: range } } : undefined);
   if (!upstream.ok || !upstream.body) return NextResponse.json({ error: "File unavailable." }, { status: 502 });
 
   // Files uploaded from a folder keep their relative path in `filename`; the
@@ -44,7 +47,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const headers = new Headers();
   headers.set("Content-Type", file.contentType || "application/octet-stream");
   headers.set("Content-Disposition", `${disposition}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);
-  if (file.sizeBytes) headers.set("Content-Length", String(file.sizeBytes));
+  headers.set("Accept-Ranges", "bytes");
+  const contentRange = upstream.headers.get("content-range");
+  if (contentRange) headers.set("Content-Range", contentRange);
+  const upstreamLen = upstream.headers.get("content-length");
+  if (upstreamLen) headers.set("Content-Length", upstreamLen);
+  else if (file.sizeBytes && !contentRange) headers.set("Content-Length", String(file.sizeBytes));
   headers.set("Cache-Control", "private, no-store");
-  return new NextResponse(upstream.body, { status: 200, headers });
+  // Pass through 206 Partial Content when Blob honored the range request.
+  return new NextResponse(upstream.body, { status: upstream.status === 206 ? 206 : 200, headers });
 }

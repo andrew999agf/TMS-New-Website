@@ -6,6 +6,13 @@ import { X, ChevronsRight, Download } from "lucide-react";
 export type PreviewFile = { name: string; previewUrl: string; downloadUrl: string };
 
 const IMG_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "bmp"]);
+// Formats browsers can play inline. Others (avi, wmv, mkv) still fall back to download.
+const VIDEO_EXT = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
+const AUDIO_EXT = new Set(["mp3", "m4a", "wav", "aac", "ogg", "oga"]);
+const MIME: Record<string, string> = {
+  mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", ogv: "video/ogg",
+  mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg",
+};
 
 /**
  * Slide-out preview panel shared by the recipient portal and the admin folder
@@ -37,7 +44,23 @@ export function ShareFilePreview({ file, onClose }: { file: PreviewFile | null; 
             // eslint-disable-next-line @next/next/no-img-element
             <div className="flex h-full items-center justify-center p-3"><img src={cur.previewUrl} alt={cur.name} className="max-h-full max-w-full object-contain" /></div>
           )}
-          {cur && ext !== "pdf" && !IMG_EXT.has(ext) && (
+          {cur && VIDEO_EXT.has(ext) && (
+            <div className="flex h-full items-center justify-center bg-black p-2">
+              <video key={cur.previewUrl} controls autoPlay playsInline className="max-h-full max-w-full">
+                <source src={cur.previewUrl} type={MIME[ext]} />
+                Your browser can&apos;t play this video.
+              </video>
+            </div>
+          )}
+          {cur && AUDIO_EXT.has(ext) && (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
+              <p className="max-w-full truncate text-sm text-[var(--c-ink-muted)]">{cur.name}</p>
+              <audio key={cur.previewUrl} controls autoPlay className="w-full max-w-md">
+                <source src={cur.previewUrl} type={MIME[ext]} />
+              </audio>
+            </div>
+          )}
+          {cur && ext !== "pdf" && !IMG_EXT.has(ext) && !VIDEO_EXT.has(ext) && !AUDIO_EXT.has(ext) && (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <p className="text-sm text-[var(--c-ink-muted)]">This file type can&apos;t be previewed in the browser.</p>
               <a href={cur.downloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white"><Download size={14} /> Download to open</a>
