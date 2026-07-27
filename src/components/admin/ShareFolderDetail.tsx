@@ -63,41 +63,56 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
 
 function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients: RecipientRow[] }) {
   const router = useRouter();
-  const [on, setOn] = useState(folder.requireAuth);
+  // The checkbox is framed as "open link" (the inverse of require-sign-in).
+  const [open, setOpen] = useState(!folder.requireAuth);
   const [pending, start] = useTransition();
+  const [showInfo, setShowInfo] = useState(false);
+  const [showCopy, setShowCopy] = useState(false);
   const openLinks = recipients.filter((r) => !r.revoked);
+
   return (
-    <div className={`rounded-lg border p-3 ${on ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/50 bg-amber-500/10"}`}>
-      <label className="flex items-start gap-2">
+    <div className={`rounded-lg border p-2.5 ${open ? "border-amber-500/50 bg-amber-500/[0.06]" : "border-[var(--c-border)] bg-[var(--c-surface)]"}`}>
+      <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
-          checked={on}
+          checked={open}
           disabled={pending}
-          onChange={(e) => { const v = e.target.checked; setOn(v); start(async () => { await updateFolder(folder.id, { requireAuth: v }); router.refresh(); }); }}
-          className="mt-0.5"
+          onChange={(e) => { const v = e.target.checked; setOpen(v); if (!v) setShowCopy(false); start(async () => { await updateFolder(folder.id, { requireAuth: !v }); router.refresh(); }); }}
         />
-        <span className="text-sm">
-          <span className="inline-flex items-center gap-1.5 font-medium text-[var(--c-ink)]"><Lock size={13} className={on ? "text-emerald-600" : "text-[var(--c-ink-muted)]"} /> Require sign-in to open {pending && <Loader2 size={12} className="inline animate-spin" />}</span>
-          <span className="mt-0.5 block text-xs text-[var(--c-ink-muted)]">
-            On (recommended): recipients must verify their identity with a password or a one-time email code before viewing.
-          </span>
+        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--c-ink)]">
+          {open ? <Link2 size={13} className="text-amber-600" /> : <Lock size={13} className="text-emerald-600" />}
+          Anyone with this link can view (no sign-in)
+          {pending && <Loader2 size={12} className="inline animate-spin" />}
         </span>
       </label>
-      {!on && (
-        <>
-          <p className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            <span><strong>Open link — anyone with the URL can view this, no sign-in.</strong> Only do this for public, non-confidential material (e.g., discovery produced to opposing counsel, or documents to a witness). <strong>Never turn this off for privileged, confidential, client, or co-counsel communications.</strong></span>
-          </p>
-          {openLinks.length > 0 ? (
-            <div className="mt-2 space-y-1">
-              <p className="text-[11px] font-medium text-[var(--c-ink-muted)]">Shareable link{openLinks.length > 1 ? "s" : ""} — copy and send directly:</p>
-              {openLinks.map((r) => <OpenLinkRow key={r.id} r={r} />)}
-            </div>
-          ) : (
-            <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Add a recipient below to generate a shareable link you can copy from here.</p>
+
+      {open ? (
+        <div className="mt-1 pl-6">
+          <p className="text-[11px] text-amber-700 dark:text-amber-300">Only for non-confidential material — anyone who has the link can open it.</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <button onClick={() => setShowInfo((v) => !v)} className="text-[11px] text-[var(--c-accent)] hover:underline">Click here for more information</button>
+            <button onClick={() => setShowCopy((v) => !v)} className="inline-flex items-center gap-1 text-[11px] text-[var(--c-accent)] hover:underline"><Link2 size={11} /> Click here to copy link</button>
+          </div>
+          {showInfo && (
+            <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+              With sign-in off, this is a private link that opens without any verification, so <strong>anyone who has the URL can view every document here</strong>. Use it only for public, non-confidential material — e.g., discovery produced to opposing counsel or documents to a witness. <strong>Never turn this off for privileged, confidential, client, or co-counsel communications</strong> — leave it checked so recipients must verify with a password or a one-time email code.
+            </p>
           )}
-        </>
+          {showCopy && (
+            <div className="mt-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-2 shadow-sm">
+              {openLinks.length > 0 ? (
+                <div className="space-y-1">
+                  {openLinks.length > 1 && <p className="text-[10px] text-[var(--c-ink-muted)]">One link per recipient — copy the one you need:</p>}
+                  {openLinks.map((r) => <OpenLinkRow key={r.id} r={r} />)}
+                </div>
+              ) : (
+                <p className="text-[11px] text-[var(--c-ink-muted)]">Add a recipient below to generate a shareable link.</p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-0.5 pl-6 text-[11px] text-[var(--c-ink-muted)]">Recommended. Recipients must verify with a password or a one-time email code before viewing.</p>
       )}
     </div>
   );
