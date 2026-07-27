@@ -209,7 +209,7 @@ export async function POST(req: Request) {
 
   const html = `
     <div style="font-family:system-ui,sans-serif;max-width:640px">
-      <h2 style="margin:0 0 4px">New consultation request</h2>
+      <h2 style="margin:0 0 4px;font-size:16px">Full submission details</h2>
       <p style="color:#666;margin:0 0 16px">${branchLabel}${
         isUrgent ? ' · <strong style="color:#b00">URGENT</strong>' : ""
       }</p>
@@ -264,16 +264,8 @@ export async function POST(req: Request) {
   const managed = await recipientsForBranch(branch);
   const to = managed.length ? managed : [INTAKE_NOTIFY_TO];
 
-  const emailResult = await sendEmail({
-    to,
-    fromName: `${FIRM.name} — Intake`,
-    subject: `${isUrgent ? "[URGENT] " : ""}New consultation: ${branchLabel}`,
-    html: htmlWithDrafts,
-    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
-  });
-
-  // Second email: a clean, professional summary the team can forward — no raw
-  // data dump or attachment. Reads as if prepared by the office.
+  // The intake team gets a SINGLE email: a clean, professional summary on top,
+  // then the full submission details (and the CSV / draft docs) below.
   const clientName = (str("name") || "A prospective client").trim();
   const matterNoun = branchDef?.summaryNoun ?? `a ${branchLabel.toLowerCase()} matter`;
   const matterShort = (branchDef?.summaryNoun ?? branchLabel).replace(/^an?\s+/i, "");
@@ -321,11 +313,13 @@ export async function POST(req: Request) {
     </div>`;
 
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
-  await sendEmail({
+  const combinedHtml = `${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
+  const emailResult = await sendEmail({
     to,
     fromName: `${FIRM.name} — Intake`,
-    subject: subjectParts.join(" — "),
-    html: summaryHtml,
+    subject: `${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
+    html: combinedHtml,
+    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
   });
 
   // Acknowledgment email to the prospective client — a branded HTML email that

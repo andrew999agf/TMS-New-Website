@@ -1162,6 +1162,37 @@ export function getBranch(id: string): Branch | undefined {
   return BRANCHES.find((b) => b.id === id);
 }
 
+/**
+ * The kind of attorney a turned-back prospect should be pointed to, tailored to
+ * the practice area of their intake (e.g. a probate intake → "a probate
+ * attorney"). Maps by practice slug, with a keyword fallback so future or
+ * renamed branches still resolve sensibly.
+ */
+export function turnbackAreaForBranch(branchId: string): string {
+  const b = getBranch(branchId);
+  switch (b?.practiceSlug) {
+    case "consumer-debt-defense": return "a consumer-debt-defense or civil attorney";
+    case "garnishments": return "a consumer-debt or civil attorney";
+    case "plaintiffs-litigation": return "a civil litigation attorney";
+    case "business-related-matters": return "a business or civil attorney";
+    case "personal-injury-wrongful-death": return "a personal injury attorney";
+    case "criminal-defense": return "a criminal defense attorney";
+    case "estate-succession-planning": return "an estate planning attorney";
+    case "probate": return "a probate attorney";
+    case "appellate-law": return "an appellate attorney";
+    case "family-law": return "a family law attorney";
+  }
+  const hay = `${b?.label ?? ""} ${b?.practiceSlug ?? ""} ${branchId}`.toLowerCase();
+  if (/divorce|family|custody|child\s*support|adoption/.test(hay)) return "a family law attorney";
+  if (/probate|inherit/.test(hay)) return "a probate attorney";
+  if (/estate|will|trust/.test(hay)) return "an estate planning attorney";
+  if (/criminal|dwi|dui/.test(hay)) return "a criminal defense attorney";
+  if (/injur|wreck|accident|wrongful/.test(hay)) return "a personal injury attorney";
+  if (/appeal|appellate/.test(hay)) return "an appellate attorney";
+  if (/debt|garnish|foreclos|collection/.test(hay)) return "a civil or consumer-debt attorney";
+  return "a civil attorney";
+}
+
 export function branchForPractice(slug: string): Branch | undefined {
   return BRANCHES.find((b) => b.practiceSlug === slug);
 }

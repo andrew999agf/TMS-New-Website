@@ -23,13 +23,14 @@ const normUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
  * referral attorneys, the statewide-matters note, and a no-attorney-client
  * disclaimer — all in the firm's branded email shell.
  */
-export async function buildTurnbackEmail(opts: { name?: string | null; attorneys: TurnbackAttorney[] }): Promise<{ subject: string; html: string }> {
+export async function buildTurnbackEmail(opts: { name?: string | null; attorneys: TurnbackAttorney[]; referralArea?: string }): Promise<{ subject: string; html: string }> {
   const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
   const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
   const fontPalette = getFontPalette(theme.fontPaletteId);
   const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
   const firmName = globals["global.firmName"] || FIRM.name;
   const greeting = opts.name?.trim() ? esc(opts.name.trim()) : "there";
+  const area = (opts.referralArea?.trim() || "a licensed attorney in the appropriate practice area");
 
   const attorneys = opts.attorneys.filter((a) => a.name?.trim());
   let referralBlock = "";
@@ -60,7 +61,7 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
 
   const body = `
     <p style="margin:0 0 14px">Dear ${greeting},</p>
-    <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with a civil attorney in your area who may be able to help.</p>
+    <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with ${esc(area)} in your area who may be able to help.</p>
     <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>Please act promptly.</strong> Legal matters are often subject to strict deadlines, such as a statute of limitations. If a deadline passes, you may lose the right to pursue your claim entirely. We strongly encourage you to speak with an attorney as soon as possible to protect your rights.</p>
     ${referralBlock}
     <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>No attorney-client relationship has been created.</strong> This message, and our decision not to represent you, does not create an attorney-client relationship between you and ${esc(firmName)}. We are not your attorneys and are not advising you on the merits, deadlines, or handling of your matter.</p>

@@ -7,7 +7,7 @@ import { intakeSubmissions, referralAttorneys } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { recipientsForBranch } from "@/lib/content";
-import { getBranch } from "@/lib/intake/config";
+import { getBranch, turnbackAreaForBranch } from "@/lib/intake/config";
 import { FIRM } from "@/lib/firm";
 import { buildTurnbackEmail, buildAttorneyReferralNotice, type TurnbackAttorney } from "@/lib/intake/turnback";
 
@@ -35,7 +35,7 @@ export async function previewTurnback(intakeId: number, attorneyIds: number[]) {
   try {
     const ctx = await loadContext(intakeId, attorneyIds);
     if (!ctx) return { ok: false as const, error: "Submission not found." };
-    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys });
+    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch) });
     const cc = await recipientsForBranch(ctx.row.branch);
     return { ok: true as const, html, subject, to: ctx.row.email ?? "", cc };
   } catch (err) {
@@ -53,7 +53,7 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[]) {
     if (!ctx) return { ok: false as const, error: "Submission not found." };
     const to = (ctx.row.email ?? "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false as const, error: "This submission has no valid email address." };
-    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys });
+    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch) });
     const cc = await recipientsForBranch(ctx.row.branch);
     const res = await sendEmail({ to, cc, fromName: FIRM.name, subject, html });
     if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed." };
