@@ -228,6 +228,7 @@ const DDL = [
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS fee_expected boolean NOT NULL DEFAULT false`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS fee_amount varchar(64)`,
   `ALTER TYPE intake_status ADD VALUE IF NOT EXISTS 'referred-out'`,
+  `ALTER TYPE intake_status ADD VALUE IF NOT EXISTS 'client-declined'`,
   `CREATE TABLE IF NOT EXISTS referral_attorneys (
     id serial PRIMARY KEY,
     name varchar(191) NOT NULL UNIQUE,

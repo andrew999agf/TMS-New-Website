@@ -538,6 +538,7 @@ export const intakeStatus = pgEnum("intake_status", [
   "scheduled",
   "declined",
   "referred-out",
+  "client-declined",
 ]);
 
 export const intakeSubmissions = pgTable(

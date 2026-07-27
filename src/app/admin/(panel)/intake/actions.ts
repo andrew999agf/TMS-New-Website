@@ -11,7 +11,7 @@ import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 
 const STATUS_LABEL: Record<string, string> = {
-  new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred out",
+  new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred out", "client-declined": "Client declined",
 };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -57,7 +57,7 @@ async function notifyIntakeChange(id: number, change: string, actorEmail: string
 
 export async function updateIntakeStatus(
   id: number,
-  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out",
+  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined",
 ) {
   const session = await requireAdmin();
   if (!db) return { ok: false };

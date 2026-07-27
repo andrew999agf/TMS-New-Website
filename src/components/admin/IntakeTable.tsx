@@ -17,7 +17,7 @@ export type IntakeRow = {
   county: string | null;
   isUrgent: boolean;
   deadline: string | null;
-  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out";
+  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined";
   archived: boolean;
   referredTo: string | null;
   feeExpected: boolean;
@@ -30,9 +30,9 @@ export type IntakeRow = {
   answers: Record<string, unknown>;
 };
 
-const STATUSES = ["new", "contacted", "scheduled", "declined", "referred-out"] as const;
+const STATUSES = ["new", "contacted", "scheduled", "declined", "referred-out", "client-declined"] as const;
 const STATUS_LABEL: Record<string, string> = {
-  all: "all", new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred Out",
+  all: "all", new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred Out", "client-declined": "Client Declined",
 };
 
 /** Human label for the Status column / CSV — referrals show the attorney + fee. */

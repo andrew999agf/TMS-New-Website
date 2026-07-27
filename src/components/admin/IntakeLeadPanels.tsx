@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { X, ChevronsRight, Mail, Send, Loader2, Search, Check, Users } from "lucide-react";
 import type { IntakeRow } from "./IntakeTable";
 import type { ReferralAttorneyRow } from "./ReferralAttorneysManager";
 import { previewTurnback, sendTurnback } from "@/app/admin/(panel)/intake/turnback-actions";
+import { updateIntakeStatus, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 
 const PRETTY_KEY = (k: string) => k.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -92,6 +94,7 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
 /* ------------------------------ turn-back compose ------------------------------ */
 
 export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; attorneys: ReferralAttorneyRow[]; onClose: () => void }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
   const [html, setHtml] = useState<string>("");
@@ -100,7 +103,26 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const selectedNames = useMemo(() => selected.map((id) => attorneys.find((a) => a.id === id)?.name).filter(Boolean) as string[], [selected, attorneys]);
+
+  function close() { router.refresh(); onClose(); }
+
+  function applyReferred() {
+    setApplying(true);
+    setIntakeReferral(row.id, { referredTo: selectedNames.join(", "), feeExpected: false, feeAmount: "" })
+      .then((res) => setStatusMsg(res.ok ? "Marked as Referred Out." : res.error ?? "Couldn't update status."))
+      .finally(() => setApplying(false));
+  }
+  function applyStatus(status: "declined" | "client-declined") {
+    setApplying(true);
+    updateIntakeStatus(row.id, status)
+      .then(() => setStatusMsg(status === "declined" ? "Marked as Declined." : "Marked as Client Declined."))
+      .finally(() => setApplying(false));
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -135,14 +157,36 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-[var(--c-surface)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--c-border)] px-5 py-3">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Turn-back email</h3>
-          <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
+          <button onClick={close} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
         </div>
 
         {done ? (
-          <div className="flex flex-col items-center justify-center gap-3 p-10 text-center">
+          <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-600/10"><Check size={26} className="text-green-600" /></div>
             <p className="text-sm text-[var(--c-ink)]">Turn-back email sent to <strong>{done}</strong>{cc.length ? `, copied to the intake team (${cc.length})` : ""}.</p>
-            <button onClick={onClose} className="btn btn-accent text-sm py-2 px-5">Done</button>
+
+            {statusMsg ? (
+              <>
+                <p className="text-sm font-medium text-green-700">{statusMsg}</p>
+                <button onClick={close} className="btn btn-accent text-sm py-2 px-5">Done</button>
+              </>
+            ) : (
+              <div className="w-full max-w-sm rounded-lg border border-[var(--c-border)] bg-[var(--c-surface2)] p-4">
+                <p className="mb-3 text-sm text-[var(--c-ink)]">
+                  {selectedNames.length > 0
+                    ? <>You referred <strong>{selectedNames.length}</strong> attorney{selectedNames.length === 1 ? "" : "s"}. Mark this lead as <strong>Referred Out</strong>?</>
+                    : <>You didn&apos;t include a referral attorney. Mark this lead as <strong>Declined</strong>?</>}
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {selectedNames.length > 0 ? (
+                    <button onClick={applyReferred} disabled={applying} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">{applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes — Referred Out</button>
+                  ) : (
+                    <button onClick={() => applyStatus("declined")} disabled={applying} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">{applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes — Declined</button>
+                  )}
+                  <button onClick={close} disabled={applying} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">No, leave as is</button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[300px_1fr]">

@@ -54,11 +54,12 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[]) {
     const cc = await recipientsForBranch(ctx.row.branch);
     const res = await sendEmail({ to, cc, fromName: FIRM.name, subject, html });
     if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed." };
-    // A turn-back is a decline; record it so the pipeline reflects the outcome.
-    await db.update(intakeSubmissions).set({ status: "declined" }).where(eq(intakeSubmissions.id, intakeId));
+    // The status change is offered to the admin after sending (referred-out vs
+    // declined), so this action no longer changes it automatically.
     await audit(session.email, "send", "intake-turnback", String(intakeId), `Turn-back email sent to ${to}${attorneyIds.length ? ` (${attorneyIds.length} referrals)` : ""}`);
     revalidatePath("/admin/intake");
-    return { ok: true as const, to };
+    // Echo back the selected attorney names so the dialog can offer to mark it referred out.
+    return { ok: true as const, to, attorneyNames: ctx.attorneys.map((a) => a.name) };
   } catch (err) {
     console.error("[turnback] send failed:", err);
     return { ok: false as const, error: "Couldn't send the email." };
