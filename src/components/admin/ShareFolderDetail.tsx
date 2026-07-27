@@ -272,34 +272,63 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
   }, []);
 
-  async function uploadTo(destPath: string, picked: PickedFile[]) {
-    const items = picked.filter((p) => !isJunk(p.file.name));
-    if (items.length === 0) return;
-    setError(null);
+  // A growable upload queue: dropping more files while an upload is running
+  // appends them to the same queue and the count keeps climbing (e.g. 2/23),
+  // rather than being ignored.
+  const queueRef = useRef<{ file: File; rel: string }[]>([]);
+  const totalRef = useRef(0);
+  const doneRef = useRef(0);
+  const runningRef = useRef(false);
+
+  async function drainQueue() {
+    if (runningRef.current) return;
+    runningRef.current = true;
     setBusy(true);
+    setError(null);
     try {
-      for (let i = 0; i < items.length; i++) {
-        const { file, path } = items[i];
-        const fullPath = destPath ? `${destPath}/${path}` : path;
-        setProgress(`Uploading ${i + 1} / ${items.length}`);
-        const blob = await upload(`share/${folderId}/${fullPath}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
-        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: fullPath, contentType: file.type || blob.contentType, size: file.size }, { total: items.length, done: i + 1 });
+      while (queueRef.current.length) {
+        const { file, rel } = queueRef.current[0];
+        setProgress(`Uploading ${doneRef.current + 1} / ${totalRef.current}`);
+        const blob = await upload(`share/${folderId}/${rel}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
+        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: rel, contentType: file.type || blob.contentType, size: file.size }, { total: totalRef.current, done: doneRef.current + 1 });
+        queueRef.current.shift();
+        doneRef.current += 1;
+        setProgress(`Uploading ${doneRef.current} / ${totalRef.current}`);
       }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
+      queueRef.current = [];
     } finally {
-      setBusy(false);
-      setProgress(null);
-      clearUpload(folderId).catch(() => {});
-      if (fileInput.current) fileInput.current.value = "";
-      if (folderInput.current) folderInput.current.value = "";
+      if (queueRef.current.length > 0) {
+        // Files arrived during the last await — keep going.
+        runningRef.current = false;
+        drainQueue();
+      } else {
+        totalRef.current = 0;
+        doneRef.current = 0;
+        runningRef.current = false;
+        setBusy(false);
+        setProgress(null);
+        clearUpload(folderId).catch(() => {});
+        if (fileInput.current) fileInput.current.value = "";
+        if (folderInput.current) folderInput.current.value = "";
+      }
     }
   }
 
+  function enqueue(destPath: string, picked: PickedFile[]) {
+    const items = picked.filter((p) => !isJunk(p.file.name));
+    if (items.length === 0) return;
+    for (const { file, path } of items) queueRef.current.push({ file, rel: destPath ? `${destPath}/${path}` : path });
+    totalRef.current += items.length;
+    setProgress(`Uploading ${Math.min(doneRef.current + 1, totalRef.current)} / ${totalRef.current}`);
+    drainQueue();
+  }
+
   async function onUpload(destPath: string, dt: DataTransfer) {
-    if (!blobReady || busy) return;
-    await uploadTo(destPath, await filesFromDrop(dt));
+    if (!blobReady) return;
+    enqueue(destPath, await filesFromDrop(dt));
   }
 
   return (
@@ -338,8 +367,8 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
         onUpload={blobReady ? onUpload : undefined}
       />
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-      <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
-      <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => uploadTo("", fromInput(e.target.files))} />
+      <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
+      <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
       <ShareFilePreview file={preview} onClose={() => setPreview(null)} />
     </section>
   );
