@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
@@ -121,7 +122,14 @@ export async function recipientSubmitAnswer(token: string, todoId: string, html:
           <div style="margin:0 0 16px;padding:12px 14px;border-left:3px solid #7a1f2b;background:#faf6f2">${clean}</div>
           <p style="margin:0"><a href="${base}/admin/share-folders/${ctx.folder.id}" style="color:#7a1f2b">Open the folder in the admin portal</a></p>
         </div>`;
-      await sendEmail({ to, fromName: `${FIRM.name} — Secure Share`, subject: `${who} answered a task — ${ctx.folder.name}`, html: body });
+      const taskShort = todo.text.trim().replace(/\s+/g, " ").slice(0, 50);
+      await sendEmail({
+        to,
+        fromName: `${FIRM.name} — Secure Share`,
+        subject: `${who} answered: ${taskShort}${todo.text.length > 50 ? "…" : ""} (${ctx.folder.name})`,
+        html: body,
+        headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") },
+      });
     }
   } catch {
     /* the answer is saved; a failed email shouldn't fail the submit */

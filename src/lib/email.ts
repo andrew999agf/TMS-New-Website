@@ -63,6 +63,7 @@ export async function sendEmail({
   html,
   attachments,
   fromName,
+  headers,
 }: {
   to: string | string[];
   cc?: string | string[];
@@ -70,6 +71,8 @@ export async function sendEmail({
   html: string;
   attachments?: Attachment[];
   fromName?: string;
+  /** Extra MIME headers (e.g. a unique X-Entity-Ref-ID to stop Gmail threading). */
+  headers?: Record<string, string>;
 }): Promise<{ sent: boolean; reason?: string }> {
   const recipients = (Array.isArray(to) ? to : [to]).map((s) => s.trim()).filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: "no-recipients" };
@@ -85,6 +88,7 @@ export async function sendEmail({
         cc: ccList.length ? ccList : undefined,
         subject,
         html,
+        headers,
         attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
       });
       return { sent: true };
@@ -103,6 +107,7 @@ export async function sendEmail({
         cc: ccList.length ? ccList : undefined,
         subject,
         html,
+        headers,
         attachments: attachments?.map((a) => ({
           filename: a.filename,
           content: (Buffer.isBuffer(a.content) ? a.content : Buffer.from(a.content)).toString("base64"),

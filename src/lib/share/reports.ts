@@ -1,7 +1,7 @@
 import "server-only";
 import { and, gte, lte, desc, eq } from "drizzle-orm";
 import { put } from "@vercel/blob";
-import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFImage, type PDFFont, type PDFPage } from "pdf-lib";
 import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareReports } from "@/db/schema";
 import { FIRM, PRINCIPAL_OFFICE } from "@/lib/firm";
@@ -14,6 +14,7 @@ import { CT } from "@/lib/ct-time";
 /* -------------------------------- data model ------------------------------- */
 
 export type TodoRow = {
+  folderId: number;
   folder: string;
   caseNumber: string;
   text: string;
@@ -94,7 +95,7 @@ export async function buildTodoReport(now: Date = new Date()): Promise<TodoRepor
       if (status === "overdue") data.overdue += 1;
       else if (status === "open") data.open += 1;
       else data.done += 1;
-      data.rows.push({ folder: f.name, caseNumber: f.caseNumber, text: t.text, assignees: t.assignees ?? [], due: t.due, uploadDir: t.uploadDir, status, doneBy: t.doneBy });
+      data.rows.push({ folderId: f.id, folder: f.name, caseNumber: f.caseNumber, text: t.text, assignees: t.assignees ?? [], due: t.due, uploadDir: t.uploadDir, status, doneBy: t.doneBy });
     }
   }
   data.folderCount = seen.size;
@@ -134,6 +135,8 @@ export async function buildDocumentReport(now: Date = new Date()): Promise<DocRe
 
 /* ------------------------------ PDF rendering ------------------------------ */
 
+const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+
 const PAGE_W = 612;
 const PAGE_H = 792;
 const MARGIN = 54;
@@ -156,33 +159,83 @@ function truncate(text: string, maxW: number, size: number, font: PDFFont): stri
 }
 const fmtDue = (d?: string) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 const fmtAt = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtStamp = (d: Date) => `${new Intl.DateTimeFormat("en-US", { timeZone: CT, dateStyle: "long", timeStyle: "short" }).format(d)} CT`;
 
-async function letterhead(doc: PDFDocument, page: PDFPage, font: PDFFont, bold: PDFFont, logo: { bytes: Uint8Array; type: "png" | "jpg" } | null, title: string, sub: string, yStart: number): Promise<number> {
+/** A clear "June 1 – 30, 2026" style range from two UTC month-boundary dates. */
+function fmtRange(startIso: string, endIso: string): string {
+  const s = new Date(startIso), e = new Date(endIso);
+  const opt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...o });
+  if (s.getUTCFullYear() === e.getUTCFullYear() && s.getUTCMonth() === e.getUTCMonth()) {
+    return `${opt({ month: "long", day: "numeric" }).format(s)} – ${opt({ day: "numeric", year: "numeric" }).format(e)}`;
+  }
+  return `${opt({ month: "long", day: "numeric", year: "numeric" }).format(s)} – ${opt({ month: "long", day: "numeric", year: "numeric" }).format(e)}`;
+}
+
+/** Add an (invisible) clickable link over a rectangle. */
+function addLink(doc: PDFDocument, page: PDFPage, x: number, yBottom: number, w: number, h: number, url: string) {
+  const annot = doc.context.obj({
+    Type: "Annot", Subtype: "Link",
+    Rect: [x, yBottom, x + w, yBottom + h],
+    Border: [0, 0, 0],
+    A: { Type: "Action", S: "URI", URI: PDFString.of(url) },
+  });
+  const ref = doc.context.register(annot);
+  const annots = page.node.Annots();
+  if (annots) annots.push(ref);
+  else page.node.set(PDFName.of("Annots"), doc.context.obj([ref]));
+}
+
+/** Footer on every page: firm name, generated timestamp, and "Page X of Y". */
+function drawFooters(doc: PDFDocument, font: PDFFont, generatedAt: Date) {
+  const pages = doc.getPages();
+  const total = pages.length;
+  const gen = `Generated ${fmtStamp(generatedAt)}`;
+  pages.forEach((pg, i) => {
+    const y = 34;
+    pg.drawLine({ start: { x: MARGIN, y: y + 12 }, end: { x: RIGHT, y: y + 12 }, thickness: 0.5, color: RULE });
+    pg.drawText(FIRM.name, { x: MARGIN, y, size: 7.5, font, color: GRAY });
+    const gw = font.widthOfTextAtSize(gen, 7.5);
+    pg.drawText(gen, { x: (PAGE_W - gw) / 2, y, size: 7.5, font, color: GRAY });
+    const pageStr = `Page ${i + 1} of ${total}`;
+    const pw = font.widthOfTextAtSize(pageStr, 7.5);
+    pg.drawText(pageStr, { x: RIGHT - pw, y, size: 7.5, font, color: GRAY });
+  });
+}
+
+/** Letterhead: centered logo (or firm name), office line, maroon rule, title,
+ *  and a prominent, clearly-labeled reporting period. */
+async function letterhead(doc: PDFDocument, page: PDFPage, font: PDFFont, bold: PDFFont, logo: { bytes: Uint8Array; type: "png" | "jpg" } | null, title: string, periodLabel: string, yStart: number): Promise<number> {
   let y = yStart;
   let img: PDFImage | null = null;
   if (logo) { try { img = logo.type === "png" ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes); } catch { img = null; } }
   if (img) {
-    const scale = Math.min(190 / img.width, 74 / img.height, 1);
+    const scale = Math.min(200 / img.width, 78 / img.height, 1);
     const w = img.width * scale, h = img.height * scale;
     y -= h;
     page.drawImage(img, { x: (PAGE_W - w) / 2, y, width: w, height: h });
-    y -= 16;
+    y -= 15;
   } else {
-    y -= 20;
-    const w = bold.widthOfTextAtSize(FIRM.name, 18);
-    page.drawText(FIRM.name, { x: (PAGE_W - w) / 2, y, size: 18, font: bold, color: MAROON });
+    y -= 22;
+    const w = bold.widthOfTextAtSize(FIRM.name, 19);
+    page.drawText(FIRM.name, { x: (PAGE_W - w) / 2, y, size: 19, font: bold, color: MAROON });
     y -= 18;
   }
   const officeLine = `${PRINCIPAL_OFFICE.city} · Fort Worth · Weatherford, Texas`;
   const olW = font.widthOfTextAtSize(officeLine, 9);
   page.drawText(officeLine, { x: (PAGE_W - olW) / 2, y, size: 9, font, color: GRAY });
-  y -= 14;
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: RIGHT, y }, thickness: 1.2, color: MAROON });
+  y -= 13;
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: RIGHT, y }, thickness: 1.4, color: MAROON });
+  y -= 8;
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: RIGHT, y }, thickness: 0.4, color: MAROON });
   y -= 26;
-  page.drawText(title, { x: MARGIN, y, size: 16, font: bold, color: INK });
-  y -= 18;
-  page.drawText(sub, { x: MARGIN, y, size: 11, font, color: GRAY });
-  y -= 26;
+
+  page.drawText(title, { x: MARGIN, y, size: 17, font: bold, color: INK });
+  y -= 20;
+  const label = "REPORTING PERIOD";
+  page.drawText(label, { x: MARGIN, y, size: 8, font: bold, color: MAROON });
+  const lw = bold.widthOfTextAtSize(label, 8);
+  page.drawText(periodLabel, { x: MARGIN + lw + 8, y: y - 0.5, size: 11, font: bold, color: INK });
+  y -= 22;
   return y;
 }
 
@@ -191,8 +244,9 @@ export async function renderTodoReportPdf(data: TodoReportData, logo: { bytes: U
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   let page = doc.addPage([PAGE_W, PAGE_H]);
-  const genLabel = new Date(data.generatedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  let y = await letterhead(doc, page, font, bold, logo, "Share Folder To-Do Report", `As of ${genLabel}`, PAGE_H - MARGIN);
+  const genAt = new Date(data.generatedAt);
+  const period = `Current open items as of ${fmtStamp(genAt).replace(/ at .*$/, "")}`;
+  let y = await letterhead(doc, page, font, bold, logo, "Share Folder — To-Do & Tickler Report", period, PAGE_H - MARGIN);
 
   page.drawText(`${data.overdue} overdue  ·  ${data.open} open  ·  ${data.done} completed  ·  across ${data.folderCount} folder${data.folderCount === 1 ? "" : "s"}`, { x: MARGIN, y, size: 10, font, color: GRAY });
   y -= 22;
@@ -213,7 +267,7 @@ export async function renderTodoReportPdf(data: TodoReportData, logo: { bytes: U
   }
 
   for (const r of data.rows) {
-    if (y < MARGIN + 50) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; drawHeader(); }
+    if (y < MARGIN + 54) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; drawHeader(); }
     const statusColor = r.status === "overdue" ? RED : r.status === "done" ? GRAY : AMBER;
     const statusText = r.status === "overdue" ? "OVERDUE" : r.status === "done" ? "done" : "open";
     page.drawText(truncate(safe(r.text), 240, 10, font), { x: MARGIN, y, size: 10, font, color: r.status === "done" ? GRAY : INK });
@@ -221,8 +275,12 @@ export async function renderTodoReportPdf(data: TodoReportData, logo: { bytes: U
     page.drawText(truncate(safe(r.assignees.join(", ") || "—"), 120, 9, font), { x: MARGIN + 250, y, size: 9, font, color: INK });
     page.drawText(r.due ? fmtDue(r.due) : "—", { x: MARGIN + 380, y, size: 9, font, color: r.status === "overdue" ? RED : INK });
     page.drawText(statusText, { x: MARGIN + 460, y, size: 9, font: bold, color: statusColor });
+    // Clicking the task name opens the folder (invisible link over the two-line cell).
+    addLink(doc, page, MARGIN, y - 12, 244, 22, `${BASE}/admin/share-folders/${r.folderId}`);
     y -= 24;
   }
+
+  drawFooters(doc, font, genAt);
   return Buffer.from(await doc.save());
 }
 
@@ -231,7 +289,8 @@ export async function renderDocumentReportPdf(data: DocReportData, logo: { bytes
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   let page = doc.addPage([PAGE_W, PAGE_H]);
-  let y = await letterhead(doc, page, font, bold, logo, "Share Folder Documents Report", data.periodLabel, PAGE_H - MARGIN);
+  const genAt = new Date();
+  let y = await letterhead(doc, page, font, bold, logo, "Share Folder — Documents Uploaded", fmtRange(data.periodStart, data.periodEnd), PAGE_H - MARGIN);
 
   page.drawText(`${data.count} document${data.count === 1 ? "" : "s"} uploaded across ${data.folderCount} folder${data.folderCount === 1 ? "" : "s"}`, { x: MARGIN, y, size: 10, font, color: GRAY });
   y -= 22;
@@ -251,13 +310,15 @@ export async function renderDocumentReportPdf(data: DocReportData, logo: { bytes
   }
 
   for (const r of data.rows) {
-    if (y < MARGIN + 40) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; drawHeader(); }
+    if (y < MARGIN + 54) { page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; drawHeader(); }
     page.drawText(truncate(safe(r.filename), 290, 10, font), { x: MARGIN, y, size: 10, font, color: INK });
     page.drawText(truncate(safe(`${r.folder}${r.caseNumber ? ` · ${r.caseNumber}` : ""}`), 290, 8, font), { x: MARGIN, y: y - 10, size: 8, font, color: GRAY });
     page.drawText(truncate(safe(r.by), 130, 9, font), { x: MARGIN + 300, y, size: 9, font, color: INK });
     page.drawText(fmtAt(r.at), { x: MARGIN + 440, y, size: 9, font, color: INK });
     y -= 24;
   }
+
+  drawFooters(doc, font, genAt);
   return Buffer.from(await doc.save());
 }
 
