@@ -3,17 +3,9 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { isBlobConfigured } from "@/lib/blob";
 import { resolveRecipient } from "@/lib/share/access";
 import { shareCan } from "@/lib/share/types";
+import { SHARE_ALLOWED_CONTENT_TYPES as ALLOWED, SHARE_MAX_BYTES as MAX_BYTES } from "@/lib/share/upload-limits";
 
 export const runtime = "nodejs";
-
-const MAX_BYTES = 500 * 1024 * 1024;
-const ALLOWED = [
-  "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "text/plain", "text/csv", "application/rtf", "application/zip", "message/rfc822", "application/octet-stream",
-  "image/jpeg", "image/png", "image/webp", "image/gif", "image/tiff", "image/heic", "image/heif",
-];
 
 /**
  * Blob upload authorizer for RECIPIENTS (people with an upload/manage share
