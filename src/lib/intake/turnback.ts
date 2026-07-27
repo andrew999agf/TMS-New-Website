@@ -81,3 +81,35 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
 
   return { subject: `Regarding your inquiry to ${firmName}`, html };
 }
+
+/**
+ * A very short, low-key professional note to a referral attorney letting them
+ * know we sent someone their way — practice area and the person's last name
+ * only. Uses the branded shell for a consistent look.
+ */
+export async function buildAttorneyReferralNotice(opts: { attorneyName: string; practiceArea: string; lastName: string }): Promise<{ subject: string; html: string }> {
+  const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
+  const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
+  const fontPalette = getFontPalette(theme.fontPaletteId);
+  const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
+  const firmName = globals["global.firmName"] || FIRM.name;
+  const area = opts.practiceArea.trim() || "legal";
+  const last = opts.lastName.trim();
+
+  const body = `
+    <p style="margin:0 0 14px">Dear Counsel,</p>
+    <p style="margin:0 0 16px">Our office recently spoke with a prospective client we are not able to assist. We provided your firm&rsquo;s information and encouraged them to contact you regarding a <strong>${esc(area)}</strong> matter${last ? `. Their last name is <strong>${esc(last)}</strong>` : ""}. They may reach out to you directly.</p>
+    <p style="margin:0 0 16px">We appreciate the opportunity to send them your way. There is nothing you need to do in response to this note.</p>
+    <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
+
+  const html = brandedEmailHtml({
+    colors,
+    fonts,
+    logoLight: globals["global.logoLight"] || undefined,
+    logoDark: globals["global.logoDark"] || undefined,
+    firmName,
+    bodyHtml: body,
+  });
+
+  return { subject: `Referral to your office${last ? ` — ${last}` : ""}`, html };
+}

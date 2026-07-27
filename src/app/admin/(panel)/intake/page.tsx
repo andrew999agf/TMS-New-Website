@@ -1,6 +1,7 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
+import { ReferralSources, type ReferrerPoint } from "@/components/admin/ReferralSources";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
@@ -20,12 +21,24 @@ export default async function IntakeAdminPage() {
 
   let rows: IntakeRow[] = [];
   let leads: LeadPoint[] = [];
+  let referrers: ReferrerPoint[] = [];
   let attorneys: string[] = [];
   let referralRows: ReferralAttorneyRow[] = [];
   if (db) {
     try {
       const data = await db.select().from(intakeSubmissions).orderBy(desc(intakeSubmissions.createdAt));
       leads = data.map((r) => ({ createdAt: r.createdAt.toISOString(), source: r.referralSource ?? null }));
+      for (const r of data) {
+        const src = r.referralSource ?? "";
+        const a = (r.answers as Record<string, unknown>) ?? {};
+        if (src === "Referred by another attorney") {
+          const name = String(a.referrerAttorney ?? "").trim();
+          if (name) referrers.push({ createdAt: r.createdAt.toISOString(), name, kind: "attorney" });
+        } else if (src === "Referred by friend or family" || src === "Referred by a past client") {
+          const name = String(a.referrerName ?? "").trim();
+          if (name) referrers.push({ createdAt: r.createdAt.toISOString(), name, kind: "other" });
+        }
+      }
       rows = data.map((r) => ({
         id: r.id,
         branch: r.branch,
@@ -76,6 +89,7 @@ export default async function IntakeAdminPage() {
         />
         <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
+        <ReferralSources referrers={referrers} />
         <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} />
       </div>
     </>

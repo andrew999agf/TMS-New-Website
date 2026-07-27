@@ -217,6 +217,22 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                 </div>
                 <p className="mt-1.5 text-[11px] text-[var(--c-ink-muted)]">Checked attorneys are listed in the email. Leave all unchecked to omit the referral section.</p>
               </div>
+
+              {selected.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-[var(--c-ink)]">Referring to</p>
+                  <ul className="space-y-2">
+                    {selected.map((id) => attorneys.find((a) => a.id === id)).filter(Boolean).map((a) => (
+                      <li key={a!.id} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2 text-[11px]">
+                        <p className="font-medium text-[var(--c-ink)]">{a!.name}{a!.firm ? ` · ${a!.firm}` : ""}</p>
+                        {(a!.address || a!.phone) && <p className="text-[var(--c-ink-muted)]">{[a!.address, a!.phone].filter(Boolean).join(" · ")}</p>}
+                        {(a!.email || a!.website) && <p className="text-[var(--c-ink-muted)]">{[a!.email, a!.website].filter(Boolean).join(" · ")}</p>}
+                        <p className={`mt-0.5 ${a!.email ? "text-green-700" : "text-amber-600"}`}>{a!.email ? "✓ Will receive a brief referral notice" : "No email on file — won't be notified"}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Right: live preview */}
