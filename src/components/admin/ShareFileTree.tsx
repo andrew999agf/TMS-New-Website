@@ -121,7 +121,7 @@ function NodeBody({ node, depth, basePath, ctx }: { node: FolderNode; depth: num
 }
 
 function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: number; basePath: string; ctx: Ctx }) {
-  const [open, setOpen] = useState(depth < 1);
+  const [open, setOpen] = useState(false);
   const fullPath = basePath ? `${basePath}/${node.name}` : node.name;
   const n = countFiles(node);
   const info = ctx.dirInfo?.[fullPath];
