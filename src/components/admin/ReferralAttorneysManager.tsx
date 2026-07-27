@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown, Plus, Pencil, Trash2, X, Check, Loader2, Scale } from "lucide-react";
 import { saveReferralAttorney, deleteReferralAttorney } from "@/app/admin/(panel)/intake/referral-actions";
 
@@ -20,9 +20,18 @@ const EMPTY: ReferralAttorneyRow = { id: 0, name: "", firm: "", address: "", pho
 export function ReferralAttorneysManager({ initial }: { initial: ReferralAttorneyRow[] }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ReferralAttorneyRow | null>(null);
+  const ref = useRef<HTMLElement>(null);
+
+  // Opened and scrolled into view when reached via the admin search deep link.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#referral-attorneys") {
+      setOpen(true);
+      setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    }
+  }, []);
 
   return (
-    <section className="mb-6 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+    <section ref={ref} id="referral-attorneys" className="mb-6 scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 px-5 py-3.5 text-left">
         <span className="inline-flex items-center gap-2 font-[family-name:var(--font-ui)] font-semibold">
           <Scale size={16} className="text-[var(--c-accent)]" /> Referral attorneys <span className="text-sm font-normal text-[var(--c-ink-muted)]">({initial.length})</span>

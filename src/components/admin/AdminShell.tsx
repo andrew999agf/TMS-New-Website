@@ -36,6 +36,7 @@ import {
 import { logoutAction } from "@/app/admin/auth-actions";
 import { allowedSections, sectionForPath } from "@/lib/admin-sections";
 import { PwaInstall } from "@/components/admin/PwaInstall";
+import { AdminSearch } from "@/components/admin/AdminSearch";
 
 // The website-editing sections, grouped under one "Website Management" entry
 // with a sub-tab bar (keeps the left sidebar from getting cluttered).
@@ -147,6 +148,7 @@ export function AdminShell({
             <TimeClockButton initialOpenSince={timeclock.openSince} collapsed={collapsed} />
           </div>
         )}
+        <AdminSearch allowed={[...allowed]} collapsed={collapsed} onExpand={() => { setCollapsed(false); localStorage.setItem("tms_admin_sidebar_collapsed", "0"); }} />
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
           {nav.map((item) => {
             const isWebsite = item.label === "Website Management";
