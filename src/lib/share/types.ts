@@ -100,6 +100,16 @@ export function shareType(key: string): ShareTypeDef {
 }
 
 /**
+ * Whether a folder type offers the workspace extras (causes / notes / to-do
+ * tasks). A straight discovery production is a plain document drop to the other
+ * side — no causes, notes, or tasks belong there, and the recipient's page
+ * should stay minimal. Every other type keeps the workspace.
+ */
+export function folderSupportsWorkspace(typeKey: string): boolean {
+  return shareType(typeKey).key !== "discovery";
+}
+
+/**
  * How long a share link stays live, by folder type. Discovery to the other side
  * is short-lived (21 days); relationships we work with over the life of a case
  * — clients, co-counsel, experts — get long windows (120 days). A re-issue

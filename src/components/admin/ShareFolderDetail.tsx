@@ -8,7 +8,7 @@ import {
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus, Eye,
 } from "lucide-react";
 import { Lock } from "lucide-react";
-import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, type ShareFolderMeta } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
@@ -48,9 +48,11 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
 
       <FolderHeader folder={folder} matters={matters} />
 
-      <SecurityToggle folder={folder} />
+      <SecurityToggle folder={folder} recipients={recipients} />
 
-      <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
+      {folderSupportsWorkspace(folder.type) && (
+        <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
+      )}
 
       <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} />
 
@@ -59,10 +61,11 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
   );
 }
 
-function SecurityToggle({ folder }: { folder: FolderData }) {
+function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients: RecipientRow[] }) {
   const router = useRouter();
   const [on, setOn] = useState(folder.requireAuth);
   const [pending, start] = useTransition();
+  const openLinks = recipients.filter((r) => !r.revoked);
   return (
     <div className={`rounded-lg border p-3 ${on ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/50 bg-amber-500/10"}`}>
       <label className="flex items-start gap-2">
@@ -81,11 +84,41 @@ function SecurityToggle({ folder }: { folder: FolderData }) {
         </span>
       </label>
       {!on && (
-        <p className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          <span><strong>Open link — anyone with the URL can view this, no sign-in.</strong> Only do this for public, non-confidential material (e.g., discovery produced to opposing counsel, or documents to a witness). <strong>Never turn this off for privileged, confidential, client, or co-counsel communications.</strong></span>
-        </p>
+        <>
+          <p className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span><strong>Open link — anyone with the URL can view this, no sign-in.</strong> Only do this for public, non-confidential material (e.g., discovery produced to opposing counsel, or documents to a witness). <strong>Never turn this off for privileged, confidential, client, or co-counsel communications.</strong></span>
+          </p>
+          {openLinks.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              <p className="text-[11px] font-medium text-[var(--c-ink-muted)]">Shareable link{openLinks.length > 1 ? "s" : ""} — copy and send directly:</p>
+              {openLinks.map((r) => <OpenLinkRow key={r.id} r={r} />)}
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Add a recipient below to generate a shareable link you can copy from here.</p>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+/** One open-link row with a copy button, shown in the security card when sign-in
+ *  is off so the admin can grab the link right where they toggled it. */
+function OpenLinkRow({ r }: { r: RecipientRow }) {
+  const [copied, setCopied] = useState(false);
+  const link = typeof window !== "undefined" ? `${window.location.origin}/share/${r.token}` : `/share/${r.token}`;
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1">
+      <span className="shrink-0 text-[11px] text-[var(--c-ink-muted)]">{r.name || r.email}</span>
+      <input readOnly value={link} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 truncate bg-transparent text-[11px] text-[var(--c-ink)] outline-none" />
+      <button
+        onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        title="Copy this link"
+        className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--c-border)] px-1.5 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+      >
+        {copied ? <Check size={12} className="text-green-600" /> : <Link2 size={12} />} {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }

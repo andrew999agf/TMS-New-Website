@@ -6,7 +6,7 @@ import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
 import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
-import { shareCan, rolePhrase, normalizeMeta } from "@/lib/share/types";
+import { shareCan, rolePhrase, normalizeMeta, folderSupportsWorkspace } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
 import { getBlocks } from "@/lib/content";
 import { portalEmail } from "@/lib/share/portal-session";
@@ -129,7 +129,9 @@ export default async function SharePage({ params, searchParams }: { params: Prom
 
       <ShareUploadStatus token={token} />
 
-      <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} blobReady={isBlobConfigured()} />
+      {folderSupportsWorkspace(folder.type) && (
+        <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} blobReady={isBlobConfigured()} />
+      )}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
