@@ -580,12 +580,22 @@ export const intakeSubmissions = pgTable(
   }),
 );
 
-/** Names of attorneys cases have been referred to — saved for autocomplete. */
+/** A stable of attorneys cases can be referred to — used for the referral
+ *  autocomplete and included in "turn-back" emails to prospective clients. */
 export const referralAttorneys = pgTable("referral_attorneys", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 191 }).notNull().unique(),
+  firm: varchar("firm", { length: 191 }).notNull().default(""),
+  address: text("address").notNull().default(""),
+  phone: varchar("phone", { length: 64 }).notNull().default(""),
+  email: varchar("email", { length: 255 }).notNull().default(""),
+  website: varchar("website", { length: 255 }).notNull().default(""),
+  practiceArea: varchar("practice_area", { length: 191 }).notNull().default(""),
+  sort: integer("sort").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export type ReferralAttorney = typeof referralAttorneys.$inferSelect;
 
 /* ----------------------------------------------------------------------------
  * Team members (attorneys + staff)

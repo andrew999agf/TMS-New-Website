@@ -11,6 +11,8 @@ import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
 import { TIME_ACTIVITY_USERS, TIME_ACTIVITY_USERS_ENSURE, TIME_CATEGORIES } from "@/lib/content/defaults/time";
 import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
+import { referralAttorneys } from "@/db/schema";
+import { REFERRAL_ATTORNEYS } from "@/lib/content/defaults/referral-attorneys";
 
 export const runtime = "nodejs";
 
@@ -231,6 +233,13 @@ const DDL = [
     name varchar(191) NOT NULL UNIQUE,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS firm varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS address text NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS phone varchar(64) NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS email varchar(255) NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS website varchar(255) NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS practice_area varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE referral_attorneys ADD COLUMN IF NOT EXISTS sort integer NOT NULL DEFAULT 0`,
   // Allow the new "focal" content-block type used for page-banner positions.
   `ALTER TYPE block_type ADD VALUE IF NOT EXISTS 'focal'`,
   // Voice-entry diagnostics (Time Tracker 3.0). No audio/transcript/PII.
@@ -481,6 +490,42 @@ export async function POST() {
     }
   } catch (err) {
     failed.push(`Patriot teams merge: ${(err as Error).message}`);
+  }
+
+  // 11) Seed/enrich the referral-attorney stable. Names are ensured (insert if
+  //     missing); contact fields are filled ONLY where the row's field is still
+  //     blank, so an admin's edits are never overwritten.
+  try {
+    const existing = await db.select().from(referralAttorneys);
+    const byName = new Map(existing.map((r) => [r.name.toLowerCase(), r]));
+    let created = 0;
+    let enriched = 0;
+    for (let i = 0; i < REFERRAL_ATTORNEYS.length; i++) {
+      const s = REFERRAL_ATTORNEYS[i];
+      const cur = byName.get(s.name.toLowerCase());
+      if (!cur) {
+        await db.insert(referralAttorneys).values({
+          name: s.name, firm: s.firm ?? "", address: s.address ?? "", phone: s.phone ?? "",
+          email: s.email ?? "", website: s.website ?? "", practiceArea: s.practiceArea ?? "", sort: i,
+        }).onConflictDoNothing({ target: referralAttorneys.name });
+        created++;
+      } else {
+        const patch: Record<string, string> = {};
+        if (!cur.firm && s.firm) patch.firm = s.firm;
+        if (!cur.address && s.address) patch.address = s.address;
+        if (!cur.phone && s.phone) patch.phone = s.phone;
+        if (!cur.email && s.email) patch.email = s.email;
+        if (!cur.website && s.website) patch.website = s.website;
+        if (!cur.practiceArea && s.practiceArea) patch.practiceArea = s.practiceArea;
+        if (Object.keys(patch).length) {
+          await db.update(referralAttorneys).set(patch).where(eq(referralAttorneys.id, cur.id));
+          enriched++;
+        }
+      }
+    }
+    if (created || enriched) applied.push(`Referral attorneys: ${created} added, ${enriched} enriched`);
+  } catch (err) {
+    failed.push(`Referral attorneys seed: ${(err as Error).message}`);
   }
 
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });

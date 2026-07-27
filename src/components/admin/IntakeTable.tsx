@@ -1,9 +1,11 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
-import { Download, ChevronDown, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail } from "lucide-react";
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
+import { LeadDetailDrawer, TurnbackDialog } from "@/components/admin/IntakeLeadPanels";
+import type { ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 
 export type IntakeRow = {
   id: number;
@@ -40,12 +42,13 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys: string[] }) {
+export function IntakeTable({ rows, attorneys, referralAttorneys }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[] }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [view, setView] = useState<"active" | "archived">("active");
-  const [open, setOpen] = useState<number | null>(null);
+  const [detailFor, setDetailFor] = useState<IntakeRow | null>(null);
+  const [turnbackFor, setTurnbackFor] = useState<IntakeRow | null>(null);
   const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
   const [sendFor, setSendFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
@@ -111,11 +114,11 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
             <Download size={15} /> Export CSV ({filtered.length})
           </button>
           {view === "active" ? (
-            <button onClick={() => { setView("archived"); setOpen(null); }} className="btn btn-outline text-sm py-2 px-3">
+            <button onClick={() => { setView("archived"); setDetailFor(null); }} className="btn btn-outline text-sm py-2 px-3">
               <Archive size={15} /> Archive ({archivedCount})
             </button>
           ) : (
-            <button onClick={() => { setView("active"); setOpen(null); }} className="btn btn-accent text-sm py-2 px-3">
+            <button onClick={() => { setView("active"); setDetailFor(null); }} className="btn btn-accent text-sm py-2 px-3">
               <ArrowLeft size={15} /> Back to active
             </button>
           )}
@@ -148,108 +151,93 @@ export function IntakeTable({ rows, attorneys }: { rows: IntakeRow[]; attorneys:
               </tr>
             )}
             {filtered.map((r) => (
-              <Fragment key={r.id}>
-                <tr className="bg-[var(--c-surface)] hover:bg-[var(--c-surface2)]">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {r.isUrgent && <span className="h-2 w-2 rounded-full bg-[var(--c-error)]" />}
-                      <span className="font-medium">{r.name ?? "—"}</span>
-                      {r.incomplete && (
-                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title="Started the comprehensive estate questionnaire but hasn't finished — answers so far are saved below">
-                          Incomplete
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-[var(--c-ink-muted)] break-all">{r.email}</div>
-                    {r.email && (
+              <tr
+                key={r.id}
+                onClick={() => setDetailFor(r)}
+                title="Click to view the full intake"
+                className="cursor-pointer bg-[var(--c-surface)] hover:bg-[var(--c-surface2)]"
+              >
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {r.isUrgent && <span className="h-2 w-2 rounded-full bg-[var(--c-error)]" />}
+                    <span className="font-medium">{r.name ?? "—"}</span>
+                    {r.incomplete && (
+                      <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600" title="Started the comprehensive estate questionnaire but hasn't finished">
+                        Incomplete
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-[var(--c-ink-muted)] break-all">{r.email}</div>
+                  {r.email && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <button
-                        onClick={() => setSendFor(r)}
+                        onClick={(e) => { e.stopPropagation(); setTurnbackFor(r); }}
+                        title="Send a turn-back / decline email to this person"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-[var(--c-on-accent)]"
+                      >
+                        <Mail size={13} /> Turn-back email
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSendFor(r); }}
                         title={`Send an estate-planning intake to ${r.email}`}
-                        className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-[var(--c-on-accent)]"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
                       >
                         <Send size={13} /> Send intake
                       </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{r.branch}</div>
-                    <div className="text-xs text-[var(--c-ink-muted)]">{r.county}</div>
-                  </td>
-                  <td className="px-4 py-3 text-[var(--c-ink-muted)]">
-                    {new Date(r.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={r.status}
-                      onChange={(e) => onStatusChange(r, e.target.value)}
-                      disabled={pending}
-                      className="border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1 text-xs"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                      ))}
-                    </select>
-                    {r.status === "referred-out" && (
-                      <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]">
-                        <span>→ {r.referredTo ?? "?"}{r.feeExpected ? ` · fee ${r.feeAmount || "expected"}` : " · no fee"}</span>
-                        <button onClick={() => setReferralFor(r)} title="Edit referral" className="hover:text-[var(--c-accent)]"><Pencil size={12} /></button>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => archiveRow(r.id, !r.archived)}
-                        disabled={pending}
-                        title={r.archived ? "Restore to active" : "Archive"}
-                        className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
-                      >
-                        {r.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-                      </button>
-                      <button onClick={() => setOpen(open === r.id ? null : r.id)} aria-label="Toggle detail">
-                        <ChevronDown size={16} className={open === r.id ? "rotate-180 transition-transform" : "transition-transform"} />
-                      </button>
                     </div>
-                  </td>
-                </tr>
-                {open === r.id && (
-                  <tr className="bg-[var(--c-surface2)]">
-                    <td colSpan={5} className="px-4 py-4">
-                      {r.emailStatus && (
-                        <p className={`mb-3 inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${r.emailStatus === "sent" ? "bg-green-600/10 text-green-700" : "bg-[var(--c-error)]/10 text-[var(--c-error)]"}`}>
-                          Notification email: {r.emailStatus}
-                        </p>
-                      )}
-                      <dl className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
-                        {Object.entries(r.answers).map(([k, v]) => (
-                          <div key={k} className="flex gap-2">
-                            <dt className="text-[var(--c-ink-muted)] min-w-32">{k}</dt>
-                            <dd>
-                              {Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as object)) ? (
-                                <span className="flex flex-col gap-0.5">
-                                  {(v as { name?: string; url: string }[]).map((f, i) => (
-                                    <a key={i} href={f.url} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] underline underline-offset-2">
-                                      {f.name ?? `Attachment ${i + 1}`}
-                                    </a>
-                                  ))}
-                                </span>
-                              ) : Array.isArray(v) ? (
-                                v.join(", ")
-                              ) : (
-                                String(v ?? "")
-                              )}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div>{r.branch}</div>
+                  <div className="text-xs text-[var(--c-ink-muted)]">{r.county}</div>
+                </td>
+                <td className="px-4 py-3 text-[var(--c-ink-muted)]">
+                  {new Date(r.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    value={r.status}
+                    onChange={(e) => onStatusChange(r, e.target.value)}
+                    disabled={pending}
+                    className="border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1 text-xs"
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                    ))}
+                  </select>
+                  {r.status === "referred-out" && (
+                    <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]">
+                      <span>→ {r.referredTo ?? "?"}{r.feeExpected ? ` · fee ${r.feeAmount || "expected"}` : " · no fee"}</span>
+                      <button onClick={() => setReferralFor(r)} title="Edit referral" className="hover:text-[var(--c-accent)]"><Pencil size={12} /></button>
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => archiveRow(r.id, !r.archived)}
+                      disabled={pending}
+                      title={r.archived ? "Restore to active" : "Archive"}
+                      className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+                    >
+                      {r.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                    </button>
+                    <button onClick={() => setDetailFor(r)} title="View full intake" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+                      <ChevronsRight size={16} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <LeadDetailDrawer row={detailFor} onClose={() => setDetailFor(null)} onTurnback={(r) => { setDetailFor(null); setTurnbackFor(r); }} />
+
+      {turnbackFor && (
+        <TurnbackDialog key={turnbackFor.id} row={turnbackFor} attorneys={referralAttorneys} onClose={() => setTurnbackFor(null)} />
+      )}
 
       {referralFor && (
         <ReferralModal row={referralFor} attorneys={attorneys} onClose={() => setReferralFor(null)} />

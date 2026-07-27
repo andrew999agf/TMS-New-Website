@@ -2,6 +2,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
+import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
 import { db, hasDb } from "@/db";
 import { intakeSubmissions, referralAttorneys } from "@/db/schema";
@@ -20,6 +21,7 @@ export default async function IntakeAdminPage() {
   let rows: IntakeRow[] = [];
   let leads: LeadPoint[] = [];
   let attorneys: string[] = [];
+  let referralRows: ReferralAttorneyRow[] = [];
   if (db) {
     try {
       const data = await db.select().from(intakeSubmissions).orderBy(desc(intakeSubmissions.createdAt));
@@ -48,10 +50,12 @@ export default async function IntakeAdminPage() {
       rows = [];
     }
     try {
-      const a = await db.select({ name: referralAttorneys.name }).from(referralAttorneys).orderBy(asc(referralAttorneys.name));
+      const a = await db.select().from(referralAttorneys).orderBy(asc(referralAttorneys.sort), asc(referralAttorneys.name));
       attorneys = a.map((x) => x.name);
+      referralRows = a.map((x) => ({ id: x.id, name: x.name, firm: x.firm ?? "", address: x.address ?? "", phone: x.phone ?? "", email: x.email ?? "", website: x.website ?? "", practiceArea: x.practiceArea ?? "" }));
     } catch {
       attorneys = [];
+      referralRows = [];
     }
   }
 
@@ -70,8 +74,9 @@ export default async function IntakeAdminPage() {
           emailConfigured={emailConfigured}
           senderFrom={senderFrom}
         />
+        <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
-        <IntakeTable rows={rows} attorneys={attorneys} />
+        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} />
       </div>
     </>
   );
