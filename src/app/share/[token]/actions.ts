@@ -137,6 +137,23 @@ export async function recipientSubmitAnswer(token: string, todoId: string, html:
   return { ok: true as const };
 }
 
+/** Delete several files at once — manage permission only. */
+export async function recipientDeleteFiles(token: string, ids: number[]) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !shareCan(ctx.rec.permission, "delete")) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const list = [...new Set(ids.filter((n) => Number.isFinite(n)))];
+  if (list.length === 0) return { ok: true as const };
+  try {
+    const victims = await db.select().from(shareFiles).where(and(eq(shareFiles.folderId, ctx.folder.id), inArray(shareFiles.id, list)));
+    for (const f of victims) { try { await del(f.url); } catch { /* best-effort */ } }
+    if (victims.length) await db.delete(shareFiles).where(inArray(shareFiles.id, victims.map((f) => f.id)));
+    return { ok: true as const, count: victims.length };
+  } catch {
+    return { ok: false as const, error: "Couldn't remove the files." };
+  }
+}
+
 /** Clear the live upload indicator when a recipient's batch finishes. */
 export async function recipientClearUpload(token: string) {
   const ctx = await resolveRecipient(token);

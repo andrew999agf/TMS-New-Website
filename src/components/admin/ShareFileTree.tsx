@@ -48,6 +48,12 @@ function countFiles(node: FolderNode): number {
   return n;
 }
 
+function collectFileIds(node: FolderNode): number[] {
+  const ids = node.files.map((f) => f.id);
+  for (const c of node.children.values()) ids.push(...collectFileIds(c));
+  return ids;
+}
+
 type Ctx = {
   hrefFor: (id: number) => string;
   target?: "_blank";
@@ -59,6 +65,10 @@ type Ctx = {
   onRenameDir?: (path: string, currentName: string) => void;
   onPreview?: (file: { id: number; base: string }) => void;
   dirInfo?: DirInfo;
+  // multi-select (optional)
+  selectable?: boolean;
+  selected?: Set<number>;
+  onToggleSelect?: (ids: number[], checked: boolean) => void;
   // drag-drop upload (optional)
   onUpload?: (destPath: string, dt: DataTransfer) => void;
   overPath: string | null;
@@ -66,7 +76,7 @@ type Ctx = {
   doDrop: (e: React.DragEvent, path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, onUpload, dirInfo }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -81,6 +91,10 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   onPreview?: (file: { id: number; base: string }) => void;
   /** Per-folder "created by / when" attribution, keyed by full path. */
   dirInfo?: DirInfo;
+  /** When true, each file (and folder) shows a selection checkbox. */
+  selectable?: boolean;
+  selected?: Set<number>;
+  onToggleSelect?: (ids: number[], checked: boolean) => void;
   /** When provided, the tree becomes a drop target: drop onto a folder to add
    *  inside it, or onto empty space to add at the top level. */
   onUpload?: (destPath: string, dt: DataTransfer) => void;
@@ -91,7 +105,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, dirInfo, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -136,7 +150,25 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
       className={`rounded ${hot ? "bg-[var(--c-accent)]/10 outline outline-1 outline-[var(--c-accent)]" : ""}`}
     >
       <div className="flex items-center gap-1 rounded pr-1 hover:bg-[var(--c-surface2)]">
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: 8 + depth * 16 }}>
+        {ctx.selectable && ctx.onToggleSelect && (() => {
+          const ids = collectFileIds(node);
+          const sel = ids.filter((id) => ctx.selected?.has(id)).length;
+          const all = ids.length > 0 && sel === ids.length;
+          if (ids.length === 0) return <span className="w-[18px] shrink-0" style={{ marginLeft: 8 + depth * 16 }} />;
+          return (
+            <input
+              type="checkbox"
+              checked={all}
+              ref={(el) => { if (el) el.indeterminate = sel > 0 && !all; }}
+              onChange={(e) => ctx.onToggleSelect!(ids, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              title="Select everything in this folder"
+              className="shrink-0"
+              style={{ marginLeft: 8 + depth * 16 }}
+            />
+          );
+        })()}
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: ctx.selectable ? 2 : 8 + depth * 16 }}>
           <ChevronRight size={14} className={`shrink-0 text-[var(--c-ink-muted)] transition-transform ${open ? "rotate-90" : ""}`} />
           {open ? <FolderOpen size={15} className="shrink-0 text-[var(--c-accent)]" /> : <FolderIcon size={15} className="shrink-0 text-[var(--c-accent)]" />}
           <span className="flex min-w-0 flex-1 flex-col">
@@ -164,7 +196,10 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
 function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx }) {
   const href = ctx.hrefFor(file.id);
   return (
-    <div className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--c-surface2)]" style={{ paddingLeft: 8 + depth * 16 + 18 }}>
+    <div className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--c-surface2)]" style={{ paddingLeft: 8 + depth * 16 + (ctx.selectable ? 2 : 18) }}>
+      {ctx.selectable && ctx.onToggleSelect && (
+        <input type="checkbox" checked={ctx.selected?.has(file.id) ?? false} onChange={(e) => ctx.onToggleSelect!([file.id], e.target.checked)} className="shrink-0" />
+      )}
       <FileText size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
       <span className="flex min-w-0 flex-1 flex-col">
         <a href={href} target={ctx.target} rel={ctx.target ? "noopener noreferrer" : undefined} className="truncate text-sm hover:text-[var(--c-accent)]">{file.base}</a>

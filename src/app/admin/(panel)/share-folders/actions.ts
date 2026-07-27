@@ -323,6 +323,25 @@ export async function deleteFile(id: number) {
   }
 }
 
+/** Delete several files at once (checkbox multi-select). */
+export async function deleteFiles(folderId: number, ids: number[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const list = [...new Set(ids.filter((n) => Number.isFinite(n)))];
+  if (list.length === 0) return { ok: true as const };
+  try {
+    const victims = (await db.select().from(shareFiles).where(and(eq(shareFiles.folderId, folderId), inArray(shareFiles.id, list))));
+    for (const f of victims) { try { await del(f.url); } catch { /* best-effort */ } }
+    if (victims.length) await db.delete(shareFiles).where(inArray(shareFiles.id, victims.map((f) => f.id)));
+    await audit(session.email, "delete", "share-folder", String(folderId), `Deleted ${victims.length} files`);
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const, count: victims.length };
+  } catch (err) {
+    console.error("[share] deleteFiles failed:", err);
+    return { ok: false as const, error: "Couldn't remove the files — try again." };
+  }
+}
+
 /* -------------------------------- recipients ------------------------------- */
 
 async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[], secure: boolean) {

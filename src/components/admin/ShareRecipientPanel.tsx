@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import { Upload, FolderPlus, Loader2 } from "lucide-react";
+import { Upload, FolderPlus, Loader2, Download, Trash2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
 import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
-import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
+import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
@@ -23,6 +23,29 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ id: number; base: string } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setSelected((prev) => {
+      const present = new Set(files.map((f) => f.id));
+      const next = new Set([...prev].filter((id) => present.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [files]);
+
+  function toggleSelect(ids: number[], checked: boolean) {
+    setSelected((prev) => { const n = new Set(prev); for (const id of ids) { if (checked) n.add(id); else n.delete(id); } return n; });
+  }
+  function bulkDownload() {
+    const ids = [...selected];
+    if (ids.length) window.open(`/share/${token}/zip?ids=${ids.join(",")}`, "_blank");
+  }
+  function bulkDelete() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!confirm(`Are you sure you want to delete ${ids.length} file${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    recipientDeleteFiles(token, ids).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't delete."); setSelected(new Set()); router.refresh(); }).catch(() => setError("Couldn't delete."));
+  }
 
   useEffect(() => {
     const el = folderInput.current;
@@ -135,11 +158,23 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
 
       {error && <p className="text-xs text-[var(--c-error)]">{error}</p>}
 
+      {selected.size > 0 && (caps.download || caps.delete) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)] bg-[var(--c-accent)]/5 px-3 py-2 text-sm">
+          <span className="font-medium text-[var(--c-ink)]">{selected.size} selected</span>
+          {caps.download && <button onClick={bulkDownload} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs hover:bg-[var(--c-surface2)]"><Download size={13} /> Download selected</button>}
+          {caps.delete && <button onClick={bulkDelete} className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1 text-xs text-red-600 hover:bg-red-500/10"><Trash2 size={13} /> Delete selected</button>}
+          <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>
+        </div>
+      )}
+
       <ShareFileTree
         files={files}
         dirs={dirs}
         hrefFor={(id) => `/share/${token}/file/${id}`}
         showDownload={caps.download}
+        selectable={caps.download || caps.delete}
+        selected={selected}
+        onToggleSelect={toggleSelect}
         onDelete={caps.delete ? handleDelete : undefined}
         deletingId={deletingId}
         onDeleteDir={caps.delete ? handleDeleteDir : undefined}

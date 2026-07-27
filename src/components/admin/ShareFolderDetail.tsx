@@ -15,7 +15,7 @@ import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
+  registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -240,7 +240,31 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
   const [newDir, setNewDir] = useState("");
   const [creatingDir, setCreatingDir] = useState(false);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
+
+  // Drop selections that no longer exist (after a delete/refresh).
+  useEffect(() => {
+    setSelected((prev) => {
+      const present = new Set(files.map((f) => f.id));
+      const next = new Set([...prev].filter((id) => present.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [files]);
+
+  function toggleSelect(ids: number[], checked: boolean) {
+    setSelected((prev) => { const n = new Set(prev); for (const id of ids) { if (checked) n.add(id); else n.delete(id); } return n; });
+  }
+  function bulkDownload() {
+    const ids = [...selected];
+    if (ids.length) window.open(`/admin/share-folders/${folderId}/zip?ids=${ids.join(",")}`, "_blank");
+  }
+  function bulkDelete() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!confirm(`Are you sure you want to delete ${ids.length} file${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    deleteFiles(folderId, ids).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't delete."); setSelected(new Set()); router.refresh(); }).catch(() => setError("Couldn't delete."));
+  }
 
   function addFolder() {
     const name = newDir.trim();
@@ -351,6 +375,15 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
       {!blobReady && <p className="mb-2 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
 
+      {selected.size > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)] bg-[var(--c-accent)]/5 px-3 py-2 text-sm">
+          <span className="font-medium text-[var(--c-ink)]">{selected.size} selected</span>
+          <button onClick={bulkDownload} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs hover:bg-[var(--c-surface2)]"><Download size={13} /> Download selected</button>
+          <button onClick={bulkDelete} className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1 text-xs text-red-600 hover:bg-red-500/10"><Trash2 size={13} /> Delete selected</button>
+          <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>
+        </div>
+      )}
+
       <ShareFileTree
         files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, by: f.by, at: f.createdAt }))}
         dirs={dirs}
@@ -358,6 +391,9 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
         hrefFor={(id) => urlById.get(id) ?? "#"}
         target="_blank"
         showDownload
+        selectable
+        selected={selected}
+        onToggleSelect={toggleSelect}
         onPreview={(f) => { const url = urlById.get(f.id); if (url) setPreview({ name: f.base, previewUrl: url, downloadUrl: url }); }}
         onDelete={handleDelete}
         deletingId={deletingId}
