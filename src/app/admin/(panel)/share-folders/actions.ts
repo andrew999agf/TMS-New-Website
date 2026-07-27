@@ -213,7 +213,7 @@ export async function notifyAssignee(folderId: number, taskText: string, email: 
         ${linkBlock}
         <p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #e5e5e5;font-size:11px;color:#8a8a8a">Sent by ${esc(FIRM.name)}. If you weren't expecting this, please contact <a href="mailto:${REISSUE_CONTACT}" style="color:#8a8a8a">${REISSUE_CONTACT}</a>.</p>
       </div>`;
-    const res = await sendEmail({ to: addr, fromName: FIRM.name, subject: `Task assigned to you — ${folder.name}`, html });
+    const res = await sendEmail({ to: addr, cc: await shareCc(), fromName: FIRM.name, subject: `Task assigned to you — ${folder.name}`, html });
     await audit(session.email, "notify", "share-folder", String(folderId), `Task assigned to ${addr}`);
     return res.sent ? { ok: true as const } : { ok: false as const, error: "Couldn't send the notification email." };
   } catch (err) {

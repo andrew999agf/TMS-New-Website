@@ -6,7 +6,10 @@ import { db } from "@/db";
 import { shareFiles, shareDirs, shareFolders, shareAccessLog } from "@/db/schema";
 import { resolveRecipient, cleanDirPath, DIGEST_DELAY_MS } from "@/lib/share/access";
 import { shareCan, normalizeMeta } from "@/lib/share/types";
-import { sanitizeRichText } from "@/lib/share/sanitize";
+import { sanitizeRichText, hasRichText } from "@/lib/share/sanitize";
+import { shareNotifyList } from "@/lib/share/notify";
+import { sendEmail } from "@/lib/email";
+import { FIRM } from "@/lib/firm";
 
 /** Record a file a recipient uploaded (after the Blob upload resolves). */
 export async function recipientRegisterFile(
@@ -82,6 +85,48 @@ export async function recipientSetTaskAnswer(token: string, todoId: string, html
   } catch {
     return { ok: false as const, error: "Couldn't save your answer." };
   }
+}
+
+/** The recipient confirms their answer: it's saved and the firm is emailed. */
+export async function recipientSubmitAnswer(token: string, todoId: string, html: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  const meta = normalizeMeta(ctx.folder.meta);
+  const todo = (meta.todos ?? []).find((t) => t.id === todoId);
+  if (!todo || !todo.answerEnabled) return { ok: false as const, error: "This task doesn't take an answer." };
+  const clean = sanitizeRichText(html);
+  if (!hasRichText(clean)) return { ok: false as const, error: "Please type an answer first." };
+  todo.answer = clean;
+  todo.answerAt = new Date().toISOString();
+  try {
+    await db.update(shareFolders).set({ meta: meta as Record<string, unknown> }).where(eq(shareFolders.id, ctx.folder.id));
+  } catch {
+    return { ok: false as const, error: "Couldn't save your answer." };
+  }
+  // Notify the firm: the folder's creator plus the shared notification list.
+  try {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const to = Array.from(new Set([(ctx.folder.createdBy ?? "").trim().toLowerCase(), ...(await shareNotifyList())].filter(Boolean)));
+    if (to.length) {
+      const base = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+      const who = ctx.rec.name?.trim() || ctx.rec.email;
+      const body = `
+        <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
+          <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
+          <p style="margin:0 0 6px"><strong>${esc(who)}</strong> answered a task in <strong>${esc(ctx.folder.name)}</strong>${ctx.folder.caseNumber ? ` (Case ${esc(ctx.folder.caseNumber)})` : ""}.</p>
+          <p style="margin:14px 0 4px;font-weight:bold">Task</p>
+          <p style="margin:0 0 12px">${esc(todo.text)}</p>
+          <p style="margin:14px 0 4px;font-weight:bold">Their answer</p>
+          <div style="margin:0 0 16px;padding:12px 14px;border-left:3px solid #7a1f2b;background:#faf6f2">${clean}</div>
+          <p style="margin:0"><a href="${base}/admin/share-folders/${ctx.folder.id}" style="color:#7a1f2b">Open the folder in the admin portal</a></p>
+        </div>`;
+      await sendEmail({ to, fromName: `${FIRM.name} — Secure Share`, subject: `${who} answered a task — ${ctx.folder.name}`, html: body });
+    }
+  } catch {
+    /* the answer is saved; a failed email shouldn't fail the submit */
+  }
+  return { ok: true as const };
 }
 
 /** Clear the live upload indicator when a recipient's batch finishes. */

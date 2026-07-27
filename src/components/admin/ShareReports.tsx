@@ -100,6 +100,10 @@ export function ShareReports({ config, reports }: { config: ShareReportConfig; r
           <button onClick={test} disabled={busy !== null} className={btn}>{busy === "test" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send test to me</button>
         </div>
         {note && <p className="mt-3 inline-flex items-center gap-1 text-xs text-[var(--c-accent)]"><Check size={13} /> {note}</p>}
+        <p className="mt-3 border-t border-[var(--c-border)] pt-3 text-[11px] text-[var(--c-ink-muted)]">
+          Want more people copied on share-folder emails (invites, upload digests, task assignments, and answers)? Add them under{" "}
+          <a href="/admin/settings#share-cc" className="text-[var(--c-accent)] hover:underline">Share-folder notifications</a> in Settings.
+        </p>
       </div>
 
       {/* Report list */}

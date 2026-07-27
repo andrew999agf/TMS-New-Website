@@ -67,8 +67,8 @@ export default async function SettingsPage() {
           <BillingReminderManager initial={billingReminder ?? BILLING_REMINDER_DEFAULT} />
         </section>
 
-        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
-          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Share folder emails (CC)</h2>
+        <section id="share-cc" className="scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Share-folder notifications (who else gets copied)</h2>
           <ShareCcManager initial={Array.isArray(shareCc) ? shareCc : SHARE_CC_DEFAULT} />
         </section>
 

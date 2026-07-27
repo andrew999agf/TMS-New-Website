@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock, Archive, ArchiveRestore, MessageSquare, Bold, Italic, Underline, List, ListOrdered, Highlighter } from "lucide-react";
+import { Plus, X, Check, Loader2, Scale, StickyNote, ListChecks, UserPlus, Upload, FolderUp, CalendarClock, Archive, ArchiveRestore, MessageSquare, Bold, Italic, Underline, List, ListOrdered, Highlighter, Download, FileText, Send } from "lucide-react";
 import { normalizeMeta, taskDueStatus, type ShareFolderMeta, type ShareTodo } from "@/lib/share/types";
 import { hasRichText } from "@/lib/share/sanitize";
 import { updateFolderMeta, createDir, notifyAssignee } from "@/app/admin/(panel)/share-folders/actions";
-import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload, recipientSetTaskAnswer } from "@/app/share/[token]/actions";
+import { recipientToggleTodo, recipientRegisterFile, recipientClearUpload, recipientSetTaskAnswer, recipientSubmitAnswer } from "@/app/share/[token]/actions";
 import { fromInput } from "@/lib/share/drop";
 
 export type Contact = { name: string; email: string };
@@ -249,7 +249,13 @@ export function FolderWorkspaceEditor({ folderId, initial, contacts = [] }: { fo
                   </div>
                   {t.answerEnabled && hasRichText(t.answer) && (
                     <div className="mt-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)]/50 px-2.5 py-1.5">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Their answer{t.answerAt ? ` · ${fmtDate(t.answerAt)}` : ""}</p>
+                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Their answer{t.answerAt ? ` · ${fmtDate(t.answerAt)}` : ""}</p>
+                        <div className="flex items-center gap-1.5">
+                          <a href={`/admin/share-folders/${folderId}/answer/${t.id}?format=doc`} className="inline-flex items-center gap-1 rounded border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><FileText size={11} /> Word</a>
+                          <a href={`/admin/share-folders/${folderId}/answer/${t.id}?format=pdf`} className="inline-flex items-center gap-1 rounded border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Download size={11} /> PDF</a>
+                        </div>
+                      </div>
                       <div className="text-xs text-[var(--c-ink)] [&_mark]:bg-[#fff3a0] [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: t.answer ?? "" }} />
                     </div>
                   )}
@@ -303,12 +309,28 @@ function TaskAnswerEditor({ token, todoId, initialHtml }: { token: string; todoI
   const ref = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     if (ref.current) ref.current.innerHTML = initialHtml || "";
     // Set once on mount; re-rendering would move the caret.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function submit() {
+    const html = ref.current?.innerHTML ?? "";
+    if (!hasRichText(html)) { alert("Please type your answer first."); return; }
+    if (!window.confirm("Send this answer to the firm now? You can still edit it afterward.")) return;
+    setSending(true);
+    if (timer.current) clearTimeout(timer.current);
+    try {
+      const res = await recipientSubmitAnswer(token, todoId, html);
+      if (res.ok) { setStatus("saved"); setSent(true); setTimeout(() => setSent(false), 4000); }
+      else alert(res.error ?? "Couldn't send.");
+    } catch { alert("Couldn't send."); }
+    finally { setSending(false); }
+  }
 
   function scheduleSave() {
     setStatus("saving");
@@ -356,11 +378,14 @@ function TaskAnswerEditor({ token, todoId, initialHtml }: { token: string; todoI
         data-placeholder="Type your answer…"
         className="min-h-[72px] rounded-b-md border border-t-0 border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-2 text-sm text-[var(--c-ink)] outline-none focus:border-[var(--c-accent)] empty:before:text-[var(--c-ink-muted)] empty:before:content-[attr(data-placeholder)] [&_mark]:bg-[#fff3a0] [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
       />
-      <p className="mt-0.5 h-3 text-[10px] text-[var(--c-ink-muted)]">
-        {status === "saving" && "Saving…"}
-        {status === "saved" && <span className="text-green-600">Saved</span>}
-        {status === "error" && <span className="text-[var(--c-error)]">Couldn&apos;t save</span>}
-      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={submit} disabled={sending} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50">
+          {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send to the firm
+        </button>
+        <span className="text-[10px] text-[var(--c-ink-muted)]">
+          {sent ? <span className="text-green-600">Sent — thank you.</span> : status === "saving" ? "Saving draft…" : status === "saved" ? "Draft saved" : status === "error" ? <span className="text-[var(--c-error)]">Couldn&apos;t save</span> : "Your answer saves automatically as you type."}
+        </span>
+      </div>
     </div>
   );
 }
