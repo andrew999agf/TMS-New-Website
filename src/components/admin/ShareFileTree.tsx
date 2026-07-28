@@ -157,18 +157,21 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
           const ids = collectFileIds(node);
           const sel = ids.filter((id) => ctx.selected?.has(id)).length;
           const all = ids.length > 0 && sel === ids.length;
-          if (ids.length === 0) return <span className="w-[18px] shrink-0" style={{ marginLeft: 8 + depth * 16 }} />;
+          // Fixed-width slot so empty folders (no checkbox) still line up with
+          // folders that have one.
           return (
-            <input
-              type="checkbox"
-              checked={all}
-              ref={(el) => { if (el) el.indeterminate = sel > 0 && !all; }}
-              onChange={(e) => ctx.onToggleSelect!(ids, e.target.checked)}
-              onClick={(e) => e.stopPropagation()}
-              title="Select everything in this folder"
-              className="shrink-0"
-              style={{ marginLeft: 8 + depth * 16 }}
-            />
+            <span className="flex w-4 shrink-0 items-center justify-center" style={{ marginLeft: 8 + depth * 16 }}>
+              {ids.length > 0 && (
+                <input
+                  type="checkbox"
+                  checked={all}
+                  ref={(el) => { if (el) el.indeterminate = sel > 0 && !all; }}
+                  onChange={(e) => ctx.onToggleSelect!(ids, e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Select everything in this folder"
+                />
+              )}
+            </span>
           );
         })()}
         <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: ctx.selectable ? 2 : 8 + depth * 16 }}>
