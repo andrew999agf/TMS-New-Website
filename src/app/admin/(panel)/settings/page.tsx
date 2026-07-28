@@ -15,6 +15,9 @@ import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 import { FIRM } from "@/lib/firm";
+import { db } from "@/db";
+import { admins } from "@/db/schema";
+import { asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +29,9 @@ export default async function SettingsPage() {
   const intakeNotify = await getSetting<string[]>("intake.statusNotify", [FIRM.email]);
   const billingReminder = await getSetting<BillingReminder>(BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT);
   const dailyReview = await getSetting<DailyReviewConfig>(DAILY_REVIEW_KEY, DAILY_REVIEW_DEFAULT);
+  const systemUsers = db
+    ? (await db.select({ name: admins.name, email: admins.email }).from(admins).orderBy(asc(admins.name))).map((u) => ({ name: u.name ?? "", email: u.email }))
+    : [];
   const shareCc = await getSetting<string[]>(SHARE_CC_KEY, SHARE_CC_DEFAULT);
 
   const envState = [
@@ -72,7 +78,7 @@ export default async function SettingsPage() {
 
         <section id="daily-billing-review" className="scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">End-of-day billing review</h2>
-          <DailyBillingReviewManager initial={dailyReview ?? DAILY_REVIEW_DEFAULT} />
+          <DailyBillingReviewManager initial={dailyReview ?? DAILY_REVIEW_DEFAULT} users={systemUsers} />
         </section>
 
         <section id="share-cc" className="scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
