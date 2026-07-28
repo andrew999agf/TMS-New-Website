@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, ChevronsRight, Download } from "lucide-react";
+import { X, ChevronsRight, Download, Link2, Check } from "lucide-react";
 
-export type PreviewFile = { name: string; previewUrl: string; downloadUrl: string };
+export type PreviewFile = { name: string; previewUrl: string; downloadUrl: string; copyLink?: string };
 
 const IMG_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "bmp"]);
 // Formats browsers can play inline. Others (avi, wmv, mkv) still fall back to download.
@@ -20,7 +20,8 @@ const MIME: Record<string, string> = {
  */
 export function ShareFilePreview({ file, onClose }: { file: PreviewFile | null; onClose: () => void }) {
   const [content, setContent] = useState(file);
-  useEffect(() => { if (file) setContent(file); }, [file]);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (file) { setContent(file); setCopied(false); } }, [file]);
   const open = !!file;
   const cur = content;
   const ext = cur ? (cur.name.split(".").pop()?.toLowerCase() ?? "") : "";
@@ -38,6 +39,19 @@ export function ShareFilePreview({ file, onClose }: { file: PreviewFile | null; 
           {cur && <a href={cur.downloadUrl} target="_blank" rel="noopener noreferrer" className="rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Download"><Download size={16} /></a>}
           <button onClick={onClose} title="Slide back" className="rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><ChevronsRight size={18} /></button>
         </div>
+        {cur?.copyLink && (
+          <div className="flex items-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-surface2)] px-3 py-1.5">
+            <Link2 size={13} className="shrink-0 text-[var(--c-accent)]" />
+            <input readOnly value={cur.copyLink} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 truncate bg-transparent text-[11px] text-[var(--c-ink)] outline-none" />
+            <button
+              onClick={() => { navigator.clipboard?.writeText(cur.copyLink!); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+              title="Copy a direct link to this document — paste it anywhere; anyone can open it while this folder is an open link"
+              className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--c-border)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+            >
+              {copied ? <Check size={12} className="text-green-600" /> : <Link2 size={12} />} {copied ? "Copied" : "Copy link"}
+            </button>
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-auto bg-[var(--c-surface2)]">
           {cur && ext === "pdf" && <iframe src={cur.previewUrl} title={cur.name} className="h-full w-full border-0" />}
           {cur && IMG_EXT.has(ext) && (

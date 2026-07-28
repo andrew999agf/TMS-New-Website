@@ -232,6 +232,28 @@ export async function notifyAssignee(folderId: number, taskText: string, email: 
   }
 }
 
+/** Turn copyable public file links on/off for a folder. Minting the folder's
+ *  public token on first enable. Only meaningful for open-link folders — the
+ *  public view page still refuses to serve if sign-in is required. */
+export async function setFolderFileLinks(folderId: number, enabled: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const meta = normalizeMeta(folder.meta);
+    meta.fileLinks = enabled;
+    if (enabled && !meta.publicToken) meta.publicToken = randomBytes(24).toString("base64url");
+    await db.update(shareFolders).set({ meta: meta as Record<string, unknown>, updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    await audit(session.email, "update", "share-folder", String(folderId), enabled ? "Enabled public file links" : "Disabled public file links");
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true as const, publicToken: meta.publicToken };
+  } catch (err) {
+    console.error("[share] setFolderFileLinks failed:", err);
+    return { ok: false as const, error: "Couldn't update — try again." };
+  }
+}
+
 export async function createDir(folderId: number, path: string) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };

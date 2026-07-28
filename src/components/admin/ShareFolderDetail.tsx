@@ -16,7 +16,7 @@ import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
-  archiveFolder, deleteFolder, updateFolder,
+  archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
@@ -54,7 +54,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
         <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
       )}
 
-      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} />
+      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={!folder.requireAuth && folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
@@ -68,6 +68,7 @@ function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients
   const [pending, start] = useTransition();
   const [showInfo, setShowInfo] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
+  const [fileLinks, setFileLinks] = useState(!!folder.meta.fileLinks);
   const openLinks = recipients.filter((r) => !r.revoked);
 
   return (
@@ -110,6 +111,10 @@ function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients
               )}
             </div>
           )}
+          <label className="mt-2 flex items-start gap-2 text-[11px] text-[var(--c-ink-muted)]" title="When on, opening a file's preview shows a copyable link at the top. Paste it into a document; anyone who clicks it opens straight to that file.">
+            <input type="checkbox" checked={fileLinks} disabled={pending} onChange={(e) => { const v = e.target.checked; setFileLinks(v); start(async () => { await setFolderFileLinks(folder.id, v); router.refresh(); }); }} className="mt-0.5" />
+            <span>Give each file a copyable direct link on its preview — for pasting into documents so a reader can click straight to that file.</span>
+          </label>
         </div>
       ) : (
         <p className="mt-0.5 pl-6 text-[11px] text-[var(--c-ink-muted)]">Recommended. Recipients must verify with a password or a one-time email code before viewing.</p>
@@ -228,7 +233,7 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
-function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId: number; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean }) {
+function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicToken }: { folderId: number; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean; filePublicToken: string | null }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -394,7 +399,7 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady }: { folderId:
         selectable
         selected={selected}
         onToggleSelect={toggleSelect}
-        onPreview={(f) => { const url = urlById.get(f.id); if (url) setPreview({ name: f.base, previewUrl: url, downloadUrl: url }); }}
+        onPreview={(f) => { const url = urlById.get(f.id); if (url) setPreview({ name: f.base, previewUrl: url, downloadUrl: url, copyLink: filePublicToken ? `${window.location.origin}/share/f/${filePublicToken}/${f.id}` : undefined }); }}
         onDelete={handleDelete}
         deletingId={deletingId}
         onDeleteDir={handleDeleteDir}

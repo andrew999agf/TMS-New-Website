@@ -378,6 +378,11 @@ export type ShareFolderMeta = {
   notes?: string;
   todosEnabled?: boolean;
   todos?: ShareTodo[];
+  /** When on (open-link folders only), each file preview offers a copyable
+   *  public link that opens straight to that file. */
+  fileLinks?: boolean;
+  /** The unguessable folder-level token those public file links use. */
+  publicToken?: string;
 };
 
 export function normalizeMeta(m: unknown): ShareFolderMeta {
@@ -403,6 +408,8 @@ export function normalizeMeta(m: unknown): ShareFolderMeta {
             answerAt: typeof t.answerAt === "string" && t.answerAt ? t.answerAt : undefined,
           }))
       : [],
+    fileLinks: !!o.fileLinks,
+    publicToken: typeof o.publicToken === "string" && o.publicToken ? o.publicToken : undefined,
   };
 }
 
