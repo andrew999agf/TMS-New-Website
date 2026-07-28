@@ -41,10 +41,14 @@ export function BillingReview({ entries, people, matters, initialUser, initialDa
   }, [rows, person, from, to]);
 
   const totals = useMemo(() => {
-    let b = 0, n = 0;
-    for (const e of filtered) { if (e.nonBillable) n += e.quantity || 0; else b += e.quantity || 0; }
-    return { billable: b, nonBillable: n, total: b + n, count: filtered.length };
+    let b = 0, n = 0, dollars = 0;
+    for (const e of filtered) {
+      const q = e.quantity || 0;
+      if (e.nonBillable) n += q; else { b += q; dollars += q * (e.price || 0); }
+    }
+    return { billable: b, nonBillable: n, total: b + n, dollars, count: filtered.length };
   }, [filtered]);
+  const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   function patchLocal(id: number, patch: Partial<ReviewEntry>) {
     setRows((cur) => cur.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -123,12 +127,13 @@ export function BillingReview({ entries, people, matters, initialUser, initialDa
         <span><span className="text-[var(--c-ink-muted)]">Billable</span> <strong>{totals.billable.toFixed(2)}</strong></span>
         <span><span className="text-[var(--c-ink-muted)]">Non-billable</span> <strong>{totals.nonBillable.toFixed(2)}</strong></span>
         <span><span className="text-[var(--c-ink-muted)]">Total</span> <strong>{totals.total.toFixed(2)} hrs</strong></span>
+        <span className="rounded-md bg-[var(--c-accent)]/10 px-2 py-0.5"><span className="text-[var(--c-ink-muted)]">Billable value</span> <strong className="text-[var(--c-accent)]">{money(totals.dollars)}</strong></span>
         <span className="text-[var(--c-ink-muted)]">{totals.count} {totals.count === 1 ? "entry" : "entries"}</span>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-[var(--c-border)]">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead className="bg-[var(--c-surface2)] text-left text-xs text-[var(--c-ink-muted)]">
             <tr>
               <th className="px-2 py-2 font-medium">Date</th>
@@ -136,14 +141,15 @@ export function BillingReview({ entries, people, matters, initialUser, initialDa
               <th className="px-2 py-2 font-medium">Matter</th>
               <th className="px-2 py-2 font-medium">Description</th>
               <th className="px-2 py-2 font-medium text-right">Hours</th>
-              <th className="px-2 py-2 font-medium text-right">Rate</th>
+              <th className="px-2 py-2 font-medium text-right" title="The rate billed to the client on this entry (per hour)">Rate&nbsp;(billed/hr)</th>
+              <th className="px-2 py-2 font-medium text-right">Amount</th>
               <th className="px-2 py-2 font-medium text-center">Billable</th>
               <th className="px-2 py-2 font-medium text-right">&nbsp;</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={person === "All" ? 8 : 7} className="px-3 py-10 text-center text-[var(--c-ink-muted)]">No live entries for this selection.</td></tr>
+              <tr><td colSpan={person === "All" ? 9 : 8} className="px-3 py-10 text-center text-[var(--c-ink-muted)]">No live entries for this selection.</td></tr>
             )}
             {filtered.map((e) => (
               <tr key={e.id} className="bg-[var(--c-surface)]">
@@ -156,11 +162,14 @@ export function BillingReview({ entries, people, matters, initialUser, initialDa
                   <input defaultValue={e.activityDescription} onChange={(ev) => patchLocal(e.id, { activityDescription: ev.target.value })} onBlur={(ev) => save(e.id, { ...e, activityDescription: ev.target.value })} className={`${inp} min-w-[12rem]`} />
                 </td>
                 <td className={`${cell} text-right`}>
-                  <input type="number" step="0.1" defaultValue={e.quantity} onChange={(ev) => patchLocal(e.id, { quantity: Number(ev.target.value) })} onBlur={(ev) => save(e.id, { ...e, quantity: Number(ev.target.value) })} className={`${inp} w-16 text-right`} />
+                  <input type="number" step="0.1" inputMode="decimal" defaultValue={e.quantity} onChange={(ev) => patchLocal(e.id, { quantity: Number(ev.target.value) })} onBlur={(ev) => save(e.id, { ...e, quantity: Number(ev.target.value) })} className={`${inp} w-20 text-right`} />
                 </td>
                 <td className={`${cell} text-right`}>
-                  <input type="number" step="1" defaultValue={e.price} onChange={(ev) => patchLocal(e.id, { price: Number(ev.target.value) })} onBlur={(ev) => save(e.id, { ...e, price: Number(ev.target.value) })} className={`${inp} w-16 text-right`} />
+                  <span className="inline-flex items-center gap-0.5"><span className="text-[var(--c-ink-muted)]">$</span>
+                    <input type="number" step="1" inputMode="decimal" defaultValue={e.price} onChange={(ev) => patchLocal(e.id, { price: Number(ev.target.value) })} onBlur={(ev) => save(e.id, { ...e, price: Number(ev.target.value) })} className={`${inp} w-24 text-right`} />
+                  </span>
                 </td>
+                <td className={`${cell} whitespace-nowrap text-right font-medium ${e.nonBillable ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}`}>{money((e.quantity || 0) * (e.price || 0))}</td>
                 <td className={`${cell} text-center`}>
                   <input type="checkbox" checked={!e.nonBillable} onChange={(ev) => { const nb = !ev.target.checked; patchLocal(e.id, { nonBillable: nb }); save(e.id, { ...e, nonBillable: nb }); }} />
                 </td>
