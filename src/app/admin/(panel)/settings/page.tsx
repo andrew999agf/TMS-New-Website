@@ -8,6 +8,8 @@ import { ContentRefreshButton } from "@/components/admin/ContentRefreshButton";
 import { IntakeNotifyManager } from "@/components/admin/IntakeNotifyManager";
 import { BillingReminderManager } from "@/components/admin/BillingReminderManager";
 import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
+import { DailyBillingReviewManager } from "@/components/admin/DailyBillingReviewManager";
+import { DAILY_REVIEW_KEY, DAILY_REVIEW_DEFAULT, type DailyReviewConfig } from "@/lib/billing/daily-review-config";
 import { ShareCcManager } from "@/components/admin/ShareCcManager";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 import { getSetting, getBlocks } from "@/lib/content";
@@ -23,6 +25,7 @@ export default async function SettingsPage() {
   const logo = await getSetting<string>("logo", "");
   const intakeNotify = await getSetting<string[]>("intake.statusNotify", [FIRM.email]);
   const billingReminder = await getSetting<BillingReminder>(BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT);
+  const dailyReview = await getSetting<DailyReviewConfig>(DAILY_REVIEW_KEY, DAILY_REVIEW_DEFAULT);
   const shareCc = await getSetting<string[]>(SHARE_CC_KEY, SHARE_CC_DEFAULT);
 
   const envState = [
@@ -65,6 +68,11 @@ export default async function SettingsPage() {
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Monthly billing reminder</h2>
           <BillingReminderManager initial={billingReminder ?? BILLING_REMINDER_DEFAULT} />
+        </section>
+
+        <section id="daily-billing-review" className="scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">End-of-day billing review</h2>
+          <DailyBillingReviewManager initial={dailyReview ?? DAILY_REVIEW_DEFAULT} />
         </section>
 
         <section id="share-cc" className="scroll-mt-20 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

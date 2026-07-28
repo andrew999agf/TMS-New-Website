@@ -26,6 +26,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "share-folders", label: "Share Folders", href: "/admin/share-folders", toggleable: true },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
+  { key: "billing-review", label: "Billing Review", href: "/admin/billing-review", toggleable: true },
   { key: "timeclock", label: "Time Clock", href: "/admin/timeclock", toggleable: false },
   { key: "training", label: "Training", href: "/admin/training", toggleable: false },
   { key: "appearance", label: "Appearance", href: "/admin/appearance", toggleable: true },
@@ -38,6 +39,12 @@ export const TOGGLEABLE_SECTIONS = ADMIN_SECTIONS.filter((s) => s.toggleable);
 
 export function isFullAdminRole(role?: string): boolean {
   return role === "owner" || role === "editor";
+}
+
+/** Who may review and revise other staff's billing: full admins, or any account
+ *  granted the "billing-review" section. */
+export function canReviewBilling(role?: string, permissions?: string[]): boolean {
+  return isFullAdminRole(role) || (permissions ?? []).includes("billing-review");
 }
 
 /** All section keys a given account may access. */

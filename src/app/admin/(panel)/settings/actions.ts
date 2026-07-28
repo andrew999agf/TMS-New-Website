@@ -9,6 +9,8 @@ import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
 import { buildMonthReports, loadLogoBytes, renderTimeSummaryPdf, reminderEmailHtml, deptSummaryHtml, sampleReport } from "@/lib/billing/report";
+import { buildDailyReview, dailyReviewEmailHtml } from "@/lib/billing/daily-review";
+import { FIRM } from "@/lib/firm";
 
 export async function saveSetting(key: string, value: unknown) {
   const session = await requireAdmin();
@@ -68,5 +70,26 @@ export async function sendBillingReminderTest() {
   } catch (err) {
     console.error("[billing] test send failed:", err);
     return { ok: false as const, error: err instanceof Error ? err.message.slice(0, 160) : "Test failed." };
+  }
+}
+
+/** Send the current admin a test of the end-of-day billing review email, using
+ *  today's live entries (or a note that there are none yet). */
+export async function sendDailyReviewTest() {
+  const session = await requireAdmin();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [me] = await db.select({ email: admins.email }).from(admins).where(eq(admins.id, Number(session.sub)));
+    const to = me?.email || session.email;
+    const data = await buildDailyReview(new Date());
+    const base = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+    const html = data.totalEntries === 0
+      ? `<div style="font-family:Georgia,serif;max-width:560px"><p>No live time entries have been logged for <strong>${data.dateLabel}</strong> yet — the real 6 PM email would be skipped on a day like this.</p><p><a href="${base}/admin/billing-review" style="color:#7a1f2b">Open the Billing Review tab</a></p></div>`
+      : dailyReviewEmailHtml(data, base, true);
+    const res = await sendEmail({ to, fromName: `${FIRM.name} — Office`, subject: `[Test] End-of-day billing review — ${data.dateLabel}`, html });
+    return res.sent ? { ok: true as const, to } : { ok: false as const, error: "Email isn't configured, or sending failed." };
+  } catch (err) {
+    console.error("[daily-review] test failed:", err);
+    return { ok: false as const, error: "Test failed." };
   }
 }

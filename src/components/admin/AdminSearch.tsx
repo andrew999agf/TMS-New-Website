@@ -45,6 +45,7 @@ const INDEX: SearchItem[] = [
   // Time
   { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", section: "time-tracker-4", group: "Time", keywords: ["billing", "time entries", "hours", "activity"] },
   { label: "Time Clock", href: "/admin/timeclock", section: "timeclock", group: "Time", keywords: ["clock in", "clock out", "payroll", "punch", "pay period", "payroll schedule"] },
+  { label: "Billing Review", href: "/admin/billing-review", section: "billing-review", group: "Time", keywords: ["revise billing", "supervisor", "review time", "edit staff time", "end of day", "billing supervisor", "correct entries"] },
 
   // Training / users / settings
   { label: "Training", href: "/admin/training", section: "training", group: "Other", keywords: ["how to", "guides", "help", "tutorials", "sops"] },

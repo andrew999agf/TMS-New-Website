@@ -5,6 +5,7 @@ import { eq, inArray, and } from "drizzle-orm";
 import { db } from "@/db";
 import { timeEntries, timeActivityUsers, timeCategories, timeMatters } from "@/db/schema";
 import { requireAdmin, isFullAdmin, audit } from "@/lib/auth";
+import { canReviewBilling } from "@/lib/admin-sections";
 
 export type TimeEntryInput = {
   matter: string;
@@ -19,7 +20,9 @@ export type TimeEntryInput = {
 
 async function ctx() {
   const session = await requireAdmin();
-  return { session, me: Number(session.sub), admin: isFullAdmin(session.role) };
+  // Billing reviewers get the same cross-staff edit rights as full admins.
+  const reviewer = canReviewBilling(session.role, session.permissions);
+  return { session, me: Number(session.sub), admin: isFullAdmin(session.role) || reviewer };
 }
 
 export async function addTimeEntry(input: TimeEntryInput) {
@@ -75,9 +78,10 @@ export async function setTimeEntriesArchived(ids: number[], archived: boolean) {
 
 /* ---- Shared lists (full admin only) ---- */
 async function requireFull() {
-  const { admin } = await ctx();
-  if (!admin) return false;
-  return true;
+  // Global lists (users, categories, matters) stay full-admin only — a billing
+  // reviewer can revise entries but not reconfigure the tracker.
+  const session = await requireAdmin();
+  return isFullAdmin(session.role);
 }
 
 export async function addActivityUser(name: string, rate: number, email = "") {

@@ -44,6 +44,14 @@
     {
       "path": "/api/cron/share-report-test",
       "schedule": "0 0 27 7 *"
+    },
+    {
+      "path": "/api/cron/billing-daily-review",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/billing-daily-review",
+      "schedule": "0 0 * * *"
     }
   ]
 }
