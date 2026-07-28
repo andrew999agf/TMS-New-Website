@@ -15,6 +15,30 @@ const { ZipArchive } = require("archiver") as {
  * Files are fetched and appended one at a time so memory and open connections
  * stay bounded even for large productions.
  */
+/** Stream a set of in-memory buffers into a single ZIP download. */
+export function zipBuffers(entries: { name: string; data: Buffer }[], zipName: string): Response {
+  const archive = new ZipArchive({ zlib: { level: 6 } });
+  (async () => {
+    try {
+      for (const e of entries) {
+        const done = new Promise<void>((r) => archive.once("entry", () => r()));
+        archive.append(e.data, { name: e.name });
+        await done;
+      }
+      await archive.finalize();
+    } catch { archive.abort(); }
+  })();
+  const web = Readable.toWeb(archive as unknown as Readable) as unknown as ReadableStream<Uint8Array>;
+  const safe = zipName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  return new Response(web, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(zipName)}`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
 export function zipResponse(files: { url: string; name: string }[], zipName: string): Response {
   const archive = new ZipArchive({ zlib: { level: 6 } });
 

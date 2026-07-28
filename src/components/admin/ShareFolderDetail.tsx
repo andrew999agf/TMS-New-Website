@@ -13,6 +13,8 @@ import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
+import { LinkTreeDialog } from "./ShareLinkTree";
+import { ListTree } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
@@ -55,7 +57,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
         <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
       )}
 
-      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
+      <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
@@ -237,7 +239,7 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
-function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicToken }: { folderId: number; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean; filePublicToken: string | null }) {
+function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, filePublicToken }: { folderId: number; folderName: string; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean; filePublicToken: string | null }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -248,6 +250,7 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [dialogParent, setDialogParent] = useState<string | null>(null); // null=closed, ""=top-level, path=sub
   const [creatingDir, setCreatingDir] = useState(false);
+  const [showLinkTree, setShowLinkTree] = useState(false);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
@@ -379,6 +382,9 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
         {files.length > 0 && (
           <a href={`/admin/share-folders/${folderId}/zip`} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><Download size={13} /> Download all</a>
         )}
+        {files.length > 0 && (
+          <button onClick={() => setShowLinkTree(true)} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListTree size={13} /> Download link tree</button>
+        )}
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
@@ -414,6 +420,9 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
       />
       {dialogParent !== null && (
         <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
+      )}
+      {showLinkTree && (
+        <LinkTreeDialog folderId={folderId} folderName={folderName} files={files.map((f) => ({ id: f.id, url: f.url, filename: f.filename }))} onClose={() => setShowLinkTree(false)} />
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
