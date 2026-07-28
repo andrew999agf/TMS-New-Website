@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil } from "lucide-react";
+import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil, FolderPlus } from "lucide-react";
 
 export type TreeFile = { id: number; path: string; sizeBytes: number | null; by?: string; at?: string };
 export type DirInfo = Record<string, { by?: string; at?: string }>;
@@ -63,6 +63,7 @@ type Ctx = {
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
   onRenameDir?: (path: string, currentName: string) => void;
+  onAddSubdir?: (parentPath: string) => void;
   onPreview?: (file: { id: number; base: string }) => void;
   dirInfo?: DirInfo;
   // multi-select (optional)
@@ -76,7 +77,7 @@ type Ctx = {
   doDrop: (e: React.DragEvent, path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -88,6 +89,8 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   deletingDir?: string | null;
   /** When provided, folders show a rename button. */
   onRenameDir?: (path: string, currentName: string) => void;
+  /** When provided, folders show an "Add sub-folder" button. */
+  onAddSubdir?: (parentPath: string) => void;
   onPreview?: (file: { id: number; base: string }) => void;
   /** Per-folder "created by / when" attribution, keyed by full path. */
   dirInfo?: DirInfo;
@@ -105,7 +108,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -177,6 +180,11 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
           </span>
           <span className="shrink-0 self-center text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
         </button>
+        {ctx.onAddSubdir && (
+          <button onClick={() => ctx.onAddSubdir!(fullPath)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Add a sub-folder inside this folder">
+            <FolderPlus size={13} />
+          </button>
+        )}
         {ctx.onRenameDir && (
           <button onClick={() => ctx.onRenameDir!(fullPath, node.name)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename this folder">
             <Pencil size={13} />

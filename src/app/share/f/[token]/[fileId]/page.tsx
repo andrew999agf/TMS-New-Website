@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareAccessLog } from "@/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { shareFiles, shareAccessLog } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
-import { normalizeMeta } from "@/lib/share/types";
 import { getBlocks } from "@/lib/content";
+import { resolvePublicFolder, recipientOfFolder } from "@/lib/share/public-file";
+import { portalEmail } from "@/lib/share/portal-session";
+import { PublicFileAuthGate } from "@/components/admin/PublicFileAuthGate";
 import { Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -44,11 +46,23 @@ export default async function PublicFilePage({ params }: { params: Promise<{ tok
 
   if (!db) return closed("This document can't be opened right now.");
 
-  const [folder] = await db.select().from(shareFolders).where(sql`${shareFolders.meta}->>'publicToken' = ${token}`);
-  if (!folder) return closed("This link is not valid.");
-  const meta = normalizeMeta(folder.meta);
-  // Only open (no sign-in) folders with file links enabled serve public files.
-  if (folder.requireAuth || !meta.fileLinks) return closed("This link is no longer active.");
+  const ctx = await resolvePublicFolder(token);
+  if (!ctx) return closed("This link is no longer active.");
+  const { folder } = ctx;
+
+  // Secure folders: the viewer must sign in (password or one-time code) as an
+  // invited recipient. Once signed in, the portal session lasts ~12 hours.
+  if (folder.requireAuth) {
+    const who = await portalEmail();
+    const authed = who ? await recipientOfFolder(folder.id, who) : null;
+    if (!authed) {
+      return (
+        <Shell logo={logo}>
+          <div className="flex flex-1 items-start justify-center p-4"><PublicFileAuthGate token={token} /></div>
+        </Shell>
+      );
+    }
+  }
 
   const id = Number(fileId);
   if (!Number.isFinite(id)) return closed("Document not found.");

@@ -45,7 +45,7 @@ export function ShareFilePreview({ file, onClose }: { file: PreviewFile | null; 
             <input readOnly value={cur.copyLink} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 truncate bg-transparent text-[11px] text-[var(--c-ink)] outline-none" />
             <button
               onClick={() => { navigator.clipboard?.writeText(cur.copyLink!); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-              title="Copy a direct link to this document — paste it anywhere; anyone can open it while this folder is an open link"
+              title="Copy a direct link to this document — paste it into a document; the reader opens straight to this file (a secure folder asks them to sign in first)"
               className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--c-border)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
             >
               {copied ? <Check size={12} className="text-green-600" /> : <Link2 size={12} />} {copied ? "Copied" : "Copy link"}

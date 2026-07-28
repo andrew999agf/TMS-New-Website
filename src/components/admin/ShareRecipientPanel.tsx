@@ -6,6 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { Upload, FolderPlus, Loader2, Download, Trash2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
+import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
 import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
 
@@ -18,7 +19,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
-  const [newDir, setNewDir] = useState("");
+  const [dialogParent, setDialogParent] = useState<string | null>(null); // null=closed, ""=top-level, path=sub
   const [creatingDir, setCreatingDir] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
@@ -112,11 +113,12 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     enqueue(destPath, await filesFromDrop(dt));
   }
 
-  function addFolder() {
-    const name = newDir.trim();
-    if (!name) return;
+  function addFolder(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    const full = dialogParent ? `${dialogParent}/${clean}` : clean;
     setCreatingDir(true);
-    recipientMkdir(token, name).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't create folder."); setNewDir(""); setCreatingDir(false); router.refresh(); }).catch(() => setCreatingDir(false));
+    recipientMkdir(token, full).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't create folder."); setCreatingDir(false); setDialogParent(null); router.refresh(); }).catch(() => { setCreatingDir(false); setDialogParent(null); });
   }
 
   function handleDelete(id: number) {
@@ -144,9 +146,8 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <button onClick={() => fileInput.current?.click()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add files</button>
             <button onClick={() => folderInput.current?.click()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add folder</button>
-            <input value={newDir} onChange={(e) => setNewDir(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFolder(); } }} placeholder="New folder name…" className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5" />
-            <button onClick={addFolder} disabled={creatingDir || !newDir.trim()} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50">
-              {creatingDir ? <Loader2 size={13} className="animate-spin" /> : <FolderPlus size={13} />} New folder
+            <button onClick={() => setDialogParent("")} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]">
+              <FolderPlus size={13} /> New folder
             </button>
             {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
           </div>
@@ -180,9 +181,13 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         onDeleteDir={caps.delete ? handleDeleteDir : undefined}
         deletingDir={deletingDir}
         onRenameDir={caps.delete ? handleRenameDir : undefined}
+        onAddSubdir={caps.upload ? (p) => setDialogParent(p) : undefined}
         onPreview={(f) => setPreview(f)}
         onUpload={caps.upload && blobReady ? onUpload : undefined}
       />
+      {dialogParent !== null && (
+        <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
+      )}
 
       <ShareFilePreview
         file={preview ? { name: preview.base, previewUrl: `/share/${token}/file/${preview.id}?preview=1`, downloadUrl: `/share/${token}/file/${preview.id}` } : null}

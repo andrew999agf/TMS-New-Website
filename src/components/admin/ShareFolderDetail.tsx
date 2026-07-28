@@ -12,6 +12,7 @@ import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceSty
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
+import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
@@ -54,7 +55,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
         <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
       )}
 
-      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={!folder.requireAuth && folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
+      <FilesSection folderId={folder.id} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
@@ -111,14 +112,17 @@ function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients
               )}
             </div>
           )}
-          <label className="mt-2 flex items-start gap-2 text-[11px] text-[var(--c-ink-muted)]" title="When on, opening a file's preview shows a copyable link at the top. Paste it into a document; anyone who clicks it opens straight to that file.">
-            <input type="checkbox" checked={fileLinks} disabled={pending} onChange={(e) => { const v = e.target.checked; setFileLinks(v); start(async () => { await setFolderFileLinks(folder.id, v); router.refresh(); }); }} className="mt-0.5" />
-            <span>Give each file a copyable direct link on its preview — for pasting into documents so a reader can click straight to that file.</span>
-          </label>
         </div>
       ) : (
         <p className="mt-0.5 pl-6 text-[11px] text-[var(--c-ink-muted)]">Recommended. Recipients must verify with a password or a one-time email code before viewing.</p>
       )}
+
+      {/* File links work for open AND secure folders — on a secure folder the
+          reader just signs in first. */}
+      <label className="mt-2 flex items-start gap-2 border-t border-[var(--c-border)] pt-2 text-[11px] text-[var(--c-ink-muted)]" title="When on, opening a file's preview shows a copyable link at the top. Paste it into a document; the reader clicks it and opens straight to that file (a secure folder will ask them to sign in first).">
+        <input type="checkbox" checked={fileLinks} disabled={pending} onChange={(e) => { const v = e.target.checked; setFileLinks(v); start(async () => { await setFolderFileLinks(folder.id, v); router.refresh(); }); }} className="mt-0.5" />
+        <span>Give each file a copyable direct link on its preview — for pasting into documents so a reader can click straight to that file. {open ? "Anyone with the link can open it." : "The reader signs in (login or one-time code) first."}</span>
+      </label>
     </div>
   );
 }
@@ -242,7 +246,7 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
   const [progress, setProgress] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
-  const [newDir, setNewDir] = useState("");
+  const [dialogParent, setDialogParent] = useState<string | null>(null); // null=closed, ""=top-level, path=sub
   const [creatingDir, setCreatingDir] = useState(false);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -271,11 +275,12 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
     deleteFiles(folderId, ids).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't delete."); setSelected(new Set()); router.refresh(); }).catch(() => setError("Couldn't delete."));
   }
 
-  function addFolder() {
-    const name = newDir.trim();
-    if (!name) return;
+  function addFolder(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    const full = dialogParent ? `${dialogParent}/${clean}` : clean;
     setCreatingDir(true);
-    createDir(folderId, name).then(() => { setNewDir(""); setCreatingDir(false); router.refresh(); }).catch(() => setCreatingDir(false));
+    createDir(folderId, full).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't create folder."); setCreatingDir(false); setDialogParent(null); router.refresh(); }).catch(() => { setCreatingDir(false); setDialogParent(null); });
   }
 
   function handleDelete(id: number) {
@@ -368,9 +373,8 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => fileInput.current?.click()} disabled={!blobReady || busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add files</button>
         <button onClick={() => folderInput.current?.click()} disabled={!blobReady || busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Upload size={13} /> Add folder</button>
-        <input value={newDir} onChange={(e) => setNewDir(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFolder(); } }} placeholder="New folder name…" className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5" />
-        <button onClick={addFolder} disabled={creatingDir || !newDir.trim()} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50">
-          {creatingDir ? <Loader2 size={13} className="animate-spin" /> : <FolderPlus size={13} />} New folder
+        <button onClick={() => setDialogParent("")} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]">
+          <FolderPlus size={13} /> New folder
         </button>
         {files.length > 0 && (
           <a href={`/admin/share-folders/${folderId}/zip`} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><Download size={13} /> Download all</a>
@@ -405,8 +409,12 @@ function FilesSection({ folderId, files, dirs, dirInfo, blobReady, filePublicTok
         onDeleteDir={handleDeleteDir}
         deletingDir={deletingDir}
         onRenameDir={handleRenameDir}
+        onAddSubdir={(p) => setDialogParent(p)}
         onUpload={blobReady ? onUpload : undefined}
       />
+      {dialogParent !== null && (
+        <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
+      )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
       <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
