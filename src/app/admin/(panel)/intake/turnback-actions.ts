@@ -24,7 +24,11 @@ function cleanCustom(list?: TurnbackAttorney[]): TurnbackAttorney[] {
 }
 
 async function loadContext(intakeId: number, attorneyIds: number[], extras?: TurnbackExtras) {
-  const [row] = await db!.select().from(intakeSubmissions).where(eq(intakeSubmissions.id, intakeId));
+  // Explicit columns so an un-synced new column can't break the turn-back flow.
+  const [row] = await db!
+    .select({ id: intakeSubmissions.id, name: intakeSubmissions.name, email: intakeSubmissions.email, branch: intakeSubmissions.branch })
+    .from(intakeSubmissions)
+    .where(eq(intakeSubmissions.id, intakeId));
   if (!row) return null;
   let attorneys: TurnbackAttorney[] = [];
   if (attorneyIds.length) {

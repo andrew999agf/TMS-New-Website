@@ -28,7 +28,33 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   let referralRows: ReferralAttorneyRow[] = [];
   if (db) {
     try {
-      const data = await db.select().from(intakeSubmissions).orderBy(desc(intakeSubmissions.createdAt));
+      // Select only the columns the list needs, so a newly-added column that
+      // hasn't been created yet (before a Database Sync) can't make the whole
+      // intake list disappear.
+      const data = await db
+        .select({
+          id: intakeSubmissions.id,
+          branch: intakeSubmissions.branch,
+          practiceSlug: intakeSubmissions.practiceSlug,
+          name: intakeSubmissions.name,
+          email: intakeSubmissions.email,
+          phone: intakeSubmissions.phone,
+          county: intakeSubmissions.county,
+          isUrgent: intakeSubmissions.isUrgent,
+          deadline: intakeSubmissions.deadline,
+          status: intakeSubmissions.status,
+          archived: intakeSubmissions.archived,
+          referredTo: intakeSubmissions.referredTo,
+          feeExpected: intakeSubmissions.feeExpected,
+          feeAmount: intakeSubmissions.feeAmount,
+          createdAt: intakeSubmissions.createdAt,
+          emailStatus: intakeSubmissions.emailStatus,
+          incomplete: intakeSubmissions.incomplete,
+          answers: intakeSubmissions.answers,
+          referralSource: intakeSubmissions.referralSource,
+        })
+        .from(intakeSubmissions)
+        .orderBy(desc(intakeSubmissions.createdAt));
       leads = data.map((r) => ({ createdAt: r.createdAt.toISOString(), source: r.referralSource ?? null }));
       for (const r of data) {
         const src = r.referralSource ?? "";
