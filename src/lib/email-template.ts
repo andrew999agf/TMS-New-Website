@@ -54,11 +54,28 @@ export function brandedEmailHtml({
   const band = (bg: string, inner: string, pad = "30px 32px") =>
     `<tr><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${bg}" style="background-color:${bg};background:${bg}"><tr><td align="center" style="padding:${pad}">${inner}</td></tr></table></td></tr>`;
 
+  // A single opaque <img> on a solid, locked background — the reliable way across
+  // clients. `logoDark` is the colored (navy) logo for LIGHT backgrounds;
+  // `logoLight` is the white logo for DARK backgrounds. When we have both, we
+  // swap logo + background by color scheme so it stays crisp in light AND dark
+  // (and never depends on transparency, which is what phones' dark mode mangles).
   let header: string;
-  if (logoLight) {
-    header = band(dark, logoImg(logoLight));
+  if (logoDark && logoLight) {
+    header = `<tr><td class="tms-hdr" bgcolor="#ffffff" style="padding:0;background-color:#ffffff">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px 32px">
+        <!--[if mso]><img src="${logoDark}" alt="${esc(firmName)}" width="430" style="display:block;margin:0 auto;border:0" /><![endif]-->
+        <!--[if !mso]><!-->
+        <img src="${logoDark}" alt="${esc(firmName)}" width="220" class="tms-logo tms-logo-light" style="width:220px;max-width:80%;height:auto;display:block;margin:0 auto;border:0" />
+        <div class="tms-logo-dark" style="display:none;mso-hide:all;overflow:hidden;max-height:0;width:0;line-height:0">
+          <img src="${logoLight}" alt="${esc(firmName)}" width="220" class="tms-logo" style="width:220px;max-width:80%;height:auto;display:block;margin:0 auto;border:0" />
+        </div>
+        <!--<![endif]-->
+      </td></tr></table>
+    </td></tr>`;
   } else if (logoDark) {
-    header = band(colors.surface, logoImg(logoDark));
+    header = band("#ffffff", logoImg(logoDark)); // colored logo on locked white
+  } else if (logoLight) {
+    header = band(dark, logoImg(logoLight)); // white logo on the dark band
   } else {
     header = band(dark, `<div style="font-family:${SERIF};color:${colors.darkInk};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
   }
@@ -94,6 +111,18 @@ export function brandedEmailHtml({
       @media only screen and (min-width:600px) {
         img.tms-logo { width:440px !important; max-width:440px !important; }
       }
+      /* Dark mode: swap the header to a dark band and show the WHITE logo, so a
+         transparent colored logo never sits on a background phone dark-mode has
+         darkened into it. */
+      @media (prefers-color-scheme: dark) {
+        .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
+        .tms-logo-light { display:none !important; }
+        .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
+      }
+      /* Gmail app dark mode uses these hooks instead of prefers-color-scheme. */
+      [data-ogsc] .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
+      [data-ogsc] .tms-logo-light { display:none !important; }
+      [data-ogsc] .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
     </style>
   </head>
   <body style="margin:0;padding:0;background-color:${colors.bg}">
