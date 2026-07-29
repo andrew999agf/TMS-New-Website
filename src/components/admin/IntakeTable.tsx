@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail } from "lucide-react";
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
@@ -42,7 +42,7 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys, referralAttorneys }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[] }) {
+export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId = null }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[]; initialLeadId?: number | null }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
@@ -52,6 +52,14 @@ export function IntakeTable({ rows, attorneys, referralAttorneys }: { rows: Inta
   const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
   const [sendFor, setSendFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Deep-link from the intake notification email: open that lead's drawer.
+  useEffect(() => {
+    if (initialLeadId == null) return;
+    const row = rows.find((r) => r.id === initialLeadId);
+    if (row) { if (row.archived) setView("archived"); setDetailFor(row); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLeadId]);
 
   const practices = useMemo(
     () => [...new Set(rows.map((r) => r.practiceSlug).filter(Boolean))] as string[],

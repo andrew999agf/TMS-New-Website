@@ -14,7 +14,9 @@ import { BRANCHES } from "@/lib/intake/config";
 
 export const dynamic = "force-dynamic";
 
-export default async function IntakeAdminPage() {
+export default async function IntakeAdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const initialLeadId = typeof sp.lead === "string" ? Number(sp.lead) : null;
   const recipients = await getIntakeRecipients(false);
   const branches = BRANCHES.map((b) => ({ id: b.id, label: b.label }));
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
@@ -90,7 +92,7 @@ export default async function IntakeAdminPage() {
         <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
         <ReferralSources referrers={referrers} />
-        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} />
+        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} />
       </div>
     </>
   );

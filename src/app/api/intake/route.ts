@@ -292,6 +292,11 @@ export async function POST(req: Request) {
     )
     .join("");
 
+  const adminBase = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
+  const openLeadButton = id != null
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px"><tr><td align="center" bgcolor="#7a1f2b" style="background-color:#7a1f2b;border-radius:6px"><a href="${adminBase}/admin/intake?lead=${id}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Open this lead in the admin portal &rarr;</a></td></tr></table>`
+    : "";
+
   const summaryHtml = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px;line-height:1.55;font-size:15px">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
@@ -309,6 +314,7 @@ export async function POST(req: Request) {
         ${row("How they heard", referralSource === "Other" ? str("referralOther") || "Other" : referralSource)}
       </table>
       ${narrativeBlocks}
+      ${openLeadButton}
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 

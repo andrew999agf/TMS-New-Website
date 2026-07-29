@@ -96,9 +96,11 @@ export async function middleware(req: NextRequest) {
   const valid = token ? await verifySessionToken(token) : null;
 
   if (!valid) {
+    const dest = pathname + req.nextUrl.search; // keep query (e.g. ?lead=5) through login
     const url = req.nextUrl.clone();
     url.pathname = "/admin/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", dest);
     return NextResponse.redirect(url);
   }
 
