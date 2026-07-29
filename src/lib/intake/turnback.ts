@@ -23,7 +23,7 @@ const normUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
  * referral attorneys, the statewide-matters note, and a no-attorney-client
  * disclaimer — all in the firm's branded email shell.
  */
-export async function buildTurnbackEmail(opts: { name?: string | null; attorneys: TurnbackAttorney[]; referralArea?: string }): Promise<{ subject: string; html: string }> {
+export async function buildTurnbackEmail(opts: { name?: string | null; attorneys: TurnbackAttorney[]; referralArea?: string; note?: string }): Promise<{ subject: string; html: string }> {
   const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
   const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
   const fontPalette = getFontPalette(theme.fontPaletteId);
@@ -59,16 +59,18 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
       <p style="margin:2px 0 16px;font-size:13px;color:${colors.inkMuted}">This is not a recommendation or endorsement of any particular attorney; it is provided only for your convenience. You are free to contact any attorney of your choosing.</p>`;
   }
 
+  const note = opts.note?.trim();
   const body = `
     <p style="margin:0 0 14px">Dear ${greeting},</p>
     <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with ${esc(area)} in your area who may be able to help.</p>
+    ${note ? `<p style="margin:0 0 16px;white-space:pre-wrap">${esc(note)}</p>` : ""}
     <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>Please act promptly.</strong> Legal matters are often subject to strict deadlines, such as a statute of limitations. If a deadline passes, you may lose the right to pursue your claim entirely. We strongly encourage you to speak with an attorney as soon as possible to protect your rights.</p>
     ${referralBlock}
     <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>No attorney-client relationship has been created.</strong> This message, and our decision not to represent you, does not create an attorney-client relationship between you and ${esc(firmName)}. We are not your attorneys and are not advising you on the merits, deadlines, or handling of your matter.</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 6px"><tr><td style="padding:18px 20px;border-radius:10px;background:${colors.accent};color:${colors.onAccent}">
-      <div style="font-size:17px;font-weight:bold;line-height:1.4;color:${colors.onAccent}">We may not have been able to help with this matter — but we may be able to help with others.</div>
-      <div style="font-size:14px;line-height:1.6;margin-top:8px;color:${colors.onAccent}">Our firm handles a range of matters statewide, including personal injury, wrongful death claims, and other plaintiff&rsquo;s litigation &mdash; including business fraud, real estate fraud, and large contract claims. If you have a matter like these, we would welcome the opportunity to speak with you.</div>
-    </td></tr></table>
+    <div style="margin:20px 0 6px;padding:14px 18px;background:${colors.surface2};border-left:3px solid ${colors.accent}">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:bold;line-height:1.4;color:${colors.ink}">We may not have been able to help with this matter — but we may be able to help with others.</p>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:${colors.ink}">Our firm handles a range of matters statewide, including personal injury, wrongful death claims, and other plaintiff&rsquo;s litigation &mdash; including business fraud, real estate fraud, and large contract claims. If you have a matter like these, we would welcome the opportunity to speak with you.</p>
+    </div>
     <p style="margin:20px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
 
   const html = brandedEmailHtml({

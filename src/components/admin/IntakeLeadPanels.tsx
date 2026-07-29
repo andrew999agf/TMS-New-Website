@@ -93,6 +93,9 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
 
 /* ------------------------------ turn-back compose ------------------------------ */
 
+type CustomAttorney = { name: string; firm: string; address: string; phone: string; email: string; website: string; practiceArea: string };
+const EMPTY_CUSTOM: CustomAttorney = { name: "", firm: "", address: "", phone: "", email: "", website: "", practiceArea: "" };
+
 export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; attorneys: ReferralAttorneyRow[]; onClose: () => void }) {
   const router = useRouter();
   const [selected, setSelected] = useState<number[]>([]);
@@ -105,15 +108,24 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [error, setError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
+  const [note, setNote] = useState("");
+  const [customList, setCustomList] = useState<CustomAttorney[]>([]);
+  const [showCustom, setShowCustom] = useState(false);
+  const [cf, setCf] = useState<CustomAttorney>(EMPTY_CUSTOM);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedNames = useMemo(() => selected.map((id) => attorneys.find((a) => a.id === id)?.name).filter(Boolean) as string[], [selected, attorneys]);
+  const allNames = useMemo(() => [...selectedNames, ...customList.map((c) => c.name)], [selectedNames, customList]);
+  const totalReferrals = selected.length + customList.length;
+
+  function addCustom() { if (!cf.name.trim()) return; setCustomList((l) => [...l, { ...cf }]); setCf(EMPTY_CUSTOM); setShowCustom(false); }
+  function removeCustom(i: number) { setCustomList((l) => l.filter((_, x) => x !== i)); }
 
   function close() { router.refresh(); onClose(); }
 
   function applyReferred() {
     setApplying(true);
-    setIntakeReferral(row.id, { referredTo: selectedNames.join(", "), feeExpected: false, feeAmount: "" })
+    setIntakeReferral(row.id, { referredTo: allNames.join(", "), feeExpected: false, feeAmount: "" })
       .then((res) => setStatusMsg(res.ok ? "Marked as Referred Out." : res.error ?? "Couldn't update status."))
       .finally(() => setApplying(false));
   }
@@ -129,17 +141,19 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     return attorneys.filter((a) => !q || a.name.toLowerCase().includes(q) || a.firm.toLowerCase().includes(q) || a.practiceArea.toLowerCase().includes(q));
   }, [attorneys, query]);
 
-  const refresh = (ids: number[]) => {
+  // Rebuild the live preview whenever the selection, custom attorneys, or note change.
+  useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
       startPreview(async () => {
-        const res = await previewTurnback(row.id, ids);
+        const res = await previewTurnback(row.id, selected, { note, customAttorneys: customList });
         if (res.ok) { setHtml(res.html ?? ""); setCc(res.cc ?? []); }
         else setError(res.error ?? "Couldn't build the preview.");
       });
-    }, 250);
-  };
-  useEffect(() => { refresh(selected); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selected]);
+    }, 300);
+    return () => { if (debounce.current) clearTimeout(debounce.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, note, customList]);
 
   function toggle(id: number) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -147,7 +161,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
 
   function send() {
     setSending(true); setError(null);
-    sendTurnback(row.id, selected)
+    sendTurnback(row.id, selected, { note, customAttorneys: customList })
       .then((res) => { if (res.ok) { setDone(res.to ?? row.email ?? ""); } else setError(res.error ?? "Send failed."); })
       .finally(() => setSending(false));
   }
@@ -173,12 +187,12 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
             ) : (
               <div className="w-full max-w-sm rounded-lg border border-[var(--c-border)] bg-[var(--c-surface2)] p-4">
                 <p className="mb-3 text-sm text-[var(--c-ink)]">
-                  {selectedNames.length > 0
-                    ? <>You referred <strong>{selectedNames.length}</strong> attorney{selectedNames.length === 1 ? "" : "s"}. Mark this lead as <strong>Referred Out</strong>?</>
+                  {allNames.length > 0
+                    ? <>You referred <strong>{allNames.length}</strong> attorney{allNames.length === 1 ? "" : "s"}. Mark this lead as <strong>Referred Out</strong>?</>
                     : <>You didn&apos;t include a referral attorney. Mark this lead as <strong>Declined</strong>?</>}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {selectedNames.length > 0 ? (
+                  {allNames.length > 0 ? (
                     <button onClick={applyReferred} disabled={applying} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">{applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes — Referred Out</button>
                   ) : (
                     <button onClick={() => applyStatus("declined")} disabled={applying} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">{applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes — Declined</button>
@@ -195,6 +209,11 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
               <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-xs">
                 <p><span className="text-[var(--c-ink-muted)]">To:</span> <span className="font-medium text-[var(--c-ink)]">{row.email || "— no email —"}</span></p>
                 <p className="mt-1 flex items-start gap-1"><Users size={13} className="mt-0.5 shrink-0 text-[var(--c-ink-muted)]" /><span><span className="text-[var(--c-ink-muted)]">CC intake team:</span> {cc.length ? cc.join(", ") : "—"}</span></p>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-semibold text-[var(--c-ink)]">Personal note <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span></p>
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="A short custom message to this person — it appears near the top of the email." className="w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]" />
               </div>
 
               <div>
@@ -216,9 +235,30 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                   ))}
                 </div>
                 <p className="mt-1.5 text-[11px] text-[var(--c-ink-muted)]">Checked attorneys are listed in the email. Leave all unchecked to omit the referral section.</p>
+
+                {/* Custom / one-off attorney not in the stable */}
+                {!showCustom ? (
+                  <button type="button" onClick={() => setShowCustom(true)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--c-accent)] hover:underline">+ Add a custom attorney (not in the list)</button>
+                ) : (
+                  <div className="mt-2 space-y-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5">
+                    <input value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} placeholder="Attorney or firm name *" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" autoFocus />
+                    <input value={cf.firm} onChange={(e) => setCf({ ...cf, firm: e.target.value })} placeholder="Firm" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input value={cf.phone} onChange={(e) => setCf({ ...cf, phone: e.target.value })} placeholder="Phone" className="rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                      <input value={cf.email} onChange={(e) => setCf({ ...cf, email: e.target.value })} placeholder="Email" className="rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                    </div>
+                    <input value={cf.practiceArea} onChange={(e) => setCf({ ...cf, practiceArea: e.target.value })} placeholder="Practice area" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                    <input value={cf.website} onChange={(e) => setCf({ ...cf, website: e.target.value })} placeholder="Website" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                    <input value={cf.address} onChange={(e) => setCf({ ...cf, address: e.target.value })} placeholder="Address" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" />
+                    <div className="flex gap-2 pt-0.5">
+                      <button type="button" onClick={addCustom} disabled={!cf.name.trim()} className="btn btn-accent text-xs py-1 px-3 disabled:opacity-50">Add</button>
+                      <button type="button" onClick={() => { setShowCustom(false); setCf(EMPTY_CUSTOM); }} className="text-xs text-[var(--c-ink-muted)]">Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {selected.length > 0 && (
+              {(selected.length > 0 || customList.length > 0) && (
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-[var(--c-ink)]">Referring to</p>
                   <ul className="space-y-2">
@@ -228,6 +268,17 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                         {(a!.address || a!.phone) && <p className="text-[var(--c-ink-muted)]">{[a!.address, a!.phone].filter(Boolean).join(" · ")}</p>}
                         {(a!.email || a!.website) && <p className="text-[var(--c-ink-muted)]">{[a!.email, a!.website].filter(Boolean).join(" · ")}</p>}
                         <p className={`mt-0.5 ${a!.email ? "text-green-700" : "text-amber-600"}`}>{a!.email ? "✓ Will receive a brief referral notice" : "No email on file — won't be notified"}</p>
+                      </li>
+                    ))}
+                    {customList.map((a, i) => (
+                      <li key={`c-${i}`} className="rounded-md border border-[var(--c-accent)]/40 bg-[var(--c-bg)] p-2 text-[11px]">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-[var(--c-ink)]">{a.name}{a.firm ? ` · ${a.firm}` : ""} <span className="text-[var(--c-accent)]">(custom)</span></p>
+                          <button type="button" onClick={() => removeCustom(i)} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={12} /></button>
+                        </div>
+                        {(a.address || a.phone) && <p className="text-[var(--c-ink-muted)]">{[a.address, a.phone].filter(Boolean).join(" · ")}</p>}
+                        {(a.email || a.website) && <p className="text-[var(--c-ink-muted)]">{[a.email, a.website].filter(Boolean).join(" · ")}</p>}
+                        <p className={`mt-0.5 ${a.email ? "text-green-700" : "text-amber-600"}`}>{a.email ? "✓ Will receive a brief referral notice" : "No email — won't be notified"}</p>
                       </li>
                     ))}
                   </ul>
@@ -253,7 +304,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
             <div className="flex gap-2">
               <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
               <button onClick={send} disabled={sending || !row.email} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
-                {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send{selected.length ? ` with ${selected.length} referral${selected.length === 1 ? "" : "s"}` : ""}
+                {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send{totalReferrals ? ` with ${totalReferrals} referral${totalReferrals === 1 ? "" : "s"}` : ""}
               </button>
             </div>
           </div>

@@ -13,7 +13,17 @@ import { buildTurnbackEmail, buildAttorneyReferralNotice, type TurnbackAttorney 
 
 const lastNameOf = (name?: string | null) => (name ?? "").trim().split(/\s+/).filter(Boolean).pop() ?? "";
 
-async function loadContext(intakeId: number, attorneyIds: number[]) {
+export type TurnbackExtras = { note?: string; customAttorneys?: TurnbackAttorney[] };
+
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+function cleanCustom(list?: TurnbackAttorney[]): TurnbackAttorney[] {
+  return (list ?? [])
+    .filter((a) => str(a?.name))
+    .slice(0, 10)
+    .map((a) => ({ name: str(a.name), firm: str(a.firm), address: str(a.address), phone: str(a.phone), email: str(a.email), website: str(a.website), practiceArea: str(a.practiceArea) }));
+}
+
+async function loadContext(intakeId: number, attorneyIds: number[], extras?: TurnbackExtras) {
   const [row] = await db!.select().from(intakeSubmissions).where(eq(intakeSubmissions.id, intakeId));
   if (!row) return null;
   let attorneys: TurnbackAttorney[] = [];
@@ -25,17 +35,18 @@ async function loadContext(intakeId: number, attorneyIds: number[]) {
       name: a!.name, firm: a!.firm, address: a!.address, phone: a!.phone, email: a!.email, website: a!.website, practiceArea: a!.practiceArea,
     }));
   }
-  return { row, attorneys };
+  attorneys = [...attorneys, ...cleanCustom(extras?.customAttorneys)];
+  return { row, attorneys, note: str(extras?.note) };
 }
 
 /** Render the turn-back email for the preview box (no send). */
-export async function previewTurnback(intakeId: number, attorneyIds: number[]) {
+export async function previewTurnback(intakeId: number, attorneyIds: number[], extras?: TurnbackExtras) {
   await requireAdmin();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const ctx = await loadContext(intakeId, attorneyIds);
+    const ctx = await loadContext(intakeId, attorneyIds, extras);
     if (!ctx) return { ok: false as const, error: "Submission not found." };
-    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch) });
+    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch), note: ctx.note });
     const cc = await recipientsForBranch(ctx.row.branch);
     return { ok: true as const, html, subject, to: ctx.row.email ?? "", cc };
   } catch (err) {
@@ -45,15 +56,15 @@ export async function previewTurnback(intakeId: number, attorneyIds: number[]) {
 }
 
 /** Send the turn-back email to the prospect, CC the intake team, mark declined. */
-export async function sendTurnback(intakeId: number, attorneyIds: number[]) {
+export async function sendTurnback(intakeId: number, attorneyIds: number[], extras?: TurnbackExtras) {
   const session = await requireAdmin();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const ctx = await loadContext(intakeId, attorneyIds);
+    const ctx = await loadContext(intakeId, attorneyIds, extras);
     if (!ctx) return { ok: false as const, error: "Submission not found." };
     const to = (ctx.row.email ?? "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { ok: false as const, error: "This submission has no valid email address." };
-    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch) });
+    const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch), note: ctx.note });
     const cc = await recipientsForBranch(ctx.row.branch);
     const res = await sendEmail({ to, cc, fromName: FIRM.name, subject, html });
     if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed." };
