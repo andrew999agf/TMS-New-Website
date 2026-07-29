@@ -53,7 +53,17 @@ export function ShareFilePreview({ file, onClose }: { file: PreviewFile | null; 
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-auto bg-[var(--c-surface2)]">
-          {cur && ext === "pdf" && <iframe src={cur.previewUrl} title={cur.name} className="h-full w-full border-0" />}
+          {cur && ext === "pdf" && (
+            // sandbox without allow-top-navigation stops a link inside the PDF
+            // (e.g. a case citation) from replacing this tab; allow-popups routes
+            // it to a new tab instead, so you don't lose the document.
+            <iframe
+              src={cur.previewUrl}
+              title={cur.name}
+              className="h-full w-full border-0"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-downloads"
+            />
+          )}
           {cur && IMG_EXT.has(ext) && (
             // eslint-disable-next-line @next/next/no-img-element
             <div className="flex h-full items-center justify-center p-3"><img src={cur.previewUrl} alt={cur.name} className="max-h-full max-w-full object-contain" /></div>

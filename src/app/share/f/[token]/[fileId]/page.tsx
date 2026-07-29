@@ -88,7 +88,9 @@ export default async function PublicFilePage({ params }: { params: Promise<{ tok
 
       <div className="min-h-0 flex-1 bg-[var(--c-surface2)]">
         {ext === "pdf" ? (
-          <iframe src={file.url} title={base} className="h-[calc(100vh-116px)] w-full border-0" />
+          // sandbox blocks a link inside the PDF from replacing this tab and
+          // routes it to a new tab instead, so the reader keeps their place.
+          <iframe src={file.url} title={base} className="h-[calc(100vh-116px)] w-full border-0" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-downloads" />
         ) : IMG.has(ext) ? (
           <div className="flex h-[calc(100vh-116px)] items-center justify-center p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
