@@ -573,6 +573,10 @@ export const intakeSubmissions = pgTable(
     feeExpected: boolean("fee_expected").notNull().default(false),
     feeAmount: varchar("fee_amount", { length: 64 }),
     referrer: text("referrer"),
+    /** Pending status/archive change awaiting the batched digest email (null = none). */
+    notifyChange: varchar("notify_change", { length: 191 }),
+    notifyChangeAt: timestamp("notify_change_at", { withTimezone: true }),
+    notifyChangeBy: varchar("notify_change_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

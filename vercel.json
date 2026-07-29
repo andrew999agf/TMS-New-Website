@@ -52,6 +52,10 @@
     {
       "path": "/api/cron/billing-daily-review",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/intake-digest",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
