@@ -309,49 +309,57 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
   }, []);
 
-  // A growable upload queue: dropping more files while an upload is running
-  // appends them to the same queue and the count keeps climbing (e.g. 2/23),
-  // rather than being ignored.
+  // A growable, concurrent upload queue. Several files upload at once (much
+  // faster for many photos/videos), and each file is independent — if one
+  // fails, the rest still go in and we report which failed. Uploads are still
+  // authorized exactly as before (each goes through /api/admin/share-upload).
+  const UPLOAD_CONCURRENCY = 4;
   const queueRef = useRef<{ file: File; rel: string }[]>([]);
   const totalRef = useRef(0);
   const doneRef = useRef(0);
+  const failedRef = useRef<string[]>([]);
   const runningRef = useRef(false);
+
+  const baseName = (p: string) => p.split("/").pop() || p;
+
+  async function uploadWorker() {
+    while (queueRef.current.length) {
+      const item = queueRef.current.shift()!;
+      try {
+        const blob = await upload(`share/${folderId}/${item.rel}`, item.file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
+        const res = await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: item.rel, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
+        if (!res.ok) throw new Error(res.error ?? "record failed");
+      } catch {
+        failedRef.current.push(baseName(item.rel));
+      } finally {
+        doneRef.current += 1;
+        setProgress(`Uploading ${doneRef.current} / ${totalRef.current}${failedRef.current.length ? ` · ${failedRef.current.length} failed` : ""}`);
+      }
+    }
+  }
 
   async function drainQueue() {
     if (runningRef.current) return;
     runningRef.current = true;
     setBusy(true);
     setError(null);
-    try {
-      while (queueRef.current.length) {
-        const { file, rel } = queueRef.current[0];
-        setProgress(`Uploading ${doneRef.current + 1} / ${totalRef.current}`);
-        const blob = await upload(`share/${folderId}/${rel}`, file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
-        await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: rel, contentType: file.type || blob.contentType, size: file.size }, { total: totalRef.current, done: doneRef.current + 1 });
-        queueRef.current.shift();
-        doneRef.current += 1;
-        setProgress(`Uploading ${doneRef.current} / ${totalRef.current}`);
-      }
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
-      queueRef.current = [];
-    } finally {
-      if (queueRef.current.length > 0) {
-        // Files arrived during the last await — keep going.
-        runningRef.current = false;
-        drainQueue();
-      } else {
-        totalRef.current = 0;
-        doneRef.current = 0;
-        runningRef.current = false;
-        setBusy(false);
-        setProgress(null);
-        clearUpload(folderId).catch(() => {});
-        if (fileInput.current) fileInput.current.value = "";
-        if (folderInput.current) folderInput.current.value = "";
-      }
-    }
+    do {
+      const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, queueRef.current.length) }, () => uploadWorker());
+      await Promise.all(workers);
+    } while (queueRef.current.length > 0);
+
+    const failed = failedRef.current.slice();
+    router.refresh();
+    queueRef.current = [];
+    totalRef.current = 0; doneRef.current = 0; failedRef.current = [];
+    runningRef.current = false;
+    setBusy(false);
+    setProgress(null);
+    clearUpload(folderId).catch(() => {});
+    if (fileInput.current) fileInput.current.value = "";
+    if (folderInput.current) folderInput.current.value = "";
+    setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload (${failed.slice(0, 4).join(", ")}${failed.length > 4 ? ", …" : ""}). Everything else went in — you can re-add just the failed one${failed.length === 1 ? "" : "s"}.` : null);
+    if (queueRef.current.length) drainQueue(); // picked up files dropped during teardown
   }
 
   function enqueue(destPath: string, picked: PickedFile[]) {
