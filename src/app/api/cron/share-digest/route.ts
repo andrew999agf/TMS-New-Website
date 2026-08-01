@@ -5,6 +5,7 @@ import { shareFolders, shareFiles, shareRecipients } from "@/db/schema";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
+import { shareCan } from "@/lib/share/types";
 import { FIRM } from "@/lib/firm";
 
 export const runtime = "nodejs";
@@ -54,6 +55,8 @@ export async function GET(req: Request) {
         const theirs = files.filter((f) => (f.uploadedBy ?? "").toLowerCase() !== r.email.toLowerCase());
         if (theirs.length === 0) continue;
         const link = `${base}/share/${r.token}`;
+        const canDownload = shareCan(r.permission, "download");
+        const zipLink = `${base}/share/${r.token}/zip?ids=${theirs.map((f) => f.id).join(",")}`;
         const rows = theirs
           .map(
             (f) =>
@@ -61,13 +64,20 @@ export async function GET(req: Request) {
               `<td style="padding:5px 0;text-align:right;border-top:1px solid #eee;white-space:nowrap"><a href="${link}" style="font-size:12px;color:#7a1f2b;text-decoration:none">View &rarr;</a></td></tr>`,
           )
           .join("");
+        const buttons = canDownload
+          ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px"><tr>
+               <td style="padding-right:10px"><a href="${zipLink}" style="background:#7a1f2b;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Download ${theirs.length === 1 ? "it" : "these"} as a ZIP</a></td>
+               <td><a href="${link}" style="border:1px solid #7a1f2b;color:#7a1f2b;padding:9px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Open the folder</a></td>
+             </tr></table>`
+          : `<p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Open the folder</a></p>`;
         const html = `
           <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
             <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
             <p style="margin:0 0 12px">${theirs.length === 1 ? "A new document was" : `${theirs.length} new documents were`} added to the folder shared with you — <strong>${esc(folder.name)}</strong>:</p>
             <table style="border-collapse:collapse;width:100%;margin:0 0 16px">${rows}</table>
-            <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Open the folder</a></p>
-            <p style="margin:0;font-size:12px;color:#999">You may be asked to sign in or enter a one-time code to open it. Questions? Contact <a href="mailto:${FIRM.email}" style="color:#999">${FIRM.email}</a>.</p>
+            ${canDownload ? `<p style="margin:0 0 8px;font-size:13px;color:#555">Grab all ${theirs.length === 1 ? "of it" : `${theirs.length} of these`} in one download:</p>` : ""}
+            ${buttons}
+            <p style="margin:0;font-size:12px;color:#999">${canDownload ? "The download may ask you to sign in or enter a one-time code first. " : "You may be asked to sign in or enter a one-time code to open it. "}Questions? Contact <a href="mailto:${FIRM.email}" style="color:#999">${FIRM.email}</a>.</p>
           </div>`;
         const res = await sendEmail({ to: r.email, fromName: `${FIRM.name} — Secure Share`, subject: `New document${theirs.length === 1 ? "" : "s"} in ${folder.name}`, html });
         if (res.sent) sent += 1;

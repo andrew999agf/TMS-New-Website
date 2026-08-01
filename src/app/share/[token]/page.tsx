@@ -90,6 +90,8 @@ export default async function SharePage({ params, searchParams }: { params: Prom
   }
 
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
+  const recentCutoff = new Date(Date.now() - 7 * 86_400_000);
+  const recentCount = files.filter((f) => f.createdAt >= recentCutoff).length;
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
   const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
 
@@ -136,9 +138,16 @@ export default async function SharePage({ params, searchParams }: { params: Prom
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
         {caps.download && files.length > 0 && (
-          <a href={`/share/${token}/zip`} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110">
-            <Download size={14} /> Download all (ZIP)
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            {recentCount > 0 && (
+              <a href={`/share/${token}/zip?days=7`} title="Everything uploaded in the last 7 days, in one ZIP" className="inline-flex items-center gap-1.5 rounded-md border border-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-[#7a1f2b] hover:bg-[#7a1f2b]/10">
+                <Download size={14} /> Download recent uploads ({recentCount})
+              </a>
+            )}
+            <a href={`/share/${token}/zip`} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110">
+              <Download size={14} /> Download all (ZIP)
+            </a>
+          </div>
         )}
       </div>
 
