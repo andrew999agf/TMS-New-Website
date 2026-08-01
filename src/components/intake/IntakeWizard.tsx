@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Fuse from "fuse.js";
-import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2, Eye } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
@@ -439,14 +439,16 @@ export function IntakeWizard({
 
       <div className="mt-8 space-y-6">
         {visibleFields(currentStep).map((f) => (
-          <FieldInput
-            key={f.name}
-            field={f}
-            value={answers[f.name]}
-            onChange={(v) => setField(f.name, v)}
-            consentText={f.name === "consent" ? consentText : undefined}
-            people={people}
-          />
+          <div key={f.name}>
+            {f.guidance && <GuidanceNote text={f.guidance} />}
+            <FieldInput
+              field={f}
+              value={answers[f.name]}
+              onChange={(v) => setField(f.name, v)}
+              consentText={f.name === "consent" ? consentText : undefined}
+              people={people}
+            />
+          </div>
         ))}
       </div>
 
@@ -1080,5 +1082,38 @@ function InfoTip({ text }: { text: string }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** A prominent, auto-shown (but dismissible) help bubble for tough elective
+ *  questions. Shows the question-specific explanation plus a standard note to
+ *  answer as best they can and contact the office. */
+function GuidanceNote({ text }: { text: string }) {
+  const [open, setOpen] = useState(true);
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--c-accent)] hover:opacity-80"
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--c-accent)]"><Eye size={12} /></span>
+        Not sure how to answer? Show help
+      </button>
+    );
+  }
+  return (
+    <div className="mb-3 rounded-lg border border-[var(--c-accent)]/45 bg-[var(--c-accent)]/[0.06] p-3">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-[var(--c-accent)] text-[var(--c-accent)]"><Eye size={13} /></span>
+        <div className="min-w-0 flex-1 text-xs leading-relaxed text-[var(--c-ink)]">
+          <p>{text}</p>
+          <p className="mt-2 text-[var(--c-ink-muted)]">Answer to the best of your ability. If you&rsquo;re unsure or would like to talk it through, please contact our office — we make the final determinations before preparing your documents.</p>
+        </div>
+        <button type="button" onClick={() => setOpen(false)} aria-label="Close help" className="shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
+          <X size={16} />
+        </button>
+      </div>
+    </div>
   );
 }

@@ -64,6 +64,10 @@ export type Field = {
   placeholder?: string;
   required?: boolean;
   help?: string;
+  /** A prominent, auto-shown (dismissible) explanation for a tough elective
+   *  question the client may not know how to answer. A standard "answer to the
+   *  best of your ability / contact us" note is appended automatically. */
+  guidance?: string;
   /** Label for a repeater's/party's add button (e.g. "Add a co-executor"). */
   addLabel?: string;
   /** Max entries for a party field (e.g. up to four co-agents). */
@@ -858,14 +862,15 @@ export const BRANCHES: Branch[] = [
         showIf: { field: "docsPoa", includesAny: [EP.FIN_POA] },
         fields: [
           { name: "finAgents", label: "Agent (attorney-in-fact)", type: "party", required: true, max: 4, addLabel: "Add a co-agent", help: "Who handles your financial matters. You may name up to four co-agents." },
-          { name: "finActing", label: "If you name more than one agent, they may act:", type: "radio", options: ["Independently — any one alone", "Only by majority", "Only by unanimous agreement"] },
+          { name: "finActing", label: "If you name more than one agent, they may act:", type: "radio", options: ["Independently — any one alone", "Only by majority", "Only by unanimous agreement"], guidance: "This decides how co-agents make decisions when you name more than one. “Independently” lets any one act alone — the most convenient, but with the least oversight. “Majority” or “unanimous” require the agents to agree — more checks, but slower and harder in an emergency. If you name only one agent, this doesn’t apply." },
           { name: "finAlts", label: "Successor agent(s)", type: "party", max: 4, addLabel: "Add a successor agent", help: "Who serves if your agent(s) cannot. Up to four." },
-          { name: "finEffective", label: "When should it take effect?", type: "radio", options: ["Immediately", "Only if I become incapacitated (springing)"] },
+          { name: "finEffective", label: "When should it take effect?", type: "radio", options: ["Immediately", "Only if I become incapacitated (springing)"], guidance: "“Immediately” means your agent can act as soon as you sign — useful if you want help now or in a sudden emergency, and it avoids the delay of proving incapacity. “Springing” means it only takes effect once a doctor certifies you can’t manage your affairs — more protection against early misuse, but slower to invoke when time matters." },
           {
             name: "finPowers",
             label: "Powers granted (Texas statutory durable power of attorney)",
             type: "checklist",
             help: "Check \"All powers\" to grant everything, or check only the specific powers you want to grant.",
+            guidance: "These are the categories of financial authority you can hand to your agent. “All powers” grants every category below; otherwise, check only the ones you want the agent to handle. Most people grant broad authority so their agent isn’t blocked in an emergency — but it’s entirely your choice.",
             options: [
               "ALL POWERS (a general grant of every power below)",
               "Real property transactions",
@@ -884,7 +889,7 @@ export const BRANCHES: Branch[] = [
               "Digital assets and electronic communications",
             ],
           },
-          { name: "finGifts", label: "Gift-giving power", type: "radio", options: ["No gift power", "Limited to the annual gift-tax exclusion", "Broad gift power"] },
+          { name: "finGifts", label: "Gift-giving power", type: "radio", options: ["No gift power", "Limited to the annual gift-tax exclusion", "Broad gift power"], guidance: "Whether your agent may make gifts of your money or property on your behalf. “No gift power” is the safest against misuse. “Limited to the annual gift-tax exclusion” allows modest yearly gifts (often used for tax or Medicaid planning). “Broad gift power” allows larger gifts and is used in some estate-tax planning. If you’re unsure, “No gift power” or the limited option is a sensible default." },
         ],
       },
       // 7) Medical POA / Directive / HIPAA.
@@ -897,15 +902,16 @@ export const BRANCHES: Branch[] = [
         fields: [
           { name: "medAgents", label: "Health-care agent", type: "party", max: 4, addLabel: "Add a co-agent", help: "Who makes medical decisions if you cannot. Must be 18+.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           { name: "medAlts", label: "Successor health-care agent(s)", type: "party", max: 4, addLabel: "Add a successor agent", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
-          { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", help: "Leave blank to grant full authority. Anything entered here is printed as a stated limitation; otherwise blank lines are left for you to fill in by hand.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medLimits", label: "Any limits on your agent's authority?", type: "textarea", help: "Leave blank to grant full authority. Anything entered here is printed as a stated limitation; otherwise blank lines are left for you to fill in by hand.", guidance: "Leave this blank to give your health-care agent full authority to make medical decisions if you cannot speak for yourself — that is what most people do. Only add text here if you want to restrict something specific (for example, a treatment you would never want your agent to authorize).", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           { name: "medOriginalLocation", label: "Where will the signed original be kept?", type: "text", placeholder: "Defaults to your home address", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           { name: "medCopyHolders", label: "Individuals / institutions who will hold a signed copy", type: "party", max: 4, addLabel: "Add a copy holder", help: "Usually your agent and alternate. Listed by name and address in the document.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
-          { name: "medEndDate", label: "Does this power of attorney end on a specific date?", type: "text", placeholder: "Leave blank for INDEFINITE (no expiration)", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
+          { name: "medEndDate", label: "Does this power of attorney end on a specific date?", type: "text", placeholder: "Leave blank for INDEFINITE (no expiration)", guidance: "Most people leave this blank so the document stays in effect indefinitely until they revoke it. Only enter a date if you specifically want it to expire automatically.", showIf: { field: "docsPoa", includesAny: [EP.MED_POA] } },
           {
             name: "lifeSupport",
             label: "Life-support wishes (Directive to Physicians)",
             type: "textarea",
             placeholder: "Your wishes if you have a terminal or irreversible condition.",
+            guidance: "This is your directive if you ever have a terminal or irreversible condition and can no longer speak for yourself — for example, whether you would want life-sustaining treatment continued, or withheld so you can pass naturally. There is no right or wrong answer; it simply reflects your personal wishes and beliefs.",
             showIf: { field: "docsPoa", includesAny: [EP.DIRECTIVE] },
           },
           {
