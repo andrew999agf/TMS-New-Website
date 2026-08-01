@@ -370,7 +370,8 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   const link = `${await baseUrl()}/share/${token}`;
   const who = name.trim() ? esc(name.trim()) : "there";
   const caseLine = caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(caseNumber)}</p>` : "";
-  const days = expiryDaysForType(typeKey);
+  // Days until expiry, derived from the actual date (which the admin may have set).
+  const days = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 86_400_000));
   const role = rolePhrase(typeKey);
   const openLabel = secure ? "Sign in to open the folder" : "Open the folder";
   const accessNote = secure
@@ -398,7 +399,7 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with ${recipientLabel}`, html });
 }
 
-export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
+export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean, expiresAtIso?: string): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
   const session = await guard();
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
@@ -419,7 +420,12 @@ export async function addRecipient(folderId: number, email: string, name: string
     if (dupe) return { ok: false, error: "That email already has access to this folder." };
 
     const token = randomBytes(24).toString("base64url");
-    const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
+    // Admin-chosen expiry (end of that day) if valid and in the future; otherwise
+    // the type-based default.
+    const custom = expiresAtIso ? new Date(`${expiresAtIso}T23:59:59`) : null;
+    const expiresAt = custom && !Number.isNaN(custom.getTime()) && custom.getTime() > Date.now()
+      ? custom
+      : new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
     await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt });
     // Directory entry (one per person, keyed by email) — created if new. When a
     // name is provided we remember it (so a corrected name sticks for next time);
@@ -474,6 +480,30 @@ export async function setRecipientPermission(recipientId: number, permission: st
   } catch (err) {
     console.error("[share] setRecipientPermission failed:", err);
     return { ok: false as const, error: "Couldn't update access — try again." };
+  }
+}
+
+/** Change (or clear) a recipient's link-expiry date. A "YYYY-MM-DD" string sets
+ *  it to the end of that day; null means the link never expires. */
+export async function setRecipientExpiry(recipientId: number, dateIso: string | null) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
+    if (!r) return { ok: false as const, error: "Not found." };
+    let expiresAt: Date | null = null;
+    if (dateIso) {
+      const d = new Date(`${dateIso}T23:59:59`);
+      if (Number.isNaN(d.getTime())) return { ok: false as const, error: "Invalid date." };
+      expiresAt = d;
+    }
+    await db.update(shareRecipients).set({ expiresAt }).where(eq(shareRecipients.id, recipientId));
+    await audit(session.email, "update", "share-recipient", String(recipientId), expiresAt ? `Expiry → ${fmtExpiry(expiresAt)} for ${r.email}` : `Expiry cleared for ${r.email}`);
+    revalidatePath(`/admin/share-folders/${r.folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] setRecipientExpiry failed:", err);
+    return { ok: false as const, error: "Couldn't update the expiry — try again." };
   }
 }
 

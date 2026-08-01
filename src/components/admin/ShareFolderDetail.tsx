@@ -8,7 +8,7 @@ import {
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus, Eye,
 } from "lucide-react";
 import { Lock } from "lucide-react";
-import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, type ShareFolderMeta } from "@/lib/share/types";
+import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
@@ -18,7 +18,7 @@ import { ListTree } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, createDir, clearUpload,
+  registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -30,6 +30,9 @@ export type RecipientRow = { id: number; email: string; name: string; token: str
 const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+// A local YYYY-MM-DD string for <input type="date">.
+const toDateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const isoToDateInput = (iso: string | null) => (iso ? toDateInput(new Date(iso)) : "");
 
 export type Contact = { email: string; name: string };
 
@@ -465,6 +468,7 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
   const [permission, setPermission] = useState("download");
   const [kind, setKind] = useState(defaultKindForType(typeKey));
   const [ack, setAck] = useState(false);
+  const [expiry, setExpiry] = useState(toDateInput(new Date(Date.now() + expiryDaysForType(typeKey) * 86_400_000)));
   const [openSug, setOpenSug] = useState(false);
   const sugRef = useRef<HTMLDivElement>(null);
 
@@ -499,7 +503,7 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
     setOkMsg(null);
     if (hasDanger && !ack) { setError("Please confirm the warning below before sharing."); return; }
     start(async () => {
-      const res = await addRecipient(folderId, email, name, permission, kind, hasDanger ? ack : true);
+      const res = await addRecipient(folderId, email, name, permission, kind, hasDanger ? ack : true, expiry || undefined);
       if (res.ok) {
         setOkMsg(res.error ?? `Invite sent to ${email.trim().toLowerCase()}.`);
         setEmail(""); setName(""); setAck(false);
@@ -548,6 +552,9 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
             {SHARE_PERMISSIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
         </label>
+        <label className="text-xs min-w-[9rem]"><span className="mb-1 block text-[var(--c-ink-muted)]">Access expires</span>
+          <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} min={toDateInput(new Date())} title="Defaults to the usual window for this folder type — change it if you want a different date" className={`${input} w-full`} />
+        </label>
         <button onClick={submit} disabled={pending || !email.trim()} className="btn btn-accent inline-flex items-center gap-1.5 text-sm disabled:opacity-50">
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />} Share
         </button>
@@ -592,9 +599,21 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
           {r.revoked && <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">revoked</span>}
           {!r.revoked && r.expiresAt && new Date(r.expiresAt) < new Date() && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">expired</span>}
         </div>
-        <p className="text-[11px] text-[var(--c-ink-muted)]">
-          Invited {fmtDate(r.invitedAt)} · {r.lastAccessAt ? `last opened ${fmtDate(r.lastAccessAt)}` : "not opened yet"}
-          {r.expiresAt && ` · ${new Date(r.expiresAt) < new Date() ? "expired" : `expires ${fmtDate(r.expiresAt)}`}`}
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[var(--c-ink-muted)]">
+          <span>Invited {fmtDate(r.invitedAt)} · {r.lastAccessAt ? `last opened ${fmtDate(r.lastAccessAt)}` : "not opened yet"} ·</span>
+          <span className="inline-flex items-center gap-1">
+            Access until
+            <input
+              type="date"
+              value={isoToDateInput(r.expiresAt)}
+              min={toDateInput(new Date())}
+              disabled={pending}
+              onChange={(e) => start(async () => { await setRecipientExpiry(r.id, e.target.value || null); router.refresh(); })}
+              title="Change when this link stops working (leave blank for no expiry)"
+              className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]"
+            />
+            {r.expiresAt && new Date(r.expiresAt) < new Date() && <span className="font-medium text-amber-600">(expired)</span>}
+          </span>
         </p>
       </div>
       <select
