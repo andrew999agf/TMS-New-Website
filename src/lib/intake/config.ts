@@ -1182,6 +1182,60 @@ export const NARRATIVE_FIELDS: { name: string; label: string }[] = (() => {
   return [...seen.entries()].map(([name, label]) => ({ name, label }));
 })();
 
+/** Every question across all flows, in the order they're asked — name → label.
+ *  Used to present answers to the intake team with clear labels, in a logical
+ *  order, instead of raw field keys. */
+export const INTAKE_FIELDS: { name: string; label: string; type: FieldType }[] = (() => {
+  const seen = new Map<string, { label: string; type: FieldType }>();
+  const order: string[] = [];
+  const add = (step: Step) => {
+    for (const f of step.fields) if (!seen.has(f.name)) { seen.set(f.name, { label: f.label, type: f.type }); order.push(f.name); }
+  };
+  for (const s of COMMON_STEPS) add(s);
+  for (const b of BRANCHES) {
+    for (const s of b.steps) add(s);
+    if (b.commonOverrides) for (const s of Object.values(b.commonOverrides)) add(s);
+  }
+  return order.map((name) => ({ name, ...seen.get(name)! }));
+})();
+
+const FIELD_LABEL_MAP = new Map(INTAKE_FIELDS.map((f) => [f.name, f.label]));
+
+/** Human label for an answer key, falling back to a prettified key. */
+export function fieldLabel(name: string): string {
+  return FIELD_LABEL_MAP.get(name) ?? name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Format any answer value into one clean, human-readable string — people
+ *  (name/phone/address), addresses, gifts, residuary shares, files, lists. */
+export function formatAnswerValue(v: unknown): string {
+  const personLine = (p: Person): string => {
+    const addr = formatAddress(p) || (typeof p?.address === "string" ? p.address.trim() : "");
+    return [p?.name?.trim(), p?.phone?.trim(), addr].filter(Boolean).join(" — ");
+  };
+  const fmtObj = (o: Record<string, unknown>): string => {
+    if ("street" in o || "city" in o || "state" in o || "zip" in o) return formatAddress(o as Address);
+    if ("item" in o && "to" in o) { const g = o as Gift; return `${String(g.item ?? "").trim()} → ${(g.to ?? []).map(personLine).filter(Boolean).join(", ")}`; }
+    if ("shares" in o) {
+      const rv = o as ResiduaryValue;
+      const sh = (rv.shares ?? []).filter((s) => s.person?.name?.trim());
+      if (!sh.length) return "";
+      return rv.even ? `Equal shares: ${sh.map((s) => personLine(s.person)).join("; ")}` : sh.map((s) => `${(s.percent || "?").toString().trim()}% — ${personLine(s.person)}`).join("; ");
+    }
+    if ("person" in o) return personLine((o as ResShare).person);
+    if ("name" in o) return personLine(o as Person);
+    return "";
+  };
+  if (v == null) return "";
+  if (Array.isArray(v)) {
+    if (v.length === 0) return "";
+    if (v.every((x) => x && typeof x === "object" && "url" in (x as object))) return (v as IntakeFile[]).map((f) => f.name || f.url).join("; ");
+    return v.map((x) => (x && typeof x === "object" ? fmtObj(x as Record<string, unknown>) : String(x))).filter((s) => s.trim()).join("  |  ");
+  }
+  if (typeof v === "object") return fmtObj(v as Record<string, unknown>);
+  return String(v).trim();
+}
+
 export function getBranch(id: string): Branch | undefined {
   return BRANCHES.find((b) => b.id === id);
 }

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
-import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, formatAddress } from "@/lib/intake/config";
+import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, INTAKE_FIELDS, fieldLabel, formatAnswerValue } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -191,52 +191,27 @@ export async function POST(req: Request) {
     a,
   );
 
-  const person = (p: Record<string, unknown>): string => {
-    const addr = formatAddress(p as { street?: string; city?: string; state?: string; zip?: string }) || String(p.address ?? "").trim();
-    return [String(p.name ?? "").trim(), String(p.phone ?? "").trim(), addr].filter(Boolean).join(" · ");
+  // A clean, labeled list of every remaining answer (executor, beneficiaries,
+  // POA agents, family, gifts, etc.), in the order asked — skipping empties and
+  // anything already shown in the summary above, so nothing repeats.
+  const summaryShown = new Set(["name", "email", "phone", "preferredContact", "opposingParty", "county", "court", "trialCourt", "courtNamed", "chargeCounty", "deathCounty", "referralSource", "referralOther", "referrerName", "referrerAttorney", "isUrgent", "deadline"]);
+  const internalKeys = new Set(["consent", "company", "turnstileToken", "referrer", "resumeToken", "website", "description", "message"]);
+  const narrativeShown = new Set(NARRATIVE_FIELDS.map((f) => f.name));
+  const detailShown = new Set<string>();
+  const detailRow = (key: string): string => {
+    if (detailShown.has(key) || summaryShown.has(key) || internalKeys.has(key) || narrativeShown.has(key)) return "";
+    const val = formatAnswerValue(a[key]);
+    if (!val.trim()) return "";
+    detailShown.add(key);
+    return `<tr><td style="padding:6px 16px 6px 0;color:#777;font-size:13px;vertical-align:top;white-space:nowrap">${esc(fieldLabel(key))}</td><td style="padding:6px 0;font-size:14px;border-bottom:1px solid #f0ede8">${esc(val).replace(/\r?\n/g, "<br/>")}</td></tr>`;
   };
-  const fmtAnswer = (v: unknown): string => {
-    // Uploaded documents (petition/complaint attachments) → clickable links.
-    if (Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as Record<string, unknown>))) {
-      return (v as { name?: string; url: string }[])
-        .map((f) => `<a href="${esc(f.url)}">${esc(f.name ?? f.url)}</a>`)
-        .join("<br/>");
-    }
-    if (Array.isArray(v)) {
-      return v
-        .map((x) => (x && typeof x === "object" && "name" in x ? person(x as Record<string, unknown>) : String(x ?? "")))
-        .filter(Boolean)
-        .join("; ");
-    }
-    if (v && typeof v === "object") {
-      const o = v as Record<string, unknown>;
-      if ("street" in o || "city" in o || "state" in o || "zip" in o) return formatAddress(o as { street?: string; city?: string; state?: string; zip?: string });
-      return "";
-    }
-    return String(v ?? "");
-  };
-  const rows = Object.entries(a)
-    .map(
-      ([k, v]) =>
-        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${k}</td><td style="padding:4px 0">${fmtAnswer(v)}</td></tr>`,
-    )
-    .join("");
+  const detailRowsHtml = [...INTAKE_FIELDS.map((f) => detailRow(f.name)), ...Object.keys(a).map(detailRow)].filter(Boolean).join("");
 
   const html = `
-    <div style="font-family:system-ui,sans-serif;max-width:640px">
-      <h2 style="margin:0 0 4px;font-size:16px">Full submission details</h2>
-      <p style="color:#666;margin:0 0 16px">${branchLabel}${
-        isUrgent ? ' · <strong style="color:#b00">URGENT</strong>' : ""
-      }</p>
-      ${
-        isUrgent && deadline
-          ? `<p style="background:#fdecea;color:#b00;padding:8px 12px;border-radius:4px">Deadline / court date: <strong>${deadline}</strong></p>`
-          : ""
-      }
-      <table style="border-collapse:collapse;font-size:14px">${rows}</table>
-      <p style="color:#999;font-size:12px;margin-top:20px">Full data attached as CSV. ${
-        id ? `Submission #${id}.` : "Not persisted (no database configured)."
-      }</p>
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px">
+      <h2 style="margin:0 0 12px;font-size:15px;font-weight:bold;color:#7a1f2b">Full responses</h2>
+      ${detailRowsHtml ? `<table style="border-collapse:collapse;width:100%">${detailRowsHtml}</table>` : `<p style="color:#999;font-size:13px">All details are in the summary above.</p>`}
+      <p style="color:#999;font-size:12px;margin-top:18px">A clean spreadsheet of every answer is attached as a CSV.${id ? ` Submission #${id}.` : ""}</p>
     </div>`;
 
   // Estate submissions: auto-generate a DRAFT of every document the client
