@@ -23,6 +23,8 @@ export type FieldType =
   | "repeater"
   /** Repeatable people, each with name + phone + address, with autocomplete. */
   | "party"
+  /** Street / City / State / ZIP composite; value is an Address object. */
+  | "address"
   /** Specific gifts: each an item + recipients. */
   | "gifts"
   /** Residuary beneficiaries with an even-split toggle and percentage validation. */
@@ -33,8 +35,21 @@ export type FieldType =
 /** An uploaded document attached to a submission (stored in media storage). */
 export type IntakeFile = { name: string; url: string; size?: number };
 
-/** A person captured in the flow — reused across fields with autocomplete. */
-export type Person = { name: string; phone?: string; address?: string };
+/** A mailing address captured as separate parts. */
+export type Address = { street?: string; city?: string; state?: string; zip?: string };
+
+/** Format an address (object or legacy string) as "Street, City, ST ZIP". */
+export function formatAddress(a?: Address | string | null): string {
+  if (!a) return "";
+  if (typeof a === "string") return a.trim();
+  const street = (a.street ?? "").trim();
+  const cityLine = [(a.city ?? "").trim(), [(a.state ?? "").trim(), (a.zip ?? "").trim()].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return [street, cityLine].filter(Boolean).join(", ");
+}
+
+/** A person captured in the flow — reused across fields with autocomplete. The
+ *  address is stored as separate parts; `address` remains for legacy answers. */
+export type Person = { name: string; phone?: string; street?: string; city?: string; state?: string; zip?: string; address?: string };
 /** A specific gift: an item and the people who receive it. */
 export type Gift = { item: string; to: Person[] };
 /** A residuary beneficiary and (when not splitting evenly) their percentage. */
@@ -740,8 +755,8 @@ export const BRANCHES: Branch[] = [
         title: "About you",
         subtitle: "These details go at the top of every document, exactly as you write them here.",
         fields: [
-          { name: "testatorFullName", label: "Your full legal name", type: "text", required: true, help: "Spell it exactly as it should appear in the documents." },
-          { name: "testatorAddress", label: "Home (residence) address", type: "text", placeholder: "Street, City, Texas, ZIP" },
+          { name: "testatorFullName", label: "Your full legal name", type: "text", required: true, placeholder: "First Middle Last", help: "Include your middle name if applicable. Spell it exactly as it should appear in the documents." },
+          { name: "testatorAddress", label: "Home (residence) address", type: "address" },
           { name: "testatorPhone", label: "Phone number", type: "text", placeholder: "(000) 000-0000" },
           { name: "testatorCounty", label: "County of residence", type: "text" },
           { name: "testatorDob", label: "Date of birth", type: "date" },

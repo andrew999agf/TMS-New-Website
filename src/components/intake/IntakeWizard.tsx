@@ -19,12 +19,26 @@ import {
   type ResShare,
   type ResiduaryValue,
   type IntakeFile,
+  type Address,
+  formatAddress,
 } from "@/lib/intake/config";
 
 type Answers = Record<string, unknown>;
 
-const emptyPerson = (): Person => ({ name: "", phone: "", address: "" });
+const emptyPerson = (): Person => ({ name: "", phone: "", street: "", city: "", state: "", zip: "" });
 const asPeople = (v: unknown): Person[] => (Array.isArray(v) ? (v as Person[]) : []);
+
+/** Progressive US phone formatting: digits in → "(512) 555-1234" out. */
+function formatPhone(input: string): string {
+  const d = input.replace(/\D/g, "").slice(0, 10);
+  if (d.length === 0) return "";
+  if (d.length < 4) return `(${d}`;
+  if (d.length < 7) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+/** The name portion of a "Full name — DOB" style entry (strips a trailing date). */
+const nameOnly = (s: string): string => String(s).replace(/\s*[—–-]\s*\d.*$/, "").replace(/,\s*\d.*$/, "").trim();
 
 /** Every distinct person already entered anywhere in the flow — for autocomplete. */
 function collectPeople(answers: Answers): Person[] {
@@ -200,8 +214,27 @@ export function IntakeWizard({
   const safeIndex = Math.min(stepIndex, Math.max(0, totalSteps - 1));
   const currentStep = steps[safeIndex];
   const visibleFields = (step: Step) => step.fields.filter((f) => condMet(f.showIf, answers));
-  // People entered anywhere so far — powers the in-flow autocomplete.
-  const people = collectPeople(answers);
+  // People entered anywhere so far — powers the in-flow autocomplete. Children,
+  // spouse, and other dependents are surfaced first, since a plan usually names
+  // them as the executor and beneficiaries.
+  const people = (() => {
+    const first: Person[] = [];
+    for (const c of Array.isArray(answers.children) ? answers.children : []) { const n = nameOnly(String(c)); if (n) first.push({ name: n }); }
+    if (typeof answers.spouseName === "string" && answers.spouseName.trim()) first.push({ name: answers.spouseName.trim() });
+    for (const o of Array.isArray(answers.otherDependents) ? answers.otherDependents : []) { const n = nameOnly(String(o)); if (n) first.push({ name: n }); }
+    // Keep the children-first order, but fill in phone/address from wherever the
+    // same person was entered with fuller detail (e.g. named again as executor).
+    const byName = new Map<string, Person>();
+    for (const p of [...first, ...collectPeople(answers)]) {
+      const k = p.name.trim().toLowerCase();
+      if (!k) continue;
+      const ex = byName.get(k);
+      byName.set(k, ex
+        ? { name: ex.name, phone: ex.phone || p.phone, street: ex.street || p.street, city: ex.city || p.city, state: ex.state || p.state, zip: ex.zip || p.zip, address: ex.address || p.address }
+        : { ...p });
+    }
+    return [...byName.values()];
+  })();
 
   function setField(name: string, value: unknown) {
     setAnswers((a) => ({ ...a, [name]: value }));
@@ -609,6 +642,14 @@ function FieldInput({
       </div>
     );
   }
+  if (field.type === "address") {
+    return (
+      <div>
+        {labelEl}
+        <AddressField value={(value && typeof value === "object" ? value : {}) as Address} onChange={onChange} />
+      </div>
+    );
+  }
   if (field.type === "gifts") {
     return (
       <div>
@@ -787,9 +828,10 @@ function FieldInput({
           {labelEl}
           <input
             type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "date" ? "date" : "text"}
+            inputMode={field.type === "tel" ? "tel" : undefined}
             value={(value as string) ?? ""}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder}
+            onChange={(e) => onChange(field.type === "tel" ? formatPhone(e.target.value) : e.target.value)}
+            placeholder={field.type === "tel" ? (field.placeholder ?? "(555) 555-5555") : field.placeholder}
             className={inputClass}
           />
         </div>
@@ -811,7 +853,8 @@ function PersonInput({ value, onChange, people }: { value: Person; onChange: (p:
   }, [value.name, people]);
 
   function pick(p: Person) {
-    onChange({ name: p.name, phone: p.phone ?? "", address: p.address ?? "" });
+    // Pull the split parts (falling back to a legacy single address string).
+    onChange({ name: p.name, phone: p.phone ?? "", street: p.street ?? "", city: p.city ?? "", state: p.state ?? "", zip: p.zip ?? "", address: p.address ?? "" });
     setOpen(false);
   }
 
@@ -830,7 +873,7 @@ function PersonInput({ value, onChange, people }: { value: Person; onChange: (p:
             else if (e.key === "Enter") { e.preventDefault(); pick(matches[active]); }
             else if (e.key === "Escape") setOpen(false);
           }}
-          placeholder="Full name"
+          placeholder="Full name (include middle name)"
           className={ROW}
         />
         {open && matches.length > 0 && (
@@ -844,17 +887,34 @@ function PersonInput({ value, onChange, people }: { value: Person; onChange: (p:
                 className={`block w-full px-3 py-2 text-left ${i === active ? "bg-[var(--c-surface2)]" : "hover:bg-[var(--c-surface2)]"}`}
               >
                 <span className="text-sm font-medium">{p.name}</span>
-                {(p.phone || p.address) && (
-                  <span className="block truncate text-xs text-[var(--c-ink-muted)]">{[p.phone, p.address].filter(Boolean).join(" · ")}</span>
+                {(p.phone || formatAddress(p) || p.address) && (
+                  <span className="block truncate text-xs text-[var(--c-ink-muted)]">{[p.phone, formatAddress(p) || p.address].filter(Boolean).join(" · ")}</span>
                 )}
               </button>
             ))}
           </div>
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <input value={value.phone ?? ""} onChange={(e) => onChange({ ...value, phone: e.target.value })} placeholder="Phone" className={ROW} />
-        <input value={value.address ?? ""} onChange={(e) => onChange({ ...value, address: e.target.value })} placeholder="Address" className={ROW} />
+      <input value={value.phone ?? ""} onChange={(e) => onChange({ ...value, phone: formatPhone(e.target.value) })} inputMode="tel" placeholder="Phone — (555) 555-5555" className={ROW} />
+      <input value={value.street ?? ""} onChange={(e) => onChange({ ...value, street: e.target.value })} placeholder="Street address" className={ROW} />
+      <div className="grid gap-2 sm:grid-cols-[1fr_5rem_6rem]">
+        <input value={value.city ?? ""} onChange={(e) => onChange({ ...value, city: e.target.value })} placeholder="City" className={ROW} />
+        <input value={value.state ?? ""} onChange={(e) => onChange({ ...value, state: e.target.value })} placeholder="State" className={ROW} />
+        <input value={value.zip ?? ""} onChange={(e) => onChange({ ...value, zip: e.target.value })} inputMode="numeric" placeholder="ZIP" className={ROW} />
+      </div>
+    </div>
+  );
+}
+
+/** Street / City / State / ZIP composite (for a standalone address field). */
+function AddressField({ value, onChange }: { value: Address; onChange: (a: Address) => void }) {
+  return (
+    <div className="space-y-2">
+      <input value={value.street ?? ""} onChange={(e) => onChange({ ...value, street: e.target.value })} placeholder="Street address" className={ROW} />
+      <div className="grid gap-2 sm:grid-cols-[1fr_5rem_6rem]">
+        <input value={value.city ?? ""} onChange={(e) => onChange({ ...value, city: e.target.value })} placeholder="City" className={ROW} />
+        <input value={value.state ?? ""} onChange={(e) => onChange({ ...value, state: e.target.value })} placeholder="State" className={ROW} />
+        <input value={value.zip ?? ""} onChange={(e) => onChange({ ...value, zip: e.target.value })} inputMode="numeric" placeholder="ZIP" className={ROW} />
       </div>
     </div>
   );

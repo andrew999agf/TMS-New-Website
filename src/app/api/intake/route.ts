@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
-import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS } from "@/lib/intake/config";
+import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, formatAddress } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -191,6 +191,10 @@ export async function POST(req: Request) {
     a,
   );
 
+  const person = (p: Record<string, unknown>): string => {
+    const addr = formatAddress(p as { street?: string; city?: string; state?: string; zip?: string }) || String(p.address ?? "").trim();
+    return [String(p.name ?? "").trim(), String(p.phone ?? "").trim(), addr].filter(Boolean).join(" · ");
+  };
   const fmtAnswer = (v: unknown): string => {
     // Uploaded documents (petition/complaint attachments) → clickable links.
     if (Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as Record<string, unknown>))) {
@@ -198,7 +202,18 @@ export async function POST(req: Request) {
         .map((f) => `<a href="${esc(f.url)}">${esc(f.name ?? f.url)}</a>`)
         .join("<br/>");
     }
-    return Array.isArray(v) ? v.join("; ") : String(v ?? "");
+    if (Array.isArray(v)) {
+      return v
+        .map((x) => (x && typeof x === "object" && "name" in x ? person(x as Record<string, unknown>) : String(x ?? "")))
+        .filter(Boolean)
+        .join("; ");
+    }
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if ("street" in o || "city" in o || "state" in o || "zip" in o) return formatAddress(o as { street?: string; city?: string; state?: string; zip?: string });
+      return "";
+    }
+    return String(v ?? "");
   };
   const rows = Object.entries(a)
     .map(

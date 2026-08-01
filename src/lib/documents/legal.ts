@@ -1,5 +1,8 @@
 import { FIELD_LABELS } from "./templates";
-import type { Person, Gift, ResiduaryValue } from "@/lib/intake/config";
+import { formatAddress, type Person, type Gift, type ResiduaryValue } from "@/lib/intake/config";
+
+/** A person's address from the separate parts, falling back to legacy `address`. */
+const personAddr = (p: Person): string => formatAddress(p) || (typeof p?.address === "string" ? p.address.trim() : "");
 
 /**
  * Legal document engine. Each document is authored once as styled HTML through
@@ -64,7 +67,7 @@ const personStr = (p: Person, bold = true): string => {
   const name = (p?.name ?? "").trim();
   if (!name) return "";
   const n = bold ? `<strong>${esc(name)}</strong>` : esc(name);
-  const addr = (p?.address ?? "").trim();
+  const addr = personAddr(p);
   return addr ? `${n}, of ${esc(addr)}` : n;
 };
 
@@ -132,7 +135,13 @@ export function renderDoc(
   const footnotes: string[] = [];
   const val = (token: string): string => {
     const v = answers[token];
-    return Array.isArray(v) ? v.filter(Boolean).join("; ") : v == null ? "" : String(v).trim();
+    if (Array.isArray(v)) return v.filter(Boolean).join("; ");
+    if (v && typeof v === "object") {
+      // An address field stores separate parts — format it as one line.
+      if ("street" in v || "city" in v || "state" in v || "zip" in v) return formatAddress(v as { street?: string; city?: string; state?: string; zip?: string });
+      return "";
+    }
+    return v == null ? "" : String(v).trim();
   };
   const peopleOf = (token: string): Person[] => {
     const v = answers[token];
@@ -187,7 +196,7 @@ export function renderDoc(
         .join("");
     },
     persons: (token) =>
-      peopleOf(token).map((p) => ({ name: (p.name ?? "").trim(), address: (p.address ?? "").trim(), phone: (p.phone ?? "").trim(), html: personStr(p) })),
+      peopleOf(token).map((p) => ({ name: (p.name ?? "").trim(), address: personAddr(p), phone: (p.phone ?? "").trim(), html: personStr(p) })),
     list: (token) => {
       const v = answers[token];
       if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
