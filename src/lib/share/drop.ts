@@ -20,33 +20,57 @@ export function countDropItems(dt: DataTransfer): number {
 }
 
 /** Read every File out of a dropped item list, walking into folders via the
- *  webkitGetAsEntry API. Entries are captured synchronously before any await. */
+ *  webkitGetAsEntry API. Entries are captured synchronously before any await.
+ *
+ *  Resilient by design: a single unreadable file or directory never aborts the
+ *  whole drop (the old code rejected on the first error, and because the caller
+ *  didn't catch it, a folder drop would fail completely and silently). Here every
+ *  step swallows its own errors and returns whatever it could read. */
 export async function filesFromDrop(dt: DataTransfer): Promise<PickedFile[]> {
   const roots: FileSystemEntry[] = [];
-  for (let i = 0; i < dt.items.length; i++) {
-    const entry = dt.items[i].webkitGetAsEntry?.();
-    if (entry) roots.push(entry);
+  try {
+    for (let i = 0; i < dt.items.length; i++) {
+      const entry = dt.items[i].webkitGetAsEntry?.();
+      if (entry) roots.push(entry);
+    }
+  } catch {
+    /* items list unavailable — fall through to dt.files below */
   }
   if (roots.length === 0) {
-    return Array.from(dt.files).filter((f) => !isJunk(f.name)).map((f) => ({ file: f, path: f.name }));
+    return Array.from(dt.files ?? []).filter((f) => !isJunk(f.name)).map((f) => ({ file: f, path: f.name }));
   }
   const out: PickedFile[] = [];
+  // Read a directory to exhaustion. readEntries returns at most ~100 per call, so
+  // we loop until it's empty. On error we resolve with what we have rather than
+  // reject, so one bad directory can't sink the batch.
   const readDir = (reader: FileSystemDirectoryReader) =>
-    new Promise<FileSystemEntry[]>((resolve, reject) => {
+    new Promise<FileSystemEntry[]>((resolve) => {
       const acc: FileSystemEntry[] = [];
-      const step = () => reader.readEntries((batch) => { if (!batch.length) return resolve(acc); acc.push(...batch); step(); }, reject);
+      const step = () => reader.readEntries(
+        (batch) => { if (!batch.length) return resolve(acc); acc.push(...batch); step(); },
+        () => resolve(acc),
+      );
       step();
     });
   async function walk(entry: FileSystemEntry, prefix: string): Promise<void> {
-    if (entry.isFile) {
-      const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
-      if (!isJunk(file.name)) out.push({ file, path: prefix + file.name });
-    } else if (entry.isDirectory) {
-      const children = await readDir((entry as FileSystemDirectoryEntry).createReader());
-      for (const child of children) await walk(child, `${prefix}${entry.name}/`);
+    try {
+      if (entry.isFile) {
+        const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+        if (!isJunk(file.name)) out.push({ file, path: prefix + file.name });
+      } else if (entry.isDirectory) {
+        const children = await readDir((entry as FileSystemDirectoryEntry).createReader());
+        for (const child of children) await walk(child, `${prefix}${entry.name}/`);
+      }
+    } catch {
+      /* skip this entry; keep everything else */
     }
   }
   for (const r of roots) await walk(r, "");
+  // Last-ditch fallback: if entry-walking produced nothing but the browser also
+  // exposed plain files (some engines populate both), use those.
+  if (out.length === 0 && dt.files?.length) {
+    return Array.from(dt.files).filter((f) => !isJunk(f.name)).map((f) => ({ file: f, path: f.name }));
+  }
   return out;
 }
 

@@ -391,7 +391,8 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   async function onUpload(destPath: string, dt: DataTransfer) {
     if (!blobReady) return;
     const dropped = countDropItems(dt); // sync — before the await neuters the list
-    const picked = await filesFromDrop(dt);
+    let picked: PickedFile[] = [];
+    try { picked = await filesFromDrop(dt); } catch { picked = []; }
     if (picked.length === 0) {
       if (dropped > 0) setError("Couldn't read the folder that was dropped. Try the “Add folder” button instead, or drag the files themselves rather than the folder.");
       return;

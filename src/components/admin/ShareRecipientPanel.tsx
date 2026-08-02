@@ -132,9 +132,10 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
   async function onUpload(destPath: string, dt: DataTransfer) {
     if (!caps.upload || !blobReady) return;
     const dropped = countDropItems(dt); // sync — before the await neuters the list
-    const picked = await filesFromDrop(dt);
+    let picked: PickedFile[] = [];
+    try { picked = await filesFromDrop(dt); } catch { picked = []; }
     if (picked.length === 0) {
-      if (dropped > 0) setError("This device couldn't read the folder you dropped. On a phone or tablet, use the “Add folder” button above instead, or drag the files themselves (not the folder).");
+      if (dropped > 0) setError("This device couldn't read the folder you dropped. Use the “Add folder” button above instead, or drag the files themselves (not the folder).");
       return;
     }
     enqueue(destPath, picked);
