@@ -6,6 +6,19 @@ export type PickedFile = { file: File; path: string };
 
 export const isJunk = (name: string) => name === ".DS_Store" || name === "Thumbs.db" || name.startsWith("._");
 
+/** How many file/folder items a drop carried. Read this SYNCHRONOUSLY (before any
+ *  await) — the item list is emptied once the drop event finishes. Lets a caller
+ *  tell "nothing was dropped" apart from "a folder was dropped but this device
+ *  couldn't read its contents" (some tablets/older Safari can't walk folders). */
+export function countDropItems(dt: DataTransfer): number {
+  try {
+    const items = Array.from(dt.items ?? []).filter((i) => i.kind === "file").length;
+    return items || dt.files?.length || 0;
+  } catch {
+    return dt.files?.length || 0;
+  }
+}
+
 /** Read every File out of a dropped item list, walking into folders via the
  *  webkitGetAsEntry API. Entries are captured synchronously before any await. */
 export async function filesFromDrop(dt: DataTransfer): Promise<PickedFile[]> {

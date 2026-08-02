@@ -192,6 +192,11 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS share_dirs_folder_idx ON share_dirs (folder_id)`,
+  // Widen the file/folder path columns so deep folder trees (a nested folder
+  // dropped inside an already-nested sub-folder, with long names) never get
+  // silently truncated. Idempotent — re-running just re-asserts the type.
+  `ALTER TABLE share_files ALTER COLUMN filename TYPE varchar(1024)`,
+  `ALTER TABLE share_dirs ALTER COLUMN path TYPE varchar(1024)`,
   `CREATE TABLE IF NOT EXISTS share_access_log (
     id serial PRIMARY KEY,
     folder_id integer,

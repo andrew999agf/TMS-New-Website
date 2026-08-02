@@ -141,7 +141,7 @@ export async function registerShareFile(folderId: number, file: { url: string; p
         folderId,
         url: file.url,
         pathname: file.pathname,
-        filename: file.filename.slice(0, 255),
+        filename: file.filename.slice(0, 1024),
         contentType: file.contentType ?? null,
         sizeBytes: file.size ?? null,
         uploadedBy: session.email,
@@ -310,13 +310,13 @@ export async function renameDir(folderId: number, path: string, newName: string)
     const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folderId));
     for (const f of files) {
       if (f.filename === oldClean || f.filename.startsWith(prefix)) {
-        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 255) }).where(eq(shareFiles.id, f.id));
+        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 1024) }).where(eq(shareFiles.id, f.id));
       }
     }
     const dirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, folderId));
     for (const d of dirs) {
       if (d.path === oldClean || d.path.startsWith(prefix)) {
-        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 512) }).where(eq(shareDirs.id, d.id));
+        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 1024) }).where(eq(shareDirs.id, d.id));
       }
     }
     await audit(session.email, "update", "share-folder", String(folderId), `Renamed folder "${oldClean}" → "${newPath}"`);

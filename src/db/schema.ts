@@ -428,7 +428,7 @@ export const shareFiles = pgTable(
     folderId: integer("folder_id").notNull(),
     url: text("url").notNull(),
     pathname: text("pathname").notNull(),
-    filename: varchar("filename", { length: 255 }).notNull(),
+    filename: varchar("filename", { length: 1024 }).notNull(),
     contentType: varchar("content_type", { length: 128 }),
     sizeBytes: integer("size_bytes"),
     uploadedBy: varchar("uploaded_by", { length: 255 }),
@@ -470,7 +470,7 @@ export const shareDirs = pgTable(
   {
     id: serial("id").primaryKey(),
     folderId: integer("folder_id").notNull(),
-    path: varchar("path", { length: 512 }).notNull(), // e.g. "Correspondence/2026"
+    path: varchar("path", { length: 1024 }).notNull(), // e.g. "Correspondence/2026"
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

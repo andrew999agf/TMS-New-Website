@@ -23,7 +23,7 @@ export async function recipientRegisterFile(
   if (!db) return { ok: false as const, error: "Unavailable." };
   const dir = cleanDirPath(file.dir ?? "");
   const base = (file.filename || "file").split("/").pop() || "file";
-  const path = (dir ? `${dir}/${base}` : base).slice(0, 255);
+  const path = (dir ? `${dir}/${base}` : base).slice(0, 1024);
   try {
     await db.insert(shareFiles).values({
       folderId: ctx.folder.id,
@@ -219,13 +219,13 @@ export async function recipientRenameDir(token: string, path: string, newName: s
     const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, ctx.folder.id));
     for (const f of files) {
       if (f.filename === oldClean || f.filename.startsWith(prefix)) {
-        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 255) }).where(eq(shareFiles.id, f.id));
+        await db.update(shareFiles).set({ filename: (newPath + f.filename.slice(oldClean.length)).slice(0, 1024) }).where(eq(shareFiles.id, f.id));
       }
     }
     const dirs = await db.select().from(shareDirs).where(eq(shareDirs.folderId, ctx.folder.id));
     for (const d of dirs) {
       if (d.path === oldClean || d.path.startsWith(prefix)) {
-        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 512) }).where(eq(shareDirs.id, d.id));
+        await db.update(shareDirs).set({ path: (newPath + d.path.slice(oldClean.length)).slice(0, 1024) }).where(eq(shareDirs.id, d.id));
       }
     }
     return { ok: true as const };

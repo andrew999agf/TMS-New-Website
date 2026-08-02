@@ -20,13 +20,15 @@ export async function resolveRecipient(token: string) {
 export const DIGEST_DELAY_MS = 12 * 60 * 60 * 1000;
 
 /** Normalize a user-supplied folder path: strip leading/trailing slashes, drop
- *  "." / ".." and empty segments, cap depth and length. Returns "" for root. */
+ *  "." / ".." and empty segments, cap depth and length. Returns "" for root.
+ *  The caps are deliberately generous — deep folder trees (a nested folder
+ *  dropped inside an already-nested sub-folder) must survive intact. */
 export function cleanDirPath(input: string): string {
   const parts = (input || "")
     .split("/")
     .map((s) => s.trim())
     .filter((s) => s && s !== "." && s !== "..")
-    .map((s) => s.replace(/[\\:*?"<>|]/g, "").slice(0, 120))
+    .map((s) => s.replace(/[\\:*?"<>|]/g, "").slice(0, 160))
     .filter(Boolean);
-  return parts.slice(0, 10).join("/").slice(0, 480);
+  return parts.slice(0, 40).join("/").slice(0, 900);
 }

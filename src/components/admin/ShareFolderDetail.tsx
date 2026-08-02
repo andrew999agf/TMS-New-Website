@@ -16,7 +16,7 @@ import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { LinkTreeDialog } from "./ShareLinkTree";
 import { ListTree } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
-import { filesFromDrop, fromInput, isJunk, type PickedFile } from "@/lib/share/drop";
+import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
@@ -312,6 +312,15 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
   }, []);
 
+  // Warn before leaving while an upload is running — in-flight files aren't on
+  // the server yet. Already-finished uploads are saved and unaffected.
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; return ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
+
   // A growable, concurrent upload queue. Several files upload at once (much
   // faster for many photos/videos), and each file is independent — if one
   // fails, the rest still go in and we report which failed. Uploads are still
@@ -376,7 +385,13 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
 
   async function onUpload(destPath: string, dt: DataTransfer) {
     if (!blobReady) return;
-    enqueue(destPath, await filesFromDrop(dt));
+    const dropped = countDropItems(dt); // sync — before the await neuters the list
+    const picked = await filesFromDrop(dt);
+    if (picked.length === 0) {
+      if (dropped > 0) setError("Couldn't read the folder that was dropped. Try the “Add folder” button instead, or drag the files themselves rather than the folder.");
+      return;
+    }
+    enqueue(destPath, picked);
   }
 
   return (
@@ -399,6 +414,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
+      {busy && <p className="mb-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300">Upload in progress — keep this tab open until it finishes. Files already uploaded are saved; anything still uploading stops if you close the tab.</p>}
       {!blobReady && <p className="mb-2 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
 
       {selected.size > 0 && (

@@ -7,7 +7,7 @@ import { Upload, FolderPlus, Loader2, Download, Trash2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
-import { filesFromDrop, fromInput, type PickedFile } from "@/lib/share/drop";
+import { filesFromDrop, fromInput, countDropItems, type PickedFile } from "@/lib/share/drop";
 import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
@@ -52,6 +52,16 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     const el = folderInput.current;
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
   }, []);
+
+  // While an upload is running, warn before the tab/app closes. Files still in
+  // flight aren't on the server yet, so leaving now would drop them. (Files that
+  // already finished uploading are safely saved and unaffected.)
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; return ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
 
   // Growable upload queue — dropping more files mid-upload appends to the same
   // queue and the count keeps climbing (e.g. 2/23) instead of being ignored.
@@ -120,7 +130,13 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
 
   async function onUpload(destPath: string, dt: DataTransfer) {
     if (!caps.upload || !blobReady) return;
-    enqueue(destPath, await filesFromDrop(dt));
+    const dropped = countDropItems(dt); // sync — before the await neuters the list
+    const picked = await filesFromDrop(dt);
+    if (picked.length === 0) {
+      if (dropped > 0) setError("This device couldn't read the folder you dropped. On a phone or tablet, use the “Add folder” button above instead, or drag the files themselves (not the folder).");
+      return;
+    }
+    enqueue(destPath, picked);
   }
 
   function addFolder(name: string) {
@@ -162,6 +178,11 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
             {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
           </div>
           <p className="text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders onto the list below — drop them on a folder to add inside it, or on empty space for the top level.</p>
+          {busy && (
+            <p className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300">
+              Upload in progress — please keep this page open until it finishes. Documents that have already uploaded are saved; anything still uploading will stop if you close this window or lock the device.
+            </p>
+          )}
           <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
           <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
         </>
