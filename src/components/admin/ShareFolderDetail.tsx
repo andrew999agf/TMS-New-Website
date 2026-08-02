@@ -253,6 +253,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [dialogParent, setDialogParent] = useState<string | null>(null); // null=closed, ""=top-level, path=sub
   const [creatingDir, setCreatingDir] = useState(false);
+  const [revealPath, setRevealPath] = useState<string | null>(null); // just-created folder to expand & scroll to
   const [showLinkTree, setShowLinkTree] = useState(false);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -286,7 +287,11 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     if (!clean) return;
     const full = dialogParent ? `${dialogParent}/${clean}` : clean;
     setCreatingDir(true);
-    createDir(folderId, full).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't create folder."); setCreatingDir(false); setDialogParent(null); router.refresh(); }).catch(() => { setCreatingDir(false); setDialogParent(null); });
+    createDir(folderId, full).then((r) => {
+      if (!r.ok) { setError(r.error ?? "Couldn't create folder."); }
+      else { setRevealPath(null); setTimeout(() => setRevealPath(full), 0); } // re-trigger even if same name recreated
+      setCreatingDir(false); setDialogParent(null); router.refresh();
+    }).catch(() => { setError("Couldn't create the folder — try again."); setCreatingDir(false); setDialogParent(null); });
   }
 
   function handleDelete(id: number) {
@@ -444,6 +449,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameDir={handleRenameDir}
         onAddSubdir={(p) => setDialogParent(p)}
         onUpload={blobReady ? onUpload : undefined}
+        revealPath={revealPath}
       />
       {dialogParent !== null && (
         <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />

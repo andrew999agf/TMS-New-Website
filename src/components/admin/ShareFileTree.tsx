@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil, FolderPlus } from "lucide-react";
 
 export type TreeFile = { id: number; path: string; sizeBytes: number | null; by?: string; at?: string };
@@ -75,9 +75,12 @@ type Ctx = {
   overPath: string | null;
   setOver: (e: React.DragEvent, path: string) => void;
   doDrop: (e: React.DragEvent, path: string) => void;
+  // expand/collapse (hoisted so it survives refreshes and can be driven open)
+  openSet: Set<string>;
+  toggleOpen: (path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -101,14 +104,37 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   /** When provided, the tree becomes a drop target: drop onto a folder to add
    *  inside it, or onto empty space to add at the top level. */
   onUpload?: (destPath: string, dt: DataTransfer) => void;
+  /** When set, expand this folder and all its ancestors and scroll it into view
+   *  — used to reveal a just-created folder in a large, collapsed tree. */
+  revealPath?: string | null;
 }) {
   const root = useMemo(() => buildTree(files, dirs), [files, dirs]);
   const [overPath, setOverPath] = useState<string | null>(null);
+  // Expand state lives here (not per-row) so it survives a router.refresh() and
+  // so a newly created folder can be driven open.
+  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
+  const toggleOpen = (path: string) => setOpenSet((prev) => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; });
   const empty = root.children.size === 0 && root.files.length === 0;
+
+  useEffect(() => {
+    if (!revealPath) return;
+    const parts = revealPath.split("/").filter(Boolean);
+    setOpenSet((prev) => {
+      const n = new Set(prev);
+      let acc = "";
+      for (const p of parts) { acc = acc ? `${acc}/${p}` : p; n.add(acc); }
+      return n;
+    });
+    // Scroll the folder into view once the expansion has rendered.
+    const id = window.setTimeout(() => {
+      document.querySelector(`[data-dirpath="${CSS.escape(revealPath)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    return () => window.clearTimeout(id);
+  }, [revealPath]);
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -141,13 +167,15 @@ function NodeBody({ node, depth, basePath, ctx }: { node: FolderNode; depth: num
 }
 
 function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: number; basePath: string; ctx: Ctx }) {
-  const [open, setOpen] = useState(false);
   const fullPath = basePath ? `${basePath}/${node.name}` : node.name;
+  const open = ctx.openSet.has(fullPath);
+  const setOpen = () => ctx.toggleOpen(fullPath);
   const n = countFiles(node);
   const info = ctx.dirInfo?.[fullPath];
   const hot = ctx.onUpload && ctx.overPath === fullPath;
   return (
     <div
+      data-dirpath={fullPath}
       onDragOver={(e) => ctx.setOver(e, fullPath)}
       onDrop={(e) => ctx.doDrop(e, fullPath)}
       className={`rounded ${hot ? "bg-[var(--c-accent)]/10 outline outline-1 outline-[var(--c-accent)]" : ""}`}
@@ -174,7 +202,7 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
             </span>
           );
         })()}
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: ctx.selectable ? 2 : 8 + depth * 16 }}>
+        <button onClick={setOpen} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm" style={{ paddingLeft: ctx.selectable ? 2 : 8 + depth * 16 }}>
           <ChevronRight size={14} className={`shrink-0 text-[var(--c-ink-muted)] transition-transform ${open ? "rotate-90" : ""}`} />
           {open ? <FolderOpen size={15} className="shrink-0 text-[var(--c-accent)]" /> : <FolderIcon size={15} className="shrink-0 text-[var(--c-accent)]" />}
           <span className="flex min-w-0 flex-1 flex-col">

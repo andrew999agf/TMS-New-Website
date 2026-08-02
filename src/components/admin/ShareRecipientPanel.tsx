@@ -21,6 +21,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
   const [progress, setProgress] = useState<string | null>(null);
   const [dialogParent, setDialogParent] = useState<string | null>(null); // null=closed, ""=top-level, path=sub
   const [creatingDir, setCreatingDir] = useState(false);
+  const [revealPath, setRevealPath] = useState<string | null>(null); // just-created folder to expand & scroll to
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ id: number; base: string } | null>(null);
@@ -144,7 +145,11 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     if (!clean) return;
     const full = dialogParent ? `${dialogParent}/${clean}` : clean;
     setCreatingDir(true);
-    recipientMkdir(token, full).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't create folder."); setCreatingDir(false); setDialogParent(null); router.refresh(); }).catch(() => { setCreatingDir(false); setDialogParent(null); });
+    recipientMkdir(token, full).then((r) => {
+      if (!r.ok) { setError(r.error ?? "Couldn't create folder."); }
+      else { setRevealPath(null); setTimeout(() => setRevealPath(full), 0); }
+      setCreatingDir(false); setDialogParent(null); router.refresh();
+    }).catch(() => { setError("Couldn't create the folder — try again."); setCreatingDir(false); setDialogParent(null); });
   }
 
   function handleDelete(id: number) {
@@ -215,6 +220,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         onAddSubdir={caps.upload ? (p) => setDialogParent(p) : undefined}
         onPreview={(f) => setPreview(f)}
         onUpload={caps.upload && blobReady ? onUpload : undefined}
+        revealPath={revealPath}
       />
       {dialogParent !== null && (
         <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
