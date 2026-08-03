@@ -13,7 +13,8 @@ export type TrainingCategory =
   | "Onboarding"
   | "Firm Policies"
   | "Estate Planning (Wills & Trusts)"
-  | "Criminal Defense Foundations";
+  | "Criminal Defense Foundations"
+  | "Evidence & Trial Skills";
 
 /** Ordered list of categories — controls section order on the index page. */
 export const TRAINING_CATEGORIES: TrainingCategory[] = [
@@ -21,6 +22,7 @@ export const TRAINING_CATEGORIES: TrainingCategory[] = [
   "Firm Policies",
   "Estate Planning (Wills & Trusts)",
   "Criminal Defense Foundations",
+  "Evidence & Trial Skills",
 ];
 
 /** A self-check question with an optional revealable answer. */

@@ -3126,6 +3126,365 @@ export const TRAINING_MODULES: TrainingModule[] = [
       },
     ],
   },
+
+  /* ---------------------------------------------------------------- *
+   * Evidence & Trial Skills — a beginner's foundation in the Texas Rules of
+   * Evidence, hearsay, and how exhibits actually get admitted at trial. Written
+   * for someone who has never seen how a trial works. Internal training only;
+   * an attorney handles courtroom strategy and every legal call.
+   * ---------------------------------------------------------------- */
+  {
+    slug: "evidence-1-basics",
+    title: "Evidence Basics — Rules, Hearsay & Admitting Exhibits",
+    category: "Evidence & Trial Skills",
+    audience: "Clerks & new attorneys",
+    summary:
+      "A plain-English introduction for someone brand new: what \"evidence\" is, how the Texas Rules of Evidence decide what a jury can see, how hearsay works, and the exact steps to get an exhibit admitted at trial.",
+    estMinutes: 35,
+    updated: "August 2026",
+    sourceNote: "Introductory overview of the Texas Rules of Evidence (TRE). Not legal advice; courtroom decisions are the attorney's.",
+    lessons: [
+      {
+        id: "how-evidence-works",
+        title: "How Evidence Works (Start Here)",
+        blocks: [
+          {
+            type: "callout",
+            tone: "info",
+            title: "Internal training only",
+            text: "This is a general introduction for firm staff and new attorneys, not legal advice. In the courtroom, the supervising attorney makes every strategic and legal decision.",
+          },
+          {
+            type: "paragraph",
+            text: "A trial is a contest over **facts**. But a jury doesn't get to hear everything — only information the law says is reliable and fair enough to consider. **Evidence** is that information: the sworn testimony, documents, photos, and objects a jury is allowed to use to decide what happened.",
+          },
+          {
+            type: "paragraph",
+            text: "The **Texas Rules of Evidence** (we'll call them the **TRE**) are the rulebook. They apply in Texas civil and criminal trials and decide what comes in, what stays out, and how it gets in. Think of them as the filter between \"everything anyone wants to say\" and \"what the jury is actually permitted to hear.\"",
+          },
+          { type: "heading", text: "Two different jobs: the judge and the jury" },
+          {
+            type: "list",
+            items: [
+              "**The judge decides what is admissible** — whether a piece of evidence is allowed in at all. This is a legal question.",
+              "**The jury decides what it is worth** — how believable and important the admitted evidence is. This is called the **weight** of the evidence.",
+              "So a document can be **admitted** (the jury may see it) and still be **unpersuasive** (the jury may choose to believe little of it). Admissibility and weight are different questions.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "The mental model",
+            text: "Every time a lawyer offers evidence, picture a gate. The judge is the gatekeeper applying the TRE. Our job is to know the rules well enough to get our good evidence through the gate — and to keep the other side's improper evidence out.",
+          },
+        ],
+      },
+      {
+        id: "relevance",
+        title: "The First Question: Is It Relevant?",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Before anything else, evidence has to be **relevant**. If it isn't, it never comes in. Relevance is the price of admission.",
+          },
+          { type: "heading", text: "The basic rules (TRE 401 & 402)" },
+          {
+            type: "list",
+            items: [
+              "**Relevant (Rule 401)** — evidence is relevant if it has *any* tendency to make a fact that matters to the case more or less likely than it would be without the evidence. The bar is low; it just has to move the needle a little.",
+              "**Admissible (Rule 402)** — relevant evidence is generally admissible, and irrelevant evidence is *never* admissible. Relevance is necessary, but not always sufficient — other rules can still exclude relevant evidence.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Plain-English test",
+            text: "Ask: \"Does this fact help prove or disprove something the jury actually has to decide?\" If yes, it's relevant. If it's just interesting, embarrassing, or beside the point, it's not.",
+          },
+          { type: "heading", text: "Even relevant evidence can be excluded (TRE 403)" },
+          {
+            type: "paragraph",
+            text: "Rule 403 is the big safety valve. A judge may keep out relevant evidence if its value is **substantially outweighed** by dangers such as **unfair prejudice**, confusing the issues, misleading the jury, wasting time, or being needlessly repetitive.",
+          },
+          {
+            type: "list",
+            items: [
+              "\"**Unfair** prejudice\" doesn't mean \"hurts the other side\" — all good evidence hurts someone. It means evidence that tempts the jury to decide on an improper emotional basis (for example, a gruesome photo with little real value).",
+              "The scale is tilted toward admitting: the danger must **substantially** outweigh the value, not merely equal it.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "types-of-evidence",
+        title: "The Kinds of Evidence",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "It helps to know the vocabulary for the different forms evidence takes, because each kind gets admitted a little differently.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Testimony** — what a witness says under oath from the stand. The most common form of evidence.",
+              "**Documentary** — writings and records: contracts, letters, emails, texts, medical or business records.",
+              "**Real (physical) evidence** — an actual object involved in the case (a weapon, a defective part, the drugs).",
+              "**Demonstrative** — something created to *explain* the evidence, like a diagram, a chart, or a to-scale model. It illustrates testimony rather than being a fact of the case itself.",
+            ],
+          },
+          { type: "heading", text: "Direct vs. circumstantial" },
+          {
+            type: "list",
+            items: [
+              "**Direct evidence** proves a fact without any inference — a witness who saw it rain.",
+              "**Circumstantial evidence** requires an inference — a witness who saw people come in with wet umbrellas. It is *not* weaker; most cases are built on it, and juries may rely on it fully.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Why this matters to you",
+            text: "When you organize a file or a trial notebook, sorting materials by type (testimony outlines, documents/exhibits, physical items, demonstratives) is exactly how the attorney will think about getting each one in front of the jury.",
+          },
+        ],
+      },
+      {
+        id: "objections",
+        title: "Objections: How Evidence Gets Kept Out",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Evidence isn't filtered automatically. If a lawyer thinks the other side is offering something improper, they must **object** — stand up, say \"Objection,\" and state a legal reason. The judge then rules: **\"Sustained\"** (the objection is good; the evidence is kept out) or **\"Overruled\"** (the objection fails; the evidence comes in).",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "If you don't object, you usually lose it",
+            text: "A party generally must object at the right time and on the right ground, or the complaint is **waived** — they can't raise it later, even on appeal. Timing and precision matter enormously.",
+          },
+          { type: "heading", text: "Objections you'll hear constantly" },
+          {
+            type: "list",
+            items: [
+              "**Relevance** — it doesn't bear on any fact in the case.",
+              "**Hearsay** — it's an out-of-court statement offered for its truth (the whole next two lessons).",
+              "**Leading** — a question on direct examination that suggests its own answer (generally allowed only on cross-examination).",
+              "**Lack of foundation / speculation** — no showing the witness actually knows this, or they're guessing.",
+              "**Nonresponsive** — the witness didn't answer the question asked.",
+              "**Asked and answered / argumentative / assumes facts not in evidence** — improper questioning.",
+            ],
+          },
+          { type: "heading", text: "When evidence is kept out: the offer of proof" },
+          {
+            type: "paragraph",
+            text: "If the judge excludes evidence, the offering lawyer can make an **offer of proof** (also called a **bill of exception**) — putting on the record what the evidence *would* have shown. This preserves the issue so an appeals court can review whether the exclusion was wrong.",
+          },
+        ],
+      },
+      {
+        id: "hearsay-what",
+        title: "Hearsay, Part 1 — What It Actually Is",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Hearsay is the rule new people find most confusing, so we'll go slowly. Start with the definition and take it one piece at a time.",
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "The definition (TRE 801)",
+            text: "Hearsay is (1) a **statement**, (2) made by a person **outside** the current trial or hearing (\"out of court\"), that (3) a party offers **to prove that what the statement said is true**.",
+          },
+          {
+            type: "list",
+            ordered: true,
+            items: [
+              "**A statement** — an oral or written assertion, or nonverbal conduct meant as an assertion (like nodding \"yes\").",
+              "**Out of court** — anything said or written *other than* by this witness testifying live right now. A prior written report, a text message, something a bystander said — all out of court.",
+              "**Offered for its truth** — the key. It's hearsay only if you want the jury to believe the *content* of the statement is true.",
+            ],
+          },
+          { type: "heading", text: "Why the law distrusts it" },
+          {
+            type: "paragraph",
+            text: "When a statement was made outside court, the other side never got to **cross-examine** the person who said it, that person wasn't **under oath**, and the jury can't watch their demeanor. Cross-examination is how our system tests reliability, so out-of-court statements offered for their truth are excluded unless a rule allows them (**TRE 802**).",
+          },
+          { type: "heading", text: "The trick: \"not for the truth\" is not hearsay" },
+          {
+            type: "paragraph",
+            text: "The same words can be hearsay or not, depending on *why* you offer them. If you offer a statement for some reason **other than** proving it's true, it isn't hearsay at all.",
+          },
+          {
+            type: "list",
+            items: [
+              "**Effect on the listener** — \"He told me the brakes were broken\" offered to show the listener was *on notice*, not that the brakes were actually broken.",
+              "**Verbal act / legal effect** — the words of a contract or a threat; the words themselves have legal significance.",
+              "**Not for truth, so no hearsay problem** — the judge may give the jury a limiting instruction to consider it only for that limited purpose.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Special case: the opposing party's own statement",
+            text: "In Texas, a statement offered against the party who made it (an \"opposing party's statement,\" often called an admission) is defined as **not hearsay** at all (TRE 801(e)). What your opponent said can generally be used against them.",
+          },
+        ],
+      },
+      {
+        id: "hearsay-exceptions",
+        title: "Hearsay, Part 2 — The Exceptions",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Even when something *is* hearsay, the rules list many **exceptions** — categories the law treats as reliable enough to admit anyway. There are two groups: exceptions that apply no matter what (TRE 803), and exceptions that apply only when the person who made the statement is **unavailable** to testify (TRE 804).",
+          },
+          { type: "heading", text: "Common 803 exceptions (declarant availability doesn't matter)" },
+          {
+            type: "list",
+            items: [
+              "**Present sense impression** — a statement describing an event made *while* it happened or right after.",
+              "**Excited utterance** — a statement blurted out under the stress of a startling event (\"He just ran the red light!\").",
+              "**Then-existing state of mind or physical condition** — \"My chest hurts,\" \"I'm afraid of him.\"",
+              "**Statement made for medical diagnosis or treatment** — what a patient tells a provider to get treated.",
+              "**Recorded recollection** — a note a witness made when the memory was fresh but can no longer fully recall.",
+              "**Business records (Rule 803(6))** — records made at or near the time by someone with knowledge, kept in the regular course of a regularly conducted business, where making them is a regular practice. This is the workhorse exception for medical bills, bank records, and the like.",
+              "**Public records** — records of a public office's activities.",
+            ],
+          },
+          { type: "heading", text: "Common 804 exceptions (only if the declarant is unavailable)" },
+          {
+            type: "list",
+            items: [
+              "**Former testimony** — testimony the person gave earlier (say, at a deposition or prior hearing) where the other side already had a chance to examine them.",
+              "**Dying declaration** — a statement made believing death was imminent, about its cause or circumstances.",
+              "**Statement against interest** — a statement so contrary to the speaker's own interest that they wouldn't have said it unless it were true.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Texas shortcut for business records: the affidavit (Rule 902(10))",
+            text: "Instead of bringing a live records custodian to court, Texas lets you prove up business records with a sworn **business-records affidavit** from the custodian, attached to the records and **filed and served on the other side at least 14 days before trial**. Do this right and the records come in without a witness. This is a very common paralegal task — flag the deadline early.",
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "One more layer: Confrontation (criminal cases)",
+            text: "In criminal trials, even a valid hearsay exception can run into the defendant's constitutional right to confront witnesses (the Confrontation Clause) for \"testimonial\" statements. That's an attorney-level analysis — just know it exists and raise it.",
+          },
+        ],
+      },
+      {
+        id: "admitting-exhibits",
+        title: "Admitting an Exhibit, Step by Step",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Now the practical heart of it: how a document or object actually becomes evidence the jury can see. You can't just hand the jury a photo — you have to **lay a foundation** and formally **offer** it. There is a standard sequence, and it's the same rhythm almost every time.",
+          },
+          { type: "heading", text: "First, two building-block rules" },
+          {
+            type: "list",
+            items: [
+              "**Authentication (TRE 901)** — you must show the item is what you say it is. The test is low: enough evidence to support a *finding* that it's genuine. Usually a witness with knowledge simply says, \"Yes, that's the contract I signed\" or \"That photo fairly and accurately shows the intersection.\"",
+              "**Self-authenticating items (TRE 902)** — some things prove themselves and need no sponsoring witness: certified government records, and business records that come with a proper 902(10) affidavit.",
+              "**Best evidence / original document rule (TRE 1001–1004)** — to prove the *content* of a writing, photo, or recording, you generally need the original (or a duplicate), unless it's lost or otherwise excused.",
+            ],
+          },
+          { type: "heading", text: "The classic sequence to offer an exhibit" },
+          {
+            type: "list",
+            ordered: true,
+            items: [
+              "**Mark it.** Have the exhibit marked for identification (e.g., \"Plaintiff's Exhibit 1\" or \"State's Exhibit 1\"). Often done before trial.",
+              "**Show opposing counsel.** Let the other side see the exhibit before you use it.",
+              "**Ask to approach.** In many courts, ask the judge's permission to approach the witness, then hand them the exhibit.",
+              "**Lay the predicate (authenticate).** Ask the witness questions that establish what it is and that they recognize it — \"Do you recognize Exhibit 1? What is it? How do you know?\"",
+              "**Offer it.** Say: \"Your Honor, we offer Plaintiff's Exhibit 1 into evidence.\"",
+              "**Let the other side respond.** They may take the witness on **voir dire** (limited questions about the exhibit) and may object.",
+              "**Get the ruling.** The judge admits it or not. Only now is it \"in evidence.\"",
+              "**Publish it.** Once admitted, you may show it to the jury — display it, read it, or pass it.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "\"Marked\" is not \"admitted\"",
+            text: "A very common beginner mix-up: an exhibit that's only *marked for identification* is not yet evidence. The jury can't rely on it until the judge says it's **admitted**. Track both states in your exhibit list.",
+          },
+        ],
+      },
+      {
+        id: "foundations-pitfalls",
+        title: "Common Foundations & Pitfalls",
+        blocks: [
+          {
+            type: "paragraph",
+            text: "Different exhibits need different predicates. Here are the ones you'll meet first, plus the mistakes that trip people up.",
+          },
+          { type: "heading", text: "Foundations you'll use often" },
+          {
+            type: "list",
+            items: [
+              "**Photographs / video** — a witness with knowledge testifies it **fairly and accurately depicts** the scene or event. The witness need not be the photographer.",
+              "**Business records** — either a custodian testifies to the 803(6) elements, or the records come in by 902(10) affidavit.",
+              "**Physical evidence / chain of custody** — for items like drugs or a weapon, show the item is the same one and hasn't been altered; gaps go to weight, but big gaps can block admission.",
+              "**Texts, emails, social media** — authenticate by who sent/received, distinctive content, phone numbers, account details, or testimony from a participant.",
+            ],
+          },
+          { type: "heading", text: "Refreshing memory vs. reading a document in" },
+          {
+            type: "paragraph",
+            text: "If a witness forgets something, you can **refresh their recollection** by showing them a document — they look, then testify from renewed memory, and the document itself does **not** come into evidence. That's different from **recorded recollection**, where the note itself is read to the jury because the witness still can't remember. New people constantly confuse these two.",
+          },
+          { type: "heading", text: "Pitfalls to avoid" },
+          {
+            type: "list",
+            items: [
+              "**Offering before authenticating** — you must lay the predicate first, then offer.",
+              "**Forgetting to offer** — laying foundation but never saying \"we offer it,\" so it never gets admitted.",
+              "**Forgetting to publish** — it's admitted, but you never actually show it to the jury.",
+              "**Missing the 902(10) deadline** — the business-records affidavit must be on file and served at least 14 days before trial.",
+              "**Assuming marked = admitted** — see the prior lesson.",
+            ],
+          },
+          {
+            type: "callout",
+            tone: "warning",
+            title: "Route the judgment calls up",
+            text: "Non-attorney staff prepare and organize exhibits and affidavits, track deadlines, and outline predicates — but which evidence to offer, when, and how to argue an objection are the attorney's calls. When in doubt, ask.",
+          },
+        ],
+      },
+      {
+        id: "review",
+        title: "Check Your Understanding",
+        blocks: [
+          {
+            type: "questions",
+            items: [
+              { q: "Who decides whether a piece of evidence is admissible, and who decides how much it's worth?", a: "The judge decides admissibility (a legal question); the jury decides the weight — how believable and important the admitted evidence is." },
+              { q: "In one sentence, what makes evidence 'relevant' under Rule 401?", a: "It has any tendency to make a fact that matters to the case more or less probable than it would be without the evidence." },
+              { q: "Even if evidence is relevant, when can a judge still exclude it under Rule 403?", a: "When its value is substantially outweighed by dangers like unfair prejudice, confusing the issues, misleading the jury, wasting time, or being needlessly cumulative." },
+              { q: "Give the three-part definition of hearsay.", a: "A statement, made out of court (not by the witness testifying now), that is offered to prove the truth of what the statement asserts." },
+              { q: "Why isn't a statement offered only for its 'effect on the listener' hearsay?", a: "Because it isn't offered to prove the statement is true — only to show its effect (e.g., that the listener was on notice) — so it falls outside the hearsay definition." },
+              { q: "Name two hearsay exceptions and say which requires the declarant to be unavailable.", a: "Examples: excited utterance and business records are 803 exceptions (availability doesn't matter); former testimony, dying declaration, and statement against interest are 804 exceptions that require the declarant to be unavailable." },
+              { q: "What does it mean to 'authenticate' an exhibit, and how low is the bar?", a: "To show the item is what you claim it is; the bar is low — enough evidence to support a finding that it's genuine, usually a witness recognizing it." },
+              { q: "Put these in order: offer it, mark it, lay the predicate, publish to the jury, show opposing counsel.", a: "Mark it, show opposing counsel, lay the predicate (authenticate), offer it, then (once admitted) publish it to the jury." },
+              { q: "What's the difference between an exhibit that is 'marked for identification' and one that is 'admitted'?", a: "Marked for identification just gives it a label; only an admitted exhibit is actual evidence the jury may rely on and see." },
+              { q: "In Texas, how can business records be admitted without a live custodian, and what's the deadline?", a: "With a business-records affidavit under Rule 902(10), filed and served on the other side at least 14 days before trial." },
+            ],
+          },
+          {
+            type: "callout",
+            tone: "info",
+            title: "Where to go next",
+            text: "This is the foundation. Real courtroom skill comes from watching hearings, reading the actual Texas Rules of Evidence, and working exhibits under an attorney's supervision. Ask your supervising attorney to let you sit in and help prep exhibits for an upcoming trial.",
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 /** All modules. */
