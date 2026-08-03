@@ -1,12 +1,15 @@
 import Link from "next/link";
-import { FileBarChart } from "lucide-react";
+import { FileBarChart, Users } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { ShareFoldersList, type FolderRow } from "@/components/admin/ShareFoldersList";
+import { ShareLeadTeamManager } from "@/components/admin/ShareLeadTeamManager";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, timeMatters } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, timeMatters, admins } from "@/db/schema";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
+import { getSetting } from "@/lib/content";
+import { SHARE_LEAD_TEAM_KEY, SHARE_LEAD_TEAM_DEFAULT } from "@/lib/share/settings";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +52,11 @@ export default async function ShareFoldersPage() {
     }
   }
 
+  const systemUsers = db
+    ? (await db.select({ name: admins.name, email: admins.email }).from(admins).orderBy(asc(admins.name)).catch(() => [])).map((u) => ({ name: u.name ?? "", email: u.email }))
+    : [];
+  const leadTeam = await getSetting<string[]>(SHARE_LEAD_TEAM_KEY, SHARE_LEAD_TEAM_DEFAULT).catch(() => SHARE_LEAD_TEAM_DEFAULT);
+
   return (
     <>
       <AdminHeader
@@ -67,6 +75,13 @@ export default async function ShareFoldersPage() {
           </p>
         )}
         <ShareFoldersList folders={folders} matters={matters} />
+
+        <section className="mt-8 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
+          <h2 className="mb-1 inline-flex items-center gap-2 font-[family-name:var(--font-ui)] font-semibold">
+            <Users size={16} className="text-[var(--c-accent)]" /> Lead team — notified when a client uploads
+          </h2>
+          <ShareLeadTeamManager users={systemUsers} initial={Array.isArray(leadTeam) ? leadTeam : SHARE_LEAD_TEAM_DEFAULT} />
+        </section>
       </div>
     </>
   );

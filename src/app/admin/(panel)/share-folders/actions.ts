@@ -3,7 +3,7 @@
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { shareFolders, shareFiles, shareRecipients, shareDirs, portalUsers } from "@/db/schema";
@@ -12,8 +12,8 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
-import { cleanDirPath, DIGEST_DELAY_MS } from "@/lib/share/access";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, shareCan, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
+import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
 const REISSUE_CONTACT = "max@texaslawsmith.com";
@@ -145,19 +145,77 @@ export async function registerShareFile(folderId: number, file: { url: string; p
         contentType: file.contentType ?? null,
         sizeBytes: file.size ?? null,
         uploadedBy: session.email,
+        // Firm uploads never go through the auto digest — staff are asked at
+        // upload time whether to notify recipients — so mark them handled.
+        notified: true,
       })
       .returning({ id: shareFiles.id });
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (progress) { set.uploadTotal = progress.total; set.uploadDone = progress.done; set.uploadAt = new Date(); }
     await db.update(shareFolders).set(set).where(eq(shareFolders.id, folderId));
-    // Arm the "new documents" digest clock — only if not already armed (so a burst
-    // of uploads doesn't keep resetting it).
-    await db.update(shareFolders).set({ notifyDueAt: new Date(Date.now() + DIGEST_DELAY_MS) }).where(and(eq(shareFolders.id, folderId), isNull(shareFolders.notifyDueAt)));
     revalidatePath(`/admin/share-folders/${folderId}`);
     return { ok: true as const, id: row.id };
   } catch (err) {
     console.error("[share] registerShareFile failed:", err);
     return { ok: false as const, error: "The file uploaded but couldn't be recorded. Run Settings → Database updates, then re-upload." };
+  }
+}
+
+/**
+ * Notify the folder's active recipients that documents were added — sent only
+ * when firm staff explicitly choose to (the pop-up after an upload batch). One
+ * calm email per recipient listing the files, with the folder/ZIP links.
+ */
+export async function notifyRecipientsOfFiles(folderId: number, fileIds: number[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const ids = [...new Set((fileIds ?? []).filter((n) => Number.isFinite(n)))];
+  if (ids.length === 0) return { ok: false as const, error: "Nothing to notify about." };
+  try {
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const files = await db.select().from(shareFiles).where(and(eq(shareFiles.folderId, folderId), inArray(shareFiles.id, ids)));
+    if (files.length === 0) return { ok: false as const, error: "Nothing to notify about." };
+    const now = new Date();
+    const recipients = (await db.select().from(shareRecipients).where(eq(shareRecipients.folderId, folderId)))
+      .filter((r) => !r.revoked && (!r.expiresAt || r.expiresAt > now));
+    if (recipients.length === 0) return { ok: true as const, sent: 0, note: "no recipients" };
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const base = process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`;
+    const docName = (path: string) => path.split("/").pop() || path;
+    let sent = 0;
+    for (const r of recipients) {
+      // Don't tell a recipient about files they uploaded themselves.
+      const theirs = files.filter((f) => (f.uploadedBy ?? "").toLowerCase() !== r.email.toLowerCase());
+      if (theirs.length === 0) continue;
+      const link = `${base}/share/${r.token}`;
+      const canDownload = shareCan(r.permission, "download");
+      const zipLink = `${base}/share/${r.token}/zip?ids=${theirs.map((f) => f.id).join(",")}`;
+      const rows = theirs.map((f) =>
+        `<tr><td style="padding:5px 14px 5px 0;font-size:14px;border-top:1px solid #eee">${esc(docName(f.filename))}</td>` +
+        `<td style="padding:5px 0;text-align:right;border-top:1px solid #eee;white-space:nowrap"><a href="${link}" style="font-size:12px;color:#7a1f2b;text-decoration:none">View &rarr;</a></td></tr>`).join("");
+      const buttons = canDownload
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px"><tr>
+             <td style="padding-right:10px"><a href="${zipLink}" style="background:#7a1f2b;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Download ${theirs.length === 1 ? "it" : "these"} as a ZIP</a></td>
+             <td><a href="${link}" style="border:1px solid #7a1f2b;color:#7a1f2b;padding:9px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Open the folder</a></td>
+           </tr></table>`
+        : `<p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-size:13px">Open the folder</a></p>`;
+      const html = `
+        <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.55">
+          <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
+          <p style="margin:0 0 12px">${theirs.length === 1 ? "A new document was" : `${theirs.length} new documents were`} added to the folder shared with you — <strong>${esc(folder.name)}</strong>:</p>
+          <table style="border-collapse:collapse;width:100%;margin:0 0 16px">${rows}</table>
+          ${buttons}
+          <p style="margin:0;font-size:12px;color:#999">${canDownload ? "The download may ask you to sign in or enter a one-time code first. " : "You may be asked to sign in or enter a one-time code to open it. "}Questions? Contact <a href="mailto:${FIRM.email}" style="color:#999">${FIRM.email}</a>.</p>
+        </div>`;
+      const res = await sendEmail({ to: r.email, fromName: `${FIRM.name} — Secure Share`, subject: `New document${theirs.length === 1 ? "" : "s"} in ${folder.name}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
+      if (res.sent) sent += 1;
+    }
+    return { ok: true as const, sent };
+  } catch (err) {
+    console.error("[share] notifyRecipientsOfFiles failed:", err);
+    return { ok: false as const, error: "Couldn't send the notification." };
   }
 }
 

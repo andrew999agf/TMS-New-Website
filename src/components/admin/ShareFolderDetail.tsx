@@ -18,7 +18,7 @@ import { ListTree } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
+  registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -60,7 +60,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
         <FolderWorkspaceEditor folderId={folder.id} initial={folder.meta} contacts={contacts} />
       )}
 
-      <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} />
+      <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} activeRecipients={recipients.filter((r) => !r.revoked).length} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
     </div>
@@ -242,7 +242,7 @@ function DeleteButton({ folderId }: { folderId: number }) {
 
 /* --------------------------------- files ---------------------------------- */
 
-function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, filePublicToken }: { folderId: number; folderName: string; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean; filePublicToken: string | null }) {
+function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, filePublicToken, activeRecipients }: { folderId: number; folderName: string; files: FileRow[]; dirs: string[]; dirInfo?: DirInfo; blobReady: boolean; filePublicToken: string | null; activeRecipients: number }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -257,6 +257,10 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   const [showLinkTree, setShowLinkTree] = useState(false);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // After a firm upload finishes, ask whether to notify the recipients.
+  const [notifyPrompt, setNotifyPrompt] = useState<{ ids: number[] } | null>(null);
+  const [notifyState, setNotifyState] = useState<"idle" | "sending" | "sent">("idle");
+  const uploadedIdsRef = useRef<number[]>([]);
   const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
 
   // Drop selections that no longer exist (after a delete/refresh).
@@ -346,6 +350,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         const blob = await upload(`share/${folderId}/${item.rel}`, item.file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
         const res = await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: item.rel, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
         if (!res.ok) throw new Error(res.error ?? "record failed");
+        if (res.id) uploadedIdsRef.current.push(res.id);
       } catch {
         failedRef.current.push(baseName(item.rel));
       } finally {
@@ -376,7 +381,29 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     if (fileInput.current) fileInput.current.value = "";
     if (folderInput.current) folderInput.current.value = "";
     setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload (${failed.slice(0, 4).join(", ")}${failed.length > 4 ? ", …" : ""}). Everything else went in — you can re-add just the failed one${failed.length === 1 ? "" : "s"}.` : null);
-    if (queueRef.current.length) drainQueue(); // picked up files dropped during teardown
+    if (queueRef.current.length) { drainQueue(); return; } // picked up files dropped during teardown
+
+    // Ask whether to notify the recipients about what was just uploaded. Only
+    // if the folder actually has someone to notify and something went in.
+    const uploadedIds = uploadedIdsRef.current.slice();
+    uploadedIdsRef.current = [];
+    if (uploadedIds.length > 0 && activeRecipients > 0) {
+      setNotifyState("idle");
+      setNotifyPrompt({ ids: uploadedIds });
+    }
+  }
+
+  async function sendNotify() {
+    if (!notifyPrompt) return;
+    setNotifyState("sending");
+    try {
+      await notifyRecipientsOfFiles(folderId, notifyPrompt.ids);
+      setNotifyState("sent");
+      setTimeout(() => setNotifyPrompt(null), 1200);
+    } catch {
+      setError("Couldn't send the notification email.");
+      setNotifyPrompt(null);
+    }
   }
 
   function enqueue(destPath: string, picked: PickedFile[]) {
@@ -462,6 +489,27 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
       <input ref={folderInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
       <ShareFilePreview file={preview} onClose={() => setPreview(null)} />
+
+      {notifyPrompt && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && notifyState !== "sending") setNotifyPrompt(null); }}>
+          <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+            <h3 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Mail size={16} className="text-[var(--c-accent)]" /> Notify the recipients?</h3>
+            <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
+              {notifyPrompt.ids.length} document{notifyPrompt.ids.length === 1 ? "" : "s"} uploaded to <strong className="text-[var(--c-ink)]">{folderName}</strong>. Email the {activeRecipients} recipient{activeRecipients === 1 ? "" : "s"} that {notifyPrompt.ids.length === 1 ? "it was" : "they were"} added? Nothing is sent unless you choose to.
+            </p>
+            {notifyState === "sent" ? (
+              <p className="text-sm font-medium text-green-600">Notification sent.</p>
+            ) : (
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setNotifyPrompt(null)} disabled={notifyState === "sending"} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">Don&apos;t send</button>
+                <button onClick={sendNotify} disabled={notifyState === "sending"} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+                  {notifyState === "sending" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send notification
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

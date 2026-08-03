@@ -32,9 +32,9 @@ export function ShareCcManager({ initial }: { initial: string[] }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--c-ink-muted)]">
-        These people are copied on <strong>all share-folder notifications</strong> — invites and re-issues, the &ldquo;new documents uploaded&rdquo; digests,
-        task assignments, and when a recipient answers a task — so the firm always keeps a record. <strong>max@texaslawsmith.com</strong> is here by default.
-        Add anyone who should be in the loop.
+        These people are copied on share-folder <strong>invites and re-issues</strong>, task assignments, and when a recipient answers a task — so the firm
+        always keeps a record. <strong>max@texaslawsmith.com</strong> is here by default. (Upload notifications are separate — see the
+        &ldquo;Lead team&rdquo; box on the Share Folders page.)
       </p>
       {emails.length > 0 ? (
         <div className="flex flex-wrap gap-2">
