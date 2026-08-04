@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { shareFolders, shareFiles } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { zipResponse } from "@/lib/share/zip";
+import { zipResponse, parseFileIds } from "@/lib/share/zip";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -18,10 +18,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!Number.isFinite(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, id));
   if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  // Optional ?ids=1,2,3 restricts the ZIP to the selected files.
-  const idSet = new Set((new URL(req.url).searchParams.get("ids") ?? "").split(",").map((s) => Number(s.trim())).filter(Number.isFinite));
+  // Optional ?ids=1,2,3 restricts the ZIP to the selected files; absent means all.
+  const idFilter = parseFileIds(new URL(req.url).searchParams.get("ids"));
   let files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, id));
-  if (idSet.size > 0) files = files.filter((f) => idSet.has(f.id));
+  if (idFilter) files = files.filter((f) => idFilter.has(f.id));
   if (files.length === 0) return NextResponse.json({ error: "No documents to download." }, { status: 404 });
   const zipName = `${(folder.name || "documents").replace(/[\\/:*?"<>|]/g, "-")}.zip`;
   return zipResponse(files.map((f) => ({ url: f.url, name: f.filename })), zipName);

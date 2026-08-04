@@ -10,6 +10,25 @@ const { ZipArchive } = require("archiver") as {
 };
 
 /**
+ * Parse an `?ids=1,2,3` download filter. Returns `null` when the parameter is
+ * absent or holds no usable id — meaning "no filter, include everything".
+ *
+ * This exists because the obvious one-liner is quietly wrong: `"".split(",")`
+ * yields `[""]`, and `Number("")` is `0`, which *is* finite. A missing `ids`
+ * parameter therefore produced the set `{0}`, which matched no file and filtered
+ * every document out — breaking "Download all" and "Download recent uploads".
+ */
+export function parseFileIds(raw: string | null | undefined): Set<number> | null {
+  const ids = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return ids.length > 0 ? new Set(ids) : null;
+}
+
+/**
  * Stream a set of remote files (Blob URLs) into a single ZIP download, keeping
  * their folder structure via the entry `name` (e.g. "Discovery/Batch 1/a.pdf").
  * Files are fetched and appended one at a time so memory and open connections
