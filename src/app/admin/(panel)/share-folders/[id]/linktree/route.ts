@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { shareFolders, shareFiles } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { buildLinkTreePdfs } from "@/lib/share/linktree";
+import { comparePaths } from "@/lib/share/sort";
 import { zipBuffers } from "@/lib/share/zip";
 
 export const runtime = "nodejs";
@@ -21,8 +22,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, id));
   if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, id)).orderBy(asc(shareFiles.filename));
-  if (files.length === 0) return NextResponse.json({ error: "No documents to compile." }, { status: 404 });
+  const rows = await db.select().from(shareFiles).where(eq(shareFiles.folderId, id));
+  if (rows.length === 0) return NextResponse.json({ error: "No documents to compile." }, { status: 404 });
+  // Natural alphanumeric path order, matching the folder tree and the CSV.
+  // (SQL's plain ORDER BY would put "Exhibit 10" ahead of "Exhibit 2".)
+  const files = [...rows].sort((a, b) => comparePaths(a.filename, b.filename));
 
   const cap = Math.min(2000, Math.max(100, Number(new URL(req.url).searchParams.get("cap")) || 750));
   const parts = await buildLinkTreePdfs(files.map((f) => ({ filename: f.filename, url: f.url, contentType: f.contentType })), cap);

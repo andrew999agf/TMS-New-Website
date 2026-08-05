@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Archive, ArchiveRestore, FileText, Users, Loader2, FolderPlus } from "lucide-react";
 import { SHARE_TYPES, shareType, audienceStyle, FOLDER_SORTS, type FolderSort } from "@/lib/share/types";
+import { compareNatural } from "@/lib/share/sort";
 import { createFolder, archiveFolder } from "@/app/admin/(panel)/share-folders/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 
@@ -36,11 +37,13 @@ export function ShareFoldersList({ folders, matters }: { folders: FolderRow[]; m
     let out = folders.filter((f) => f.archived === showArchived);
     if (typeFilter) out = out.filter((f) => f.type === typeFilter);
     if (needle) out = out.filter((f) => `${f.caseNumber} ${f.name} ${f.matter} ${f.court} ${shareType(f.type).label}`.toLowerCase().includes(needle));
+    // Every name/case/type ordering is natural alphanumeric, and ties fall back
+    // to the folder name so the list never shuffles between renders.
     const by: Record<FolderSort, (a: FolderRow, b: FolderRow) => number> = {
-      updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
-      case: (a, b) => a.caseNumber.localeCompare(b.caseNumber, undefined, { numeric: true }),
-      name: (a, b) => a.name.localeCompare(b.name),
-      type: (a, b) => shareType(a.type).short.localeCompare(shareType(b.type).short),
+      updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt) || compareNatural(a.name, b.name),
+      case: (a, b) => compareNatural(a.caseNumber, b.caseNumber) || compareNatural(a.name, b.name),
+      name: (a, b) => compareNatural(a.name, b.name),
+      type: (a, b) => compareNatural(shareType(a.type).short, shareType(b.type).short) || compareNatural(a.name, b.name),
     };
     return [...out].sort(by[sort]);
   }, [folders, q, typeFilter, showArchived, sort]);

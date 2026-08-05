@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil, FolderPlus } from "lucide-react";
+import { compareNatural } from "@/lib/share/sort";
 
 export type TreeFile = { id: number; path: string; sizeBytes: number | null; by?: string; at?: string };
 export type DirInfo = Record<string, { by?: string; at?: string }>;
@@ -156,8 +157,10 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 }
 
 function NodeBody({ node, depth, basePath, ctx }: { node: FolderNode; depth: number; basePath: string; ctx: Ctx }) {
-  const folders = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const files = [...node.files].sort((a, b) => a.base.localeCompare(b.base));
+  // Folders first, then files — each in natural alphanumeric order, so
+  // "Exhibit 2" comes before "Exhibit 10" at every level of the tree.
+  const folders = [...node.children.values()].sort((a, b) => compareNatural(a.name, b.name));
+  const files = [...node.files].sort((a, b) => compareNatural(a.base, b.base));
   return (
     <>
       {folders.map((f) => <FolderRow key={f.name} node={f} depth={depth} basePath={basePath} ctx={ctx} />)}

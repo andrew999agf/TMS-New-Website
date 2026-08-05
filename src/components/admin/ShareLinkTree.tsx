@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X, Download, FileSpreadsheet, FileText, AlertTriangle, Loader2 } from "lucide-react";
+import { comparePaths } from "@/lib/share/sort";
 
 type LT = { id: number; url: string; filename: string };
 const baseName = (p: string) => p.split("/").pop() || p;
@@ -14,7 +15,9 @@ export function LinkTreeDialog({ folderId, folderName, files, onClose }: { folde
   function downloadCsv() {
     const esc = (s: string) => `"${String(s ?? "").replace(/"/g, '""')}"`;
     const lines = ["Document,Link"];
-    for (const f of files) lines.push([esc(baseName(f.filename)), esc(f.url)].join(","));
+    // Same natural alphanumeric path order the folder tree shows on screen.
+    const ordered = [...files].sort((a, b) => comparePaths(a.filename, b.filename));
+    for (const f of ordered) lines.push([esc(baseName(f.filename)), esc(f.url)].join(","));
     const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
