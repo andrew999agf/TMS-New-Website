@@ -101,7 +101,14 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
   const [html, setHtml] = useState<string>("");
+  // To and CC are editable — prospects mistype their address, and the team
+  // sometimes needs to copy someone extra. Seeded from the lead/branch defaults.
+  const [to, setTo] = useState<string>((row.email ?? "").trim());
+  const [saveEmail, setSaveEmail] = useState(true);
   const [cc, setCc] = useState<string[]>([]);
+  const [ccDraft, setCcDraft] = useState("");
+  const [ccError, setCcError] = useState<string | null>(null);
+  const ccSeeded = useRef(false);
   const [loading, startPreview] = useTransition();
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -147,8 +154,12 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     debounce.current = setTimeout(() => {
       startPreview(async () => {
         const res = await previewTurnback(row.id, selected, { note, customAttorneys: customList });
-        if (res.ok) { setHtml(res.html ?? ""); setCc(res.cc ?? []); }
-        else setError(res.error ?? "Couldn't build the preview.");
+        if (res.ok) {
+          setHtml(res.html ?? "");
+          // Seed the CC list from the branch default once — after that it's the
+          // admin's to edit, so later preview refreshes must not overwrite it.
+          if (!ccSeeded.current) { setCc(res.cc ?? []); ccSeeded.current = true; }
+        } else setError(res.error ?? "Couldn't build the preview.");
       });
     }, 300);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
@@ -159,10 +170,37 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   }
 
+  const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+  const toValid = isEmail(to);
+  const emailChanged = to.trim().toLowerCase() !== (row.email ?? "").trim().toLowerCase();
+
+  /** Accept one or several pasted addresses (comma/semicolon/space separated). */
+  function addCc(raw?: string) {
+    const text = (raw ?? ccDraft).trim();
+    if (!text) return;
+    const parts = text.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+    const bad = parts.filter((p) => !isEmail(p));
+    if (bad.length) { setCcError(`Not a valid email: ${bad[0]}`); return; }
+    setCc((cur) => {
+      const seen = new Set(cur.map((e) => e.toLowerCase()));
+      const next = [...cur];
+      for (const p of parts) {
+        if (seen.has(p.toLowerCase())) continue;
+        seen.add(p.toLowerCase());
+        next.push(p);
+      }
+      return next;
+    });
+    setCcDraft(""); setCcError(null);
+  }
+  function removeCc(email: string) { setCc((cur) => cur.filter((e) => e !== email)); }
+
   function send() {
+    const addr = to.trim();
+    if (!isEmail(addr)) { setError(addr ? `“${addr}” isn't a valid email address.` : "Enter an email address to send to."); return; }
     setSending(true); setError(null);
-    sendTurnback(row.id, selected, { note, customAttorneys: customList })
-      .then((res) => { if (res.ok) { setDone(res.to ?? row.email ?? ""); } else setError(res.error ?? "Send failed."); })
+    sendTurnback(row.id, selected, { note, customAttorneys: customList, to: addr, cc, saveEmail: saveEmail && emailChanged })
+      .then((res) => { if (res.ok) { setDone(res.to ?? addr); } else setError(res.error ?? "Send failed."); })
       .finally(() => setSending(false));
   }
 
@@ -177,7 +215,10 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
         {done ? (
           <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-600/10"><Check size={26} className="text-green-600" /></div>
-            <p className="text-sm text-[var(--c-ink)]">Turn-back email sent to <strong>{done}</strong>{cc.length ? `, copied to the intake team (${cc.length})` : ""}.</p>
+            <p className="text-sm text-[var(--c-ink)]">
+              Turn-back email sent to <strong>{done}</strong>{cc.length ? <>, copied to <strong>{cc.length}</strong> other{cc.length === 1 ? "" : "s"}</> : ""}.
+              {saveEmail && emailChanged && <><br /><span className="text-xs text-[var(--c-ink-muted)]">The corrected address was saved to this lead.</span></>}
+            </p>
 
             {statusMsg ? (
               <>
@@ -206,9 +247,53 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
           <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[300px_1fr]">
             {/* Left: recipients + referral selector */}
             <div className="min-h-0 space-y-4 overflow-y-auto border-b border-[var(--c-border)] p-4 md:border-b-0 md:border-r">
-              <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-xs">
-                <p><span className="text-[var(--c-ink-muted)]">To:</span> <span className="font-medium text-[var(--c-ink)]">{row.email || "— no email —"}</span></p>
-                <p className="mt-1 flex items-start gap-1"><Users size={13} className="mt-0.5 shrink-0 text-[var(--c-ink-muted)]" /><span><span className="text-[var(--c-ink-muted)]">CC intake team:</span> {cc.length ? cc.join(", ") : "—"}</span></p>
+              <div className="space-y-2.5 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5">
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">To</label>
+                  <input
+                    value={to}
+                    onChange={(e) => { setTo(e.target.value); setError(null); }}
+                    placeholder="name@example.com"
+                    className={`w-full rounded-md border bg-[var(--c-surface)] px-2.5 py-1.5 text-sm outline-none ${to.trim() && !toValid ? "border-[var(--c-error)]" : "border-[var(--c-border)] focus:border-[var(--c-accent)]"}`}
+                  />
+                  {to.trim() && !toValid && <p className="mt-1 text-[11px] text-[var(--c-error)]">That doesn&apos;t look like a valid email address.</p>}
+                  {emailChanged && toValid && (
+                    <>
+                      <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Submitted as <span className="line-through">{row.email || "(blank)"}</span></p>
+                      <label className="mt-1 flex cursor-pointer items-start gap-1.5 text-[11px] text-[var(--c-ink-muted)]">
+                        <input type="checkbox" checked={saveEmail} onChange={(e) => setSaveEmail(e.target.checked)} className="mt-0.5 shrink-0" />
+                        <span>Also fix this address on the lead record</span>
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-[var(--c-ink)]"><Users size={12} className="text-[var(--c-ink-muted)]" /> CC</label>
+                  {cc.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap gap-1">
+                      {cc.map((e) => (
+                        <span key={e} className="inline-flex items-center gap-1 rounded-full border border-[var(--c-border)] bg-[var(--c-surface2)] px-2 py-0.5 text-[11px]">
+                          {e}
+                          <button onClick={() => removeCc(e)} aria-label={`Remove ${e}`} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={11} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input
+                      value={ccDraft}
+                      onChange={(e) => { setCcDraft(e.target.value); setCcError(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addCc(); } }}
+                      onBlur={() => ccDraft.trim() && addCc()}
+                      placeholder="Add an email…"
+                      className="min-w-0 flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]"
+                    />
+                    <button onClick={() => addCc()} className="shrink-0 rounded-md border border-[var(--c-border)] px-2 py-1.5 text-xs hover:bg-[var(--c-surface2)]">Add</button>
+                  </div>
+                  {ccError && <p className="mt-1 text-[11px] text-[var(--c-error)]">{ccError}</p>}
+                  {cc.length === 0 && !ccError && <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">No one copied — the intake team won&apos;t get a record of this.</p>}
+                </div>
               </div>
 
               <div>
@@ -303,7 +388,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
             <p className="text-xs text-[var(--c-error)]">{error}</p>
             <div className="flex gap-2">
               <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
-              <button onClick={send} disabled={sending || !row.email} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
+              <button onClick={send} disabled={sending || !toValid} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
                 {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send{totalReferrals ? ` with ${totalReferrals} referral${totalReferrals === 1 ? "" : "s"}` : ""}
               </button>
             </div>
