@@ -9,6 +9,7 @@ import { previewTurnback, sendTurnback } from "@/app/admin/(panel)/intake/turnba
 import { updateIntakeStatus, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 
 const PRETTY_KEY = (k: string) => k.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const isEmail = (s?: string | null) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s ?? "").trim());
 
 function AnswerValue({ v }: { v: unknown }) {
   if (Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && "url" in (x as object))) {
@@ -116,10 +117,22 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [note, setNote] = useState("");
+  const [askNotify, setAskNotify] = useState(false);
+  const [notifiedCounsel, setNotifiedCounsel] = useState(false);
   const [customList, setCustomList] = useState<CustomAttorney[]>([]);
   const [showCustom, setShowCustom] = useState(false);
   const [cf, setCf] = useState<CustomAttorney>(EMPTY_CUSTOM);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Referral attorneys we could email a courtesy notice to (those with an
+  // address on file). Drives the yes/no question asked at send time.
+  const notifiable = useMemo(() => {
+    const addrs = [
+      ...selected.map((id) => attorneys.find((a) => a.id === id)?.email),
+      ...customList.map((c) => c.email),
+    ];
+    return addrs.filter(isEmail).length;
+  }, [selected, customList, attorneys]);
 
   const selectedNames = useMemo(() => selected.map((id) => attorneys.find((a) => a.id === id)?.name).filter(Boolean) as string[], [selected, attorneys]);
   const allNames = useMemo(() => [...selectedNames, ...customList.map((c) => c.name)], [selectedNames, customList]);
@@ -170,7 +183,6 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   }
 
-  const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
   const toValid = isEmail(to);
   const emailChanged = to.trim().toLowerCase() !== (row.email ?? "").trim().toLowerCase();
 
@@ -195,18 +207,28 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   }
   function removeCc(email: string) { setCc((cur) => cur.filter((e) => e !== email)); }
 
+  /** Clicking Send: validate, then ask about notifying counsel if that applies. */
   function send() {
     const addr = to.trim();
     if (!isEmail(addr)) { setError(addr ? `“${addr}” isn't a valid email address.` : "Enter an email address to send to."); return; }
+    setError(null);
+    if (notifiable > 0) { setAskNotify(true); return; }
+    doSend(false);
+  }
+
+  function doSend(notifyAttorneys: boolean) {
+    setAskNotify(false);
+    setNotifiedCounsel(notifyAttorneys);
     setSending(true); setError(null);
-    sendTurnback(row.id, selected, { note, customAttorneys: customList, to: addr, cc, saveEmail: saveEmail && emailChanged })
+    const addr = to.trim();
+    sendTurnback(row.id, selected, { note, customAttorneys: customList, to: addr, cc, saveEmail: saveEmail && emailChanged, notifyAttorneys })
       .then((res) => { if (res.ok) { setDone(res.to ?? addr); } else setError(res.error ?? "Send failed."); })
       .finally(() => setSending(false));
   }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-[var(--c-surface)] shadow-2xl">
+      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-[var(--c-surface)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--c-border)] px-5 py-3">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Turn-back email</h3>
           <button onClick={close} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
@@ -218,6 +240,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
             <p className="text-sm text-[var(--c-ink)]">
               Turn-back email sent to <strong>{done}</strong>{cc.length ? <>, copied to <strong>{cc.length}</strong> other{cc.length === 1 ? "" : "s"}</> : ""}.
               {saveEmail && emailChanged && <><br /><span className="text-xs text-[var(--c-ink-muted)]">The corrected address was saved to this lead.</span></>}
+              {notifiable > 0 && <><br /><span className="text-xs text-[var(--c-ink-muted)]">{notifiedCounsel ? `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} notified.` : `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} not notified.`}</span></>}
             </p>
 
             {statusMsg ? (
@@ -391,6 +414,24 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
               <button onClick={send} disabled={sending || !toValid} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
                 {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send{totalReferrals ? ` with ${totalReferrals} referral${totalReferrals === 1 ? "" : "s"}` : ""}
               </button>
+            </div>
+          </div>
+        )}
+
+        {askNotify && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setAskNotify(false); }}>
+            <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+              <h4 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base">
+                <Mail size={16} className="text-[var(--c-accent)]" /> Notify the {notifiable === 1 ? "attorney" : "attorneys"} of the referral?
+              </h4>
+              <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
+                We can send {notifiable === 1 ? "the referral attorney" : `the ${notifiable} referral attorneys`} a short courtesy note that we sent someone their way — practice area and last name only, nothing identifying. Choose no to send the turn-back without contacting {notifiable === 1 ? "them" : "any of them"}.
+              </p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button onClick={() => setAskNotify(false)} className="btn btn-outline text-sm py-2 px-3">Back</button>
+                <button onClick={() => doSend(false)} className="btn btn-outline text-sm py-2 px-4">No — don&apos;t notify</button>
+                <button onClick={() => doSend(true)} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4"><Send size={15} /> Yes — notify</button>
+              </div>
             </div>
           </div>
         )}

@@ -41,9 +41,12 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
         if (a.firm) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.firm)}</div>`);
         if (a.practiceArea) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.practiceArea)}</div>`);
         if (a.address) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.address)}</div>`);
+        // Phone and website only — the attorney's email address is deliberately
+        // withheld from the prospect so referrals arrive by phone or their own
+        // intake form rather than as unsolicited email to counsel. (a.email is
+        // still used internally for the optional courtesy notice to counsel.)
         const contact: string[] = [];
         if (a.phone) contact.push(esc(a.phone));
-        if (a.email) contact.push(`<a href="mailto:${esc(a.email)}" style="color:${colors.accent};text-decoration:none">${esc(a.email)}</a>`);
         if (a.website) contact.push(`<a href="${esc(normUrl(a.website))}" style="color:${colors.accent};text-decoration:none">${esc(a.website)}</a>`);
         if (contact.length) lines.push(`<div style="font-size:13px;margin-top:2px">${contact.join(" &nbsp;·&nbsp; ")}</div>`);
         return `<td style="padding:12px 14px;border:1px solid ${colors.border};border-radius:8px;background:${colors.surface2}">

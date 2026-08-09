@@ -22,6 +22,11 @@ export type TurnbackExtras = {
   cc?: string[];
   /** Also write the corrected address back onto the lead record. */
   saveEmail?: boolean;
+  /**
+   * Send each referral attorney the short courtesy notice. Opt-in: the admin is
+   * asked yes/no at send time, so we never email counsel by default.
+   */
+  notifyAttorneys?: boolean;
 };
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -119,27 +124,30 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[], extr
       } catch { /* the email went out; a failed correction shouldn't fail the send */ }
     }
 
-    // Quietly let each referral attorney (with an email on file) know we sent
-    // someone their way — practice area + last name only. Best-effort.
+    // Optionally let each referral attorney (with an email on file) know we sent
+    // someone their way — practice area + last name only. Only when the admin
+    // answered yes at send time; otherwise counsel is never emailed.
     const practiceArea = getBranch(ctx.row.branch)?.label || ctx.row.branch;
     const lastName = lastNameOf(ctx.row.name);
     let notified = 0;
-    for (const a of ctx.attorneys) {
-      const addr = (a.email ?? "").trim();
-      if (!isEmail(addr)) continue;
-      try {
-        const note = await buildAttorneyReferralNotice({ attorneyName: a.name, practiceArea, lastName });
-        const sent = await sendEmail({ to: addr, fromName: FIRM.name, subject: note.subject, html: note.html });
-        if (sent.sent) notified++;
-      } catch { /* best-effort */ }
+    if (extras?.notifyAttorneys) {
+      for (const a of ctx.attorneys) {
+        const addr = (a.email ?? "").trim();
+        if (!isEmail(addr)) continue;
+        try {
+          const note = await buildAttorneyReferralNotice({ attorneyName: a.name, practiceArea, lastName });
+          const sent = await sendEmail({ to: addr, fromName: FIRM.name, subject: note.subject, html: note.html });
+          if (sent.sent) notified++;
+        } catch { /* best-effort */ }
+      }
     }
 
     // The status change is offered to the admin after sending (referred-out vs
     // declined), so this action no longer changes it automatically.
-    await audit(session.email, "send", "intake-turnback", String(intakeId), `Turn-back email sent to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}${attorneyIds.length ? ` (${attorneyIds.length} referrals, ${notified} attorney notices)` : ""}`);
+    await audit(session.email, "send", "intake-turnback", String(intakeId), `Turn-back email sent to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}${ctx.attorneys.length ? ` (${ctx.attorneys.length} referrals, ${extras?.notifyAttorneys ? `${notified} attorney notices` : "attorneys not notified"})` : ""}`);
     revalidatePath("/admin/intake");
     // Echo back the selected attorney names so the dialog can offer to mark it referred out.
-    return { ok: true as const, to, cc, emailFixed, attorneyNames: ctx.attorneys.map((a) => a.name) };
+    return { ok: true as const, to, cc, emailFixed, notified, attorneyNames: ctx.attorneys.map((a) => a.name) };
   } catch (err) {
     console.error("[turnback] send failed:", err);
     return { ok: false as const, error: "Couldn't send the email." };
