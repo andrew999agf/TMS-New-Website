@@ -261,7 +261,10 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   const [notifyPrompt, setNotifyPrompt] = useState<{ ids: number[] } | null>(null);
   const [notifyState, setNotifyState] = useState<"idle" | "sending" | "sent">("idle");
   const uploadedIdsRef = useRef<number[]>([]);
-  const urlById = useMemo(() => new Map(files.map((f) => [f.id, f.url])), [files]);
+  // Serve documents from our own domain via the sign-in-checked proxy rather
+  // than linking out to the raw, permanent, public Blob URL.
+  const fileHref = (id: number, preview = false) => `/admin/share-folders/${folderId}/file/${id}${preview ? "?preview=1" : ""}`;
+  const hasFile = useMemo(() => new Set(files.map((f) => f.id)), [files]);
 
   // Drop selections that no longer exist (after a delete/refresh).
   useEffect(() => {
@@ -469,13 +472,13 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, by: f.by, at: f.createdAt }))}
         dirs={dirs}
         dirInfo={dirInfo}
-        hrefFor={(id) => urlById.get(id) ?? "#"}
+        hrefFor={(id) => (hasFile.has(id) ? fileHref(id) : "#")}
         target="_blank"
         showDownload
         selectable
         selected={selected}
         onToggleSelect={toggleSelect}
-        onPreview={(f) => { const url = urlById.get(f.id); if (url) setPreview({ name: f.base, previewUrl: url, downloadUrl: url, copyLink: filePublicToken ? `${window.location.origin}/share/f/${filePublicToken}/${f.id}` : undefined }); }}
+        onPreview={(f) => setPreview({ name: f.base, previewUrl: fileHref(f.id, true), downloadUrl: fileHref(f.id), copyLink: filePublicToken ? `${window.location.origin}/share/f/${filePublicToken}/${f.id}` : undefined })}
         onDelete={handleDelete}
         deletingId={deletingId}
         onDeleteDir={handleDeleteDir}
