@@ -7,7 +7,7 @@ import { PreTrialCaseHeader } from "@/components/admin/PreTrialCaseHeader";
 import { PreTrialTabs } from "@/components/admin/PreTrialTabs";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { trialCases, trialDeadlines, timeMatters, timeActivityUsers } from "@/db/schema";
+import { trialCases, trialDeadlines, timeMatters, timeActivityUsers, timeCategories } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
@@ -44,9 +44,12 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
   }
 
   // Assignees come from the Time Tracker's activity users — the firm's team.
+  // Categories feed the "log time" box so an entry matches a normal one.
   let team: { name: string }[] = [];
+  let categories: string[] = [];
   try {
     team = (await db.select({ name: timeActivityUsers.name }).from(timeActivityUsers).orderBy(asc(timeActivityUsers.sort))).filter((t) => t.name?.trim());
+    categories = (await db.select({ name: timeCategories.name }).from(timeCategories).orderBy(asc(timeCategories.sort))).map((c) => c.name).filter(Boolean);
   } catch {
     /* optional */
   }
@@ -80,7 +83,7 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
           matters={matters}
         />
 
-        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} pretrialDate={row.pretrialDate} rows={rows} team={team} />
+        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} pretrialDate={row.pretrialDate} rows={rows} team={team} categories={categories} caseMatter={row.matter} />
       </div>
     </>
   );

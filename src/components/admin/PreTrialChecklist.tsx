@@ -2,12 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Plus, Trash2, Pencil, CalendarClock, CalendarPlus, ListChecks, X, ChevronRight, UserRound, CornerDownRight, Gavel } from "lucide-react";
+import { Check, Loader2, Plus, Trash2, Pencil, CalendarClock, CalendarPlus, ListChecks, X, ChevronRight, UserRound, UserPlus, CornerDownRight, Gavel, Clock } from "lucide-react";
 import {
   TEMPLATES, nestDeadlines, urgencyOf, duePhrase, fmtDate,
   URGENCY_CLASS, URGENCY_LABEL, type Urgency,
 } from "@/lib/pretrial/template";
-import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate } from "@/app/admin/(panel)/pre-trial/actions";
+import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate, timeEntryDefaults, completeWithTime } from "@/app/admin/(panel)/pre-trial/actions";
 
 export type DeadlineRow = { id: number; parentId: number | null; assignee: string; title: string; dueDate: string | null; done: boolean; doneAt: string | null; doneBy: string | null; notes: string; sort: number };
 export type TeamMember = { name: string };
@@ -15,7 +15,7 @@ export type TeamMember = { name: string };
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 type Run = (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
 
-export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team }: { caseId: number; trialDate: string | null; pretrialDate: string | null; rows: DeadlineRow[]; team: TeamMember[] }) {
+export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team, categories, caseMatter }: { caseId: number; trialDate: string | null; pretrialDate: string | null; rows: DeadlineRow[]; team: TeamMember[]; categories: string[]; caseMatter: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +24,8 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team 
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
   const [tpl, setTpl] = useState(TEMPLATES[0].id);
+  // When a task is checked off we ask whether to log time for it.
+  const [timeFor, setTimeFor] = useState<{ id: number; title: string } | null>(null);
 
   const tree = useMemo(() => nestDeadlines(rows), [rows]);
   const openTree = tree.filter((t) => !(t.done && t.children.every((c) => c.done)));
@@ -102,7 +104,7 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team 
             Nothing outstanding. Use <strong>Run setup</strong> for a standard checklist, or add a deadline below.
           </p>
         ) : (
-          openTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} />)
+          openTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title) => setTimeFor({ id, title })} />)
         )}
       </div>
 
@@ -133,13 +135,23 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team 
           <button onClick={() => setShowDone((s) => !s)} className="text-xs font-semibold text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
             {showDone ? "Hide" : "Show"} {doneTree.length} completed deadline{doneTree.length === 1 ? "" : "s"}
           </button>
-          {showDone && <div className="mt-2 space-y-2">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} />)}</div>}
+          {showDone && <div className="mt-2 space-y-2">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title) => setTimeFor({ id, title })} />)}</div>}
         </div>
       )}
 
       <p className="text-[11px] text-[var(--c-ink-muted)]">
         <Check size={11} className="inline" /> Templates are a starting point drawn from typical scheduling orders — always confirm every date against the court&apos;s actual scheduling order in the case.
       </p>
+
+      {timeFor && (
+        <LogTimeDialog
+          deadlineId={timeFor.id}
+          title={timeFor.title}
+          categories={categories}
+          fallbackMatter={caseMatter}
+          onClose={() => { setTimeFor(null); router.refresh(); }}
+        />
+      )}
     </div>
   );
 }
@@ -184,10 +196,11 @@ function KeyDateCard({ label, icon, date, pending, onSave, hint, footnote }: {
 }
 
 /** One deadline, its assignee, and the sub-deadlines under it. */
-function TaskCard({ caseId, node, team, run, pending }: {
+function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
   caseId: number;
   node: DeadlineRow & { children: DeadlineRow[] };
   team: TeamMember[]; run: Run; pending: boolean;
+  onCompleted: (id: number, title: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [addingSub, setAddingSub] = useState(false);
@@ -218,7 +231,14 @@ function TaskCard({ caseId, node, team, run, pending }: {
         ) : (
           <span className="w-4 shrink-0" />
         )}
-        <input type="checkbox" checked={node.done} onChange={() => run(() => toggleDeadline(node.id, !node.done))} disabled={pending} title={node.done ? "Reopen" : "Mark complete"} className="h-4 w-4 shrink-0 cursor-pointer" />
+        <input
+          type="checkbox"
+          checked={node.done}
+          onChange={() => { const next = !node.done; run(() => toggleDeadline(node.id, next)); if (next) onCompleted(node.id, node.title); }}
+          disabled={pending}
+          title={node.done ? "Reopen" : "Mark complete"}
+          className="h-4 w-4 shrink-0 cursor-pointer"
+        />
         <span className="min-w-0 flex-1">
           <span className={`block text-sm font-semibold ${node.done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}`}>{node.title}</span>
           {(kids.length > 0 || node.notes) && (
@@ -235,7 +255,7 @@ function TaskCard({ caseId, node, team, run, pending }: {
 
       {open && (
         <div className="border-t border-[var(--c-border)] bg-[var(--c-bg)]/40">
-          {kids.map((k) => <SubRow key={k.id} row={k} team={team} run={run} pending={pending} />)}
+          {kids.map((k) => <SubRow key={k.id} row={k} team={team} run={run} pending={pending} onCompleted={onCompleted} />)}
 
           {addingSub ? (
             <div className="flex flex-wrap items-end gap-2 border-t border-[var(--c-border)] p-2.5 pl-10">
@@ -256,12 +276,18 @@ function TaskCard({ caseId, node, team, run, pending }: {
   );
 }
 
-function SubRow({ row, team, run, pending }: { row: DeadlineRow; team: TeamMember[]; run: Run; pending: boolean }) {
+function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; team: TeamMember[]; run: Run; pending: boolean; onCompleted: (id: number, title: string) => void }) {
   const u = urgencyOf(row.dueDate);
   return (
     <div className={`flex flex-wrap items-center gap-2 border-t border-[var(--c-border)] py-2 pl-10 pr-3 first:border-t-0 ${u === "overdue" && !row.done ? "bg-red-500/[0.05]" : ""}`}>
       <CornerDownRight size={12} className="shrink-0 text-[var(--c-ink-muted)]/60" />
-      <input type="checkbox" checked={row.done} onChange={() => run(() => toggleDeadline(row.id, !row.done))} disabled={pending} className="h-3.5 w-3.5 shrink-0 cursor-pointer" />
+      <input
+        type="checkbox"
+        checked={row.done}
+        onChange={() => { const next = !row.done; run(() => toggleDeadline(row.id, next)); if (next) onCompleted(row.id, row.title); }}
+        disabled={pending}
+        className="h-3.5 w-3.5 shrink-0 cursor-pointer"
+      />
       <span className="min-w-0 flex-1">
         <span className={`block text-sm ${row.done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}`}>{row.title}</span>
         {(row.notes || (row.done && row.doneBy)) && (
@@ -318,23 +344,184 @@ function DateChip({ id, date, done, run, pending, compact }: { id: number; date:
   );
 }
 
-/** Assign a deadline to a Time Tracker team member. */
+/**
+ * Assignment chip, deliberately matching the date chip: it reads "Not assigned"
+ * until someone owns the task, and one click opens the team list. Team members
+ * come from the Time Tracker's activity users.
+ */
 function AssigneePicker({ id, value, team, run, pending, compact }: { id: number; value: string; team: TeamMember[]; run: Run; pending: boolean; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const size = compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]";
+
+  function pick(name: string) {
+    setOpen(false);
+    run(() => assignDeadline(id, name));
+  }
+
   return (
-    <span className="inline-flex shrink-0 items-center gap-1">
-      <UserRound size={compact ? 11 : 12} className={value ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]/60"} />
-      <select
-        value={value}
-        onChange={(e) => run(() => assignDeadline(id, e.target.value))}
+    <span className="relative inline-flex shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
         disabled={pending}
-        title={value ? `Assigned to ${value}` : "Assign to a team member"}
-        className={`max-w-[128px] rounded border px-1 py-0.5 outline-none ${compact ? "text-[10px]" : "text-[11px]"} ${value ? "border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 text-[var(--c-ink)]" : "border-[var(--c-border)] bg-transparent text-[var(--c-ink-muted)]"}`}
+        title={value ? `Assigned to ${value} — click to change` : "Assign this to a team member"}
+        className={`inline-flex items-center gap-1 rounded-full border font-medium transition-colors ${size} ${
+          value
+            ? "border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10 text-[var(--c-accent)]"
+            : "border-dashed border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+        }`}
       >
-        <option value="">Unassigned</option>
-        {team.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
-        {value && !team.some((m) => m.name === value) && <option value={value}>{value}</option>}
-      </select>
+        {value ? <UserRound size={compact ? 11 : 12} /> : <UserPlus size={compact ? 11 : 12} />}
+        {value || "Not assigned"}
+      </button>
+
+      {open && (
+        <>
+          {/* Click-away catcher */}
+          <span className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <span className="absolute right-0 top-full z-30 mt-1 max-h-64 w-52 overflow-auto rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-xl">
+            {team.length === 0 && <span className="block px-3 py-2 text-xs text-[var(--c-ink-muted)]">No team members found. Add them in the Time Tracker.</span>}
+            {team.map((m) => (
+              <button key={m.name} onClick={() => pick(m.name)} className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-[var(--c-surface2)] ${m.name === value ? "font-semibold text-[var(--c-accent)]" : "text-[var(--c-ink)]"}`}>
+                {m.name}
+              </button>
+            ))}
+            {value && (
+              <button onClick={() => pick("")} className="mt-1 block w-full border-t border-[var(--c-border)] px-3 py-1.5 text-left text-xs text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]">
+                Clear assignment
+              </button>
+            )}
+          </span>
+        </>
+      )}
     </span>
+  );
+}
+
+/**
+ * After a task is checked off: offer to log the time it took. Everything that
+ * can be prefilled is — the person (the assignee), their billing rate, the
+ * case's matter, and a note built from the task — so only the hours are left.
+ */
+function LogTimeDialog({ deadlineId, title, categories, fallbackMatter, onClose }: {
+  deadlineId: number; title: string; categories: string[]; fallbackMatter: string; onClose: () => void;
+}) {
+  const [step, setStep] = useState<"ask" | "form">("ask");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<{ name: string; rate: number }[]>([]);
+  const [f, setF] = useState({
+    activityUserName: "",
+    price: 0,
+    quantity: "",
+    matter: fallbackMatter,
+    activityDescription: categories[0] ?? "",
+    note: title,
+    entryDate: new Date().toISOString().slice(0, 10),
+    nonBillable: false,
+  });
+
+  async function openForm() {
+    setLoading(true);
+    const d = await timeEntryDefaults(deadlineId);
+    if (d) {
+      setUsers(d.users);
+      setF((s) => ({ ...s, activityUserName: d.activityUserName, price: d.price, matter: d.matter || fallbackMatter, note: d.note }));
+    }
+    setLoading(false);
+    setStep("form");
+  }
+
+  function save() {
+    setSaving(true);
+    setError(null);
+    completeWithTime(deadlineId, { ...f, quantity: Number(f.quantity) })
+      .then((r) => { if (r.ok) onClose(); else setError(r.error ?? "Couldn't save."); })
+      .finally(() => setSaving(false));
+  }
+
+  const amount = (Number(f.quantity) || 0) * (Number(f.price) || 0);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        {step === "ask" ? (
+          <>
+            <h4 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Clock size={16} className="text-[var(--c-accent)]" /> Log time for this?</h4>
+            <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
+              You completed <strong className="text-[var(--c-ink)]">{title}</strong>. Want to record the time it took as a Time Tracker entry?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">No, just mark it done</button>
+              <button onClick={openForm} disabled={loading} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Clock size={15} />} Yes, log time
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h4 className="mb-3 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Clock size={16} className="text-[var(--c-accent)]" /> Time entry</h4>
+            <div className="space-y-2.5">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Hours *</span>
+                  <input type="number" step="0.1" min="0" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} autoFocus placeholder="1.5" className={`${input} w-full`} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Date</span>
+                  <input type="date" value={f.entryDate} onChange={(e) => setF({ ...f, entryDate: e.target.value })} className={`${input} w-full`} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Who</span>
+                  <select
+                    value={f.activityUserName}
+                    onChange={(e) => { const u = users.find((x) => x.name === e.target.value); setF({ ...f, activityUserName: e.target.value, price: u ? u.rate : f.price }); }}
+                    className={`${input} w-full`}
+                  >
+                    {!users.some((u) => u.name === f.activityUserName) && f.activityUserName && <option value={f.activityUserName}>{f.activityUserName}</option>}
+                    {users.map((u) => <option key={u.name} value={u.name}>{u.name}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Rate ($/hr)</span>
+                  <input type="number" step="1" min="0" value={f.price} onChange={(e) => setF({ ...f, price: Number(e.target.value) })} className={`${input} w-full`} />
+                </label>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Matter</span>
+                <input value={f.matter} onChange={(e) => setF({ ...f, matter: e.target.value })} className={`${input} w-full`} />
+              </label>
+              {categories.length > 0 && (
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Activity</span>
+                  <select value={f.activityDescription} onChange={(e) => setF({ ...f, activityDescription: e.target.value })} className={`${input} w-full`}>
+                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Note</span>
+                <textarea value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} rows={2} className={`${input} w-full`} />
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--c-ink-muted)]">
+                <input type="checkbox" checked={f.nonBillable} onChange={(e) => setF({ ...f, nonBillable: e.target.checked })} />
+                Non-billable
+              </label>
+              {amount > 0 && !f.nonBillable && (
+                <p className="text-xs text-[var(--c-ink-muted)]">{f.quantity} hrs × ${f.price} = <strong className="text-[var(--c-ink)]">${amount.toFixed(2)}</strong></p>
+              )}
+            </div>
+            {error && <p className="mt-2 text-sm text-[var(--c-error)]">{error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={onClose} disabled={saving} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">Skip</button>
+              <button onClick={save} disabled={saving || !(Number(f.quantity) > 0)} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save time entry
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

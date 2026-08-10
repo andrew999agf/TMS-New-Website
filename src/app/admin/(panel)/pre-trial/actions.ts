@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, max } from "drizzle-orm";
 import { db } from "@/db";
-import { trialCases, trialDeadlines } from "@/db/schema";
+import { trialCases, trialDeadlines, timeEntries, timeActivityUsers } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { getTemplate, shiftISO } from "@/lib/pretrial/template";
@@ -302,6 +302,77 @@ export async function toggleDeadline(id: number, done: boolean) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't update the item." };
+  }
+}
+
+/**
+ * Everything the "log time for this task" box needs, prefilled: who to bill it
+ * under, their rate, the case's matter, and a suggested note. The rate comes
+ * from the Time Tracker's activity users so it matches what the firm bills.
+ */
+export async function timeEntryDefaults(deadlineId: number) {
+  const session = await guard();
+  if (!db) return null;
+  try {
+    const [d] = await db.select().from(trialDeadlines).where(eq(trialDeadlines.id, deadlineId));
+    if (!d) return null;
+    const [c] = await db.select({ name: trialCases.name, matter: trialCases.matter, causeNumber: trialCases.causeNumber }).from(trialCases).where(eq(trialCases.id, d.caseId));
+    const users = await db.select({ name: timeActivityUsers.name, rate: timeActivityUsers.rate }).from(timeActivityUsers);
+
+    // Bill under the assignee when there is one, otherwise whoever is signed in.
+    const who = (d.assignee || "").trim() || (session.name || "").trim();
+    const match = users.find((u) => u.name.toLowerCase() === who.toLowerCase());
+    return {
+      activityUserName: match?.name ?? who,
+      price: match?.rate ?? 0,
+      matter: c?.matter ?? "",
+      // Parent context isn't included — the task title is what was actually done.
+      note: `${d.title}${c?.causeNumber ? ` (${c.causeNumber})` : ""}`,
+      taskTitle: d.title,
+      caseName: c?.name ?? "",
+      users: users.map((u) => ({ name: u.name, rate: u.rate })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mark a task complete and record a time entry for it in one step. The entry is
+ * written exactly like a Time Tracker entry, so it flows into billing normally.
+ */
+export async function completeWithTime(
+  deadlineId: number,
+  entry: { activityUserName: string; price: number; quantity: number; matter: string; activityDescription: string; note: string; entryDate: string; nonBillable: boolean },
+) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const hours = Number(entry.quantity);
+  if (!Number.isFinite(hours) || hours <= 0) return { ok: false as const, error: "Enter how long it took." };
+  try {
+    const [d] = await db.select({ caseId: trialDeadlines.caseId }).from(trialDeadlines).where(eq(trialDeadlines.id, deadlineId));
+    if (!d) return { ok: false as const, error: "Task not found." };
+
+    await db.insert(timeEntries).values({
+      ownerId: Number(session.sub),
+      matter: str(entry.matter, 500),
+      entryDate: isoDate(entry.entryDate) ?? new Date().toISOString().slice(0, 10),
+      activityDescription: str(entry.activityDescription, 500),
+      note: str(entry.note, 2000),
+      price: Number(entry.price) || 0,
+      quantity: hours,
+      activityUserName: str(entry.activityUserName),
+      nonBillable: !!entry.nonBillable,
+    });
+    await db.update(trialDeadlines).set({ done: true, doneAt: new Date(), doneBy: session.name || session.email }).where(eq(trialDeadlines.id, deadlineId));
+
+    await audit(session.email, "create", "time-entry", String(deadlineId), `Logged ${hours}h completing a pre-trial task`);
+    revalidatePath(`/admin/pre-trial/${d.caseId}`);
+    revalidatePath("/admin/time-tracker");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[pre-trial] completeWithTime failed:", err);
+    return { ok: false as const, error: "Couldn't save the time entry." };
   }
 }
 
