@@ -344,6 +344,7 @@ export async function timeEntryDefaults(deadlineId: number) {
 export async function completeWithTime(
   deadlineId: number,
   entry: { activityUserName: string; price: number; quantity: number; matter: string; activityDescription: string; note: string; entryDate: string; nonBillable: boolean },
+  doneBy?: string,
 ) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
@@ -364,7 +365,7 @@ export async function completeWithTime(
       activityUserName: str(entry.activityUserName),
       nonBillable: !!entry.nonBillable,
     });
-    await db.update(trialDeadlines).set({ done: true, doneAt: new Date(), doneBy: session.name || session.email }).where(eq(trialDeadlines.id, deadlineId));
+    await db.update(trialDeadlines).set({ done: true, doneAt: new Date(), doneBy: str(doneBy) || str(entry.activityUserName) || session.name || session.email }).where(eq(trialDeadlines.id, deadlineId));
 
     await audit(session.email, "create", "time-entry", String(deadlineId), `Logged ${hours}h completing a pre-trial task`);
     revalidatePath(`/admin/pre-trial/${d.caseId}`);
@@ -377,6 +378,23 @@ export async function completeWithTime(
 }
 
 /** Delete a task; deleting a parent takes its sub-tasks with it. */
+/** Record who actually completed a task (asked for when the box is ticked). */
+export async function setDeadlineDoneBy(id: number, name: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db
+      .update(trialDeadlines)
+      .set({ doneBy: str(name) || session.name || session.email })
+      .where(eq(trialDeadlines.id, id))
+      .returning({ caseId: trialDeadlines.caseId });
+    if (row) revalidatePath(`/admin/pre-trial/${row.caseId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't record who completed it." };
+  }
+}
+
 export async function deleteDeadline(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };

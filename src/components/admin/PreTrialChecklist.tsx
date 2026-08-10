@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, Plus, Trash2, Pencil, CalendarClock, CalendarPlus, ListChecks, X, ChevronRight, UserRound, UserPlus, CornerDownRight, Gavel, Clock } from "lucide-react";
 import {
   TEMPLATES, nestDeadlines, urgencyOf, duePhrase, fmtDate,
-  URGENCY_CLASS, URGENCY_LABEL, type Urgency,
+  URGENCY_CLASS, URGENCY_LABEL, DONE_CLASS, type Urgency,
 } from "@/lib/pretrial/template";
-import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate, timeEntryDefaults, completeWithTime } from "@/app/admin/(panel)/pre-trial/actions";
+import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate, timeEntryDefaults, completeWithTime, setDeadlineDoneBy } from "@/app/admin/(panel)/pre-trial/actions";
 import { PopMenu, PopMenuItem } from "./PopMenu";
 
 export type DeadlineRow = { id: number; parentId: number | null; assignee: string; title: string; dueDate: string | null; done: boolean; doneAt: string | null; doneBy: string | null; notes: string; sort: number };
 export type TeamMember = { name: string };
+
+/** "Aug 10" — the day something was ticked off. */
+const fmtStamp = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric" });
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 type Run = (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
@@ -26,7 +29,7 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
   const [newDate, setNewDate] = useState("");
   const [tpl, setTpl] = useState(TEMPLATES[0].id);
   // When a task is checked off we ask whether to log time for it.
-  const [timeFor, setTimeFor] = useState<{ id: number; title: string } | null>(null);
+  const [timeFor, setTimeFor] = useState<{ id: number; title: string; who: string } | null>(null);
 
   const tree = useMemo(() => nestDeadlines(rows), [rows]);
   const openTree = tree.filter((t) => !(t.done && t.children.every((c) => c.done)));
@@ -105,7 +108,7 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
             Nothing outstanding. Use <strong>Run setup</strong> for a standard checklist, or add a deadline below.
           </p>
         ) : (
-          openTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title) => setTimeFor({ id, title })} />)
+          openTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title, who) => setTimeFor({ id, title, who })} />)
         )}
       </div>
 
@@ -136,7 +139,7 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
           <button onClick={() => setShowDone((s) => !s)} className="text-xs font-semibold text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
             {showDone ? "Hide" : "Show"} {doneTree.length} completed deadline{doneTree.length === 1 ? "" : "s"}
           </button>
-          {showDone && <div className="mt-2 space-y-2">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title) => setTimeFor({ id, title })} />)}</div>}
+          {showDone && <div className="mt-2 space-y-2">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title, who) => setTimeFor({ id, title, who })} />)}</div>}
         </div>
       )}
 
@@ -148,6 +151,8 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
         <LogTimeDialog
           deadlineId={timeFor.id}
           title={timeFor.title}
+          team={team}
+          defaultWho={timeFor.who}
           categories={categories}
           fallbackMatter={caseMatter}
           onClose={() => { setTimeFor(null); router.refresh(); }}
@@ -201,7 +206,7 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
   caseId: number;
   node: DeadlineRow & { children: DeadlineRow[] };
   team: TeamMember[]; run: Run; pending: boolean;
-  onCompleted: (id: number, title: string) => void;
+  onCompleted: (id: number, title: string, who: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [addingSub, setAddingSub] = useState(false);
@@ -235,7 +240,7 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
         <input
           type="checkbox"
           checked={node.done}
-          onChange={() => { const next = !node.done; run(() => toggleDeadline(node.id, next)); if (next) onCompleted(node.id, node.title); }}
+          onChange={() => { const next = !node.done; run(() => toggleDeadline(node.id, next)); if (next) onCompleted(node.id, node.title, node.assignee); }}
           disabled={pending}
           title={node.done ? "Reopen" : "Mark complete"}
           className="h-4 w-4 shrink-0 cursor-pointer"
@@ -250,7 +255,7 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
           )}
         </span>
         <AssigneePicker id={node.id} value={node.assignee} team={team} run={run} pending={pending} />
-        <DateChip id={node.id} date={node.dueDate} done={node.done} run={run} pending={pending} />
+        <DateChip id={node.id} date={node.dueDate} done={node.done} doneAt={node.doneAt} doneBy={node.doneBy} run={run} pending={pending} />
         <RowActions id={node.id} title={node.title} hasKids run={run} pending={pending} />
       </div>
 
@@ -277,7 +282,7 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
   );
 }
 
-function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; team: TeamMember[]; run: Run; pending: boolean; onCompleted: (id: number, title: string) => void }) {
+function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; team: TeamMember[]; run: Run; pending: boolean; onCompleted: (id: number, title: string, who: string) => void }) {
   const u = urgencyOf(row.dueDate);
   return (
     <div className={`flex flex-wrap items-center gap-2 border-t border-[var(--c-border)] py-2 pl-10 pr-3 first:border-t-0 ${u === "overdue" && !row.done ? "bg-red-500/[0.05]" : ""}`}>
@@ -285,7 +290,7 @@ function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; te
       <input
         type="checkbox"
         checked={row.done}
-        onChange={() => { const next = !row.done; run(() => toggleDeadline(row.id, next)); if (next) onCompleted(row.id, row.title); }}
+        onChange={() => { const next = !row.done; run(() => toggleDeadline(row.id, next)); if (next) onCompleted(row.id, row.title, row.assignee); }}
         disabled={pending}
         className="h-3.5 w-3.5 shrink-0 cursor-pointer"
       />
@@ -299,7 +304,7 @@ function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; te
         )}
       </span>
       <AssigneePicker id={row.id} value={row.assignee} team={team} run={run} pending={pending} compact />
-      <DateChip id={row.id} date={row.dueDate} done={row.done} run={run} pending={pending} compact />
+      <DateChip id={row.id} date={row.dueDate} done={row.done} doneAt={row.doneAt} doneBy={row.doneBy} run={run} pending={pending} compact />
       <RowActions id={row.id} title={row.title} run={run} pending={pending} />
     </div>
   );
@@ -310,7 +315,7 @@ function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; te
  * by urgency, or a clear "Set date" affordance when there isn't one — no pencil
  * needed.
  */
-function DateChip({ id, date, done, run, pending, compact }: { id: number; date: string | null; done: boolean; run: Run; pending: boolean; compact?: boolean }) {
+function DateChip({ id, date, done, doneAt, doneBy, run, pending, compact }: { id: number; date: string | null; done: boolean; doneAt?: string | null; doneBy?: string | null; run: Run; pending: boolean; compact?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(date ?? "");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -358,6 +363,18 @@ function DateChip({ id, date, done, run, pending, compact }: { id: number; date:
   }
 
   const size = compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]";
+  // Once it's done, the deadline stops mattering — show when it was finished.
+  if (done) {
+    return (
+      <button
+        onClick={() => { setDraft(date ?? ""); setEditing(true); }}
+        title={doneAt ? `Completed ${fmtStamp(doneAt)}${doneBy ? ` by ${doneBy}` : ""}` : "Completed"}
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold ${DONE_CLASS} ${size}`}
+      >
+        <Check size={compact ? 10 : 11} /> Done{doneAt ? ` ${fmtStamp(doneAt)}` : ""}
+      </button>
+    );
+  }
   if (!date) {
     return (
       <button onClick={() => { setDraft(""); setEditing(true); }} title="Set a due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-[var(--c-border)] font-medium text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] ${size}`}>
@@ -366,9 +383,9 @@ function DateChip({ id, date, done, run, pending, compact }: { id: number; date:
     );
   }
   return (
-    <button onClick={() => { setDraft(date); setEditing(true); }} title="Change the due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold transition-opacity hover:opacity-80 ${URGENCY_CLASS[u]} ${size} ${done ? "opacity-60" : ""}`}>
+    <button onClick={() => { setDraft(date); setEditing(true); }} title="Change the due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold transition-opacity hover:opacity-80 ${URGENCY_CLASS[u]} ${size}`}>
       {fmtDate(date)}
-      {!done && <span className="font-normal opacity-80">· {URGENCY_LABEL[u]}</span>}
+      <span className="font-normal opacity-80">· {URGENCY_LABEL[u]}</span>
     </button>
   );
 }
@@ -422,9 +439,12 @@ function AssigneePicker({ id, value, team, run, pending, compact }: { id: number
  * can be prefilled is — the person (the assignee), their billing rate, the
  * case's matter, and a note built from the task — so only the hours are left.
  */
-function LogTimeDialog({ deadlineId, title, categories, fallbackMatter, onClose }: {
-  deadlineId: number; title: string; categories: string[]; fallbackMatter: string; onClose: () => void;
+function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallbackMatter, onClose }: {
+  deadlineId: number; title: string; team: TeamMember[]; defaultWho: string;
+  categories: string[]; fallbackMatter: string; onClose: () => void;
 }) {
+  // Who actually did the work — defaults to whoever the task was assigned to.
+  const [who, setWho] = useState(defaultWho);
   const [step, setStep] = useState<"ask" | "form">("ask");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -441,12 +461,21 @@ function LogTimeDialog({ deadlineId, title, categories, fallbackMatter, onClose 
     nonBillable: false,
   });
 
+  /** Just record who did it and close — no time entry. */
+  function saveWhoOnly() {
+    setSaving(true);
+    setDeadlineDoneBy(deadlineId, who).finally(() => { setSaving(false); onClose(); });
+  }
+
   async function openForm() {
     setLoading(true);
     const d = await timeEntryDefaults(deadlineId);
     if (d) {
       setUsers(d.users);
-      setF((s) => ({ ...s, activityUserName: d.activityUserName, price: d.price, matter: d.matter || fallbackMatter, note: d.note }));
+      // Bill it to the person who did the work, at their rate when we know it.
+      const chosen = who || d.activityUserName;
+      const rate = d.users.find((u) => u.name.toLowerCase() === chosen.toLowerCase())?.rate ?? d.price;
+      setF((s) => ({ ...s, activityUserName: chosen, price: rate, matter: d.matter || fallbackMatter, note: d.note }));
     }
     setLoading(false);
     setStep("form");
@@ -455,7 +484,7 @@ function LogTimeDialog({ deadlineId, title, categories, fallbackMatter, onClose 
   function save() {
     setSaving(true);
     setError(null);
-    completeWithTime(deadlineId, { ...f, quantity: Number(f.quantity) })
+    completeWithTime(deadlineId, { ...f, quantity: Number(f.quantity) }, who || f.activityUserName)
       .then((r) => { if (r.ok) onClose(); else setError(r.error ?? "Couldn't save."); })
       .finally(() => setSaving(false));
   }
@@ -467,14 +496,38 @@ function LogTimeDialog({ deadlineId, title, categories, fallbackMatter, onClose 
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
         {step === "ask" ? (
           <>
-            <h4 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Clock size={16} className="text-[var(--c-accent)]" /> Log time for this?</h4>
-            <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
-              You completed <strong className="text-[var(--c-ink)]">{title}</strong>. Want to record the time it took as a Time Tracker entry?
+            <h4 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Check size={16} className="text-emerald-600" /> Marked complete</h4>
+            <p className="mb-3 text-sm text-[var(--c-ink-muted)]">
+              <strong className="text-[var(--c-ink)]">{title}</strong>
             </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">No, just mark it done</button>
+
+            <label className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Who completed this?</label>
+            <div className="mb-4">
+              <PopMenu
+                width={240}
+                title="Pick the team member who did the work"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  who ? "border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-dashed border-[var(--c-border)] text-[var(--c-ink-muted)]"
+                }`}
+                label={<>{who ? <UserRound size={13} /> : <UserPlus size={13} />}{who || "Choose a team member"}</>}
+              >
+                {(close) => (
+                  <>
+                    {team.length === 0 && <span className="block px-3 py-2 text-xs text-[var(--c-ink-muted)]">No team members found. Add them in the Time Tracker.</span>}
+                    {team.map((m) => (
+                      <PopMenuItem key={m.name} active={m.name === who} onClick={() => { close(); setWho(m.name); }}>{m.name}</PopMenuItem>
+                    ))}
+                  </>
+                )}
+              </PopMenu>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button onClick={saveWhoOnly} disabled={saving} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">
+                {saving ? <Loader2 size={15} className="animate-spin" /> : null} Done, no time entry
+              </button>
               <button onClick={openForm} disabled={loading} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
-                {loading ? <Loader2 size={15} className="animate-spin" /> : <Clock size={15} />} Yes, log time
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Clock size={15} />} Also log time
               </button>
             </div>
           </>

@@ -113,47 +113,62 @@ export function fmtDate(iso: string | null | undefined): string {
 
 /* -------------------------------- urgency --------------------------------- */
 
-export type Urgency = "overdue" | "critical" | "soon" | "upcoming" | "later" | "none";
+/**
+ * How close a deadline is. The final few days are broken out individually so the
+ * chip can shade from orange toward red as the date closes in, rather than
+ * flattening everything inside 72 hours into one alarming "due now".
+ */
+export type Urgency = "overdue" | "today" | "d1" | "d2" | "d3" | "week" | "month" | "later" | "none";
 
 /** Rank for sorting — lower sorts first (most urgent at the top). */
-export const URGENCY_RANK: Record<Urgency, number> = { overdue: 0, critical: 1, soon: 2, upcoming: 3, later: 4, none: 5 };
+export const URGENCY_RANK: Record<Urgency, number> = {
+  overdue: 0, today: 1, d1: 2, d2: 3, d3: 4, week: 5, month: 6, later: 7, none: 8,
+};
 
-/**
- * How urgent an open deadline is, from days remaining:
- *   overdue  — the date has passed
- *   critical — today through 3 days out
- *   soon     — within a week
- *   upcoming — within a month
- *   later    — more than a month out
- */
 export function urgencyOf(dueDate: string | null | undefined, today?: string): Urgency {
   const d = daysUntil(dueDate, today);
   if (d === null) return "none";
   if (d < 0) return "overdue";
-  if (d <= 3) return "critical";
-  if (d <= 7) return "soon";
-  if (d <= 30) return "upcoming";
+  if (d === 0) return "today";
+  if (d === 1) return "d1";
+  if (d === 2) return "d2";
+  if (d === 3) return "d3";
+  if (d <= 7) return "week";
+  if (d <= 30) return "month";
   return "later";
 }
 
 export const URGENCY_LABEL: Record<Urgency, string> = {
   overdue: "Overdue",
-  critical: "Due now",
-  soon: "This week",
-  upcoming: "This month",
+  today: "Due now",
+  d1: "Due in 1 day",
+  d2: "Due in 2 days",
+  d3: "Due in 3 days",
+  week: "This week",
+  month: "This month",
   later: "Later",
   none: "No date set",
 };
 
-/** Tailwind classes for the urgency chip, matching the rest of the admin. */
+/**
+ * Chip colours, deliberately stepping amber → orange → red as the deadline
+ * approaches so the run-up is readable at a glance. Each level is a visibly
+ * different shade; the last two also carry weight.
+ */
 export const URGENCY_CLASS: Record<Urgency, string> = {
-  overdue: "bg-red-500/15 text-red-600 border-red-500/40",
-  critical: "bg-red-500/10 text-red-600 border-red-500/30",
-  soon: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40",
-  upcoming: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25",
+  overdue: "bg-red-700/25 text-red-800 dark:text-red-300 border-red-700/70 font-bold",
+  today: "bg-red-600/20 text-red-700 dark:text-red-300 border-red-600/60 font-bold",
+  d1: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/50",
+  d2: "bg-orange-600/18 text-orange-800 dark:text-orange-300 border-orange-600/55",
+  d3: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/45",
+  week: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40",
+  month: "bg-amber-400/10 text-amber-700 dark:text-amber-300 border-amber-400/30",
   later: "bg-[var(--c-surface2)] text-[var(--c-ink-muted)] border-[var(--c-border)]",
   none: "bg-[var(--c-surface2)] text-[var(--c-ink-muted)] border-[var(--c-border)]",
 };
+
+/** Completed work reads as calm, pale green rather than any shade of alarm. */
+export const DONE_CLASS = "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400 border-emerald-500/35";
 
 /** "3 days overdue" / "Due today" / "in 12 days" */
 export function duePhrase(dueDate: string | null | undefined, today?: string): string {
