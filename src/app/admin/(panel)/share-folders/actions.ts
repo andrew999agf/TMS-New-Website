@@ -386,6 +386,44 @@ export async function renameDir(folderId: number, path: string, newName: string)
   }
 }
 
+/**
+ * Rename a single document. Only the file's own name changes — the folder it
+ * lives in is preserved, and the stored Blob object is untouched (we rename the
+ * logical path only, exactly as folder renames do). The original extension is
+ * kept if the new name doesn't carry one, so a rename can't break how the file
+ * opens.
+ */
+export async function renameFile(fileId: number, newName: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [f] = await db.select().from(shareFiles).where(eq(shareFiles.id, fileId));
+    if (!f) return { ok: false as const, error: "File not found." };
+
+    const parts = f.filename.split("/");
+    const oldBase = parts.pop() ?? f.filename;
+    const dir = parts.join("/");
+
+    // Strip any path separators — a rename edits the name, never the location.
+    const typed = (newName || "").replace(/[/\\]+/g, " ").replace(/[:*?"<>|]/g, "").trim().slice(0, 200);
+    if (!typed) return { ok: false as const, error: "Enter a file name." };
+
+    // Preserve the extension unless the new name already ends in one.
+    const dot = oldBase.lastIndexOf(".");
+    const ext = dot > 0 ? oldBase.slice(dot) : "";
+    const base = ext && !typed.toLowerCase().endsWith(ext.toLowerCase()) ? `${typed}${ext}` : typed;
+    if (base === oldBase) return { ok: true as const };
+
+    await db.update(shareFiles).set({ filename: (dir ? `${dir}/${base}` : base).slice(0, 1024) }).where(eq(shareFiles.id, fileId));
+    await audit(session.email, "update", "share-file", String(fileId), `Renamed document "${oldBase}" → "${base}"`);
+    revalidatePath(`/admin/share-folders/${f.folderId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[share] renameFile failed:", err);
+    return { ok: false as const, error: "Couldn't rename the document — try again." };
+  }
+}
+
 export async function deleteFile(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };

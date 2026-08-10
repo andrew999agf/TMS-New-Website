@@ -18,7 +18,7 @@ import { ListTree } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
+  registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, renameFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -316,6 +316,12 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     renameDir(folderId, path, name.trim()).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't rename."); router.refresh(); }).catch(() => setError("Couldn't rename."));
   }
 
+  function handleRenameFile(id: number, currentName: string) {
+    const name = window.prompt("Rename this document:", currentName);
+    if (name == null || !name.trim() || name.trim() === currentName) return;
+    renameFile(id, name.trim()).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't rename."); router.refresh(); }).catch(() => setError("Couldn't rename."));
+  }
+
   useEffect(() => {
     const el = folderInput.current;
     if (el) { el.setAttribute("webkitdirectory", ""); el.setAttribute("directory", ""); }
@@ -475,6 +481,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onDeleteDir={handleDeleteDir}
         deletingDir={deletingDir}
         onRenameDir={handleRenameDir}
+        onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
         onUpload={blobReady ? onUpload : undefined}
         revealPath={revealPath}

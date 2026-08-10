@@ -234,6 +234,38 @@ export async function recipientRenameDir(token: string, path: string, newName: s
   }
 }
 
+/**
+ * Rename a single document — recipients with full (manage) access only, matching
+ * folder rename. Only the file's own name changes; its folder and the stored
+ * Blob object are untouched, and the original extension is preserved.
+ */
+export async function recipientRenameFile(token: string, fileId: number, newName: string) {
+  const ctx = await resolveRecipient(token);
+  if (!ctx || !shareCan(ctx.rec.permission, "delete")) return { ok: false as const, error: "Not allowed." };
+  if (!db) return { ok: false as const, error: "Unavailable." };
+  try {
+    const [f] = await db.select().from(shareFiles).where(and(eq(shareFiles.id, fileId), eq(shareFiles.folderId, ctx.folder.id)));
+    if (!f) return { ok: false as const, error: "Not found." };
+
+    const parts = f.filename.split("/");
+    const oldBase = parts.pop() ?? f.filename;
+    const dir = parts.join("/");
+
+    const typed = (newName || "").replace(/[/\\]+/g, " ").replace(/[:*?"<>|]/g, "").trim().slice(0, 200);
+    if (!typed) return { ok: false as const, error: "Enter a file name." };
+
+    const dot = oldBase.lastIndexOf(".");
+    const ext = dot > 0 ? oldBase.slice(dot) : "";
+    const base = ext && !typed.toLowerCase().endsWith(ext.toLowerCase()) ? `${typed}${ext}` : typed;
+    if (base === oldBase) return { ok: true as const };
+
+    await db.update(shareFiles).set({ filename: (dir ? `${dir}/${base}` : base).slice(0, 1024) }).where(eq(shareFiles.id, fileId));
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't rename the document." };
+  }
+}
+
 /** Delete a file the recipient can manage (must belong to their folder). */
 export async function recipientDeleteFile(token: string, fileId: number) {
   const ctx = await resolveRecipient(token);

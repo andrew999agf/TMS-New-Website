@@ -8,7 +8,7 @@ import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { filesFromDrop, fromInput, countDropItems, type PickedFile } from "@/lib/share/drop";
-import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientClearUpload } from "@/app/share/[token]/actions";
+import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientRenameFile, recipientClearUpload } from "@/app/share/[token]/actions";
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
@@ -171,6 +171,12 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     recipientRenameDir(token, path, name.trim()).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't rename folder."); router.refresh(); }).catch(() => setError("Couldn't rename folder."));
   }
 
+  function handleRenameFile(id: number, currentName: string) {
+    const name = window.prompt("Rename this document:", currentName);
+    if (name == null || !name.trim() || name.trim() === currentName) return;
+    recipientRenameFile(token, id, name.trim()).then((r) => { if (!r.ok) setError(r.error ?? "Couldn't rename document."); router.refresh(); }).catch(() => setError("Couldn't rename document."));
+  }
+
   return (
     <div className="space-y-2">
       {caps.upload && (
@@ -218,6 +224,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         onDeleteDir={caps.delete ? handleDeleteDir : undefined}
         deletingDir={deletingDir}
         onRenameDir={caps.delete ? handleRenameDir : undefined}
+        onRenameFile={caps.delete ? handleRenameFile : undefined}
         onAddSubdir={caps.upload ? (p) => setDialogParent(p) : undefined}
         onPreview={(f) => setPreview(f)}
         onUpload={caps.upload && blobReady ? onUpload : undefined}

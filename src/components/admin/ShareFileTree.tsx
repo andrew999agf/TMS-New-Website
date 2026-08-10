@@ -64,6 +64,7 @@ type Ctx = {
   onDeleteDir?: (path: string) => void;
   deletingDir?: string | null;
   onRenameDir?: (path: string, currentName: string) => void;
+  onRenameFile?: (id: number, currentName: string) => void;
   onAddSubdir?: (parentPath: string) => void;
   onPreview?: (file: { id: number; base: string }) => void;
   dirInfo?: DirInfo;
@@ -81,7 +82,7 @@ type Ctx = {
   toggleOpen: (path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -93,6 +94,8 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   deletingDir?: string | null;
   /** When provided, folders show a rename button. */
   onRenameDir?: (path: string, currentName: string) => void;
+  /** When provided, each document shows a rename button. */
+  onRenameFile?: (id: number, currentName: string) => void;
   /** When provided, folders show an "Add sub-folder" button. */
   onAddSubdir?: (parentPath: string) => void;
   onPreview?: (file: { id: number; base: string }) => void;
@@ -135,7 +138,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onAddSubdir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -257,6 +260,11 @@ function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx })
         <a href={href} className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" title="Download this document">
           <Download size={13} /><span className="hidden sm:inline">Download</span>
         </a>
+      )}
+      {ctx.onRenameFile && (
+        <button onClick={() => ctx.onRenameFile!(file.id, file.base)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename this document">
+          <Pencil size={13} />
+        </button>
       )}
       {ctx.onDelete && (
         <button onClick={() => ctx.onDelete!(file.id)} disabled={ctx.deletingId === file.id} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600 disabled:opacity-50" title="Remove">
