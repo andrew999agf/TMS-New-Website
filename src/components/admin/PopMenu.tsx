@@ -32,6 +32,7 @@ export function PopMenu({
   children: (close: () => void) => React.ReactNode;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxH: number } | null>(null);
   const open = pos !== null;
   const close = () => setPos(null);
@@ -56,12 +57,19 @@ export function PopMenu({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    // `true` catches scrolling inside any container, not just the window.
-    window.addEventListener("scroll", close, true);
+    // Capture is needed to notice scrolling inside any container the chip sits
+    // in — but the menu is itself scrollable, so scrolling the list to reach a
+    // name further down must NOT dismiss it.
+    const onScroll = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      close();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", close);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", onKey);
     };
@@ -78,6 +86,7 @@ export function PopMenu({
           <>
             <div className="fixed inset-0 z-[90]" onClick={close} />
             <div
+              ref={menuRef}
               style={{ top: pos.top, left: pos.left, width, maxHeight: pos.maxH }}
               className="fixed z-[91] overflow-y-auto overscroll-contain rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-2xl"
             >
@@ -107,7 +116,10 @@ export function PopMenuItem({
   return (
     <button
       type="button"
-      onClick={onClick}
+      // mousedown rather than click: the backdrop and any focus handling fire
+      // first on some browsers, which could swallow the selection.
+      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      onClick={(e) => e.preventDefault()}
       className={`block w-full cursor-pointer px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)] focus:bg-[var(--c-accent)]/10 focus:outline-none ${
         active ? "bg-[var(--c-accent)]/5 font-semibold text-[var(--c-accent)]" : muted ? "text-[var(--c-ink-muted)]" : "text-[var(--c-ink)]"
       }`}

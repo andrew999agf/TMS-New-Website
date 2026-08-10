@@ -81,7 +81,12 @@ export function dstTransitions(year: number, tz: string = DFW_TZ): DstTransition
         if (offsetMinutes(new Date(mid), tz) === before) lo = mid;
         else hi = mid;
       }
-      bounds.push(new Date(hi));
+      // `hi` is within a minute after the switch. Transitions fall exactly on a
+      // minute, so floor to it — and step forward only if that lands back in the
+      // old offset, which keeps the boundary exact rather than approximate.
+      let exact = Math.floor(hi / 60_000) * 60_000;
+      if (offsetMinutes(new Date(exact), tz) === before) exact += 60_000;
+      bounds.push(new Date(exact));
       prev = cur;
     }
   }
