@@ -214,6 +214,21 @@ export async function shiftAllDeadlines(caseId: number, newTrialDate: string) {
   }
 }
 
+/** Set (or clear) the pretrial conference date. Unlike the trial date this is
+ *  not a schedule anchor, so nothing else moves. */
+export async function setPretrialDate(caseId: number, date: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.update(trialCases).set({ pretrialDate: isoDate(date), updatedAt: new Date() }).where(eq(trialCases.id, caseId));
+    revalidatePath(`/admin/pre-trial/${caseId}`);
+    revalidatePath("/admin/pre-trial");
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't save the pretrial date." };
+  }
+}
+
 /** Add a task, or a sub-task when `parentId` is supplied. */
 export async function addDeadline(caseId: number, title: string, dueDate?: string, notes?: string, parentId?: number | null) {
   const session = await guard();

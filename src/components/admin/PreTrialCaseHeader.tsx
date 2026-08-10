@@ -11,9 +11,10 @@ type Form = { name: string; matter: string; causeNumber: string; court: string; 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
 /**
- * Collapsed case details with an inline editor. Note the trial date is edited in
- * the checklist below (via "reset date & slide schedule") so changing it always
- * moves the deadlines with it — this form leaves the date alone.
+ * Collapsed case details with an inline editor. The trial and pretrial dates are
+ * deliberately NOT edited here — they live on the prominent cards in the
+ * checklist below, so there is one obvious place to set each. Both values still
+ * round-trip through this form's state, so saving here never clears them.
  */
 export function PreTrialCaseHeader({ id, initial, matters }: { id: number; initial: Form; matters: MatterOption[] }) {
   const router = useRouter();
@@ -77,16 +78,12 @@ export function PreTrialCaseHeader({ id, initial, matters }: { id: number; initi
           <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Court</label>
           <input value={form.court} onChange={(e) => setForm({ ...form, court: e.target.value })} className={input} />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Pretrial hearing date</label>
-          <input type="date" value={form.pretrialDate} onChange={(e) => setForm({ ...form, pretrialDate: e.target.value })} className={input} />
-        </div>
         <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Notes</label>
           <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className={input} />
         </div>
       </div>
-      <p className="text-[11px] text-[var(--c-ink-muted)]">The trial date is changed in the checklist below, so the deadlines move with it.</p>
+      <p className="text-[11px] text-[var(--c-ink-muted)]">The trial and pretrial dates are set on the two cards in the checklist below — changing the trial date there slides every dated deadline with it.</p>
       {error && <p className="text-sm text-[var(--c-error)]">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <button onClick={save} disabled={pending} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
