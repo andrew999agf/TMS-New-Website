@@ -11,8 +11,9 @@ import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
 import { TIME_ACTIVITY_USERS, TIME_ACTIVITY_USERS_ENSURE, TIME_CATEGORIES } from "@/lib/content/defaults/time";
 import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
-import { referralAttorneys } from "@/db/schema";
+import { referralAttorneys, trialCases, trialDeadlines } from "@/db/schema";
 import { REFERRAL_ATTORNEYS } from "@/lib/content/defaults/referral-attorneys";
+import { CV24_162_CASE, CV24_162_CAUSE, CV24_162_ITEMS } from "@/lib/pretrial/seed-cv24-162";
 
 export const runtime = "nodejs";
 
@@ -563,6 +564,32 @@ export async function POST() {
     if (created || enriched) applied.push(`Referral attorneys: ${created} added, ${enriched} enriched`);
   } catch (err) {
     failed.push(`Referral attorneys seed: ${(err as Error).message}`);
+  }
+
+  // 12) Seed the first pre-trial case (Smith v. Morgan, CV24-162) exactly once.
+  //     Keyed on the cause number, so re-running sync never duplicates it and an
+  //     admin who edits or deletes the case won't see it reappear with edits lost.
+  try {
+    const [existing] = await db.select({ id: trialCases.id }).from(trialCases).where(eq(trialCases.causeNumber, CV24_162_CAUSE)).limit(1);
+    if (!existing) {
+      const [row] = await db
+        .insert(trialCases)
+        .values({
+          name: CV24_162_CASE.name,
+          causeNumber: CV24_162_CASE.causeNumber,
+          court: CV24_162_CASE.court,
+          matter: CV24_162_CASE.matter,
+          notes: CV24_162_CASE.notes,
+          createdBy: session.email,
+        })
+        .returning({ id: trialCases.id });
+      await db.insert(trialDeadlines).values(
+        CV24_162_ITEMS.map((it, i) => ({ caseId: row.id, title: it.title.slice(0, 255), notes: it.notes ?? "", sort: i })),
+      );
+      applied.push(`Seeded pre-trial case ${CV24_162_CAUSE} with ${CV24_162_ITEMS.length} checklist items`);
+    }
+  } catch (err) {
+    failed.push(`Pre-trial seed: ${(err as Error).message}`);
   }
 
   return NextResponse.json({ ok: true, applied, ...(failed.length ? { warnings: failed } : {}) });
