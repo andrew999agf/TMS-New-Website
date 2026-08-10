@@ -311,18 +311,37 @@ function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; te
  */
 function DateChip({ id, date, done, run, pending, compact }: { id: number; date: string | null; done: boolean; run: Run; pending: boolean; compact?: boolean }) {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(date ?? "");
   const u = urgencyOf(date) as Urgency;
+
+  function commit(value: string) {
+    setEditing(false);
+    if ((value || null) !== (date || null)) run(() => updateDeadline(id, { dueDate: value || null }));
+  }
 
   if (editing) {
     return (
       <input
         type="date"
-        defaultValue={date ?? ""}
+        value={draft}
         autoFocus
         disabled={pending}
-        onChange={(e) => { run(() => updateDeadline(id, { dueDate: e.target.value || null })); setEditing(false); }}
-        onBlur={() => setEditing(false)}
-        onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+        // A native date input fires change the moment all three segments parse —
+        // and typing "2026" passes through year 0002 first. Committing on every
+        // change therefore closed the field after one keystroke. Hold the draft
+        // instead, and only auto-save once the year is actually plausible (which
+        // still saves instantly when the date comes from the calendar picker).
+        onChange={(e) => {
+          const v = e.target.value;
+          setDraft(v);
+          const year = Number(v.slice(0, 4));
+          if (v && Number.isFinite(year) && year >= 1900) commit(v);
+        }}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit((e.target as HTMLInputElement).value); }
+          if (e.key === "Escape") { setDraft(date ?? ""); setEditing(false); }
+        }}
         className="shrink-0 rounded-md border border-[var(--c-accent)] bg-[var(--c-bg)] px-2 py-1 text-xs outline-none"
       />
     );
@@ -331,13 +350,13 @@ function DateChip({ id, date, done, run, pending, compact }: { id: number; date:
   const size = compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]";
   if (!date) {
     return (
-      <button onClick={() => setEditing(true)} title="Set a due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-[var(--c-border)] font-medium text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] ${size}`}>
+      <button onClick={() => { setDraft(date ?? ""); setEditing(true); }} title="Set a due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-[var(--c-border)] font-medium text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] ${size}`}>
         <CalendarPlus size={compact ? 11 : 12} /> Set date
       </button>
     );
   }
   return (
-    <button onClick={() => setEditing(true)} title="Change the due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold transition-opacity hover:opacity-80 ${URGENCY_CLASS[u]} ${size} ${done ? "opacity-60" : ""}`}>
+    <button onClick={() => { setDraft(date ?? ""); setEditing(true); }} title="Change the due date" className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold transition-opacity hover:opacity-80 ${URGENCY_CLASS[u]} ${size} ${done ? "opacity-60" : ""}`}>
       {fmtDate(date)}
       {!done && <span className="font-normal opacity-80">· {URGENCY_LABEL[u]}</span>}
     </button>

@@ -436,7 +436,7 @@ function EntriesTable({ list, cell, showOwner, readOnly, onEdit, onDelete, onRes
             <tr key={e.id} className="border-b border-[var(--c-border)] last:border-0 align-top">
               {showOwner && <td className="px-2 py-2 whitespace-nowrap text-[var(--c-ink-muted)]">{e.ownerName}</td>}
               <td className="px-2 py-2 w-48">{readOnly ? e.matter : <input key={e.matter} className={cell} defaultValue={e.matter} onBlur={(ev) => ev.target.value !== e.matter && onEdit?.(e.id, { matter: ev.target.value })} />}</td>
-              <td className="px-2 py-2 w-32">{readOnly ? csvDateDisplay(e.entryDate) : <input type="date" className={cell} defaultValue={e.entryDate} onChange={(ev) => onEdit?.(e.id, { entryDate: ev.target.value })} />}</td>
+              <td className="px-2 py-2 w-32">{readOnly ? csvDateDisplay(e.entryDate) : <input type="date" className={cell} defaultValue={e.entryDate} onBlur={(ev) => ev.target.value && ev.target.value !== e.entryDate && onEdit?.(e.id, { entryDate: ev.target.value })} />}</td>
               <td className="px-2 py-2 w-72">{readOnly ? e.note : <input key={e.note} className={cell} defaultValue={e.note} onBlur={(ev) => ev.target.value !== e.note && onEdit?.(e.id, { note: ev.target.value })} />}</td>
               <td className="px-2 py-2 w-20">{readOnly ? e.price : <input type="number" step="0.01" className={cell} defaultValue={e.price} onBlur={(ev) => onEdit?.(e.id, { price: Math.round((parseFloat(ev.target.value) || 0) * 100) / 100 })} />}</td>
               <td className="px-2 py-2 w-16">{readOnly ? e.quantity : <input type="number" step="0.1" className={cell} defaultValue={e.quantity} onBlur={(ev) => onEdit?.(e.id, { quantity: Math.round((parseFloat(ev.target.value) || 0) * 10) / 10 })} />}</td>
