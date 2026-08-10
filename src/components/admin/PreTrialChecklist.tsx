@@ -8,6 +8,7 @@ import {
   URGENCY_CLASS, URGENCY_LABEL, type Urgency,
 } from "@/lib/pretrial/template";
 import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate, timeEntryDefaults, completeWithTime } from "@/app/admin/(panel)/pre-trial/actions";
+import { PopMenu, PopMenuItem } from "./PopMenu";
 
 export type DeadlineRow = { id: number; parentId: number | null; assignee: string; title: string; dueDate: string | null; done: boolean; doneAt: string | null; doneBy: string | null; notes: string; sort: number };
 export type TeamMember = { name: string };
@@ -366,53 +367,44 @@ function DateChip({ id, date, done, run, pending, compact }: { id: number; date:
 /**
  * Assignment chip, deliberately matching the date chip: it reads "Not assigned"
  * until someone owns the task, and one click opens the team list. Team members
- * come from the Time Tracker's activity users.
+ * come from the Time Tracker's activity users. The list is a portal-backed
+ * PopMenu so it can overlay the deadlines below and scroll when the firm has
+ * more names than fit.
  */
 function AssigneePicker({ id, value, team, run, pending, compact }: { id: number; value: string; team: TeamMember[]; run: Run; pending: boolean; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
   const size = compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]";
-
-  function pick(name: string) {
-    setOpen(false);
-    run(() => assignDeadline(id, name));
-  }
-
   return (
-    <span className="relative inline-flex shrink-0">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        disabled={pending}
-        title={value ? `Assigned to ${value} — click to change` : "Assign this to a team member"}
-        className={`inline-flex items-center gap-1 rounded-full border font-medium transition-colors ${size} ${
-          value
-            ? "border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10 text-[var(--c-accent)]"
-            : "border-dashed border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
-        }`}
-      >
-        {value ? <UserRound size={compact ? 11 : 12} /> : <UserPlus size={compact ? 11 : 12} />}
-        {value || "Not assigned"}
-      </button>
-
-      {open && (
+    <PopMenu
+      disabled={pending}
+      title={value ? `Assigned to ${value} — click to change` : "Assign this to a team member"}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border font-medium transition-colors ${size} ${
+        value
+          ? "border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10 text-[var(--c-accent)]"
+          : "border-dashed border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+      }`}
+      label={
         <>
-          {/* Click-away catcher */}
-          <span className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <span className="absolute right-0 top-full z-30 mt-1 max-h-64 w-52 overflow-auto rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-xl">
-            {team.length === 0 && <span className="block px-3 py-2 text-xs text-[var(--c-ink-muted)]">No team members found. Add them in the Time Tracker.</span>}
-            {team.map((m) => (
-              <button key={m.name} onClick={() => pick(m.name)} className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-[var(--c-surface2)] ${m.name === value ? "font-semibold text-[var(--c-accent)]" : "text-[var(--c-ink)]"}`}>
-                {m.name}
-              </button>
-            ))}
-            {value && (
-              <button onClick={() => pick("")} className="mt-1 block w-full border-t border-[var(--c-border)] px-3 py-1.5 text-left text-xs text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]">
-                Clear assignment
-              </button>
-            )}
-          </span>
+          {value ? <UserRound size={compact ? 11 : 12} /> : <UserPlus size={compact ? 11 : 12} />}
+          {value || "Not assigned"}
+        </>
+      }
+    >
+      {(close) => (
+        <>
+          {team.length === 0 && <span className="block px-3 py-2 text-xs text-[var(--c-ink-muted)]">No team members found. Add them in the Time Tracker.</span>}
+          {team.map((m) => (
+            <PopMenuItem key={m.name} active={m.name === value} onClick={() => { close(); run(() => assignDeadline(id, m.name)); }}>
+              {m.name}
+            </PopMenuItem>
+          ))}
+          {value && (
+            <span className="mt-1 block border-t border-[var(--c-border)] pt-1">
+              <PopMenuItem muted onClick={() => { close(); run(() => assignDeadline(id, "")); }}>Clear assignment</PopMenuItem>
+            </span>
+          )}
         </>
       )}
-    </span>
+    </PopMenu>
   );
 }
 

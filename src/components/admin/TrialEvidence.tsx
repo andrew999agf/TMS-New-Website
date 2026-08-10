@@ -7,6 +7,7 @@ import { Plus, Trash2, Loader2, Users, FileText, Upload, ExternalLink, X, Pencil
 import { addWitness, updateWitness, deleteWitness, addExhibit, updateExhibit, deleteExhibit, setWitnessStatus, setExhibitSponsors, setExhibitElements, bulkAddExhibits } from "@/app/admin/(panel)/pre-trial/evidence-actions";
 import { parseExhibitName, suggestOrder, assignNumbers, nextNumbers, getScheme, NUMBER_SCHEMES, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop } from "@/lib/share/drop";
+import { PopMenu, PopMenuItem } from "./PopMenu";
 
 export type WitnessRow = { id: number; name: string; side: string; role: string; phone: string; email: string; available: string; appearance: string; notes: string };
 export type ExhibitRow = { id: number; side: string; number: string; title: string; bates: string; description: string; status: string; url: string | null; sizeBytes: number | null; notes: string; witnessIds: number[]; foundation: string[]; /** Elements this exhibit is linked to on the proof matrix. */ elementIds: number[] };
@@ -66,31 +67,30 @@ export function TrialEvidence({ caseId, witnesses, exhibits, claims, elements, b
 
 /* ------------------------------- small chips ------------------------------ */
 
-/** A pill that opens a list of choices on click. Used for the witness chips. */
+/**
+ * A pill that opens its choices on click — availability and appearance. Uses the
+ * shared PopMenu so the list escapes the row's clipping and scrolls if needed.
+ */
 function ChoiceChip({ value, options, onPick, className, title, pending }: {
   value: string; options: { id: string; label: string }[]; onPick: (id: string) => void;
   className: string; title: string; pending: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const label = options.find((o) => o.id === value)?.label ?? value;
   return (
-    <span className="relative inline-flex shrink-0">
-      <button onClick={() => setOpen((o) => !o)} disabled={pending} title={title} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80 ${className}`}>
-        {label} <ChevronDown size={10} />
-      </button>
-      {open && (
-        <>
-          <span className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <span className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-xl">
-            {options.map((o) => (
-              <button key={o.id} onClick={() => { setOpen(false); onPick(o.id); }} className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-[var(--c-surface2)] ${o.id === value ? "font-semibold text-[var(--c-accent)]" : "text-[var(--c-ink)]"}`}>
-                {o.label}
-              </button>
-            ))}
-          </span>
-        </>
-      )}
-    </span>
+    <PopMenu
+      disabled={pending}
+      title={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80 ${className}`}
+      label={<>{label} <ChevronDown size={10} /></>}
+    >
+      {(close) =>
+        options.map((o) => (
+          <PopMenuItem key={o.id} active={o.id === value} onClick={() => { close(); onPick(o.id); }}>
+            {o.label}
+          </PopMenuItem>
+        ))
+      }
+    </PopMenu>
   );
 }
 
