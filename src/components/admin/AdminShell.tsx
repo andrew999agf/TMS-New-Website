@@ -40,6 +40,7 @@ import { logoutAction } from "@/app/admin/auth-actions";
 import { allowedSections, sectionForPath } from "@/lib/admin-sections";
 import { PwaInstall } from "@/components/admin/PwaInstall";
 import { AdminSearch } from "@/components/admin/AdminSearch";
+import { AdminClock } from "@/components/admin/AdminClock";
 
 // The website-editing sections, grouped under one "Website Management" entry
 // with a sub-tab bar (keeps the left sidebar from getting cluttered).
@@ -262,6 +263,12 @@ export function AdminShell({
       </aside>
 
       <main className="flex-1 min-w-0">
+        {/* Slim strip carrying the DFW clock. Lives in the shell rather than in
+            AdminHeader so it is present on every page, including the couple that
+            render their own header. */}
+        <div className="sticky top-0 z-40 flex h-9 items-center justify-end border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6">
+          <AdminClock />
+        </div>
         {onWebsite && <WebsiteSubnav tabs={websiteTabs} pathname={pathname} />}
         {children}
       </main>
@@ -271,7 +278,7 @@ export function AdminShell({
 
 function WebsiteSubnav({ tabs, pathname }: { tabs: { label: string; href: string; icon: LucideIcon }[]; pathname: string }) {
   return (
-    <div className="sticky top-0 z-20 flex gap-1 overflow-x-auto border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2">
+    <div className="sticky top-9 z-20 flex gap-1 overflow-x-auto border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2">
       {tabs.map((t) => {
         const active = pathname === t.href || pathname.startsWith(t.href + "/");
         const Icon = t.icon;
