@@ -11,9 +11,10 @@ import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
 import { INTAKE_RECIPIENTS } from "@/lib/content/defaults/intake-recipients";
 import { TIME_ACTIVITY_USERS, TIME_ACTIVITY_USERS_ENSURE, TIME_CATEGORIES } from "@/lib/content/defaults/time";
 import { PATRIOT_TEAMS_KEY, DEFAULT_PATRIOT_TEAMS, type PatriotTeam } from "@/lib/patriot/settings";
-import { referralAttorneys, trialCases, trialDeadlines } from "@/db/schema";
+import { referralAttorneys, trialCases, trialDeadlines, trialWitnesses, trialClaims, trialElements, trialProofs } from "@/db/schema";
 import { REFERRAL_ATTORNEYS } from "@/lib/content/defaults/referral-attorneys";
 import { CV24_162_CASE, CV24_162_CAUSE, CV24_162_ITEMS } from "@/lib/pretrial/seed-cv24-162";
+import { CV24_162_WITNESSES, CV24_162_CLAIMS } from "@/lib/pretrial/seed-cv24-162-proof";
 
 export const runtime = "nodejs";
 
@@ -302,6 +303,92 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS trial_deadlines_case_idx ON trial_deadlines (case_id)`,
+  // Trial evidence: witnesses, exhibits, causes of action + elements, the proof
+  // links between them, and deposition/statement transcripts.
+  `CREATE TABLE IF NOT EXISTS trial_witnesses (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    name varchar(191) NOT NULL,
+    side varchar(16) NOT NULL DEFAULT 'plaintiff',
+    role varchar(191) NOT NULL DEFAULT '',
+    phone varchar(64) NOT NULL DEFAULT '',
+    email varchar(255) NOT NULL DEFAULT '',
+    available varchar(16) NOT NULL DEFAULT 'unknown',
+    appearance varchar(16) NOT NULL DEFAULT 'in-person',
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_witnesses_case_idx ON trial_witnesses (case_id)`,
+  `CREATE TABLE IF NOT EXISTS trial_exhibits (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    side varchar(16) NOT NULL DEFAULT 'plaintiff',
+    number varchar(32) NOT NULL DEFAULT '',
+    title varchar(255) NOT NULL,
+    bates varchar(128) NOT NULL DEFAULT '',
+    description text NOT NULL DEFAULT '',
+    status varchar(16) NOT NULL DEFAULT 'listed',
+    url text,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_exhibits_case_idx ON trial_exhibits (case_id)`,
+  `CREATE TABLE IF NOT EXISTS trial_claims (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    name varchar(255) NOT NULL,
+    party varchar(16) NOT NULL DEFAULT 'plaintiff',
+    is_lead boolean NOT NULL DEFAULT false,
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_claims_case_idx ON trial_claims (case_id)`,
+  `CREATE TABLE IF NOT EXISTS trial_elements (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    claim_id integer NOT NULL,
+    text varchar(500) NOT NULL,
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_elements_claim_idx ON trial_elements (claim_id)`,
+  `CREATE TABLE IF NOT EXISTS trial_proofs (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    element_id integer NOT NULL,
+    kind varchar(16) NOT NULL DEFAULT 'exhibit',
+    exhibit_id integer,
+    witness_id integer,
+    citation varchar(500) NOT NULL DEFAULT '',
+    summary text NOT NULL DEFAULT '',
+    anticipated boolean NOT NULL DEFAULT false,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_proofs_element_idx ON trial_proofs (element_id)`,
+  `CREATE TABLE IF NOT EXISTS trial_transcripts (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    kind varchar(16) NOT NULL DEFAULT 'deposition',
+    title varchar(255) NOT NULL,
+    witness_id integer,
+    taken_on varchar(10),
+    url text,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_transcripts_case_idx ON trial_transcripts (case_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
 ];
@@ -566,13 +653,14 @@ export async function POST() {
     failed.push(`Referral attorneys seed: ${(err as Error).message}`);
   }
 
-  // 12) Seed the first pre-trial case (Smith v. Morgan, CV24-162) exactly once.
-  //     Keyed on the cause number, so re-running sync never duplicates it and an
-  //     admin who edits or deletes the case won't see it reappear with edits lost.
+  // 12) Seed the first pre-trial case (Smith v. Morgan, CV24-162). Each part is
+  //     guarded separately — case by cause number, then deadlines / witnesses /
+  //     proof matrix by "does this case have any yet" — so re-running never
+  //     duplicates anything, and an admin's edits or deletions stay deleted.
   try {
-    const [existing] = await db.select({ id: trialCases.id }).from(trialCases).where(eq(trialCases.causeNumber, CV24_162_CAUSE)).limit(1);
-    if (!existing) {
-      const [row] = await db
+    let [row] = await db.select({ id: trialCases.id }).from(trialCases).where(eq(trialCases.causeNumber, CV24_162_CAUSE)).limit(1);
+    if (!row) {
+      [row] = await db
         .insert(trialCases)
         .values({
           name: CV24_162_CASE.name,
@@ -583,10 +671,77 @@ export async function POST() {
           createdBy: session.email,
         })
         .returning({ id: trialCases.id });
+      applied.push(`Created pre-trial case ${CV24_162_CAUSE}`);
+    }
+    const caseId = row.id;
+
+    const [haveDeadline] = await db.select({ id: trialDeadlines.id }).from(trialDeadlines).where(eq(trialDeadlines.caseId, caseId)).limit(1);
+    if (!haveDeadline) {
       await db.insert(trialDeadlines).values(
-        CV24_162_ITEMS.map((it, i) => ({ caseId: row.id, title: it.title.slice(0, 255), notes: it.notes ?? "", sort: i })),
+        CV24_162_ITEMS.map((it, i) => ({ caseId, title: it.title.slice(0, 255), notes: it.notes ?? "", sort: i })),
       );
-      applied.push(`Seeded pre-trial case ${CV24_162_CAUSE} with ${CV24_162_ITEMS.length} checklist items`);
+      applied.push(`Seeded ${CV24_162_ITEMS.length} pre-trial checklist items`);
+    }
+
+    // Witnesses first — the proof entries reference them by id.
+    const witnessIdByKey = new Map<string, number>();
+    const [haveWitness] = await db.select({ id: trialWitnesses.id }).from(trialWitnesses).where(eq(trialWitnesses.caseId, caseId)).limit(1);
+    if (!haveWitness) {
+      for (let i = 0; i < CV24_162_WITNESSES.length; i++) {
+        const w = CV24_162_WITNESSES[i];
+        const [ins] = await db
+          .insert(trialWitnesses)
+          .values({ caseId, name: w.name, side: w.side, role: w.role, notes: w.notes ?? "", available: w.available ?? "unknown", sort: i })
+          .returning({ id: trialWitnesses.id });
+        witnessIdByKey.set(w.key, ins.id);
+      }
+      applied.push(`Seeded ${CV24_162_WITNESSES.length} trial witnesses`);
+    } else {
+      // Already seeded: map keys back by name so a re-run can still link proofs.
+      const rows = await db.select({ id: trialWitnesses.id, name: trialWitnesses.name }).from(trialWitnesses).where(eq(trialWitnesses.caseId, caseId));
+      const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r.id]));
+      for (const w of CV24_162_WITNESSES) {
+        const hit = byName.get(w.name.toLowerCase());
+        if (hit) witnessIdByKey.set(w.key, hit);
+      }
+    }
+
+    const [haveClaim] = await db.select({ id: trialClaims.id }).from(trialClaims).where(eq(trialClaims.caseId, caseId)).limit(1);
+    if (!haveClaim) {
+      let elementCount = 0;
+      let proofCount = 0;
+      for (let ci = 0; ci < CV24_162_CLAIMS.length; ci++) {
+        const c = CV24_162_CLAIMS[ci];
+        const [claim] = await db
+          .insert(trialClaims)
+          .values({ caseId, name: c.name.slice(0, 255), party: c.party ?? "plaintiff", isLead: !!c.isLead, notes: c.notes ?? "", sort: ci })
+          .returning({ id: trialClaims.id });
+        for (let ei = 0; ei < c.elements.length; ei++) {
+          const el = c.elements[ei];
+          const [element] = await db
+            .insert(trialElements)
+            .values({ caseId, claimId: claim.id, text: el.text.slice(0, 500), sort: ei })
+            .returning({ id: trialElements.id });
+          elementCount++;
+          if (el.proofs.length) {
+            await db.insert(trialProofs).values(
+              el.proofs.map((p, pi) => ({
+                caseId,
+                elementId: element.id,
+                kind: p.kind,
+                witnessId: p.witnessKey ? (witnessIdByKey.get(p.witnessKey) ?? null) : null,
+                exhibitId: null,
+                citation: (p.citation ?? "").slice(0, 500),
+                summary: p.summary ?? "",
+                anticipated: !!p.anticipated,
+                sort: pi,
+              })),
+            );
+            proofCount += el.proofs.length;
+          }
+        }
+      }
+      applied.push(`Seeded proof matrix: ${CV24_162_CLAIMS.length} causes of action, ${elementCount} elements, ${proofCount} proof entries`);
     }
   } catch (err) {
     failed.push(`Pre-trial seed: ${(err as Error).message}`);

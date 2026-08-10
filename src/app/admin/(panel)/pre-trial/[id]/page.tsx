@@ -4,6 +4,7 @@ import { ChevronLeft, Gavel } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { PreTrialChecklist, type DeadlineRow } from "@/components/admin/PreTrialChecklist";
 import { PreTrialCaseHeader } from "@/components/admin/PreTrialCaseHeader";
+import { PreTrialTabs } from "@/components/admin/PreTrialTabs";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { trialCases, trialDeadlines, timeMatters } from "@/db/schema";
@@ -47,6 +48,8 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
         <Link href="/admin/pre-trial" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All cases
         </Link>
+
+        <PreTrialTabs caseId={row.id} />
 
         <div className="flex items-center gap-2 text-sm text-[var(--c-ink-muted)]">
           <Gavel size={15} className="text-[var(--c-accent)]" />

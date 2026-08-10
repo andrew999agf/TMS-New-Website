@@ -781,8 +781,142 @@ export const trialDeadlines = pgTable(
   (t) => ({ caseIdx: index("trial_deadlines_case_idx").on(t.caseId) }),
 );
 
+/** People who may testify. Side keeps plaintiff/defense lists separate. */
+export const trialWitnesses = pgTable(
+  "trial_witnesses",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    name: varchar("name", { length: 191 }).notNull(),
+    side: varchar("side", { length: 16 }).notNull().default("plaintiff"),
+    role: varchar("role", { length: 191 }).notNull().default(""),
+    phone: varchar("phone", { length: 64 }).notNull().default(""),
+    email: varchar("email", { length: 255 }).notNull().default(""),
+    /** confirmed | likely | unavailable | unknown */
+    available: varchar("available", { length: 16 }).notNull().default("unknown"),
+    /** in-person | zoom | deposition */
+    appearance: varchar("appearance", { length: 16 }).notNull().default("in-person"),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ caseIdx: index("trial_witnesses_case_idx").on(t.caseId) }),
+);
+
+/** The exhibit list — plaintiff's, defendant's, or joint — with optional upload. */
+export const trialExhibits = pgTable(
+  "trial_exhibits",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    side: varchar("side", { length: 16 }).notNull().default("plaintiff"),
+    /** Exhibit number/letter as it will be offered, e.g. "P-12". */
+    number: varchar("number", { length: 32 }).notNull().default(""),
+    title: varchar("title", { length: 255 }).notNull(),
+    bates: varchar("bates", { length: 128 }).notNull().default(""),
+    description: text("description").notNull().default(""),
+    /** listed | objected | admitted | excluded */
+    status: varchar("status", { length: 16 }).notNull().default("listed"),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ caseIdx: index("trial_exhibits_case_idx").on(t.caseId) }),
+);
+
+/** A cause of action / count being tried. */
+export const trialClaims = pgTable(
+  "trial_claims",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    /** Whose claim it is — plaintiff | defendant. */
+    party: varchar("party", { length: 16 }).notNull().default("plaintiff"),
+    isLead: boolean("is_lead").notNull().default(false),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ caseIdx: index("trial_claims_case_idx").on(t.caseId) }),
+);
+
+/** One element the claim must prove. */
+export const trialElements = pgTable(
+  "trial_elements",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    claimId: integer("claim_id").notNull(),
+    text: varchar("text", { length: 500 }).notNull(),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ claimIdx: index("trial_elements_claim_idx").on(t.claimId) }),
+);
+
+/**
+ * How an element gets proved: by an exhibit or by a witness's testimony. The
+ * exhibit/witness link is optional so a citation can be recorded before the
+ * exhibit is numbered or the witness is added to the list.
+ */
+export const trialProofs = pgTable(
+  "trial_proofs",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    elementId: integer("element_id").notNull(),
+    /** exhibit | testimony */
+    kind: varchar("kind", { length: 16 }).notNull().default("exhibit"),
+    exhibitId: integer("exhibit_id"),
+    witnessId: integer("witness_id"),
+    /** e.g. "Morgan Dep. p. 18, ll. 4-19 (RES_000330)" */
+    citation: varchar("citation", { length: 500 }).notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    /** True for expected trial testimony with no depo transcript behind it yet. */
+    anticipated: boolean("anticipated").notNull().default(false),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ elementIdx: index("trial_proofs_element_idx").on(t.elementId) }),
+);
+
+/** Deposition and statement transcripts, optionally tied to a witness. */
+export const trialTranscripts = pgTable(
+  "trial_transcripts",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    /** deposition | statement | hearing | other */
+    kind: varchar("kind", { length: 16 }).notNull().default("deposition"),
+    title: varchar("title", { length: 255 }).notNull(),
+    witnessId: integer("witness_id"),
+    /** YYYY-MM-DD */
+    takenOn: varchar("taken_on", { length: 10 }),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ caseIdx: index("trial_transcripts_case_idx").on(t.caseId) }),
+);
+
 export type TrialCase = typeof trialCases.$inferSelect;
 export type TrialDeadline = typeof trialDeadlines.$inferSelect;
+export type TrialWitness = typeof trialWitnesses.$inferSelect;
+export type TrialExhibit = typeof trialExhibits.$inferSelect;
+export type TrialClaim = typeof trialClaims.$inferSelect;
+export type TrialElement = typeof trialElements.$inferSelect;
+export type TrialProof = typeof trialProofs.$inferSelect;
+export type TrialTranscript = typeof trialTranscripts.$inferSelect;
 
 export type Admin = typeof admins.$inferSelect;
 export type ContentBlock = typeof contentBlocks.$inferSelect;
