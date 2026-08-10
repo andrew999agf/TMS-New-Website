@@ -483,6 +483,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameDir={handleRenameDir}
         onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
+        dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
         onUpload={blobReady ? onUpload : undefined}
         revealPath={revealPath}
       />
