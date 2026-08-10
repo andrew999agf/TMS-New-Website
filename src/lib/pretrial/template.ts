@@ -180,3 +180,48 @@ export function sortDeadlines<T extends { dueDate: string | null; done: boolean;
     return a.title.localeCompare(b.title);
   });
 }
+
+export type Nestable = { id: number; parentId: number | null; dueDate: string | null; done: boolean; sort: number; title: string };
+export type Nested<T> = T & { children: T[] };
+
+/**
+ * Build the two-level checklist: top-level tasks each carrying their sub-tasks.
+ *
+ * A parent inherits the urgency of its most pressing open sub-task, so a parent
+ * with no date of its own still rises to the top when something under it is
+ * overdue. Orphans (a sub-task whose parent is gone) are promoted rather than
+ * dropped, so nothing can silently disappear from the list.
+ */
+export function nestDeadlines<T extends Nestable>(rows: T[], today?: string): Nested<T>[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const parents = rows.filter((r) => r.parentId == null || !byId.has(r.parentId));
+  const kids = new Map<number, T[]>();
+  for (const r of rows) {
+    if (r.parentId != null && byId.has(r.parentId)) {
+      const list = kids.get(r.parentId) ?? [];
+      list.push(r);
+      kids.set(r.parentId, list);
+    }
+  }
+  const withKids = parents.map((p) => ({ ...p, children: sortDeadlines(kids.get(p.id) ?? [], today) }));
+
+  // Rank a parent by the most urgent thing in its subtree (itself or an open child).
+  const rankOf = (n: Nested<T>) => {
+    let best = n.done ? URGENCY_RANK.none : URGENCY_RANK[urgencyOf(n.dueDate, today)];
+    for (const c of n.children) {
+      if (c.done) continue;
+      best = Math.min(best, URGENCY_RANK[urgencyOf(c.dueDate, today)]);
+    }
+    return best;
+  };
+  const allDone = (n: Nested<T>) => n.done && n.children.every((c) => c.done);
+
+  return withKids.sort((a, b) => {
+    const da = allDone(a), dbb = allDone(b);
+    if (da !== dbb) return da ? 1 : -1;
+    const ra = rankOf(a), rb = rankOf(b);
+    if (ra !== rb) return ra - rb;
+    if (a.sort !== b.sort) return a.sort - b.sort;
+    return a.title.localeCompare(b.title);
+  });
+}

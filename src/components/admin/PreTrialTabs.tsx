@@ -9,7 +9,7 @@ export function PreTrialTabs({ caseId }: { caseId: number }) {
   const pathname = usePathname();
   const base = `/admin/pre-trial/${caseId}`;
   const tabs = [
-    { label: "Deadlines", href: base, icon: ListChecks },
+    { label: "Checklist", href: base, icon: ListChecks },
     { label: "Proof Matrix", href: `${base}/proof`, icon: Scale },
     { label: "Witnesses & Exhibits", href: `${base}/evidence`, icon: Users },
     { label: "Transcripts", href: `${base}/transcripts`, icon: FileAudio },

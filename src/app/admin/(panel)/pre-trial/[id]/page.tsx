@@ -7,7 +7,7 @@ import { PreTrialCaseHeader } from "@/components/admin/PreTrialCaseHeader";
 import { PreTrialTabs } from "@/components/admin/PreTrialTabs";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { trialCases, trialDeadlines, timeMatters } from "@/db/schema";
+import { trialCases, trialDeadlines, timeMatters, timeActivityUsers } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
@@ -25,6 +25,8 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
   const deadlines = await db.select().from(trialDeadlines).where(eq(trialDeadlines.caseId, id)).orderBy(asc(trialDeadlines.sort));
   const rows: DeadlineRow[] = deadlines.map((d) => ({
     id: d.id,
+    parentId: d.parentId,
+    assignee: d.assignee,
     title: d.title,
     dueDate: d.dueDate,
     done: d.done,
@@ -37,6 +39,14 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
   let matters: MatterOption[] = [];
   try {
     matters = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
+  } catch {
+    /* optional */
+  }
+
+  // Assignees come from the Time Tracker's activity users — the firm's team.
+  let team: { name: string }[] = [];
+  try {
+    team = (await db.select({ name: timeActivityUsers.name }).from(timeActivityUsers).orderBy(asc(timeActivityUsers.sort))).filter((t) => t.name?.trim());
   } catch {
     /* optional */
   }
@@ -64,12 +74,13 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
             causeNumber: row.causeNumber,
             court: row.court,
             trialDate: row.trialDate ?? "",
+            pretrialDate: row.pretrialDate ?? "",
             notes: row.notes,
           }}
           matters={matters}
         />
 
-        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} rows={rows} />
+        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} pretrialDate={row.pretrialDate} rows={rows} team={team} />
       </div>
     </>
   );

@@ -754,6 +754,8 @@ export const trialCases = pgTable(
     court: varchar("court", { length: 191 }).notNull().default(""),
     /** YYYY-MM-DD. Drives the "days out" urgency and the setup template. */
     trialDate: varchar("trial_date", { length: 10 }),
+    /** YYYY-MM-DD. The pretrial conference / 166 & 248 setting. */
+    pretrialDate: varchar("pretrial_date", { length: 10 }),
     notes: text("notes").notNull().default(""),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
@@ -768,6 +770,10 @@ export const trialDeadlines = pgTable(
   {
     id: serial("id").primaryKey(),
     caseId: integer("case_id").notNull(),
+    /** Null for a top-level task; set to the parent's id for a sub-task. */
+    parentId: integer("parent_id"),
+    /** Team member responsible — a Time Tracker activity user's name. */
+    assignee: varchar("assignee", { length: 191 }).notNull().default(""),
     title: varchar("title", { length: 255 }).notNull(),
     /** YYYY-MM-DD, or null for an item with no date set yet. */
     dueDate: varchar("due_date", { length: 10 }),

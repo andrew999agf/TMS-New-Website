@@ -27,6 +27,7 @@ export type CaseInput = {
   causeNumber?: string;
   court?: string;
   trialDate?: string;
+  pretrialDate?: string;
   notes?: string;
   /** Template to seed the checklist with when creating. */
   templateId?: string;
@@ -48,6 +49,7 @@ export async function createTrialCase(input: CaseInput) {
         causeNumber: str(input.causeNumber, 128),
         court: str(input.court),
         trialDate,
+        pretrialDate: isoDate(input.pretrialDate),
         notes: str(input.notes, 4000),
         createdBy: session.email,
       })
@@ -92,6 +94,7 @@ export async function updateTrialCase(id: number, input: CaseInput) {
         causeNumber: str(input.causeNumber, 128),
         court: str(input.court),
         trialDate: isoDate(input.trialDate),
+        pretrialDate: isoDate(input.pretrialDate),
         notes: str(input.notes, 4000),
         updatedAt: new Date(),
       })
@@ -211,23 +214,44 @@ export async function shiftAllDeadlines(caseId: number, newTrialDate: string) {
   }
 }
 
-export async function addDeadline(caseId: number, title: string, dueDate?: string, notes?: string) {
+/** Add a task, or a sub-task when `parentId` is supplied. */
+export async function addDeadline(caseId: number, title: string, dueDate?: string, notes?: string, parentId?: number | null) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const clean = str(title, 255);
-  if (!clean) return { ok: false as const, error: "Enter a deadline." };
+  if (!clean) return { ok: false as const, error: "Enter a task." };
   try {
+    // Only one level of nesting: hanging a sub-task off a sub-task re-parents it
+    // to that item's own parent, so the tree can never get deeper than two.
+    let parent: number | null = null;
+    if (parentId) {
+      const [p] = await db.select({ id: trialDeadlines.id, parentId: trialDeadlines.parentId }).from(trialDeadlines).where(eq(trialDeadlines.id, parentId));
+      if (p) parent = p.parentId ?? p.id;
+    }
     const [{ n } = { n: 0 }] = await db.select({ n: max(trialDeadlines.sort) }).from(trialDeadlines).where(eq(trialDeadlines.caseId, caseId));
-    await db.insert(trialDeadlines).values({ caseId, title: clean, dueDate: isoDate(dueDate), notes: str(notes, 2000), sort: (n ?? 0) + 1 });
+    await db.insert(trialDeadlines).values({ caseId, parentId: parent, title: clean, dueDate: isoDate(dueDate), notes: str(notes, 2000), sort: (n ?? 0) + 1 });
     await audit(session.email, "create", "trial-deadline", String(caseId), `Added "${clean}"`);
     revalidatePath(`/admin/pre-trial/${caseId}`);
     return { ok: true as const };
   } catch {
-    return { ok: false as const, error: "Couldn't add the deadline." };
+    return { ok: false as const, error: "Couldn't add the task." };
   }
 }
 
-export async function updateDeadline(id: number, patch: { title?: string; dueDate?: string | null; notes?: string }) {
+/** Assign (or clear) the team member responsible for a task. */
+export async function assignDeadline(id: number, assignee: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.update(trialDeadlines).set({ assignee: str(assignee) }).where(eq(trialDeadlines.id, id)).returning({ caseId: trialDeadlines.caseId });
+    if (row) revalidatePath(`/admin/pre-trial/${row.caseId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't assign the task." };
+  }
+}
+
+export async function updateDeadline(id: number, patch: { title?: string; dueDate?: string | null; notes?: string; assignee?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -239,6 +263,7 @@ export async function updateDeadline(id: number, patch: { title?: string; dueDat
     }
     if (patch.dueDate !== undefined) set.dueDate = isoDate(patch.dueDate);
     if (patch.notes !== undefined) set.notes = str(patch.notes, 2000);
+    if (patch.assignee !== undefined) set.assignee = str(patch.assignee);
     if (Object.keys(set).length === 0) return { ok: true as const };
     const [row] = await db.update(trialDeadlines).set(set).where(eq(trialDeadlines.id, id)).returning({ caseId: trialDeadlines.caseId });
     if (row) revalidatePath(`/admin/pre-trial/${row.caseId}`);
@@ -265,10 +290,12 @@ export async function toggleDeadline(id: number, done: boolean) {
   }
 }
 
+/** Delete a task; deleting a parent takes its sub-tasks with it. */
 export async function deleteDeadline(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
+    await db.delete(trialDeadlines).where(eq(trialDeadlines.parentId, id));
     const [row] = await db.delete(trialDeadlines).where(eq(trialDeadlines.id, id)).returning({ caseId: trialDeadlines.caseId });
     if (row) revalidatePath(`/admin/pre-trial/${row.caseId}`);
     return { ok: true as const };

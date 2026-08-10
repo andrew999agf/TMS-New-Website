@@ -60,8 +60,8 @@ export default async function PreTrialPage() {
   return (
     <>
       <AdminHeader
-        title="Pre-Trial Deadlines"
-        description="Checklists for cases heading to trial — set a trial date, generate the standard deadlines, and check them off. Sorted by urgency."
+        title="Pre-Trial Checklist"
+        description="Cases heading to trial — set the trial date, generate the standard deadlines, assign tasks, and check them off. Sorted by urgency."
       />
       <div className="p-6 max-w-5xl">
         {needsSync && (

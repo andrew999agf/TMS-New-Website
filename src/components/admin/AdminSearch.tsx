@@ -43,7 +43,7 @@ const INDEX: SearchItem[] = [
   { label: "Share-folder notifications (CC)", href: "/admin/settings#share-cc", section: "settings", group: "Share Folders", keywords: ["who gets copied", "share cc", "notification recipients", "add people to emails"] },
 
   // Case & trial tools
-  { label: "Pre-Trial Deadlines", href: "/admin/pre-trial", section: "pre-trial", group: "Case & Trial Tools", keywords: ["trial", "deadlines", "checklist", "scheduling order", "docket control", "motions in limine", "expert designation", "discovery cutoff", "pretrial", "calendar"] },
+  { label: "Pre-Trial Checklist", href: "/admin/pre-trial", section: "pre-trial", group: "Case & Trial Tools", keywords: ["trial", "deadlines", "checklist", "scheduling order", "docket control", "motions in limine", "expert designation", "discovery cutoff", "pretrial", "calendar"] },
 
   // Time
   { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", section: "time-tracker-4", group: "Time", keywords: ["billing", "time entries", "hours", "activity"] },

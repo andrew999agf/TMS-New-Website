@@ -303,6 +303,9 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS trial_deadlines_case_idx ON trial_deadlines (case_id)`,
+  `ALTER TABLE trial_deadlines ADD COLUMN IF NOT EXISTS parent_id integer`,
+  `ALTER TABLE trial_deadlines ADD COLUMN IF NOT EXISTS assignee varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE trial_cases ADD COLUMN IF NOT EXISTS pretrial_date varchar(10)`,
   // Trial evidence: witnesses, exhibits, causes of action + elements, the proof
   // links between them, and deposition/statement transcripts.
   `CREATE TABLE IF NOT EXISTS trial_witnesses (
@@ -675,12 +678,50 @@ export async function POST() {
     }
     const caseId = row.id;
 
-    const [haveDeadline] = await db.select({ id: trialDeadlines.id }).from(trialDeadlines).where(eq(trialDeadlines.caseId, caseId)).limit(1);
-    if (!haveDeadline) {
-      await db.insert(trialDeadlines).values(
-        CV24_162_ITEMS.map((it, i) => ({ caseId, title: it.title.slice(0, 255), notes: it.notes ?? "", sort: i })),
-      );
-      applied.push(`Seeded ${CV24_162_ITEMS.length} pre-trial checklist items`);
+    // Backfill the trial / pretrial dates onto an already-seeded case, but never
+    // overwrite a date someone has already set.
+    const [dates] = await db.select({ trialDate: trialCases.trialDate, pretrialDate: trialCases.pretrialDate }).from(trialCases).where(eq(trialCases.id, caseId));
+    const datePatch: Record<string, string> = {};
+    if (!dates?.trialDate && CV24_162_CASE.trialDate) datePatch.trialDate = CV24_162_CASE.trialDate;
+    if (!dates?.pretrialDate && CV24_162_CASE.pretrialDate) datePatch.pretrialDate = CV24_162_CASE.pretrialDate;
+    if (Object.keys(datePatch).length) {
+      await db.update(trialCases).set(datePatch).where(eq(trialCases.id, caseId));
+      applied.push(`Set ${CV24_162_CAUSE} trial/pretrial dates`);
+    }
+
+    // The checklist was originally seeded as a flat list. If that flat seed is
+    // still pristine — nothing checked off, nothing assigned, no sub-tasks — swap
+    // it for the grouped parent/sub-task version. Any sign of use and we leave it
+    // completely alone, so no one's work is thrown away.
+    const existingItems = await db
+      .select({ id: trialDeadlines.id, parentId: trialDeadlines.parentId, done: trialDeadlines.done, assignee: trialDeadlines.assignee })
+      .from(trialDeadlines)
+      .where(eq(trialDeadlines.caseId, caseId));
+    const pristineFlat =
+      existingItems.length > 0 &&
+      existingItems.every((r) => r.parentId == null && !r.done && !(r.assignee ?? "").trim());
+    if (pristineFlat) {
+      await db.delete(trialDeadlines).where(eq(trialDeadlines.caseId, caseId));
+      existingItems.length = 0;
+      applied.push("Reorganized the CV24-162 checklist into tasks and sub-tasks");
+    }
+
+    if (existingItems.length === 0) {
+      let sort = 0;
+      let parents = 0;
+      let subs = 0;
+      for (const item of CV24_162_ITEMS) {
+        const [parent] = await db
+          .insert(trialDeadlines)
+          .values({ caseId, parentId: null, title: item.title.slice(0, 255), notes: item.notes ?? "", sort: sort++ })
+          .returning({ id: trialDeadlines.id });
+        parents++;
+        for (const child of item.children ?? []) {
+          await db.insert(trialDeadlines).values({ caseId, parentId: parent.id, title: child.title.slice(0, 255), notes: child.notes ?? "", sort: sort++ });
+          subs++;
+        }
+      }
+      applied.push(`Seeded ${parents} pre-trial tasks with ${subs} sub-tasks`);
     }
 
     // Witnesses first — the proof entries reference them by id.
