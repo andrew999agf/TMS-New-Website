@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, max, inArray } from "drizzle-orm";
+import { eq, and, max, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
 import { trialWitnesses, trialExhibits, trialClaims, trialElements, trialProofs, trialTranscripts } from "@/db/schema";
@@ -24,6 +24,14 @@ const oneOf = (v: unknown, allowed: string[], fallback: string) => {
   return allowed.includes(s) ? s : fallback;
 };
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** How a witness will actually appear at trial. */
+const APPEARANCES = ["in-person", "zoom", "depo-written", "depo-video"];
+const AVAILABILITIES = ["confirmed", "likely", "unavailable", "unknown"];
+const idList = (v: unknown): number[] =>
+  Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n > 0))] : [];
+const strList = (v: unknown, allowed: string[]): string[] =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && allowed.includes(x)))] : [];
 
 /** Next sort value within a case/parent, so new rows land at the end. */
 async function nextSort(table: typeof trialWitnesses | typeof trialExhibits | typeof trialClaims | typeof trialTranscripts, caseId: number) {
@@ -58,8 +66,8 @@ export async function addWitness(caseId: number, input: WitnessInput) {
       role: str(input.role),
       phone: str(input.phone, 64),
       email: str(input.email, 255),
-      available: oneOf(input.available, ["confirmed", "likely", "unavailable", "unknown"], "unknown"),
-      appearance: oneOf(input.appearance, ["in-person", "zoom", "deposition"], "in-person"),
+      available: oneOf(input.available, AVAILABILITIES, "unknown"),
+      appearance: oneOf(input.appearance, APPEARANCES, "in-person"),
       notes: str(input.notes, 2000),
       sort: await nextSort(trialWitnesses, caseId),
     });
@@ -86,8 +94,8 @@ export async function updateWitness(id: number, input: WitnessInput) {
         role: str(input.role),
         phone: str(input.phone, 64),
         email: str(input.email, 255),
-        available: oneOf(input.available, ["confirmed", "likely", "unavailable", "unknown"], "unknown"),
-        appearance: oneOf(input.appearance, ["in-person", "zoom", "deposition"], "in-person"),
+        available: oneOf(input.available, AVAILABILITIES, "unknown"),
+        appearance: oneOf(input.appearance, APPEARANCES, "in-person"),
         notes: str(input.notes, 2000),
       })
       .where(eq(trialWitnesses.id, id))
@@ -119,8 +127,11 @@ export async function deleteWitness(id: number) {
 export type ExhibitInput = {
   title: string; side?: string; number?: string; bates?: string;
   description?: string; status?: string; notes?: string;
+  witnessIds?: number[]; foundation?: string[];
   file?: { url: string; pathname: string; contentType?: string; size?: number };
 };
+
+const FOUNDATIONS = ["business-records-affidavit", "certified-record", "self-authenticating", "stipulated"];
 
 export async function addExhibit(caseId: number, input: ExhibitInput) {
   const session = await guard();
@@ -136,6 +147,8 @@ export async function addExhibit(caseId: number, input: ExhibitInput) {
       bates: str(input.bates, 128),
       description: str(input.description, 4000),
       status: oneOf(input.status, ["listed", "objected", "admitted", "excluded"], "listed"),
+      witnessIds: idList(input.witnessIds),
+      foundation: strList(input.foundation, FOUNDATIONS),
       url: input.file?.url ?? null,
       pathname: input.file?.pathname ?? null,
       contentType: input.file?.contentType ?? null,
@@ -167,6 +180,8 @@ export async function updateExhibit(id: number, input: ExhibitInput) {
       status: oneOf(input.status, ["listed", "objected", "admitted", "excluded"], "listed"),
       notes: str(input.notes, 2000),
     };
+    if (input.witnessIds !== undefined) set.witnessIds = idList(input.witnessIds);
+    if (input.foundation !== undefined) set.foundation = strList(input.foundation, FOUNDATIONS);
     // Only replace the attachment when a fresh upload came with the save.
     if (input.file) {
       set.url = input.file.url;
@@ -195,6 +210,135 @@ export async function deleteExhibit(id: number) {
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't remove the exhibit." };
+  }
+}
+
+/** One-click change from the availability / appearance chips on the witness row. */
+export async function setWitnessStatus(id: number, patch: { available?: string; appearance?: string }) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const set: Record<string, unknown> = {};
+    if (patch.available !== undefined) set.available = oneOf(patch.available, AVAILABILITIES, "unknown");
+    if (patch.appearance !== undefined) set.appearance = oneOf(patch.appearance, APPEARANCES, "in-person");
+    if (!Object.keys(set).length) return { ok: true as const };
+    const [row] = await db.update(trialWitnesses).set(set).where(eq(trialWitnesses.id, id)).returning({ caseId: trialWitnesses.caseId });
+    if (row) paths(row.caseId);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the witness." };
+  }
+}
+
+/** Set which witnesses an exhibit comes in through, and its foundation flags. */
+export async function setExhibitSponsors(id: number, witnessIds: number[], foundation: string[]) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db
+      .update(trialExhibits)
+      .set({ witnessIds: idList(witnessIds), foundation: strList(foundation, FOUNDATIONS) })
+      .where(eq(trialExhibits.id, id))
+      .returning({ caseId: trialExhibits.caseId });
+    if (row) paths(row.caseId);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't save." };
+  }
+}
+
+/**
+ * Sync which elements an exhibit proves. Checking an element creates the proof
+ * entry that shows up on the Proof Matrix under that count; unchecking removes
+ * it. Only proof rows that link THIS exhibit are touched, so citations typed by
+ * hand against the same element are left alone.
+ */
+export async function setExhibitElements(exhibitId: number, elementIds: number[]) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [ex] = await db.select().from(trialExhibits).where(eq(trialExhibits.id, exhibitId));
+    if (!ex) return { ok: false as const, error: "Exhibit not found." };
+    const want = new Set(idList(elementIds));
+
+    const mine = await db.select().from(trialProofs).where(eq(trialProofs.exhibitId, exhibitId));
+    const have = new Set(mine.map((p) => p.elementId));
+
+    const remove = mine.filter((p) => !want.has(p.elementId)).map((p) => p.id);
+    if (remove.length) await db.delete(trialProofs).where(inArray(trialProofs.id, remove));
+
+    const add = [...want].filter((id) => !have.has(id));
+    if (add.length) {
+      // Only attach to elements that really belong to THIS case.
+      const valid = await db
+        .select({ id: trialElements.id })
+        .from(trialElements)
+        .where(and(inArray(trialElements.id, add), eq(trialElements.caseId, ex.caseId)));
+      if (valid.length) {
+        await db.insert(trialProofs).values(
+          valid.map((e, i) => ({
+            caseId: ex.caseId,
+            elementId: e.id,
+            kind: "exhibit",
+            exhibitId,
+            witnessId: null,
+            citation: ex.bates || "",
+            // The matrix already prints the exhibit's number and title from the
+            // link, so repeating it here would render it twice on every row.
+            summary: "",
+            anticipated: false,
+            sort: 100 + i,
+          })),
+        );
+      }
+    }
+    paths(ex.caseId);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[pre-trial] setExhibitElements failed:", err);
+    return { ok: false as const, error: "Couldn't link the elements." };
+  }
+}
+
+/**
+ * Import a batch of uploaded exhibits in one go, in the order the user arranged
+ * them, with their assigned numbers. Returns how many landed.
+ */
+export async function bulkAddExhibits(
+  caseId: number,
+  items: { title: string; side: string; number: string; bates?: string; file?: { url: string; pathname: string; contentType?: string; size?: number } }[],
+) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const rows = (items ?? []).filter((i) => str(i.title, 255));
+  if (!rows.length) return { ok: false as const, error: "Nothing to import." };
+  try {
+    const base = await nextSort(trialExhibits, caseId);
+    await db.insert(trialExhibits).values(
+      rows.map((i, idx) => ({
+        caseId,
+        side: oneOf(i.side, ["plaintiff", "defendant", "joint"], "plaintiff"),
+        number: str(i.number, 32),
+        title: str(i.title, 255),
+        bates: str(i.bates, 128),
+        description: "",
+        status: "listed",
+        witnessIds: [],
+        foundation: [],
+        url: i.file?.url ?? null,
+        pathname: i.file?.pathname ?? null,
+        contentType: i.file?.contentType ?? null,
+        sizeBytes: num(i.file?.size),
+        notes: "",
+        sort: base + idx,
+      })),
+    );
+    await audit(session.email, "create", "trial-exhibit", String(caseId), `Imported ${rows.length} exhibits`);
+    paths(caseId);
+    return { ok: true as const, count: rows.length };
+  } catch (err) {
+    console.error("[pre-trial] bulkAddExhibits failed:", err);
+    return { ok: false as const, error: "Couldn't import the exhibits. Run Settings → Database updates first." };
   }
 }
 

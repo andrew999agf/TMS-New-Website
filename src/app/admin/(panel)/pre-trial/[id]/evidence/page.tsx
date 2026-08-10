@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { PreTrialTabs } from "@/components/admin/PreTrialTabs";
-import { TrialEvidence, type WitnessRow, type ExhibitRow } from "@/components/admin/TrialEvidence";
+import { TrialEvidence, type WitnessRow, type ExhibitRow, type ClaimLite, type ElementLite } from "@/components/admin/TrialEvidence";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
-import { trialCases, trialWitnesses, trialExhibits } from "@/db/schema";
+import { trialCases, trialWitnesses, trialExhibits, trialClaims, trialElements, trialProofs } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 
@@ -22,14 +22,33 @@ export default async function EvidencePage({ params }: { params: Promise<{ id: s
 
   let witnesses: WitnessRow[] = [];
   let exhibits: ExhibitRow[] = [];
+  let claims: ClaimLite[] = [];
+  let elements: ElementLite[] = [];
   let needsSync = false;
   try {
-    const [w, x] = await Promise.all([
+    const [w, x, c, e, proofs] = await Promise.all([
       db.select().from(trialWitnesses).where(eq(trialWitnesses.caseId, id)).orderBy(asc(trialWitnesses.sort)),
       db.select().from(trialExhibits).where(eq(trialExhibits.caseId, id)).orderBy(asc(trialExhibits.sort)),
+      db.select().from(trialClaims).where(eq(trialClaims.caseId, id)).orderBy(asc(trialClaims.sort)),
+      db.select().from(trialElements).where(eq(trialElements.caseId, id)).orderBy(asc(trialElements.sort)),
+      db.select({ exhibitId: trialProofs.exhibitId, elementId: trialProofs.elementId }).from(trialProofs).where(eq(trialProofs.caseId, id)),
     ]);
     witnesses = w.map((r) => ({ id: r.id, name: r.name, side: r.side, role: r.role, phone: r.phone, email: r.email, available: r.available, appearance: r.appearance, notes: r.notes }));
-    exhibits = x.map((r) => ({ id: r.id, side: r.side, number: r.number, title: r.title, bates: r.bates, description: r.description, status: r.status, url: r.url, sizeBytes: r.sizeBytes, notes: r.notes }));
+    // Which elements each exhibit already proves, read back off the proof matrix.
+    const linked = new Map<number, number[]>();
+    for (const p of proofs) {
+      if (p.exhibitId == null) continue;
+      linked.set(p.exhibitId, [...(linked.get(p.exhibitId) ?? []), p.elementId]);
+    }
+    exhibits = x.map((r) => ({
+      id: r.id, side: r.side, number: r.number, title: r.title, bates: r.bates, description: r.description,
+      status: r.status, url: r.url, sizeBytes: r.sizeBytes, notes: r.notes,
+      witnessIds: Array.isArray(r.witnessIds) ? (r.witnessIds as number[]) : [],
+      foundation: Array.isArray(r.foundation) ? (r.foundation as string[]) : [],
+      elementIds: linked.get(r.id) ?? [],
+    }));
+    claims = c.map((r) => ({ id: r.id, name: r.name }));
+    elements = e.map((r) => ({ id: r.id, claimId: r.claimId, text: r.text }));
   } catch {
     needsSync = true;
   }
@@ -45,7 +64,7 @@ export default async function EvidencePage({ params }: { params: Promise<{ id: s
             This feature needs its database tables. Go to <strong>Settings → Database updates</strong>, run it once, then reload.
           </p>
         ) : (
-          <TrialEvidence caseId={id} witnesses={witnesses} exhibits={exhibits} blobReady={isBlobConfigured()} />
+          <TrialEvidence caseId={id} witnesses={witnesses} exhibits={exhibits} claims={claims} elements={elements} blobReady={isBlobConfigured()} />
         )}
       </div>
     </>

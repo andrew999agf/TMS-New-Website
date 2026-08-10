@@ -341,6 +341,11 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS trial_exhibits_case_idx ON trial_exhibits (case_id)`,
+  `ALTER TABLE trial_exhibits ADD COLUMN IF NOT EXISTS witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE trial_exhibits ADD COLUMN IF NOT EXISTS foundation jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  // "deposition" split into written vs video; map the retired value forward so
+  // existing rows keep a meaningful appearance instead of silently resetting.
+  `UPDATE trial_witnesses SET appearance = 'depo-written' WHERE appearance = 'deposition'`,
   `CREATE TABLE IF NOT EXISTS trial_claims (
     id serial PRIMARY KEY,
     case_id integer NOT NULL,

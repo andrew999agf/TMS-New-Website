@@ -823,6 +823,10 @@ export const trialExhibits = pgTable(
     description: text("description").notNull().default(""),
     /** listed | objected | admitted | excluded */
     status: varchar("status", { length: 16 }).notNull().default("listed"),
+    /** Witness ids this exhibit is expected to come in through (may be several). */
+    witnessIds: jsonb("witness_ids").notNull().default([]),
+    /** Predicate shortcuts: business-records-affidavit, certified-record, stipulated, self-authenticating. */
+    foundation: jsonb("foundation").notNull().default([]),
     url: text("url"),
     pathname: text("pathname"),
     contentType: varchar("content_type", { length: 128 }),
