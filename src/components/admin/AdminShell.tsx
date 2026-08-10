@@ -25,6 +25,8 @@ import {
   Clock,
   AlarmClock,
   ClipboardCheck,
+  CalendarClock,
+  Briefcase,
   Globe,
   GraduationCap,
   FileSignature,
@@ -62,13 +64,22 @@ const NAV = [
   { label: "Website Management", href: "/admin/pages", icon: Globe },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Document Generator", href: "/admin/documents", icon: FileSignature },
-  { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
-  { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Clock },
   { label: "Billing Review", href: "/admin/billing-review", icon: ClipboardCheck },
   { label: "Time Clock", href: "/admin/timeclock", icon: AlarmClock },
   { label: "Training", href: "/admin/training", icon: GraduationCap },
   { label: "User Management", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
+];
+
+/**
+ * The day-to-day case tools, pinned to the bottom of the sidebar under their own
+ * heading and indented a step so they read as a distinct set. Always visible —
+ * this is a visual grouping, not a collapsible menu.
+ */
+const CASE_TOOLS = [
+  { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Clock },
+  { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
+  { label: "Pre-Trial Deadlines", href: "/admin/pre-trial", icon: CalendarClock },
 ];
 
 export function AdminShell({
@@ -95,6 +106,7 @@ export function AdminShell({
   const websiteHref = websiteTabs[0]?.href ?? "/admin/pages";
   const onWebsite = WEBSITE_SECTIONS.has(sectionForPath(pathname) ?? "");
   const nav = NAV.filter((i) => (i.label === "Website Management" ? canWebsite : allowed.has(sectionForPath(i.href) ?? "")));
+  const caseTools = CASE_TOOLS.filter((i) => allowed.has(sectionForPath(i.href) ?? ""));
 
   // Restore the saved preference on mount, and persist changes.
   useEffect(() => {
@@ -179,6 +191,43 @@ export function AdminShell({
               </Link>
             );
           })}
+
+          {caseTools.length > 0 && (
+            <div className="mt-4 border-t border-[var(--c-dark-border)] pt-3">
+              {collapsed ? (
+                <div className="mb-1 flex justify-center" title="Case & Trial Tools">
+                  <Briefcase size={14} className="text-[var(--c-dark-ink-muted)]" />
+                </div>
+              ) : (
+                <p className="px-5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--c-dark-ink-muted)]">
+                  Case &amp; Trial Tools
+                </p>
+              )}
+              {caseTools.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={`flex items-center gap-3 py-2.5 text-sm transition-colors ${
+                      // Indented a step past the main items so the grouping reads
+                      // at a glance without hiding anything.
+                      collapsed ? "justify-center px-0" : "pl-8 pr-5"
+                    } ${
+                      active
+                        ? "bg-[var(--c-dark-surface)] text-[var(--c-dark-ink)] border-l-2 border-[var(--c-dark-accent)]"
+                        : "text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] border-l-2 border-transparent"
+                    }`}
+                  >
+                    <Icon size={17} className="shrink-0" />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </nav>
 
         {!collapsed && <PwaInstall />}

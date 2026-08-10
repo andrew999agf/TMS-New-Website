@@ -273,6 +273,34 @@ const DDL = [
     transcribe_ms integer,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  // Pre-trial deadline checklists (Case & Trial Tools).
+  `CREATE TABLE IF NOT EXISTS trial_cases (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL,
+    matter text NOT NULL DEFAULT '',
+    cause_number varchar(128) NOT NULL DEFAULT '',
+    court varchar(191) NOT NULL DEFAULT '',
+    trial_date varchar(10),
+    notes text NOT NULL DEFAULT '',
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_cases_archived_idx ON trial_cases (archived)`,
+  `CREATE TABLE IF NOT EXISTS trial_deadlines (
+    id serial PRIMARY KEY,
+    case_id integer NOT NULL,
+    title varchar(255) NOT NULL,
+    due_date varchar(10),
+    done boolean NOT NULL DEFAULT false,
+    done_at timestamptz,
+    done_by varchar(255),
+    notes text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS trial_deadlines_case_idx ON trial_deadlines (case_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
 ];

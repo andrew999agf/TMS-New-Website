@@ -24,6 +24,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "intake", label: "Intake", href: "/admin/intake", toggleable: false },
   { key: "documents", label: "Document Generator", href: "/admin/documents", toggleable: false },
   { key: "share-folders", label: "Share Folders", href: "/admin/share-folders", toggleable: true },
+  { key: "pre-trial", label: "Pre-Trial Deadlines", href: "/admin/pre-trial", toggleable: true },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
   { key: "billing-review", label: "Billing Review", href: "/admin/billing-review", toggleable: true },

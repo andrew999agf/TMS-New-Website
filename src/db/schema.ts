@@ -738,6 +738,52 @@ export const voiceDiagnostics = pgTable(
   }),
 );
 
+/* ------------------------- Pre-trial deadlines ---------------------------- *
+ * A case heading to trial, plus its checklist of pre-trial deadlines. Dates are
+ * stored as plain YYYY-MM-DD strings (not timestamps) because these are court
+ * calendar dates — they must not shift with a timezone.
+ * -------------------------------------------------------------------------- */
+export const trialCases = pgTable(
+  "trial_cases",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 191 }).notNull(),
+    /** Links the case to a Time Tracker matter (display number). */
+    matter: text("matter").notNull().default(""),
+    causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
+    court: varchar("court", { length: 191 }).notNull().default(""),
+    /** YYYY-MM-DD. Drives the "days out" urgency and the setup template. */
+    trialDate: varchar("trial_date", { length: 10 }),
+    notes: text("notes").notNull().default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ archivedIdx: index("trial_cases_archived_idx").on(t.archived) }),
+);
+
+export const trialDeadlines = pgTable(
+  "trial_deadlines",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    /** YYYY-MM-DD, or null for an item with no date set yet. */
+    dueDate: varchar("due_date", { length: 10 }),
+    done: boolean("done").notNull().default(false),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneBy: varchar("done_by", { length: 255 }),
+    notes: text("notes").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ caseIdx: index("trial_deadlines_case_idx").on(t.caseId) }),
+);
+
+export type TrialCase = typeof trialCases.$inferSelect;
+export type TrialDeadline = typeof trialDeadlines.$inferSelect;
+
 export type Admin = typeof admins.$inferSelect;
 export type ContentBlock = typeof contentBlocks.$inferSelect;
 export type PracticeArea = typeof practiceAreas.$inferSelect;

@@ -1,0 +1,73 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ChevronLeft, Gavel } from "lucide-react";
+import { AdminHeader } from "@/components/admin/AdminShell";
+import { PreTrialChecklist, type DeadlineRow } from "@/components/admin/PreTrialChecklist";
+import { PreTrialCaseHeader } from "@/components/admin/PreTrialCaseHeader";
+import { requireAdmin } from "@/lib/auth";
+import { db } from "@/db";
+import { trialCases, trialDeadlines, timeMatters } from "@/db/schema";
+import { asc, eq } from "drizzle-orm";
+import type { MatterOption } from "@/components/admin/MatterCombobox";
+
+export const dynamic = "force-dynamic";
+
+export default async function PreTrialCasePage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
+  const id = Number((await params).id);
+  if (!Number.isFinite(id)) notFound();
+  if (!db) notFound();
+
+  const [row] = await db.select().from(trialCases).where(eq(trialCases.id, id));
+  if (!row) notFound();
+
+  const deadlines = await db.select().from(trialDeadlines).where(eq(trialDeadlines.caseId, id)).orderBy(asc(trialDeadlines.sort));
+  const rows: DeadlineRow[] = deadlines.map((d) => ({
+    id: d.id,
+    title: d.title,
+    dueDate: d.dueDate,
+    done: d.done,
+    doneAt: d.doneAt ? d.doneAt.toISOString() : null,
+    doneBy: d.doneBy,
+    notes: d.notes,
+    sort: d.sort,
+  }));
+
+  let matters: MatterOption[] = [];
+  try {
+    matters = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
+  } catch {
+    /* optional */
+  }
+
+  return (
+    <>
+      <AdminHeader title={row.name} description={[row.causeNumber, row.court].filter(Boolean).join("  ·  ") || "Pre-trial checklist"} />
+      <div className="p-6 max-w-4xl space-y-5">
+        <Link href="/admin/pre-trial" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+          <ChevronLeft size={15} /> All cases
+        </Link>
+
+        <div className="flex items-center gap-2 text-sm text-[var(--c-ink-muted)]">
+          <Gavel size={15} className="text-[var(--c-accent)]" />
+          {row.matter ? <span>Matter: <span className="text-[var(--c-ink)]">{row.matter}</span></span> : <span>No matter linked</span>}
+        </div>
+
+        <PreTrialCaseHeader
+          id={row.id}
+          initial={{
+            name: row.name,
+            matter: row.matter,
+            causeNumber: row.causeNumber,
+            court: row.court,
+            trialDate: row.trialDate ?? "",
+            notes: row.notes,
+          }}
+          matters={matters}
+        />
+
+        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} rows={rows} />
+      </div>
+    </>
+  );
+}
