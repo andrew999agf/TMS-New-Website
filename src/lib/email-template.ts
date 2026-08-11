@@ -84,22 +84,25 @@ export function brandedEmailHtml({
 
   const officeCells = OFFICES.map((o) => {
     const phone = o.phone
-      ? `<a href="${tel(o.phone)}" style="color:${colors.darkAccent};text-decoration:none">${esc(o.phone)}</a>`
+      ? `<a href="${tel(o.phone)}" style="color:${colors.accent};text-decoration:none">${esc(o.phone)}</a>`
       : "";
-    return `<td style="vertical-align:top;padding:0 14px 14px 0;font-family:${SANS};font-size:12px;line-height:1.55;color:${colors.darkInkMuted};width:33%">
-      <div style="color:${colors.darkInk};font-weight:bold;font-family:${SANS};font-size:13px;margin-bottom:5px">${esc(o.name)}</div>
+    return `<td class="tms-ftr-text" style="vertical-align:top;padding:0 14px 14px 0;font-family:${SANS};font-size:12px;line-height:1.55;color:${colors.inkMuted};width:33%">
+      <div class="tms-ftr-strong" style="color:${colors.ink};font-weight:bold;font-family:${SANS};font-size:13px;margin-bottom:5px">${esc(o.name)}</div>
       ${esc(o.street)}<br/>${esc(o.city)}, ${esc(o.state)} ${esc(o.zip)}<br/>${phone}
     </td>`;
   }).join("");
 
   const footerInner = `
-      <div style="font-family:${SERIF};color:${colors.darkInk};font-size:18px;margin-bottom:16px">${esc(firmName)}</div>
+      <div class="tms-ftr-strong" style="font-family:${SERIF};color:${colors.ink};font-size:18px;margin-bottom:16px">${esc(firmName)}</div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>${officeCells}</tr></table>
-      <div style="border-top:1px solid ${colors.darkBorder};margin-top:8px;padding-top:14px;font-family:${SANS};font-size:11px;color:${colors.darkInkMuted};line-height:1.7">
-        Fax <a href="${tel(FIRM.fax)}" style="color:${colors.darkInkMuted};text-decoration:none">${esc(FIRM.fax)}</a><br/>
+      <div class="tms-ftr-rule tms-ftr-text" style="border-top:1px solid ${colors.border};margin-top:8px;padding-top:14px;font-family:${SANS};font-size:11px;color:${colors.inkMuted};line-height:1.7">
+        Fax <a class="tms-ftr-muted-link" href="${tel(FIRM.fax)}" style="color:${colors.inkMuted};text-decoration:none">${esc(FIRM.fax)}</a><br/>
         This email and the firm's website may be considered attorney advertising. Submitting an inquiry does not create an attorney-client relationship.
       </div>`;
-  const footer = `<tr><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${dark}" style="background-color:${dark};background:${dark}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
+  // The footer is painted on the SAME locked white as the logo band, and flips
+  // to the same dark band in dark mode — so the two ends of the email always
+  // match each other instead of the footer reading as a separate pale card.
+  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background-color:#ffffff;background:#ffffff"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
 
   return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -118,11 +121,24 @@ export function brandedEmailHtml({
         .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
         .tms-logo-light { display:none !important; }
         .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
+        /* Flip the footer with the header so the two ends always agree. */
+        .tms-ftr { background:${dark} !important; background-color:${dark} !important; }
+        .tms-ftr .tms-ftr-strong { color:${colors.darkInk} !important; }
+        .tms-ftr .tms-ftr-text, .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
+        .tms-ftr .tms-ftr-rule { border-top-color:${colors.darkBorder} !important; }
+        .tms-ftr a { color:${colors.darkAccent} !important; }
+        .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
       }
       /* Gmail app dark mode uses these hooks instead of prefers-color-scheme. */
       [data-ogsc] .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
       [data-ogsc] .tms-logo-light { display:none !important; }
       [data-ogsc] .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
+      [data-ogsc] .tms-ftr { background:${dark} !important; background-color:${dark} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-strong { color:${colors.darkInk} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-text, [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-rule { border-top-color:${colors.darkBorder} !important; }
+      [data-ogsc] .tms-ftr a { color:${colors.darkAccent} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
     </style>
   </head>
   <body style="margin:0;padding:0;background-color:${colors.bg}">
