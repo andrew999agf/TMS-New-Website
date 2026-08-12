@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Plus, Trash2, Pencil, CalendarClock, CalendarPlus, ListChecks, X, ChevronRight, UserRound, UserPlus, CornerDownRight, Gavel, Clock } from "lucide-react";
+import { Check, Loader2, Plus, Trash2, Pencil, CalendarClock, CalendarPlus, ListChecks, X, ChevronRight, UserRound, UserPlus, CornerDownRight, Gavel, Clock, StickyNote } from "lucide-react";
 import {
   TEMPLATES, nestDeadlines, urgencyOf, duePhrase, fmtDate,
   URGENCY_CLASS, URGENCY_LABEL, DONE_CLASS, type Urgency,
@@ -209,6 +209,7 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
   onCompleted: (id: number, title: string, who: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [addingSub, setAddingSub] = useState(false);
   const [subTitle, setSubTitle] = useState("");
   const [subDate, setSubDate] = useState("");
@@ -247,17 +248,16 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
         />
         <span className="min-w-0 flex-1">
           <span className={`block text-sm font-semibold ${node.done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}`}>{node.title}</span>
-          {(kids.length > 0 || node.notes) && (
-            <span className="block text-xs text-[var(--c-ink-muted)]">
-              {kids.length > 0 && <>{doneKids}/{kids.length} sub-deadlines done{node.notes ? " · " : ""}</>}
-              {node.notes}
-            </span>
+          {kids.length > 0 && (
+            <span className="block text-xs text-[var(--c-ink-muted)]">{doneKids}/{kids.length} sub-deadlines done</span>
           )}
         </span>
         <AssigneePicker id={node.id} value={node.assignee} team={team} run={run} pending={pending} />
         <DateChip id={node.id} date={node.dueDate} done={node.done} doneAt={node.doneAt} doneBy={node.doneBy} run={run} pending={pending} />
-        <RowActions id={node.id} title={node.title} hasKids run={run} pending={pending} />
+        <RowActions id={node.id} title={node.title} hasKids hasNote={!!node.notes} onNote={() => setNoteOpen((v) => !v)} run={run} pending={pending} />
       </div>
+
+      <NoteBlock id={node.id} notes={node.notes} open={noteOpen} onClose={() => setNoteOpen(false)} run={run} pending={pending} indent="ml-10" />
 
       {open && (
         <div className="border-t border-[var(--c-border)] bg-[var(--c-bg)]/40">
@@ -283,9 +283,11 @@ function TaskCard({ caseId, node, team, run, pending, onCompleted }: {
 }
 
 function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; team: TeamMember[]; run: Run; pending: boolean; onCompleted: (id: number, title: string, who: string) => void }) {
+  const [noteOpen, setNoteOpen] = useState(false);
   const u = urgencyOf(row.dueDate);
   return (
-    <div className={`flex flex-wrap items-center gap-2 border-t border-[var(--c-border)] py-2 pl-10 pr-3 first:border-t-0 ${u === "overdue" && !row.done ? "bg-red-500/[0.05]" : ""}`}>
+    <div className={`border-t border-[var(--c-border)] first:border-t-0 ${u === "overdue" && !row.done ? "bg-red-500/[0.05]" : ""}`}>
+      <div className="flex flex-wrap items-center gap-2 py-2 pl-10 pr-3">
       <CornerDownRight size={12} className="shrink-0 text-[var(--c-ink-muted)]/60" />
       <input
         type="checkbox"
@@ -296,16 +298,65 @@ function SubRow({ row, team, run, pending, onCompleted }: { row: DeadlineRow; te
       />
       <span className="min-w-0 flex-1">
         <span className={`block text-sm ${row.done ? "text-[var(--c-ink-muted)] line-through" : "text-[var(--c-ink)]"}`}>{row.title}</span>
-        {(row.notes || (row.done && row.doneBy)) && (
-          <span className="block text-[11px] text-[var(--c-ink-muted)]">
-            {row.notes}
-            {row.done && row.doneBy && <>{row.notes ? " · " : ""}done by {row.doneBy}</>}
-          </span>
+        {row.done && row.doneBy && (
+          <span className="block text-[11px] text-[var(--c-ink-muted)]">done by {row.doneBy}</span>
         )}
       </span>
       <AssigneePicker id={row.id} value={row.assignee} team={team} run={run} pending={pending} compact />
       <DateChip id={row.id} date={row.dueDate} done={row.done} doneAt={row.doneAt} doneBy={row.doneBy} run={run} pending={pending} compact />
-      <RowActions id={row.id} title={row.title} run={run} pending={pending} />
+      <RowActions id={row.id} title={row.title} hasNote={!!row.notes} onNote={() => setNoteOpen((v) => !v)} run={run} pending={pending} />
+      </div>
+      <NoteBlock id={row.id} notes={row.notes} open={noteOpen} onClose={() => setNoteOpen(false)} run={run} pending={pending} indent="ml-[3.75rem]" />
+    </div>
+  );
+}
+
+/**
+ * A little notepad tucked under the item. A saved note always shows, so it reads
+ * in the list without opening anything; the notepad button turns it into a
+ * textarea for editing.
+ */
+function NoteBlock({ id, notes, open, onClose, run, pending, indent }: {
+  id: number; notes: string; open: boolean; onClose: () => void; run: Run; pending: boolean; indent: string;
+}) {
+  const [draft, setDraft] = useState(notes);
+  useEffect(() => { if (open) setDraft(notes); }, [open, notes]);
+
+  if (!open && !notes.trim()) return null;
+
+  const shell = `${indent} mb-2 mr-3 rounded-md border-l-[3px] border-amber-400/70 bg-amber-100/50 px-2.5 py-1.5 dark:bg-amber-500/[0.08]`;
+
+  if (!open) {
+    return (
+      <div className={shell}>
+        <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--c-ink)]">{notes}</p>
+      </div>
+    );
+  }
+
+  const save = (value: string) => { run(() => updateDeadline(id, { notes: value })); onClose(); };
+  return (
+    <div className={shell}>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setDraft(notes); onClose(); }
+          // Enter saves; Shift+Enter keeps a multi-line note going.
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(draft); }
+        }}
+        rows={2}
+        autoFocus
+        placeholder="Add a note…"
+        className="w-full resize-y rounded border border-amber-400/40 bg-[var(--c-bg)] px-2 py-1 text-[11px] leading-relaxed outline-none focus:border-amber-500"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <button onClick={() => save(draft)} disabled={pending} className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-800 hover:bg-amber-500/30 disabled:opacity-50 dark:text-amber-300">Save note</button>
+        <button onClick={() => { setDraft(notes); onClose(); }} className="text-[10px] text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Cancel</button>
+        {notes.trim() && (
+          <button onClick={() => save("")} className="ml-auto text-[10px] text-[var(--c-ink-muted)] hover:text-red-600">Delete note</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -599,7 +650,7 @@ function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallba
 }
 
 /** Rename and delete. The date and assignee are edited directly on the row. */
-function RowActions({ id, title, hasKids, run, pending }: { id: number; title: string; hasKids?: boolean; run: Run; pending: boolean }) {
+function RowActions({ id, title, hasKids, hasNote, onNote, run, pending }: { id: number; title: string; hasKids?: boolean; hasNote?: boolean; onNote?: () => void; run: Run; pending: boolean }) {
   const [editing, setEditing] = useState(false);
   const [t, setT] = useState(title);
 
@@ -614,6 +665,15 @@ function RowActions({ id, title, hasKids, run, pending }: { id: number; title: s
   }
   return (
     <span className="flex shrink-0 items-center">
+      {onNote && (
+        <button
+          onClick={onNote}
+          className={`rounded p-1 hover:text-[var(--c-accent)] ${hasNote ? "text-amber-600 dark:text-amber-400" : "text-[var(--c-ink-muted)]"}`}
+          title={hasNote ? "Edit the note" : "Add a note"}
+        >
+          <StickyNote size={13} />
+        </button>
+      )}
       <button onClick={() => setEditing(true)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename"><Pencil size={13} /></button>
       <button onClick={() => { if (confirm(`Remove “${title}”${hasKids ? " and its sub-deadlines" : ""}?`)) run(() => deleteDeadline(id)); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
     </span>
