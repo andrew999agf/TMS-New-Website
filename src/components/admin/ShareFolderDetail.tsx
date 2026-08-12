@@ -487,6 +487,8 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
         dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
+        // Only offered when per-file links are switched on for this folder.
+        copyLinkFor={filePublicToken ? (id) => `${window.location.origin}/share/f/${filePublicToken}/${id}` : undefined}
         onUpload={blobReady ? onUpload : undefined}
         revealPath={revealPath}
       />

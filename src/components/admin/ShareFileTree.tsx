@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil, FolderPlus } from "lucide-react";
+import { ChevronRight, Folder as FolderIcon, FolderOpen, FileText, Download, Trash2, Loader2, Eye, Pencil, FolderPlus, Link2, Check } from "lucide-react";
 import { compareNatural } from "@/lib/share/sort";
 
 export type TreeFile = { id: number; path: string; sizeBytes: number | null; by?: string; at?: string };
@@ -68,6 +68,9 @@ type Ctx = {
   onAddSubdir?: (parentPath: string) => void;
   /** When provided, each folder gets a "download this folder as a ZIP" link. */
   dirZipHref?: (path: string) => string;
+  /** When provided, each file gets a "Copy link" button. Called on click only,
+   *  so it can safely read window.location. */
+  copyLinkFor?: (id: number) => string;
   onPreview?: (file: { id: number; base: string }) => void;
   dirInfo?: DirInfo;
   // multi-select (optional)
@@ -84,7 +87,7 @@ type Ctx = {
   toggleOpen: (path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, copyLinkFor, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -103,6 +106,9 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   /** When provided, folders show a download button linking to a ZIP of just
    *  that folder (and everything under it). */
   dirZipHref?: (path: string) => string;
+  /** When provided, each file shows a "Copy link" button that puts that file's
+   *  own shareable link on the clipboard. */
+  copyLinkFor?: (id: number) => string;
   onPreview?: (file: { id: number; base: string }) => void;
   /** Per-folder "created by / when" attribution, keyed by full path. */
   dirInfo?: DirInfo;
@@ -143,7 +149,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, copyLinkFor, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -253,6 +259,44 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
   );
 }
 
+/** Puts this one file's shareable link on the clipboard, with a brief confirmation. */
+function CopyLinkButton({ getLink }: { getLink: () => string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    const link = getLink();
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      // Clipboard API needs a secure context and permission; fall back to a
+      // hidden textarea so the button still works.
+      const ta = document.createElement("textarea");
+      ta.value = link;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* nothing else to try */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <button
+      onClick={copy}
+      title="Copy this document's link"
+      className={`shrink-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+        copied
+          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+      }`}
+    >
+      {copied ? <Check size={13} /> : <Link2 size={13} />}
+      <span className="hidden sm:inline">{copied ? "Copied" : "Copy link"}</span>
+    </button>
+  );
+}
+
 function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx }) {
   const href = ctx.hrefFor(file.id);
   return (
@@ -276,6 +320,7 @@ function FileLeaf({ file, depth, ctx }: { file: Leaf; depth: number; ctx: Ctx })
           <Download size={13} /><span className="hidden sm:inline">Download</span>
         </a>
       )}
+      {ctx.copyLinkFor && <CopyLinkButton getLink={() => ctx.copyLinkFor!(file.id)} />}
       {ctx.onRenameFile && (
         <button onClick={() => ctx.onRenameFile!(file.id, file.base)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename this document">
           <Pencil size={13} />
