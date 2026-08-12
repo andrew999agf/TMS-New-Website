@@ -7,6 +7,8 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { buildLinkTreePdfs } from "@/lib/share/linktree";
 import { comparePaths } from "@/lib/share/sort";
 import { zipBuffers } from "@/lib/share/zip";
+import { normalizeMeta } from "@/lib/share/types";
+import { FIRM } from "@/lib/firm";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -28,8 +30,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // (SQL's plain ORDER BY would put "Exhibit 10" ahead of "Exhibit 2".)
   const files = [...rows].sort((a, b) => comparePaths(a.filename, b.filename));
 
-  const cap = Math.min(2000, Math.max(100, Number(new URL(req.url).searchParams.get("cap")) || 750));
-  const parts = await buildLinkTreePdfs(files.map((f) => ({ filename: f.filename, url: f.url, contentType: f.contentType })), cap);
+  const sp = new URL(req.url).searchParams;
+  const cap = Math.min(2000, Math.max(100, Number(sp.get("cap")) || 750));
+
+  // Stamp firm URLs, never the storage URL. A Blob URL is public and permanent —
+  // printing it into a document that gets emailed around would hand out
+  // unrevocable access to the file.
+  //   firm   → signed-in proxy on our domain (default)
+  //   public → the folder's own per-file share links, when that's switched on
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
+  const meta = normalizeMeta(folder.meta);
+  const token = meta.fileLinks && meta.publicToken ? meta.publicToken : null;
+  const usePublic = sp.get("links") === "public" && !!token;
+  const linkFor = (fileId: number) =>
+    usePublic ? `${base}/share/f/${token}/${fileId}` : `${base}/admin/share-folders/${id}/file/${fileId}`;
+
+  const parts = await buildLinkTreePdfs(
+    files.map((f) => ({ filename: f.filename, url: f.url, linkUrl: linkFor(f.id), contentType: f.contentType })),
+    cap,
+  );
 
   const stem = (folder.name || "documents").replace(/[\\/:*?"<>|]/g, "-");
   if (parts.length === 1) {

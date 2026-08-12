@@ -1,7 +1,14 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage } from "pdf-lib";
 
-export type LinkTreeFile = { filename: string; url: string; contentType: string | null };
+export type LinkTreeFile = {
+  filename: string;
+  /** Where to FETCH the bytes from (storage). Never printed. */
+  url: string;
+  /** Where the stamped, clickable link should POINT — a firm URL, not storage. */
+  linkUrl: string;
+  contentType: string | null;
+};
 
 const MAROON = rgb(0.478, 0.122, 0.169);
 const INK = rgb(0.12, 0.12, 0.12);
@@ -70,7 +77,7 @@ export async function buildLinkTreePdfs(files: LinkTreeFile[], cap: number): Pro
     const name = f.filename;
     let bytes: Uint8Array | null = null;
     try { const res = await fetch(f.url); if (res.ok) bytes = new Uint8Array(await res.arrayBuffer()); } catch { bytes = null; }
-    if (!bytes) { await placeholder(name, f.url, "This document could not be loaded. Open it via the link below."); continue; }
+    if (!bytes) { await placeholder(name, f.linkUrl, "This document could not be loaded. Open it via the link below."); continue; }
 
     const ext = (baseName(name).split(".").pop() || "").toLowerCase();
     const isPdf = ext === "pdf" || (f.contentType ?? "").includes("pdf");
@@ -84,12 +91,12 @@ export async function buildLinkTreePdfs(files: LinkTreeFile[], cap: number): Pro
         for (let i = 0; i < total; i++) {
           const [pg] = await part.copyPages(src, [i]);
           part.addPage(pg);
-          stampFooter(part, pg, font, name, i + 1, total, f.url);
+          stampFooter(part, pg, font, name, i + 1, total, f.linkUrl);
           count++;
           await rollIfFull();
         }
       } catch {
-        await placeholder(name, f.url, "This PDF couldn't be merged (it may be secured). Open it via the link below.");
+        await placeholder(name, f.linkUrl, "This PDF couldn't be merged (it may be secured). Open it via the link below.");
       }
     } else if (isJpg || isPng) {
       try {
@@ -98,14 +105,14 @@ export async function buildLinkTreePdfs(files: LinkTreeFile[], cap: number): Pro
         const scale = Math.min(maxW / img.width, maxH / img.height, 1);
         const pg = part.addPage([612, 792]);
         pg.drawImage(img, { x: (612 - img.width * scale) / 2, y: 792 - 50 - img.height * scale, width: img.width * scale, height: img.height * scale });
-        stampFooter(part, pg, font, name, 1, 1, f.url);
+        stampFooter(part, pg, font, name, 1, 1, f.linkUrl);
         count++;
         await rollIfFull();
       } catch {
-        await placeholder(name, f.url, "This image couldn't be embedded. Open it via the link below.");
+        await placeholder(name, f.linkUrl, "This image couldn't be embedded. Open it via the link below.");
       }
     } else {
-      await placeholder(name, f.url, "This file type isn't a PDF or image. Open it via the link below.");
+      await placeholder(name, f.linkUrl, "This file type isn't a PDF or image. Open it via the link below.");
     }
   }
 

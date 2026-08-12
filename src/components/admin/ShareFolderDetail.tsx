@@ -496,7 +496,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
       )}
       {showLinkTree && (
-        <LinkTreeDialog folderId={folderId} folderName={folderName} files={files.map((f) => ({ id: f.id, url: f.url, filename: f.filename }))} onClose={() => setShowLinkTree(false)} />
+        <LinkTreeDialog folderId={folderId} folderName={folderName} files={files.map((f) => ({ id: f.id, url: f.url, filename: f.filename }))} publicToken={filePublicToken} onClose={() => setShowLinkTree(false)} />
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
