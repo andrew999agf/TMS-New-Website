@@ -35,4 +35,6 @@ export const REFERRAL_ATTORNEYS: ReferralAttorneySeed[] = [
   { name: "Frank Sellers", firm: "Sellers Law Firm, PC", address: "1612 Summit Ave, Suite 200, Fort Worth, TX 76102", phone: "817-928-4222", website: "sellerstriallaw.com", practiceArea: "Criminal Defense" },
   { name: "Nickols, White, and Solomon", firm: "Nickols White Solomon, PLLC", address: "4200 W Vickery Blvd, Suite 200, Fort Worth, TX 76107", phone: "817-617-7500", website: "nwslawfirm.com", practiceArea: "Criminal Defense" },
   { name: "John Jose", firm: "Jose & Vaughn, PLLC", address: "100 Lexington St, Suite 70, Fort Worth, TX 76102", phone: "817-704-2911", website: "joseandvaughn.com", practiceArea: "Personal Injury / Wrongful Death" },
+  { name: "Sam Johndroe", firm: "Johndroe Law, PLLC", address: "1617 Park Place Ave, Suite 110, Fort Worth, TX 76110", phone: "817-752-4111", website: "johndroelaw.com", practiceArea: "Real Estate / Landlord-Tenant / Consumer & Contract Disputes" },
+  { name: "Bailey McShane", firm: "Law Office of J. Bailey McShane, IV PLLC", address: "3712 Old Denton Rd, Suite 115, Carrollton, TX 75007", phone: "972-905-4325", website: "mcshanelegal.com", practiceArea: "Criminal Defense / Civil Rights" },
 ];
