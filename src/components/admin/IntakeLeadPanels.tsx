@@ -117,15 +117,16 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [note, setNote] = useState("");
-  const [askNotify, setAskNotify] = useState(false);
-  const [notifiedCounsel, setNotifiedCounsel] = useState(false);
+  // Opt-in, and deliberately off: telling counsel is the exception, not the
+  // default, so nobody gets emailed unless this is ticked on purpose.
+  const [notifyAttorneys, setNotifyAttorneys] = useState(false);
   const [customList, setCustomList] = useState<CustomAttorney[]>([]);
   const [showCustom, setShowCustom] = useState(false);
   const [cf, setCf] = useState<CustomAttorney>(EMPTY_CUSTOM);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Referral attorneys we could email a courtesy notice to (those with an
-  // address on file). Drives the yes/no question asked at send time.
+  // address on file). Only when there's at least one does the opt-in appear.
   const notifiable = useMemo(() => {
     const addrs = [
       ...selected.map((id) => attorneys.find((a) => a.id === id)?.email),
@@ -212,13 +213,10 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     const addr = to.trim();
     if (!isEmail(addr)) { setError(addr ? `“${addr}” isn't a valid email address.` : "Enter an email address to send to."); return; }
     setError(null);
-    if (notifiable > 0) { setAskNotify(true); return; }
-    doSend(false);
+    doSend();
   }
 
-  function doSend(notifyAttorneys: boolean) {
-    setAskNotify(false);
-    setNotifiedCounsel(notifyAttorneys);
+  function doSend() {
     setSending(true); setError(null);
     const addr = to.trim();
     sendTurnback(row.id, selected, { note, customAttorneys: customList, to: addr, cc, saveEmail: saveEmail && emailChanged, notifyAttorneys })
@@ -240,7 +238,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
             <p className="text-sm text-[var(--c-ink)]">
               Turn-back email sent to <strong>{done}</strong>{cc.length ? <>, copied to <strong>{cc.length}</strong> other{cc.length === 1 ? "" : "s"}</> : ""}.
               {saveEmail && emailChanged && <><br /><span className="text-xs text-[var(--c-ink-muted)]">The corrected address was saved to this lead.</span></>}
-              {notifiable > 0 && <><br /><span className="text-xs text-[var(--c-ink-muted)]">{notifiedCounsel ? `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} notified.` : `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} not notified.`}</span></>}
+              {notifiable > 0 && <><br /><span className="text-xs text-[var(--c-ink-muted)]">{notifyAttorneys ? `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} notified.` : `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} not contacted.`}</span></>}
             </p>
 
             {statusMsg ? (
@@ -343,6 +341,17 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                   ))}
                 </div>
                 <p className="mt-1.5 text-[11px] text-[var(--c-ink-muted)]">Checked attorneys are listed in the email. Leave all unchecked to omit the referral section.</p>
+                {notifiable > 0 && (
+                  <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2 text-[11px]">
+                    <input type="checkbox" checked={notifyAttorneys} onChange={(e) => setNotifyAttorneys(e.target.checked)} className="mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block font-semibold text-[var(--c-ink)]">Also let {notifiable === 1 ? "the attorney" : "the attorneys"} know</span>
+                      <span className="block text-[var(--c-ink-muted)]">
+                        Off by default. Ticking this emails {notifiable === 1 ? "the referral attorney" : `the ${notifiable} referral attorneys`} a short courtesy note — practice area and last name only.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Custom / one-off attorney not in the stable */}
                 {!showCustom ? (
@@ -418,23 +427,6 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
           </div>
         )}
 
-        {askNotify && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setAskNotify(false); }}>
-            <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
-              <h4 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base">
-                <Mail size={16} className="text-[var(--c-accent)]" /> Notify the {notifiable === 1 ? "attorney" : "attorneys"} of the referral?
-              </h4>
-              <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
-                We can send {notifiable === 1 ? "the referral attorney" : `the ${notifiable} referral attorneys`} a short courtesy note that we sent someone their way — practice area and last name only, nothing identifying. Choose no to send the turn-back without contacting {notifiable === 1 ? "them" : "any of them"}.
-              </p>
-              <div className="flex flex-wrap justify-end gap-2">
-                <button onClick={() => setAskNotify(false)} className="btn btn-outline text-sm py-2 px-3">Back</button>
-                <button onClick={() => doSend(false)} className="btn btn-outline text-sm py-2 px-4">No — don&apos;t notify</button>
-                <button onClick={() => doSend(true)} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4"><Send size={15} /> Yes — notify</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
