@@ -180,6 +180,17 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, note, customList]);
 
+  /**
+   * What the "Referring to" card says about contacting counsel. It must follow
+   * the opt-in checkbox — it previously always claimed a notice was going out,
+   * which read as though notifying were the default.
+   */
+  function contactLine(email?: string | null) {
+    if (!notifyAttorneys) return { text: "Not being contacted", cls: "text-[var(--c-ink-muted)]" };
+    if (!isEmail(email)) return { text: "No email on file — can't be notified", cls: "text-amber-600" };
+    return { text: "✓ Will receive a brief referral notice", cls: "text-green-700 dark:text-green-500" };
+  }
+
   function toggle(id: number) {
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   }
@@ -384,7 +395,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                         <p className="font-medium text-[var(--c-ink)]">{a!.name}{a!.firm ? ` · ${a!.firm}` : ""}</p>
                         {(a!.address || a!.phone) && <p className="text-[var(--c-ink-muted)]">{[a!.address, a!.phone].filter(Boolean).join(" · ")}</p>}
                         {(a!.email || a!.website) && <p className="text-[var(--c-ink-muted)]">{[a!.email, a!.website].filter(Boolean).join(" · ")}</p>}
-                        <p className={`mt-0.5 ${a!.email ? "text-green-700" : "text-amber-600"}`}>{a!.email ? "✓ Will receive a brief referral notice" : "No email on file — won't be notified"}</p>
+                        {(() => { const c = contactLine(a!.email); return <p className={`mt-0.5 ${c.cls}`}>{c.text}</p>; })()}
                       </li>
                     ))}
                     {customList.map((a, i) => (
@@ -395,7 +406,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
                         </div>
                         {(a.address || a.phone) && <p className="text-[var(--c-ink-muted)]">{[a.address, a.phone].filter(Boolean).join(" · ")}</p>}
                         {(a.email || a.website) && <p className="text-[var(--c-ink-muted)]">{[a.email, a.website].filter(Boolean).join(" · ")}</p>}
-                        <p className={`mt-0.5 ${a.email ? "text-green-700" : "text-amber-600"}`}>{a.email ? "✓ Will receive a brief referral notice" : "No email — won't be notified"}</p>
+                        {(() => { const c = contactLine(a.email); return <p className={`mt-0.5 ${c.cls}`}>{c.text}</p>; })()}
                       </li>
                     ))}
                   </ul>
