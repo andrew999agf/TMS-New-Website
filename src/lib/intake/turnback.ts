@@ -18,6 +18,19 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const normUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 
 /**
+ * Strip anything that reads as an email address out of text shown to a
+ * prospective client.
+ *
+ * The referral card deliberately omits the attorney's email so a declined
+ * inquiry reaches counsel by phone or their own intake rather than landing
+ * unsolicited in their inbox. This closes the side doors: an address typed into
+ * the firm, address, or practice-area field — or a "website" that's really a
+ * mailto — would otherwise hand out the same thing.
+ */
+const EMAIL_RE = /(mailto:)?[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const stripEmails = (s: string) => s.replace(EMAIL_RE, "").replace(/\s*[·|,;]\s*$/, "").replace(/\s{2,}/g, " ").trim();
+
+/**
  * Build the "turn-back" email sent to a prospective client the firm can't take:
  * a gracious decline, a statute-of-limitations caution, an optional list of
  * referral attorneys, the statewide-matters note, and a no-attorney-client
@@ -37,20 +50,30 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
   if (attorneys.length) {
     const cards = attorneys
       .map((a) => {
+        // Every field is scrubbed of email addresses before it reaches the
+        // prospect — a.email is never rendered here at all, and this stops one
+        // slipping in through any of the free-text fields.
+        const firm = stripEmails(a.firm ?? "");
+        const practiceArea = stripEmails(a.practiceArea ?? "");
+        const address = stripEmails(a.address ?? "");
+        const phone = stripEmails(a.phone ?? "");
+        // A "website" that is really an email is dropped rather than linked.
+        const website = /@/.test(a.website ?? "") ? "" : (a.website ?? "").trim();
+
         const lines: string[] = [];
-        if (a.firm) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.firm)}</div>`);
-        if (a.practiceArea) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.practiceArea)}</div>`);
-        if (a.address) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(a.address)}</div>`);
+        if (firm) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(firm)}</div>`);
+        if (practiceArea) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(practiceArea)}</div>`);
+        if (address) lines.push(`<div style="color:${colors.inkMuted};font-size:13px">${esc(address)}</div>`);
         // Phone and website only — the attorney's email address is deliberately
-        // withheld from the prospect so referrals arrive by phone or their own
-        // intake form rather than as unsolicited email to counsel. (a.email is
-        // still used internally for the optional courtesy notice to counsel.)
+        // withheld so referrals arrive by phone or their own intake form rather
+        // than as unsolicited email to counsel. (a.email is still used
+        // internally for the optional courtesy notice to counsel.)
         const contact: string[] = [];
-        if (a.phone) contact.push(esc(a.phone));
-        if (a.website) contact.push(`<a href="${esc(normUrl(a.website))}" style="color:${colors.accent};text-decoration:none">${esc(a.website)}</a>`);
+        if (phone) contact.push(esc(phone));
+        if (website) contact.push(`<a href="${esc(normUrl(website))}" style="color:${colors.accent};text-decoration:none">${esc(website)}</a>`);
         if (contact.length) lines.push(`<div style="font-size:13px;margin-top:2px">${contact.join(" &nbsp;·&nbsp; ")}</div>`);
         return `<td style="padding:12px 14px;border:1px solid ${colors.border};border-radius:8px;background:${colors.surface2}">
-          <div style="font-weight:bold;font-size:15px;color:${colors.ink}">${esc(a.name)}</div>
+          <div style="font-weight:bold;font-size:15px;color:${colors.ink}">${esc(stripEmails(a.name))}</div>
           ${lines.join("")}
         </td>`;
       })
