@@ -41,7 +41,13 @@ export function brandedEmailHtml({
     ? `<link href="https://fonts.googleapis.com/css2?${[...new Set(families)].map((f) => `family=${fam(f)}:wght@400;600;700`).join("&")}&display=swap" rel="stylesheet" />`
     : "";
 
-  const dark = colors.darkBg;
+  // Locked light palette. Every surface in the email is painted from these, and
+  // the dark-mode blocks below force them back if a client tries to invert.
+  const PAGE = colors.bg;       // warm bone
+  const CARD = colors.surface;  // white
+  const INK = colors.ink;
+  const MUTED = colors.inkMuted;
+  const RULE = colors.border;
 
   // Logo that's small on phones, large on desktop — and reliably large in
   // Outlook too (it ignores media queries, so it gets an MSO-only fixed size).
@@ -52,33 +58,18 @@ export function brandedEmailHtml({
   // Dark band wrapped in its own bgcolor table (most reliable across clients,
   // incl. mobile and dark mode) rather than a bgcolor on a single cell.
   const band = (bg: string, inner: string, pad = "30px 32px") =>
-    `<tr><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${bg}" style="background-color:${bg};background:${bg}"><tr><td align="center" style="padding:${pad}">${inner}</td></tr></table></td></tr>`;
+    `<tr><td class="tms-band" style="padding:0;background-color:${bg}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${bg}" style="background-color:${bg};background:${bg}"><tr><td align="center" style="padding:${pad}">${inner}</td></tr></table></td></tr>`;
 
-  // A single opaque <img> on a solid, locked background — the reliable way across
-  // clients. `logoDark` is the colored (navy) logo for LIGHT backgrounds;
-  // `logoLight` is the white logo for DARK backgrounds. When we have both, we
-  // swap logo + background by color scheme so it stays crisp in light AND dark
-  // (and never depends on transparency, which is what phones' dark mode mangles).
-  let header: string;
-  if (logoDark && logoLight) {
-    header = `<tr><td class="tms-hdr" bgcolor="#ffffff" style="padding:0;background-color:#ffffff">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px 32px">
-        <!--[if mso]><img src="${logoDark}" alt="${esc(firmName)}" width="430" style="display:block;margin:0 auto;border:0" /><![endif]-->
-        <!--[if !mso]><!-->
-        <img src="${logoDark}" alt="${esc(firmName)}" width="220" class="tms-logo tms-logo-light" style="width:220px;max-width:80%;height:auto;display:block;margin:0 auto;border:0" />
-        <div class="tms-logo-dark" style="display:none;mso-hide:all;overflow:hidden;max-height:0;width:0;line-height:0">
-          <img src="${logoLight}" alt="${esc(firmName)}" width="220" class="tms-logo" style="width:220px;max-width:80%;height:auto;display:block;margin:0 auto;border:0" />
-        </div>
-        <!--<![endif]-->
-      </td></tr></table>
-    </td></tr>`;
-  } else if (logoDark) {
-    header = band("#ffffff", logoImg(logoDark)); // colored logo on locked white
-  } else if (logoLight) {
-    header = band(dark, logoImg(logoLight)); // white logo on the dark band
-  } else {
-    header = band(dark, `<div style="font-family:${SERIF};color:${colors.darkInk};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
-  }
+  // The logo always sits on a locked white band with the colored (navy) logo.
+  //
+  // We deliberately do NOT adapt to dark mode. Mail clients handle it
+  // inconsistently — Gmail on iOS re-colours the message itself — and the
+  // swap-to-dark version came out as a near-black card with an unreadable navy
+  // logo. A single light treatment, defended below, is predictable everywhere.
+  const primaryLogo = logoDark || logoLight;
+  const header = primaryLogo
+    ? band(CARD, logoImg(primaryLogo), "28px 32px")
+    : band(CARD, `<div style="font-family:${SERIF};color:${colors.ink};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
 
   const accent = `<tr><td style="padding:0;font-size:0;line-height:0"><div style="height:3px;background-color:${colors.darkAccent}">&nbsp;</div><div style="height:4px;background-color:${colors.accent}">&nbsp;</div></td></tr>`;
 
@@ -102,52 +93,61 @@ export function brandedEmailHtml({
   // The footer is painted on the SAME locked white as the logo band, and flips
   // to the same dark band in dark mode — so the two ends of the email always
   // match each other instead of the footer reading as a separate pale card.
-  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background-color:#ffffff;background:#ffffff"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
+  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="${CARD}" style="background-color:${CARD};background:${CARD}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
 
   return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light only" />
     ${fontLink}
     <style>
       /* Logo enlarges on wider (desktop) screens; stays smaller on phones. */
       @media only screen and (min-width:600px) {
         img.tms-logo { width:440px !important; max-width:440px !important; }
       }
-      /* Dark mode: swap the header to a dark band and show the WHITE logo, so a
-         transparent colored logo never sits on a background phone dark-mode has
-         darkened into it. */
+      /*
+       * Dark mode: hold the light design instead of adapting to it.
+       *
+       * Clients that honour color-scheme will leave this alone. The ones that
+       * re-colour anyway (Gmail on iOS and Android, which rewrites the message
+       * and exposes these [data-ogsc]/[data-ogsb] hooks) get every surface and
+       * every piece of text pinned back, so the email reads the same on a phone
+       * at night as it does on a desktop.
+       */
       @media (prefers-color-scheme: dark) {
-        .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
-        .tms-logo-light { display:none !important; }
-        .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
-        /* Flip the footer with the header so the two ends always agree. */
-        .tms-ftr { background:${dark} !important; background-color:${dark} !important; }
-        .tms-ftr .tms-ftr-strong { color:${colors.darkInk} !important; }
-        .tms-ftr .tms-ftr-text, .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
-        .tms-ftr .tms-ftr-rule { border-top-color:${colors.darkBorder} !important; }
-        .tms-ftr a { color:${colors.darkAccent} !important; }
-        .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
+        .tms-page, .tms-page > tbody > tr > td { background-color:${PAGE} !important; }
+        .tms-card { background-color:${CARD} !important; }
+        .tms-band, .tms-band table, .tms-band td { background-color:${CARD} !important; }
+        .tms-body, .tms-body * { color:${INK} !important; }
+        .tms-muted, .tms-muted * { color:${MUTED} !important; }
+        .tms-ftr, .tms-ftr table, .tms-ftr td { background-color:${CARD} !important; }
+        .tms-ftr .tms-ftr-strong { color:${INK} !important; }
+        .tms-ftr .tms-ftr-text, .tms-ftr .tms-ftr-muted-link { color:${MUTED} !important; }
+        .tms-ftr .tms-ftr-rule { border-top-color:${RULE} !important; }
+        .tms-ftr a { color:${colors.accent} !important; }
+        .tms-ftr .tms-ftr-muted-link { color:${MUTED} !important; }
       }
-      /* Gmail app dark mode uses these hooks instead of prefers-color-scheme. */
-      [data-ogsc] .tms-hdr { background:${dark} !important; background-color:${dark} !important; }
-      [data-ogsc] .tms-logo-light { display:none !important; }
-      [data-ogsc] .tms-logo-dark { display:block !important; max-height:none !important; width:auto !important; overflow:visible !important; line-height:normal !important; }
-      [data-ogsc] .tms-ftr { background:${dark} !important; background-color:${dark} !important; }
-      [data-ogsc] .tms-ftr .tms-ftr-strong { color:${colors.darkInk} !important; }
-      [data-ogsc] .tms-ftr .tms-ftr-text, [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
-      [data-ogsc] .tms-ftr .tms-ftr-rule { border-top-color:${colors.darkBorder} !important; }
-      [data-ogsc] .tms-ftr a { color:${colors.darkAccent} !important; }
-      [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${colors.darkInkMuted} !important; }
+      [data-ogsc] .tms-page, [data-ogsb] .tms-page { background-color:${PAGE} !important; }
+      [data-ogsc] .tms-card, [data-ogsb] .tms-card { background-color:${CARD} !important; }
+      [data-ogsc] .tms-band, [data-ogsb] .tms-band,
+      [data-ogsc] .tms-band td, [data-ogsb] .tms-band td { background-color:${CARD} !important; }
+      [data-ogsc] .tms-body, [data-ogsc] .tms-body * { color:${INK} !important; }
+      [data-ogsc] .tms-muted, [data-ogsc] .tms-muted * { color:${MUTED} !important; }
+      [data-ogsc] .tms-ftr, [data-ogsb] .tms-ftr,
+      [data-ogsc] .tms-ftr td, [data-ogsb] .tms-ftr td { background-color:${CARD} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-strong { color:${INK} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-text, [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${MUTED} !important; }
+      [data-ogsc] .tms-ftr .tms-ftr-rule { border-top-color:${RULE} !important; }
+      [data-ogsc] .tms-ftr a { color:${colors.accent} !important; }
     </style>
   </head>
-  <body style="margin:0;padding:0;background-color:${colors.bg}">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${colors.bg}" style="background-color:${colors.bg};padding:24px 12px">
+  <body style="margin:0;padding:0;background-color:${PAGE}">
+    <table role="presentation" class="tms-page" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAGE}" style="background-color:${PAGE};padding:24px 12px">
       <tr><td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background-color:${colors.surface};border:1px solid ${colors.border};border-radius:10px;overflow:hidden">
+        <table role="presentation" class="tms-card" width="600" cellpadding="0" cellspacing="0" bgcolor="${CARD}" style="width:600px;max-width:600px;background-color:${CARD};border:1px solid ${RULE};border-radius:10px;overflow:hidden">
           ${header}
           ${accent}
-          <tr><td style="padding:32px;font-family:${SERIF};color:${colors.ink};font-size:15px;line-height:1.6">${bodyHtml}</td></tr>
+          <tr><td class="tms-body" style="padding:32px;font-family:${SERIF};color:${INK};font-size:15px;line-height:1.6">${bodyHtml}</td></tr>
           ${footer}
         </table>
       </td></tr>
