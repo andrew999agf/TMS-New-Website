@@ -1,5 +1,5 @@
 import "server-only";
-import { FIRM } from "@/lib/firm";
+import { FIRM, OFFICES } from "@/lib/firm";
 import { getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -29,6 +29,7 @@ const normUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
  */
 const EMAIL_RE = /(mailto:)?[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const stripEmails = (s: string) => s.replace(EMAIL_RE, "").replace(/\s*[·|,;]\s*$/, "").replace(/\s{2,}/g, " ").trim();
+const tel = (p: string) => `tel:+1${p.replace(/[^0-9]/g, "")}`;
 
 /**
  * Build the "turn-back" email sent to a prospective client the firm can't take:
@@ -86,17 +87,47 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
   }
 
   const note = opts.note?.trim();
+  const SERIF = `${fonts.display ? `'${fonts.display}', ` : ""}Georgia, 'Times New Roman', serif`;
+
+  // One clear way to reach us, inside the card. The footer still lists every
+  // office, so this stays to a single line rather than repeating all three.
+  const hub = OFFICES.find((o) => o.isHub) ?? OFFICES[0];
+  const site = `https://${FIRM.domain}`;
+  const callRow = `
+        <p style="margin:16px 0 0;padding-top:14px;border-top:1px solid ${colors.border};font-size:15px;line-height:1.6;color:${colors.ink}">
+          <a href="${tel(hub.phone)}" style="color:${colors.accent};font-weight:bold;text-decoration:none">${esc(hub.phone)}</a>
+          &nbsp;&middot;&nbsp;
+          <a href="${site}" style="color:${colors.accent};text-decoration:none">${esc(FIRM.domain)}</a>
+        </p>`;
+
+  // The decline itself is deliberately quiet: a thin rule and muted text, no
+  // filled panels. Nothing in the top half competes for attention, which is
+  // what lets the closing card carry weight.
+  const quiet = `margin:0 0 16px;padding:2px 0 2px 14px;border-left:2px solid ${colors.border};color:${colors.inkMuted};font-size:14px;line-height:1.6`;
+
+  // The one thing meant to land. Not a loud colour block — a defined card with
+  // an oxblood rule across the top and a serif headline in the accent, so it
+  // reads as a considered note from the firm rather than an advert.
+  const closing = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 8px;border-collapse:separate">
+      <tr><td style="padding:0;font-size:0;line-height:0"><div style="height:4px;background-color:${colors.accent};border-radius:4px 4px 0 0">&nbsp;</div></td></tr>
+      <tr><td style="padding:20px 22px;background-color:${colors.surface};border:1px solid ${colors.border};border-top:0;border-radius:0 0 8px 8px">
+        <p style="margin:0 0 10px;font-family:${SERIF};font-size:19px;line-height:1.35;font-weight:bold;color:${colors.accent}">If something serious ever happens &mdash; to you or someone you love</p>
+        <p style="margin:0 0 12px;font-size:15px;line-height:1.65;color:${colors.ink}">Bad things happen to good people. A wreck on the way home. A catastrophic injury. A death that never should have happened. <strong>That work is the heart of what this firm does.</strong></p>
+        <p style="margin:0 0 12px;font-size:15px;line-height:1.65;color:${colors.ink}">We represent people and families across Texas in personal injury and wrongful death cases, along with other serious plaintiff&rsquo;s litigation &mdash; business fraud, real estate fraud, and major contract disputes.</p>
+        <p style="margin:0;font-size:15px;line-height:1.65;color:${colors.ink}">If it ever happens to you, to a family member, or to a friend, please send them our way. We would consider it a privilege to be the call they make.</p>
+        ${callRow}
+      </td></tr>
+    </table>`;
+
   const body = `
     <p style="margin:0 0 14px">Dear ${greeting},</p>
     <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with ${esc(area)} in your area who may be able to help.</p>
     ${note ? `<p style="margin:0 0 16px;white-space:pre-wrap">${esc(note)}</p>` : ""}
-    <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>Please act promptly.</strong> Legal matters are often subject to strict deadlines, such as a statute of limitations. If a deadline passes, you may lose the right to pursue your claim entirely. We strongly encourage you to speak with an attorney as soon as possible to protect your rights.</p>
+    <p style="${quiet}"><strong style="color:${colors.ink}">Please act promptly.</strong> Legal matters are often subject to strict deadlines, such as a statute of limitations. If a deadline passes, you may lose the right to pursue your claim entirely. We strongly encourage you to speak with an attorney as soon as possible to protect your rights.</p>
     ${referralBlock}
-    <p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>No attorney-client relationship has been created.</strong> This message, and our decision not to represent you, does not create an attorney-client relationship between you and ${esc(firmName)}. We are not your attorneys and are not advising you on the merits, deadlines, or handling of your matter.</p>
-    <div style="margin:20px 0 6px;padding:14px 18px;background:${colors.surface2};border-left:3px solid ${colors.accent}">
-      <p style="margin:0 0 6px;font-size:16px;font-weight:bold;line-height:1.4;color:${colors.ink}">We may not have been able to help with this matter — but we may be able to help with others.</p>
-      <p style="margin:0;font-size:14px;line-height:1.6;color:${colors.ink}">Our firm handles a range of matters statewide, including personal injury, wrongful death claims, and other plaintiff&rsquo;s litigation &mdash; including business fraud, real estate fraud, and large contract claims. If you have a matter like these, we would welcome the opportunity to speak with you.</p>
-    </div>
+    <p style="${quiet}"><strong style="color:${colors.ink}">No attorney-client relationship has been created.</strong> This message, and our decision not to represent you, does not create an attorney-client relationship between you and ${esc(firmName)}. We are not your attorneys and are not advising you on the merits, deadlines, or handling of your matter.</p>
+    ${closing}
     <p style="margin:20px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
 
   const html = brandedEmailHtml({
