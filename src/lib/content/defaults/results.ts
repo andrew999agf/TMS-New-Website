@@ -106,7 +106,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     title: "Recovery — uninsured/underinsured motorist claim",
     stat: "$100,000+",
     year: "2026",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
     sort: 7,
   },
   {
@@ -114,7 +114,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     title: "Settlement — personal-injury matter",
     stat: "$100,000+",
     year: "2025",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
     sort: 8,
   },
   {
@@ -136,7 +136,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
   {
     category: "settlement",
     title: "Numerous additional five-figure personal-injury settlements",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
     sort: 11,
   },
   // Jury-trial record
@@ -193,7 +193,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     title: "Traffic-ticket jury trial won — strengthened a related injury case",
     summary:
       "A small case tried like a big one, because it was connected to a big one. The verdict materially strengthened a client's ongoing personal-injury case — the seamless web in action.",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
     sort: 18,
   },
   {

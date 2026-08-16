@@ -22,7 +22,7 @@ import {
   getTeam,
   getBadges,
 } from "@/lib/content";
-import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
+import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 import {
   FEDERAL_COURTS,
   LITIGATION_COUNTIES,
@@ -199,8 +199,8 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-14 space-y-14">
-          {PRACTICE_GROUPS.map((group) => {
-            const inGroup = practices.filter((p) => p.group === group.id);
+          {groupPracticeAreas(practices).map((group) => {
+            const inGroup = group.areas;
             return (
               <div key={group.id}>
                 <div className="flex items-baseline gap-4 border-b border-[var(--c-border)] pb-3">

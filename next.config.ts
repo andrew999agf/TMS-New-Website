@@ -26,6 +26,22 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
+  // Practice-area URLs that changed. Kept as permanent redirects so old links,
+  // bookmarks, and indexed search results keep working instead of 404ing.
+  // Mirror of PRACTICE_AREA_REDIRECTS in src/lib/content/defaults/practice-areas.ts
+  // (declared literally here because next.config is evaluated outside the app
+  // module graph).
+  async redirects() {
+    return [
+      {
+        // The combined injury/death page was split in two; its results and its
+        // traffic belong to personal injury.
+        source: "/practice-areas/personal-injury-wrongful-death",
+        destination: "/practice-areas/personal-injury",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

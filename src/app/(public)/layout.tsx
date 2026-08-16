@@ -1,17 +1,10 @@
-import { Nav, type NavItem } from "@/components/site/Nav";
+import { Nav, type NavItem, type NavChild } from "@/components/site/Nav";
 import { Footer } from "@/components/site/Footer";
 import { JsonLd } from "@/components/site/JsonLd";
 import { PageViewTracker, GA4 } from "@/components/site/Analytics";
-import { getBlocks, getSetting } from "@/lib/content";
+import { getBlocks, getSetting, getPracticeAreas, getTeam } from "@/lib/content";
+import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
-
-const NAV_ITEMS: NavItem[] = [
-  { label: "Our Team", href: "/about" },
-  { label: "Practice Areas", href: "/practice-areas" },
-  { label: "Results", href: "/results" },
-  { label: "Insights", href: "/blog" },
-  { label: "Contact", href: "/contact" },
-];
 
 export default async function PublicLayout({
   children,
@@ -21,6 +14,7 @@ export default async function PublicLayout({
   const global = await getBlocks("global");
   const home = await getBlocks("home");
   const payment = await getBlocks("payment");
+  const [practices, team] = await Promise.all([getPracticeAreas(), getTeam()]);
   const ga4Id = (await getSetting<string>("ga4", process.env.NEXT_PUBLIC_GA4_ID ?? "")) || "";
   const logoUrl = (await getSetting<string>("logo", "")) || "";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
@@ -33,6 +27,42 @@ export default async function PublicLayout({
     meridian && { label: "Bosque County", number: meridian.phone },
     weatherford && { label: "Weatherford", number: weatherford.phone },
   ].filter(Boolean) as { label: string; number: string }[];
+
+  // The header menus are built from live content, so a practice area or a team
+  // member added in the admin shows up in the nav without a code change. The
+  // practice list keeps the same priority order as the home page and the
+  // practice-areas index — one definition, three surfaces.
+  const practiceChildren: NavChild[] = groupPracticeAreas(practices).flatMap((g) =>
+    g.areas.map((p) => ({
+      label: p.title,
+      href: `/practice-areas/${p.slug}`,
+      section: g.label,
+    })),
+  );
+  const teamChildren: NavChild[] = team.map((m) => ({
+    label: m.name,
+    href: `/about/${m.slug}`,
+    note: m.role,
+  }));
+
+  const navItems: NavItem[] = [
+    {
+      label: "Our Team",
+      href: "/about",
+      children: teamChildren,
+      moreLabel: "Meet the whole team",
+    },
+    {
+      label: "Practice Areas",
+      href: "/practice-areas",
+      children: practiceChildren,
+      wide: true,
+      moreLabel: "All practice areas",
+    },
+    { label: "Results", href: "/results" },
+    { label: "Insights", href: "/blog" },
+    { label: "Contact", href: "/contact" },
+  ];
 
   const legalServiceSchema = {
     "@context": "https://schema.org",
@@ -72,7 +102,7 @@ export default async function PublicLayout({
       <Nav
         firmName={global["global.firmShort"] ?? FIRM.shortName}
         logoUrl={logoUrl}
-        items={NAV_ITEMS}
+        items={navItems}
         ctaLabel={home["home.hero.ctaLabel"] ?? "Request a Consultation"}
         ctaHref="/consultation"
         logoLight={global["global.logoLight"] || undefined}

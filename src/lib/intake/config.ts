@@ -133,6 +133,12 @@ export type Branch = {
   /** What the visitor is feeling, shown under the bubble */
   blurb: string;
   practiceSlug: string;
+  /** Other practice-area slugs this branch also covers. One branch often
+   *  serves several pages — the injury branch handles a death in the family,
+   *  the creditor branch handles a foreclosure — and this is what lets the
+   *  "Request a Consultation" button on those pages open the right questions
+   *  instead of dropping the visitor back on the picker. */
+  alsoPractices?: string[];
   /** Fuzzy-match keywords/synonyms */
   keywords: string[];
   /** Plain-English description of the matter for the forwardable summary email
@@ -485,7 +491,8 @@ export const BRANCHES: Branch[] = [
     id: "injured",
     label: "I was injured / a loved one died",
     blurb: "An accident or loss",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
+    alsoPractices: ["wrongful-death"],
     summaryNoun: "a personal injury matter",
     keywords: [
       "injured", "injury", "hurt", "wreck", "car wreck", "car accident", "crash", "collision",
@@ -531,7 +538,7 @@ export const BRANCHES: Branch[] = [
     id: "wreck-pd",
     label: "Vehicle wreck — property damage only",
     blurb: "My car was damaged; nobody was seriously hurt",
-    practiceSlug: "personal-injury-wrongful-death",
+    practiceSlug: "personal-injury",
     summaryNoun: "a vehicle-wreck property-damage claim",
     keywords: [
       "property damage", "car damage", "vehicle damage", "fender bender", "totaled", "total loss",
@@ -1070,6 +1077,7 @@ export const BRANCHES: Branch[] = [
     label: "Foreclosure / garnishment / receivership",
     blurb: "My property or accounts are at risk",
     practiceSlug: "garnishments",
+    alsoPractices: ["foreclosures", "receivership-matters"],
     summaryNoun: "a foreclosure, garnishment, or receivership matter",
     keywords: [
       "foreclosure", "foreclose", "foreclosure sale", "sale date", "save my house", "my house",
@@ -1253,7 +1261,9 @@ export function turnbackAreaForBranch(branchId: string): string {
     case "garnishments": return "a consumer-debt or civil attorney";
     case "plaintiffs-litigation": return "a civil litigation attorney";
     case "business-related-matters": return "a business or civil attorney";
-    case "personal-injury-wrongful-death": return "a personal injury attorney";
+    case "personal-injury": return "a personal injury attorney";
+    case "wrongful-death": return "a wrongful death attorney";
+    case "foreclosures": return "a foreclosure or consumer-debt attorney";
     case "criminal-defense": return "a criminal defense attorney";
     case "estate-succession-planning": return "an estate planning attorney";
     case "probate": return "a probate attorney";
@@ -1272,5 +1282,8 @@ export function turnbackAreaForBranch(branchId: string): string {
 }
 
 export function branchForPractice(slug: string): Branch | undefined {
-  return BRANCHES.find((b) => b.practiceSlug === slug);
+  return (
+    BRANCHES.find((b) => b.practiceSlug === slug) ??
+    BRANCHES.find((b) => b.alsoPractices?.includes(slug))
+  );
 }

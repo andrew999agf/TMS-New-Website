@@ -225,6 +225,9 @@ const DDL = [
   // New columns on existing tables (idempotent).
   `ALTER TABLE banner_items ADD COLUMN IF NOT EXISTS focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE practice_areas ADD COLUMN IF NOT EXISTS hero_focal varchar(16) NOT NULL DEFAULT 'center'`,
+  // The grouping column was a three-value enum; widening it to text lets the
+  // site be re-grouped from code without a type migration. Safe to re-run.
+  `ALTER TABLE practice_areas ALTER COLUMN "group" TYPE varchar(32) USING "group"::text`,
   `ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS banner_focal varchar(16) NOT NULL DEFAULT 'center'`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
   `ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS email_status varchar(255)`,

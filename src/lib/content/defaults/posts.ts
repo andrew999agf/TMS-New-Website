@@ -142,11 +142,11 @@ const firmNews: BlogPostSeed[] = [
       "The at-fault driver did not carry enough insurance. Our client's own UM/UIM coverage made up the difference, resulting in a six-figure recovery.",
     isFirmNews: true,
     status: "hidden",
-    category: "personal-injury-wrongful-death",
-    relatedPractices: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    relatedPractices: ["personal-injury"],
     body: html([
       ["p", "The driver who caused the wreck carried far too little insurance to cover the harm. That is what UM/UIM coverage is for."],
-      ["p", `We pursued our client's own ${paLink("personal-injury-wrongful-death", "underinsured motorist coverage")} and recovered six figures.`],
+      ["p", `We pursued our client's own ${paLink("personal-injury", "underinsured motorist coverage")} and recovered six figures.`],
     ]),
   },
   {
@@ -243,7 +243,7 @@ const eduRaw: EduInput[] = [
     excerpt:
       "Depositions, document requests, and interrogatories are not paperwork. They are how a case gets built.",
     category: "civil-commercial-litigation",
-    related: ["civil-commercial-litigation", "personal-injury-wrongful-death"],
+    related: ["civil-commercial-litigation", "personal-injury"],
     body: [
       ["p", "Discovery is the formal exchange of evidence before trial. Done well, it wins cases. Done lazily, it loses them."],
       ["p", "A deposition locks a witness into a story. A document request can surface the email that decides everything. We treat discovery as the main event it usually is."],
@@ -364,8 +364,8 @@ const eduRaw: EduInput[] = [
     title: "Serious-Injury Claims: What Changes",
     excerpt:
       "A catastrophic injury is not a bigger fender-bender claim. The proof, the stakes, and the insurer's behavior all change.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "When injuries are severe, the case is no longer about a repair estimate. It is about a life that changed, and insurers fight those cases hard."],
       ["p", "That calls for a firm willing to document the full loss and try the case. The first offer reflects how ready they think you are."],
@@ -376,8 +376,8 @@ const eduRaw: EduInput[] = [
     title: "Understanding UM/UIM Coverage",
     excerpt:
       "The most important coverage on your policy may be the one protecting you from other drivers' failures.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "Uninsured and underinsured motorist coverage pays when the at-fault driver has no insurance or not enough. Many Texans carry it without knowing what it does."],
       ["p", "When the other driver's policy runs out, your own UM/UIM coverage can be the difference. We have recovered six figures on exactly that coverage."],
@@ -388,8 +388,8 @@ const eduRaw: EduInput[] = [
     title: "Why Trucking Cases Are Different",
     excerpt:
       "An 18-wheeler case involves federal rules, corporate defendants, and evidence that disappears fast.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death", "civil-commercial-litigation"],
+    category: "personal-injury",
+    related: ["personal-injury", "civil-commercial-litigation"],
     body: [
       ["p", "Commercial trucking is governed by federal safety regulations, and the defendant is usually a company with a legal team on speed dial."],
       ["p", "Key evidence — logs, telematics, the truck itself — can vanish without prompt legal action. Moving quickly to preserve it is often decisive."],
@@ -400,8 +400,8 @@ const eduRaw: EduInput[] = [
     title: "Dealing With Insurance Adjusters",
     excerpt:
       "The adjuster is friendly, and the adjuster is not on your side. Both things are true.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "An adjuster's job is to resolve claims for as little as possible. A recorded statement or a quick lowball offer can quietly undercut your case."],
       ["p", "Before you talk to the other side's insurer, understand what you are giving up. Often, the answer is to let a lawyer do the talking."],
@@ -412,8 +412,8 @@ const eduRaw: EduInput[] = [
     title: "Wrongful Death in Texas: Who Can Recover",
     excerpt:
       "Texas law limits who may bring a wrongful-death claim and what they can recover. Here is the framework.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "wrongful-death",
+    related: ["wrongful-death", "personal-injury"],
     body: [
       ["p", "Texas allows a spouse, children, and parents to bring a wrongful-death claim for the loss of a family member. There is also a separate survival claim belonging to the estate."],
       ["p", "These are among the hardest cases there are, factually and emotionally. They demand careful, trial-ready handling."],
@@ -783,7 +783,7 @@ const eduRaw2027: EduInput[] = [
     excerpt:
       "Many cases turn on experts. So does the fight over whether the jury ever hears them.",
     category: "civil-commercial-litigation",
-    related: ["civil-commercial-litigation", "personal-injury-wrongful-death"],
+    related: ["civil-commercial-litigation", "personal-injury"],
     body: [
       ["p", "Expert testimony must be reliable and relevant, and Texas courts act as gatekeepers. A successful challenge can exclude the opinion that holds up the other side's case."],
       ["p", "We prepare our experts to withstand challenge and scrutinize theirs to keep junk science away from the jury."],
@@ -821,8 +821,8 @@ const eduRaw2027: EduInput[] = [
     title: "Comparative Fault: How Blame Is Divided",
     excerpt:
       "In Texas, being partly at fault does not always end your claim — but cross fifty-one percent and it does.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "Texas uses modified comparative fault. Your recovery is reduced by your share of responsibility, and barred entirely if you are more than fifty percent at fault."],
       ["p", "That makes the fight over percentages central. We build the liability case to keep fault where it belongs — on the other side."],
@@ -833,8 +833,8 @@ const eduRaw2027: EduInput[] = [
     title: "Pre-Existing Conditions and the Eggshell Plaintiff",
     excerpt:
       "Insurers love to blame your old injuries. The law says they take you as they find you.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "Defendants often argue your harm came from a pre-existing condition. But under the eggshell-plaintiff rule, a wrongdoer is liable for the full extent of the harm caused, even to a vulnerable person."],
       ["p", "The key is distinguishing what the crash caused from what came before. We use the medical record to draw that line clearly."],
@@ -845,8 +845,8 @@ const eduRaw2027: EduInput[] = [
     title: "Medical Liens and What's Left of Your Settlement",
     excerpt:
       "A settlement number is not what you take home. Liens and subrogation claims come first — unless they are reduced.",
-    category: "personal-injury-wrongful-death",
-    related: ["personal-injury-wrongful-death"],
+    category: "personal-injury",
+    related: ["personal-injury"],
     body: [
       ["p", "Hospitals, health insurers, and government payers may assert liens or subrogation rights against your recovery. Ignoring them can be costly."],
       ["p", "We identify, challenge, and negotiate these claims down so more of the settlement ends up where it belongs — with the client."],

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { notInArray } from "drizzle-orm";
+import { notInArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { contentBlocks, caseResults, practiceAreas, glossaryTerms, teamMembers } from "@/db/schema";
@@ -55,7 +55,19 @@ export async function POST() {
     applied.push(`Refreshed ${CASE_RESULTS.length} results`);
 
     // 3) Practice areas — upsert text (preserve uploaded heroImage + visibility),
-    //    and remove any areas no longer in the defaults (e.g. Foreclosures).
+    //    and remove any areas no longer in the defaults.
+    //
+    //    The grouping column started life as a three-value enum, so a database
+    //    provisioned before that changed would reject the current group names.
+    //    Widen it here rather than depending on the operator having run the
+    //    database sync first — this refresh is the button that publishes the
+    //    grouping, so it should not be able to half-fail on ordering.
+    try {
+      await db.execute(sql`ALTER TABLE practice_areas ALTER COLUMN "group" TYPE varchar(32) USING "group"::text`);
+    } catch {
+      /* already widened, or insufficient privileges — the upsert below will
+         surface a real problem if one remains */
+    }
     const slugs = PRACTICE_AREAS.map((p) => p.slug);
     for (const p of PRACTICE_AREAS) {
       await db

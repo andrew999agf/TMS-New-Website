@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
 import { getPracticeAreas, getBlocks } from "@/lib/content";
-import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
+import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 
 export const metadata: Metadata = {
   title: "Practice Areas",
@@ -26,8 +26,8 @@ export default async function PracticeAreasPage() {
         focal={page["practiceareas.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24 space-y-16">
-        {PRACTICE_GROUPS.map((group) => {
-          const inGroup = practices.filter((p) => p.group === group.id);
+        {groupPracticeAreas(practices).map((group) => {
+          const inGroup = group.areas;
           return (
             <section key={group.id}>
               <div className="flex items-baseline gap-4 border-b border-[var(--c-border)] pb-3">

@@ -4,13 +4,20 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { YouTubeEmbed } from "@/components/site/YouTubeEmbed";
+import { JsonLd } from "@/components/site/JsonLd";
 import {
   getPracticeArea,
   getPracticeAreas,
   getResultsForPractice,
   getPostsForPractice,
+  getLeadMember,
 } from "@/lib/content";
-import { NELSON_VIDEO_ID } from "@/lib/firm";
+import {
+  FIRM,
+  OFFICES,
+  LITIGATION_COUNTIES,
+  NELSON_VIDEO_ID,
+} from "@/lib/firm";
 import { formatDate } from "@/lib/utils";
 
 export async function generateStaticParams() {
@@ -34,6 +41,90 @@ export async function generateMetadata({
 
 export const dynamic = "force-dynamic";
 
+const postal = (o: (typeof OFFICES)[number]) => ({
+  "@type": "PostalAddress" as const,
+  streetAddress: o.street,
+  addressLocality: o.city,
+  addressRegion: "TX",
+  postalCode: o.zip,
+  addressCountry: "US",
+});
+
+/**
+ * Structured data for a single practice page: the service itself, the attorney
+ * who provides it, and the trail back to the index. Every value is taken from
+ * the verified firm constants or the practice's own editable copy — nothing
+ * here asserts a credential, an outcome, or a fact the site does not already
+ * state in plain view.
+ */
+function practiceSchema(opts: {
+  pa: { slug: string; title: string; tagline: string; seoDescription?: string; keywords: string[] };
+  baseUrl: string;
+  attorney: { name: string; jobTitle: string; url?: string };
+}) {
+  const { pa, baseUrl, attorney } = opts;
+  const url = `${baseUrl}/practice-areas/${pa.slug}`;
+  const firmId = `${baseUrl}/#firm`;
+  const attorneyId = `${baseUrl}/#attorney`;
+  const hub = OFFICES.find((o) => o.isHub) ?? OFFICES[0];
+  const areaServed = LITIGATION_COUNTIES.map((c) => ({
+    "@type": "AdministrativeArea",
+    name: `${c} County, Texas`,
+  }));
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "LegalService",
+        "@id": `${url}#service`,
+        name: `${pa.title} — ${FIRM.name}`,
+        url,
+        description: pa.seoDescription || pa.tagline,
+        serviceType: pa.title,
+        knowsAbout: pa.keywords,
+        areaServed,
+        telephone: hub.phone,
+        faxNumber: FIRM.fax,
+        address: OFFICES.map(postal),
+        provider: { "@id": firmId },
+        parentService: { "@id": firmId },
+      },
+      {
+        "@type": "LegalService",
+        "@id": firmId,
+        name: FIRM.name,
+        url: baseUrl,
+        telephone: hub.phone,
+        faxNumber: FIRM.fax,
+        address: OFFICES.map(postal),
+        areaServed,
+      },
+      {
+        "@type": "Attorney",
+        "@id": attorneyId,
+        name: attorney.name,
+        jobTitle: attorney.jobTitle,
+        ...(attorney.url ? { url: attorney.url } : {}),
+        worksFor: { "@id": firmId },
+        knowsAbout: pa.title,
+        areaServed,
+        address: postal(hub),
+        telephone: hub.phone,
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${url}#breadcrumbs`,
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: baseUrl },
+          { "@type": "ListItem", position: 2, name: "Practice Areas", item: `${baseUrl}/practice-areas` },
+          { "@type": "ListItem", position: 3, name: pa.title, item: url },
+        ],
+      },
+    ],
+  };
+}
+
 export default async function PracticeAreaPage({
   params,
 }: {
@@ -43,15 +134,28 @@ export default async function PracticeAreaPage({
   const pa = await getPracticeArea(slug);
   if (!pa) notFound();
 
-  const [results, posts] = await Promise.all([
+  const [results, posts, lead] = await Promise.all([
     getResultsForPractice(slug),
     getPostsForPractice(slug, 3),
+    getLeadMember(),
   ]);
 
   const isAppellate = slug === "appellate-law";
 
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const schema = practiceSchema({
+    pa,
+    baseUrl,
+    attorney: {
+      name: lead?.name ?? FIRM.attorney.fullName,
+      jobTitle: lead?.role ?? FIRM.attorney.title,
+      url: lead ? `${baseUrl}/about/${lead.slug}` : undefined,
+    },
+  });
+
   return (
     <>
+      <JsonLd data={schema} />
       <PageHero eyebrow="Practice Area" title={pa.title} lead={pa.tagline} bgImage={pa.heroImage ?? undefined} focal={pa.heroFocal}>
         <div className="mt-2">
           <Breadcrumbs

@@ -7,6 +7,7 @@ import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
+  branchForPractice,
   COMMON_STEPS,
   condMet,
   condMetAll,
@@ -97,7 +98,7 @@ export function IntakeWizard({
   turnstileSiteKey?: string;
 }) {
   const initialBranch = initialPractice
-    ? BRANCHES.find((b) => b.practiceSlug === initialPractice) ?? null
+    ? branchForPractice(initialPractice) ?? null
     : null;
 
   const [branch, setBranch] = useState<Branch | null>(initialBranch);

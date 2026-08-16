@@ -2,28 +2,27 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { getPracticeAreas } from "@/lib/content";
-import { PRACTICE_GROUPS } from "@/lib/content/defaults/practice-areas";
+import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 
 export const dynamic = "force-dynamic";
 
 export default async function PracticeAreasAdmin() {
   const areas = await getPracticeAreas();
+  const groups = groupPracticeAreas(areas);
   return (
     <>
       <AdminHeader
         title="Practice Areas"
-        description="15 areas across three groups. Tagline, copy, approach, and keywords are editable per area."
+        description={`${areas.length} areas across ${groups.length} groups, listed in the order the public site shows them. Tagline, copy, approach, and keywords are editable per area.`}
       />
       <div className="p-8 space-y-8 max-w-3xl">
-        {PRACTICE_GROUPS.map((g) => (
+        {groups.map((g) => (
           <section key={g.id}>
             <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)] mb-3">
               {g.label}
             </h2>
             <div className="rounded-lg border border-[var(--c-border)] overflow-hidden divide-y divide-[var(--c-border)]">
-              {areas
-                .filter((a) => a.group === g.id)
-                .map((a) => (
+              {g.areas.map((a) => (
                   <div key={a.slug} className="flex items-center justify-between px-5 py-3.5 bg-[var(--c-surface)]">
                     <Link href={`/admin/practice-areas/${a.slug}`} className="min-w-0 group">
                       <div className="font-medium group-hover:text-[var(--c-accent)] transition-colors">{a.title}</div>

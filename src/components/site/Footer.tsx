@@ -19,8 +19,10 @@ const NAV_COLUMNS: { title: string; links: { label: string; href: string }[] }[]
     title: "Practice",
     links: [
       { label: "All Practice Areas", href: "/practice-areas" },
+      { label: "Personal Injury", href: "/practice-areas/personal-injury" },
+      { label: "Wrongful Death", href: "/practice-areas/wrongful-death" },
       { label: "Civil & Commercial Litigation", href: "/practice-areas/civil-commercial-litigation" },
-      { label: "Personal Injury", href: "/practice-areas/personal-injury-wrongful-death" },
+      { label: "Probate & Estate Administration", href: "/practice-areas/probate" },
       { label: "Appellate Law", href: "/practice-areas/appellate-law" },
       { label: "Consumer Debt Defense", href: "/practice-areas/consumer-debt-defense" },
     ],

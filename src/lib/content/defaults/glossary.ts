@@ -97,7 +97,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Uninsured/underinsured motorist coverage on your own auto policy that pays for your injuries when the at-fault driver has no insurance or not enough. It steps in where the other driver's coverage runs out.",
     hypothetical:
       "A driver is badly hurt by someone carrying only the state-minimum policy, which does not cover her hospital bills. She turns to her own UM/UIM coverage to make up the difference.",
-    relatedPractices: ["personal-injury-wrongful-death"],
+    relatedPractices: ["personal-injury"],
     aliases: ["uninsured motorist", "underinsured motorist"],
   },
   {
@@ -161,7 +161,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Sworn, out-of-court testimony taken before trial, recorded by a court reporter, used to learn what a witness knows and to lock in their story for later use.",
     hypothetical:
       "Before trial, a lawyer deposes the opposing party, who swears the light was green. At trial, when he claims it was red, the deposition transcript is used to impeach him.",
-    relatedPractices: ["civil-commercial-litigation", "personal-injury-wrongful-death"],
+    relatedPractices: ["civil-commercial-litigation", "personal-injury"],
   },
   {
     slug: "preserving-error",
@@ -198,7 +198,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "The legal deadline for filing a lawsuit. Once it passes, the claim is barred no matter how strong it is.",
     hypothetical:
       "An injured person waits three years to sue over a car wreck, but the limitations period was two. The claim is time-barred, and the case is dismissed even though the other driver was clearly at fault.",
-    relatedPractices: ["personal-injury-wrongful-death", "consumer-debt-defense"],
+    relatedPractices: ["personal-injury", "wrongful-death", "consumer-debt-defense"],
     aliases: ["limitations", "time-barred"],
   },
   {
@@ -235,7 +235,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "The failure to use ordinary care, causing harm to another. Proving it requires a duty, a breach of that duty, causation, and damages.",
     hypothetical:
       "A driver runs a red light and hits a pedestrian in the crosswalk. He owed a duty to drive carefully, breached it, and caused real injuries — the elements of negligence.",
-    relatedPractices: ["personal-injury-wrongful-death"],
+    relatedPractices: ["wrongful-death", "personal-injury"],
   },
   {
     slug: "wrongful-death",
@@ -244,7 +244,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "A claim brought by certain surviving family members when a person dies because of another's wrongful conduct, to recover for their loss.",
     hypothetical:
       "A trucking company's driver causes a fatal crash. The deceased's spouse and children bring a wrongful-death claim for the loss of their husband and father.",
-    relatedPractices: ["personal-injury-wrongful-death"],
+    relatedPractices: ["wrongful-death", "personal-injury"],
   },
   {
     slug: "damages",
@@ -253,7 +253,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "The money a court awards to compensate for a loss. They can cover economic harm like bills and lost wages, non-economic harm like pain, and sometimes punitive amounts for egregious conduct.",
     hypothetical:
       "A jury finds for an injured plaintiff and awards her medical bills, lost income, and an amount for pain and suffering — the categories of damages that together make her whole.",
-    relatedPractices: ["personal-injury-wrongful-death", "civil-commercial-litigation"],
+    relatedPractices: ["personal-injury", "wrongful-death", "civil-commercial-litigation"],
   },
   {
     slug: "punitive-damages",
@@ -262,7 +262,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Also called exemplary damages — money awarded not to compensate but to punish especially reckless or malicious conduct and deter it. Texas caps them in most cases.",
     hypothetical:
       "A company knowingly sells a dangerous product to cut costs. Beyond compensating the injured buyer, the jury awards punitive damages to punish the deliberate disregard for safety.",
-    relatedPractices: ["personal-injury-wrongful-death", "dtpa"],
+    relatedPractices: ["personal-injury", "wrongful-death", "dtpa"],
     aliases: ["exemplary damages"],
   },
   {
@@ -438,6 +438,6 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "A settlement process in which a neutral mediator helps the parties negotiate a resolution. It is non-binding unless and until the parties sign an agreement.",
     hypothetical:
       "Before trial, a judge orders the parties to mediation. With the mediator shuttling offers between rooms, they reach a settlement that both can live with and put it in writing.",
-    relatedPractices: ["civil-commercial-litigation", "personal-injury-wrongful-death"],
+    relatedPractices: ["civil-commercial-litigation", "personal-injury"],
   },
 ];

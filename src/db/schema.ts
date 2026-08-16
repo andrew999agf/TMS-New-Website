@@ -134,6 +134,14 @@ export const pages = pgTable("pages", {
  * Practice areas (15) — grouped under three positioning headers
  * ------------------------------------------------------------------------- */
 
+/**
+ * Legacy. The practice-area grouping started as a three-value Postgres enum,
+ * which meant every new grouping needed a type migration before the content
+ * could be refreshed. The column is plain text now and the display groups are
+ * defined in code (PRACTICE_GROUPS), so re-grouping the site is a content
+ * change rather than a schema change. The type is left declared because it
+ * still exists in provisioned databases.
+ */
 export const practiceGroup = pgEnum("practice_group", [
   "litigation",
   "defense",
@@ -143,7 +151,8 @@ export const practiceGroup = pgEnum("practice_group", [
 export const practiceAreas = pgTable("practice_areas", {
   slug: varchar("slug", { length: 128 }).primaryKey(),
   title: varchar("title", { length: 191 }).notNull(),
-  group: practiceGroup("group").notNull(),
+  /** Display group id — see PRACTICE_GROUPS in content/defaults/practice-areas. */
+  group: varchar("group", { length: 32 }).notNull(),
   sort: integer("sort").notNull().default(0),
   tagline: text("tagline"),
   /** Ordered array of paragraph strings (firm-voice copy) */
