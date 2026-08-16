@@ -88,7 +88,7 @@ export function brandedEmailHtml({
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>${officeCells}</tr></table>
       <div class="tms-ftr-rule tms-ftr-text" style="border-top:1px solid ${colors.border};margin-top:8px;padding-top:14px;font-family:${SANS};font-size:11px;color:${colors.inkMuted};line-height:1.7">
         Fax <a class="tms-ftr-muted-link" href="${tel(FIRM.fax)}" style="color:${colors.inkMuted};text-decoration:none">${esc(FIRM.fax)}</a><br/>
-        This email and the firm's website may be considered attorney advertising. Submitting an inquiry does not create an attorney-client relationship.
+        Submitting an inquiry does not create an attorney-client relationship.
       </div>`;
   // The footer is painted on the SAME locked white as the logo band, and flips
   // to the same dark band in dark mode — so the two ends of the email always
