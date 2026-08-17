@@ -31,6 +31,7 @@ import {
   GraduationCap,
   FileSignature,
   FolderLock,
+  FileSearch,
   KeyRound,
   PanelLeftClose,
   PanelLeftOpen,
@@ -81,6 +82,7 @@ const CASE_TOOLS = [
   { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Clock },
   { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
   { label: "Pre-Trial Checklist", href: "/admin/pre-trial", icon: CalendarClock },
+  { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
 ];
 
 export function AdminShell({

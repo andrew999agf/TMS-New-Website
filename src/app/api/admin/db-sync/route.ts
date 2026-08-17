@@ -400,6 +400,37 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS trial_transcripts_case_idx ON trial_transcripts (case_id)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_sets (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL,
+    matter text NOT NULL DEFAULT '',
+    cause_number varchar(128) NOT NULL DEFAULT '',
+    court varchar(191) NOT NULL DEFAULT '',
+    notes text NOT NULL DEFAULT '',
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_sets_archived_idx ON exhibit_sets (archived)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_docs (
+    id serial PRIMARY KEY,
+    set_id integer NOT NULL,
+    side varchar(16) NOT NULL DEFAULT 'plaintiff',
+    number integer,
+    label varchar(64) NOT NULL DEFAULT '',
+    title varchar(255) NOT NULL DEFAULT '',
+    bates varchar(128) NOT NULL DEFAULT '',
+    url text,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    page_count integer,
+    page_text jsonb NOT NULL DEFAULT '[]'::jsonb,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
 ];

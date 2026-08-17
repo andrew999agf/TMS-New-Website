@@ -928,6 +928,60 @@ export const trialTranscripts = pgTable(
   (t) => ({ caseIdx: index("trial_transcripts_case_idx").on(t.caseId) }),
 );
 
+/**
+ * Trial/Hearing Exhibit Reviewer — a standalone review binder, independent of
+ * the pre-trial case tables above. Each "set" is one case's exhibits; the docs
+ * are the individual PDFs, ordered by exhibit number and split by side.
+ */
+export const exhibitSets = pgTable(
+  "exhibit_sets",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 191 }).notNull(),
+    /** Clio / Time Tracker matter (display number) — the case coding. */
+    matter: text("matter").notNull().default(""),
+    causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
+    court: varchar("court", { length: 191 }).notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ archivedIdx: index("exhibit_sets_archived_idx").on(t.archived) }),
+);
+
+/** One exhibit PDF in a set. */
+export const exhibitDocs = pgTable(
+  "exhibit_docs",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    /** plaintiff | defendant | joint */
+    side: varchar("side", { length: 16 }).notNull().default("plaintiff"),
+    /** Numeric exhibit number for ordering (null when it couldn't be read). */
+    number: integer("number"),
+    /** Display designation as offered, e.g. "P-1". */
+    label: varchar("label", { length: 64 }).notNull().default(""),
+    title: varchar("title", { length: 255 }).notNull().default(""),
+    bates: varchar("bates", { length: 128 }).notNull().default(""),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    /** True page count of the PDF (may exceed the number of stored text pages). */
+    pageCount: integer("page_count"),
+    /** Per-page extracted text (truncated) that powers content search. */
+    pageText: jsonb("page_text").notNull().default([]),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("exhibit_docs_set_idx").on(t.setId) }),
+);
+
+export type ExhibitSet = typeof exhibitSets.$inferSelect;
+export type ExhibitDoc = typeof exhibitDocs.$inferSelect;
+
 export type TrialCase = typeof trialCases.$inferSelect;
 export type TrialDeadline = typeof trialDeadlines.$inferSelect;
 export type TrialWitness = typeof trialWitnesses.$inferSelect;

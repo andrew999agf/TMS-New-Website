@@ -94,6 +94,19 @@ export function parseExhibitName(fileName: string): ParsedExhibit {
     rest = base.slice(worded[0].length);
   }
 
+  // Party abbreviations people actually type: "PLTF-1", "PLTF EX 1", "DEF 3",
+  // "DFT-7", "PL-2". Checked before the single-letter code so "PLTF" isn't read
+  // as a bare "P".
+  if (number === null) {
+    const abbr = base.match(/^\s*(pltff?|ptf|pl|def(?:t|dt)?|dft|resp|pet)\.?\s*(?:exhibit|exh|ex\.?|x)?\s*[-–—_ .#:]?\s*(\d{1,4})(?![\d])/i);
+    if (abbr) {
+      const a = abbr[1].toLowerCase();
+      side = a.startsWith("def") || a === "dft" || a === "resp" ? "defendant" : "plaintiff";
+      number = Number(abbr[2]);
+      rest = base.slice(abbr[0].length);
+    }
+  }
+
   // "P-1", "P1", "D_12", "PX-3", "J 4" at the start.
   if (number === null) {
     const coded = base.match(/^\s*(p|d|j)\s*x?\s*[-–—_ .#]?\s*(\d{1,4})(?![\d])/i);
@@ -135,7 +148,7 @@ const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" })
  * sorts by it, and the rest follow in natural filename order. Stable, so a batch
  * that parses cleanly comes out exactly as numbered.
  */
-export function suggestOrder(items: ParsedExhibit[]): ParsedExhibit[] {
+export function suggestOrder<T extends ParsedExhibit>(items: T[]): T[] {
   const numbered = items.filter((i) => i.number !== null).sort((a, b) => (a.number! - b.number!) || collator.compare(a.fileName, b.fileName));
   const rest = items.filter((i) => i.number === null).sort((a, b) => collator.compare(a.fileName, b.fileName));
   return [...numbered, ...rest];
