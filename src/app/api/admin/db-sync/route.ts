@@ -421,6 +421,7 @@ const DDL = [
     label varchar(64) NOT NULL DEFAULT '',
     title varchar(255) NOT NULL DEFAULT '',
     description text NOT NULL DEFAULT '',
+    priority varchar(8) NOT NULL DEFAULT 'none',
     bates varchar(128) NOT NULL DEFAULT '',
     url text,
     pathname text,
@@ -432,6 +433,7 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS priority varchar(8) NOT NULL DEFAULT 'none'`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,

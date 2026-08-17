@@ -18,6 +18,8 @@ async function guard() {
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const SIDES = new Set(["plaintiff", "defendant", "joint"]);
 const side = (v: unknown) => (SIDES.has(String(v)) ? String(v) : "plaintiff");
+const PRIORITIES = new Set(["none", "green", "yellow", "red"]);
+const priority = (v: unknown) => (PRIORITIES.has(String(v)) ? String(v) : "none");
 const num = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
@@ -116,6 +118,7 @@ export type DocInput = {
   label?: string;
   title?: string;
   description?: string;
+  priority?: string;
   bates?: string;
   file?: { url: string; pathname: string; contentType?: string; size?: number };
 };
@@ -147,6 +150,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
         label: str(input.label, 64),
         title: str(input.title, 255),
         description: str(input.description, 2000),
+        priority: priority(input.priority),
         bates: str(input.bates, 128),
         url: input.file?.url ?? null,
         pathname: input.file?.pathname ?? null,
@@ -166,7 +170,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; bates?: string }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; bates?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -176,6 +180,7 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.label !== undefined) set.label = str(patch.label, 64);
     if (patch.title !== undefined) set.title = str(patch.title, 255);
     if (patch.description !== undefined) set.description = str(patch.description, 2000);
+    if (patch.priority !== undefined) set.priority = priority(patch.priority);
     if (patch.bates !== undefined) set.bates = str(patch.bates, 128);
     if (Object.keys(set).length === 0) return { ok: true as const };
     const [row] = await db.update(exhibitDocs).set(set).where(eq(exhibitDocs.id, id)).returning({ setId: exhibitDocs.setId });

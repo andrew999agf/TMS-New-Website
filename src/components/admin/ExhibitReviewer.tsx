@@ -4,20 +4,67 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle,
+  Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
+import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
-  id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string;
+  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; bates: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
 };
+
+/** The review flags, in the order they read on the light. */
+const PRIORITIES: { id: string; label: string; color: string | null }[] = [
+  { id: "green", label: "Priority", color: "#16a34a" },
+  { id: "yellow", label: "Neutral", color: "#eab308" },
+  { id: "red", label: "Low priority / bad", color: "#dc2626" },
+  { id: "none", label: "None", color: null },
+];
+
+/** The little coloured dot; "none" is an off-white circle with a slash. */
+function PriorityDot({ value, size = 14 }: { value: string; size?: number }) {
+  const found = PRIORITIES.find((p) => p.id === value);
+  if (!found || found.id === "none" || !found.color) {
+    return (
+      <span className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface)]" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><line x1="3.5" y1="10.5" x2="10.5" y2="3.5" stroke="var(--c-ink-muted)" strokeWidth="1.5" /></svg>
+      </span>
+    );
+  }
+  return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, backgroundColor: found.color }} />;
+}
+
+/** Click-to-pick review flag, anchored to the dot; portal menu so the list's
+ *  own scroll can't clip it. */
+function PriorityBubble({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const current = PRIORITIES.find((p) => p.id === value) ?? PRIORITIES[3];
+  return (
+    <PopMenu
+      width={180}
+      title={`Priority: ${current.label} — click to change`}
+      className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-[var(--c-accent)]/30"
+      label={<PriorityDot value={value} />}
+    >
+      {(close) => (
+        <div className="py-0.5">
+          {PRIORITIES.map((p) => (
+            <button key={p.id} onMouseDown={(e) => { e.preventDefault(); close(); onChange(p.id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
+              <PriorityDot value={p.id} /> <span className="flex-1 text-[var(--c-ink)]">{p.label}</span>
+              {value === p.id && <Check size={12} className="text-[var(--c-accent)]" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </PopMenu>
+  );
+}
 
 const SIDES: Side[] = ["plaintiff", "defendant", "joint"];
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
@@ -586,7 +633,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; bates?: string }) => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; bates?: string }) => void; onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates });
@@ -632,6 +679,8 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
           {(d.bates || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
         </span>
       </button>
+      {/* Review flag, always visible in the space to the right of the title. */}
+      <PriorityBubble value={d.priority} onChange={(v) => onSave({ priority: v })} />
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <button onClick={() => setEditing(true)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
