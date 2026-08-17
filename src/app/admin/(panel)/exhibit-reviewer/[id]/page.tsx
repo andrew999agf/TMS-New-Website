@@ -26,7 +26,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
   const rows = await db
     .select({
       id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label,
-      title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, bates: exhibitDocs.bates, url: exhibitDocs.url,
+      title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, url: exhibitDocs.url,
       pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
     })
     .from(exhibitDocs)
@@ -34,7 +34,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
 
   const docs: ReviewerDoc[] = rows.map((r) => ({
-    id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, priority: r.priority, bates: r.bates,
+    id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, priority: r.priority, trialStatus: r.trialStatus, bates: r.bates,
     hasFile: Boolean(r.url), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
   }));
 

@@ -16,50 +16,154 @@ import {
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
-  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; bates: string;
+  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
 };
 
 /** The review flags, in the order they read on the light. */
-const PRIORITIES: { id: string; label: string; color: string | null }[] = [
-  { id: "green", label: "Priority", color: "#16a34a" },
-  { id: "yellow", label: "Neutral", color: "#eab308" },
-  { id: "red", label: "Low priority / bad", color: "#dc2626" },
-  { id: "none", label: "None", color: null },
-];
+/**
+ * Two independent flags per exhibit, kept visually distinct on purpose:
+ *
+ *  - PRIORITY is the team's own prep judgment, shown as a FADED pill that spells
+ *    the word out (Priority / Neutral / Low). Soft colour = a subjective call.
+ *  - TRIAL STATUS is the court's actual ruling, shown as a SOLID dot (Admitted /
+ *    Offered–pending / Excluded). Solid colour = a hard fact. The words show in
+ *    its picker, its tooltip, and the admitted-exhibits summary.
+ *
+ * Same green/amber/red family for both so the meaning reads instantly; faded vs
+ * solid (and word-pill vs dot) is what tells the two apart.
+ */
+const PRIORITY_META: Record<string, { label: string; short: string; dot: string; pill: string }> = {
+  green: { label: "Priority", short: "Priority", dot: "#16a34a", pill: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" },
+  yellow: { label: "Neutral", short: "Neutral", dot: "#ca8a04", pill: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" },
+  red: { label: "Low priority / bad", short: "Low", dot: "#dc2626", pill: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" },
+};
+const PRIORITY_ORDER = ["green", "yellow", "red", "none"];
 
-/** The little coloured dot; "none" is an off-white circle with a slash. */
-function PriorityDot({ value, size = 14 }: { value: string; size?: number }) {
-  const found = PRIORITIES.find((p) => p.id === value);
-  if (!found || found.id === "none" || !found.color) {
-    return (
-      <span className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface)]" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><line x1="3.5" y1="10.5" x2="10.5" y2="3.5" stroke="var(--c-ink-muted)" strokeWidth="1.5" /></svg>
-      </span>
-    );
-  }
-  return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, backgroundColor: found.color }} />;
+const STATUS_META: Record<string, { label: string; short: string; color: string }> = {
+  admitted: { label: "Admitted", short: "Admitted", color: "#16a34a" },
+  pending: { label: "Offered — ruling pending", short: "Pending", color: "#eab308" },
+  excluded: { label: "Excluded — objection sustained", short: "Excluded", color: "#dc2626" },
+};
+const STATUS_ORDER = ["admitted", "pending", "excluded", "none"];
+
+/** An off-white circle with a diagonal slash — the "not set" state for both flags. */
+function SlashDot({ size = 12 }: { size?: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface)]" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><line x1="3.5" y1="10.5" x2="10.5" y2="3.5" stroke="var(--c-ink-muted)" strokeWidth="1.5" /></svg>
+    </span>
+  );
 }
 
-/** Click-to-pick review flag, anchored to the dot; portal menu so the list's
- *  own scroll can't clip it. */
-function PriorityBubble({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const current = PRIORITIES.find((p) => p.id === value) ?? PRIORITIES[3];
+/** Priority: a faded pill that says the word, or a slash circle when unset. */
+function PriorityChip({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const m = PRIORITY_META[value];
+  const current = m ? `Priority: ${m.label}` : "Set priority";
   return (
     <PopMenu
-      width={180}
-      title={`Priority: ${current.label} — click to change`}
-      className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-[var(--c-accent)]/30"
-      label={<PriorityDot value={value} />}
+      width={200}
+      title={`${current} — click to change`}
+      className="mt-0.5 inline-flex shrink-0 items-center rounded-full transition hover:ring-2 hover:ring-[var(--c-accent)]/30"
+      label={
+        m ? (
+          <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${m.pill}`}>
+            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: m.dot }} /> {m.short}
+          </span>
+        ) : (
+          <SlashDot />
+        )
+      }
     >
       {(close) => (
         <div className="py-0.5">
-          {PRIORITIES.map((p) => (
-            <button key={p.id} onMouseDown={(e) => { e.preventDefault(); close(); onChange(p.id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
-              <PriorityDot value={p.id} /> <span className="flex-1 text-[var(--c-ink)]">{p.label}</span>
-              {value === p.id && <Check size={12} className="text-[var(--c-accent)]" />}
-            </button>
-          ))}
+          <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Priority (prep)</div>
+          {PRIORITY_ORDER.map((id) => {
+            const pm = PRIORITY_META[id];
+            return (
+              <button key={id} onMouseDown={(e) => { e.preventDefault(); close(); onChange(id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
+                {pm ? <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: pm.dot }} /> : <SlashDot size={12} />}
+                <span className="flex-1 text-[var(--c-ink)]">{pm?.label ?? "None"}</span>
+                {value === id && <Check size={12} className="text-[var(--c-accent)]" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/** Trial status: a solid dot (or slash when unset). Words live in the menu. */
+function StatusBubble({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const m = STATUS_META[value];
+  return (
+    <PopMenu
+      width={220}
+      title={m ? `Trial status: ${m.label} — click to change` : "Set trial status"}
+      className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-[var(--c-accent)]/30"
+      label={m ? <span className="inline-block h-3.5 w-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: m.color }} /> : <SlashDot />}
+    >
+      {(close) => (
+        <div className="py-0.5">
+          <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Trial status</div>
+          {STATUS_ORDER.map((id) => {
+            const sm = STATUS_META[id];
+            return (
+              <button key={id} onMouseDown={(e) => { e.preventDefault(); close(); onChange(id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
+                {sm ? <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: sm.color }} /> : <SlashDot size={12} />}
+                <span className="flex-1 text-[var(--c-ink)]">{sm?.label ?? "Not offered"}</span>
+                {value === id && <Check size={12} className="text-[var(--c-accent)]" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/**
+ * The right-hand summary in the frozen bar. Reads at a glance how many exhibits
+ * are admitted (and excluded), and opens a grouped, clickable list so you can
+ * jump straight to any of them — across both parties.
+ */
+function StatusSummary({ docs, onOpen }: { docs: ReviewerDoc[]; onOpen: (d: ReviewerDoc) => void }) {
+  const groups = STATUS_ORDER.filter((s) => s !== "none").map((id) => ({ id, meta: STATUS_META[id], items: docs.filter((d) => d.trialStatus === id) }));
+  const admitted = groups.find((g) => g.id === "admitted")?.items.length ?? 0;
+  const excluded = groups.find((g) => g.id === "excluded")?.items.length ?? 0;
+  const anyRuled = groups.some((g) => g.items.length);
+  return (
+    <PopMenu
+      width={300}
+      title="Exhibits by trial status"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-xs transition-colors hover:border-[var(--c-accent)]"
+      label={
+        <>
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STATUS_META.admitted.color }} />
+          <span className="font-semibold text-[var(--c-ink)]">{admitted}</span>
+          <span className="text-[var(--c-ink-muted)]">admitted</span>
+          {excluded > 0 && <><span className="ml-1 inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STATUS_META.excluded.color }} /><span className="font-semibold text-[var(--c-ink)]">{excluded}</span></>}
+        </>
+      }
+    >
+      {(close) => (
+        <div className="py-1">
+          {!anyRuled && <div className="px-3 py-3 text-xs text-[var(--c-ink-muted)]">No trial rulings recorded yet. Set an exhibit&apos;s status with the solid dot on its row.</div>}
+          {groups.map((g) => g.items.length ? (
+            <div key={g.id} className="py-0.5">
+              <div className="flex items-center gap-1.5 px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: g.meta.color }} /> {g.meta.label} · {g.items.length}
+              </div>
+              {g.items.map((d) => (
+                <button key={d.id} onMouseDown={(e) => { e.preventDefault(); close(); onOpen(d); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
+                  <span className="min-w-[3rem] shrink-0 font-semibold text-[var(--c-accent)]">{d.label || (d.number != null ? `#${d.number}` : "—")}</span>
+                  <span className="flex-1 truncate text-[var(--c-ink)]">{d.title || "Untitled exhibit"}</span>
+                  <span className="shrink-0 text-[10px] uppercase text-[var(--c-ink-muted)]">{d.side[0]}</span>
+                </button>
+              ))}
+            </div>
+          ) : null)}
         </div>
       )}
     </PopMenu>
@@ -212,6 +316,13 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
     setSetQuery("");
     setSetHits(null);
   }
+
+  // Open any exhibit regardless of which side tab is showing (used by the
+  // admitted/status summary, which spans both parties).
+  const openAnySide = useCallback((d: ReviewerDoc) => {
+    setSide((d.side as Side) ?? "plaintiff");
+    openDoc(d.id, 1);
+  }, [openDoc]);
 
   /* --------------------- in-document search ----------------------- */
   const [docPages, setDocPages] = useState<string[]>([]);
@@ -386,7 +497,11 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
           <button onClick={() => step(1)} disabled={currentIndex < 0 || currentIndex >= ordered.length - 1} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] disabled:opacity-40" title="Next exhibit"><ChevronRight size={16} /></button>
         </div>
 
-        <div className="relative ml-auto min-w-[220px] flex-1 sm:max-w-sm">
+        <div className="ml-auto flex min-w-[240px] flex-1 items-center gap-2 sm:max-w-md">
+          {/* The admitted/trial-status summary sits on the right of the frozen
+              bar: a tally that opens a grouped, clickable list of exhibits. */}
+          <StatusSummary docs={docs} onOpen={openAnySide} />
+          <div className="relative min-w-0 flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)]" />
           <input value={setQuery} onChange={(e) => setSetQuery(e.target.value)} placeholder="Search across all exhibits…" className={`${input} pl-8 pr-8`} />
           {setQuery && <button onClick={() => { setSetQuery(""); setSetHits(null); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={14} /></button>}
@@ -407,6 +522,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
               ))}
             </div>
           )}
+          </div>
         </div>
       </div>
       </div>
@@ -633,7 +749,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; bates?: string }) => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string }) => void; onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates });
@@ -679,8 +795,12 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
           {(d.bates || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
         </span>
       </button>
-      {/* Review flag, always visible in the space to the right of the title. */}
-      <PriorityBubble value={d.priority} onChange={(v) => onSave({ priority: v })} />
+      {/* Two flags in the space to the right of the title: prep priority (faded
+          word pill) and trial status (solid dot). Both always visible. */}
+      <div className="flex shrink-0 items-start gap-1">
+        <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
+        <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
+      </div>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <button onClick={() => setEditing(true)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>

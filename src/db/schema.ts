@@ -965,8 +965,10 @@ export const exhibitDocs = pgTable(
     label: varchar("label", { length: 64 }).notNull().default(""),
     title: varchar("title", { length: 255 }).notNull().default(""),
     description: text("description").notNull().default(""),
-    /** Review flag: none (default) | green (priority) | yellow (neutral) | red (low/bad). */
+    /** Prep priority flag: none (default) | green (priority) | yellow (neutral) | red (low/bad). */
     priority: varchar("priority", { length: 8 }).notNull().default("none"),
+    /** Trial ruling: none (default) | admitted | pending (offered) | excluded. */
+    trialStatus: varchar("trial_status", { length: 16 }).notNull().default("none"),
     bates: varchar("bates", { length: 128 }).notNull().default(""),
     url: text("url"),
     pathname: text("pathname"),
