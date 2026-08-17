@@ -424,6 +424,9 @@ const DDL = [
     priority varchar(8) NOT NULL DEFAULT 'none',
     trial_status varchar(16) NOT NULL DEFAULT 'none',
     bates varchar(128) NOT NULL DEFAULT '',
+    witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+    foundation jsonb NOT NULL DEFAULT '[]'::jsonb,
+    element_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
     url text,
     pathname text,
     content_type varchar(128),
@@ -436,7 +439,35 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS priority varchar(8) NOT NULL DEFAULT 'none'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS trial_status varchar(16) NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS foundation jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS element_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
+    id serial PRIMARY KEY,
+    set_id integer NOT NULL,
+    name varchar(191) NOT NULL,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_witnesses_set_idx ON exhibit_witnesses (set_id)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_claims (
+    id serial PRIMARY KEY,
+    set_id integer NOT NULL,
+    name varchar(255) NOT NULL,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_claims_set_idx ON exhibit_claims (set_id)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_elements (
+    id serial PRIMARY KEY,
+    set_id integer NOT NULL,
+    claim_id integer NOT NULL,
+    text varchar(500) NOT NULL,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_elements_claim_idx ON exhibit_elements (claim_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
 ];

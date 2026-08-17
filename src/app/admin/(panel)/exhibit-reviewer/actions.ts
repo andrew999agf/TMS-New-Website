@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, max } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs } from "@/db/schema";
+import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -22,6 +22,9 @@ const PRIORITIES = new Set(["none", "green", "yellow", "red"]);
 const priority = (v: unknown) => (PRIORITIES.has(String(v)) ? String(v) : "none");
 const STATUSES = new Set(["none", "admitted", "pending", "excluded"]);
 const trialStatus = (v: unknown) => (STATUSES.has(String(v)) ? String(v) : "none");
+const FOUNDATIONS = new Set(["business-records-affidavit", "certified-record", "self-authenticating", "stipulated"]);
+const ids = (v: unknown): number[] => (Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isFinite(n)))] : []);
+const foundations = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.map(String).filter((s) => FOUNDATIONS.has(s)))] : []);
 const num = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
@@ -174,7 +177,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; witnessIds?: number[]; foundation?: string[]; elementIds?: number[] }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -187,6 +190,9 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.priority !== undefined) set.priority = priority(patch.priority);
     if (patch.trialStatus !== undefined) set.trialStatus = trialStatus(patch.trialStatus);
     if (patch.bates !== undefined) set.bates = str(patch.bates, 128);
+    if (patch.witnessIds !== undefined) set.witnessIds = ids(patch.witnessIds);
+    if (patch.foundation !== undefined) set.foundation = foundations(patch.foundation);
+    if (patch.elementIds !== undefined) set.elementIds = ids(patch.elementIds);
     if (Object.keys(set).length === 0) return { ok: true as const };
     const [row] = await db.update(exhibitDocs).set(set).where(eq(exhibitDocs.id, id)).returning({ setId: exhibitDocs.setId });
     if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
@@ -274,5 +280,94 @@ export async function getDocPages(docId: number): Promise<string[]> {
     return Array.isArray(row?.pageText) ? (row!.pageText as string[]) : [];
   } catch {
     return [];
+  }
+}
+
+/* -------------------- witness & element catalogs ----------------------- */
+// The set's reusable pick-lists: witnesses an exhibit can be sponsored through,
+// and the causes of action with their elements. Built up as you go, then chosen
+// per exhibit from a dropdown.
+
+const revalSet = (setId: number) => revalidatePath(`/admin/exhibit-reviewer/${setId}`);
+
+export async function addExhibitWitness(setId: number, name: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const clean = str(name, 191);
+  if (!clean) return { ok: false as const, error: "Enter a name." };
+  try {
+    const [{ n } = { n: 0 }] = await db.select({ n: max(exhibitWitnesses.sort) }).from(exhibitWitnesses).where(eq(exhibitWitnesses.setId, setId));
+    const [row] = await db.insert(exhibitWitnesses).values({ setId, name: clean, sort: (n ?? 0) + 1 }).returning({ id: exhibitWitnesses.id });
+    revalSet(setId);
+    return { ok: true as const, id: row.id };
+  } catch {
+    return { ok: false as const, error: "Couldn't add the witness." };
+  }
+}
+
+export async function deleteExhibitWitness(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.delete(exhibitWitnesses).where(eq(exhibitWitnesses.id, id)).returning({ setId: exhibitWitnesses.setId });
+    if (row) revalSet(row.setId);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't remove the witness." };
+  }
+}
+
+export async function addExhibitClaim(setId: number, name: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const clean = str(name, 255);
+  if (!clean) return { ok: false as const, error: "Enter a cause of action." };
+  try {
+    const [{ n } = { n: 0 }] = await db.select({ n: max(exhibitClaims.sort) }).from(exhibitClaims).where(eq(exhibitClaims.setId, setId));
+    const [row] = await db.insert(exhibitClaims).values({ setId, name: clean, sort: (n ?? 0) + 1 }).returning({ id: exhibitClaims.id });
+    revalSet(setId);
+    return { ok: true as const, id: row.id };
+  } catch {
+    return { ok: false as const, error: "Couldn't add the cause of action." };
+  }
+}
+
+export async function deleteExhibitClaim(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.delete(exhibitElements).where(eq(exhibitElements.claimId, id));
+    const [row] = await db.delete(exhibitClaims).where(eq(exhibitClaims.id, id)).returning({ setId: exhibitClaims.setId });
+    if (row) revalSet(row.setId);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't remove the cause of action." };
+  }
+}
+
+export async function addExhibitElement(setId: number, claimId: number, text: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const clean = str(text, 500);
+  if (!clean) return { ok: false as const, error: "Enter an element." };
+  try {
+    const [{ n } = { n: 0 }] = await db.select({ n: max(exhibitElements.sort) }).from(exhibitElements).where(eq(exhibitElements.claimId, claimId));
+    const [row] = await db.insert(exhibitElements).values({ setId, claimId, text: clean, sort: (n ?? 0) + 1 }).returning({ id: exhibitElements.id });
+    revalSet(setId);
+    return { ok: true as const, id: row.id };
+  } catch {
+    return { ok: false as const, error: "Couldn't add the element." };
+  }
+}
+
+export async function deleteExhibitElement(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.delete(exhibitElements).where(eq(exhibitElements.id, id)).returning({ setId: exhibitElements.setId });
+    if (row) revalSet(row.setId);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't remove the element." };
   }
 }

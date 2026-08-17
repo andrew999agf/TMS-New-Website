@@ -7,18 +7,24 @@ import {
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
-import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, type Side } from "@/lib/pretrial/exhibits";
+import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages,
+  addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string;
+  witnessIds: number[]; foundation: string[]; elementIds: number[];
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
 };
+
+export type WitnessLite = { id: number; name: string };
+export type ClaimLite = { id: number; name: string };
+export type ElementLite = { id: number; claimId: number; text: string };
 
 /** The review flags, in the order they read on the light. */
 /**
@@ -233,8 +239,16 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
-export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; docs: ReviewerDoc[]; blobReady: boolean }) {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady }: {
+  setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
+}) {
   const router = useRouter();
+  // The exhibit whose full details dialog (pencil) is open.
+  const [editId, setEditId] = useState<number | null>(null);
+  // Quick name/text lookups for showing sponsors and elements in the viewer.
+  const witnessName = useMemo(() => new Map(witnesses.map((w) => [w.id, w.name])), [witnesses]);
+  const elementText = useMemo(() => new Map(elements.map((e) => [e.id, e.text])), [elements]);
+  const foundationLabel = useMemo(() => new Map(FOUNDATION_OPTIONS.map((f) => [f.id, f.label])), []);
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -557,6 +571,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
                 <ExhibitRow key={d.id} d={d} active={d.id === currentId} index={i}
                   onOpen={() => openDoc(d.id, 1)}
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
+                  onEdit={() => setEditId(d.id)}
                   onDelete={() => { if (confirm(`Remove ${d.label || d.title || "this exhibit"}?`)) run(() => deleteExhibitDoc(d.id)); }}
                 />
               ))}
@@ -603,8 +618,27 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
                   <button onClick={() => stepMatch(1)} disabled={!docMatches.length} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-30" title="Next match"><ChevronDown size={14} /></button>
                 </div>
 
+                <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
                 <a href={`${proxyBase}/${current.id}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
               </div>
+
+              {/* How it comes in, and what it proves — the trial-facing detail. */}
+              {(current.witnessIds.length > 0 || current.foundation.length > 0 || current.elementIds.length > 0) && (
+                <div className="space-y-0.5 border-b border-[var(--c-border)] bg-[var(--c-surface2)]/50 px-3 py-1.5 text-[11px]">
+                  {(current.witnessIds.length > 0 || current.foundation.length > 0) && (
+                    <div className="text-[var(--c-ink-muted)]">
+                      <span className="font-semibold text-[var(--c-ink)]">In through:</span>{" "}
+                      {[...current.witnessIds.map((id) => witnessName.get(id)).filter(Boolean), ...current.foundation.map((f) => foundationLabel.get(f)).filter(Boolean)].join(", ") || "—"}
+                    </div>
+                  )}
+                  {current.elementIds.length > 0 && (
+                    <div className="text-[var(--c-ink-muted)]">
+                      <span className="font-semibold text-[var(--c-ink)]">Proves:</span>{" "}
+                      {current.elementIds.map((id) => elementText.get(id)).filter(Boolean).join("  ·  ") || "—"}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {docPages.length === 0 && (
                 <p className="border-b border-[var(--c-border)] bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
@@ -624,6 +658,13 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
           )}
         </div>
       </div>
+
+      {editId != null && (() => {
+        const d = docs.find((x) => x.id === editId);
+        return d ? (
+          <ExhibitEditDialog setId={setId} doc={d} witnesses={witnesses} claims={claims} elements={elements} onClose={() => setEditId(null)} />
+        ) : null;
+      })()}
     </div>
   );
 }
@@ -747,39 +788,14 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string }) => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string }) => void; onEdit: () => void; onDelete: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates });
-  useEffect(() => { setF({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates }); }, [d]);
-
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
   const rowRef = useRef<HTMLLIElement>(null);
   useEffect(() => { if (active) rowRef.current?.scrollIntoView({ block: "nearest" }); }, [active]);
-
-  if (editing) {
-    return (
-      <li className="rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] p-2 text-xs">
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <select value={f.side} onChange={(e) => setF({ ...f, side: e.target.value })} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5">
-            <option value="plaintiff">P</option><option value="defendant">D</option><option value="joint">J</option>
-          </select>
-          <input value={f.number ?? ""} onChange={(e) => setF({ ...f, number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} placeholder="#" inputMode="numeric" className="w-10 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5" />
-          <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5" />
-        </div>
-        <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Title" className="mb-1.5 w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
-        <textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Description (optional)" rows={2} className="mb-1.5 w-full resize-y rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
-        <input value={f.bates} onChange={(e) => setF({ ...f, bates: e.target.value })} placeholder="Bates (optional)" className="mb-1.5 w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
-        <div className="flex justify-end gap-1.5">
-          <button onClick={() => setEditing(false)} className="rounded px-2 py-1 text-[var(--c-ink-muted)]">Cancel</button>
-          <button onClick={() => { onSave({ ...f }); setEditing(false); }} className="btn btn-accent px-2.5 py-1 text-[11px]">Save</button>
-        </div>
-      </li>
-    );
-  }
 
   return (
     <li ref={rowRef} className={`group flex items-start gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
@@ -802,9 +818,190 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
         <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
       </div>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-        <button onClick={() => setEditing(true)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit"><Pencil size={12} /></button>
+        <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
       </span>
     </li>
+  );
+}
+
+/* --------------------------- edit dialog --------------------------- */
+/**
+ * The full editor behind the pencil: the exhibit's own fields, plus the two
+ * boxes the trial team needs — how it comes in (sponsoring witnesses and/or a
+ * foundation shortcut) and what it proves (elements of a cause of action). The
+ * witness list and the causes/elements are the set's own pick-lists, grown right
+ * here from the "add" inputs so they're a click next time.
+ */
+function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }: {
+  setId: number; doc: ReviewerDoc; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; onClose: () => void;
+}) {
+  const router = useRouter();
+  const [, start] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [f, setF] = useState({
+    side: doc.side, number: doc.number, label: doc.label, title: doc.title, description: doc.description, bates: doc.bates,
+    priority: doc.priority, trialStatus: doc.trialStatus,
+    witnessIds: doc.witnessIds, foundation: doc.foundation, elementIds: doc.elementIds,
+  });
+  const [newWitness, setNewWitness] = useState("");
+  const [newClaim, setNewClaim] = useState("");
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => start(async () => { await fn(); router.refresh(); });
+  const toggleId = (key: "witnessIds" | "elementIds", id: number) =>
+    setF((s) => ({ ...s, [key]: s[key].includes(id) ? s[key].filter((x) => x !== id) : [...s[key], id] }));
+  const toggleFoundation = (id: string) =>
+    setF((s) => ({ ...s, foundation: s.foundation.includes(id) ? s.foundation.filter((x) => x !== id) : [...s.foundation, id] }));
+
+  async function addWitness() {
+    const name = newWitness.trim();
+    if (!name) return;
+    setNewWitness("");
+    const r = await addExhibitWitness(setId, name);
+    if (r.ok && r.id) setF((s) => ({ ...s, witnessIds: [...s.witnessIds, r.id!] }));
+    router.refresh();
+  }
+  async function addClaim() {
+    const name = newClaim.trim();
+    if (!name) return;
+    setNewClaim("");
+    await addExhibitClaim(setId, name);
+    router.refresh();
+  }
+
+  function save() {
+    setSaving(true);
+    updateExhibitDoc(doc.id, { ...f })
+      .then(() => { router.refresh(); onClose(); })
+      .finally(() => setSaving(false));
+  }
+
+  const field = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="my-6 w-full max-w-lg rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-lg">Edit exhibit {f.label && <span className="text-[var(--c-accent)]">{f.label}</span>}</h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-[auto_auto_1fr] gap-2">
+            <label className="block"><span className="mb-1 block text-[11px] font-semibold">Side</span>
+              <select value={f.side} onChange={(e) => setF({ ...f, side: e.target.value })} className={field}>
+                <option value="plaintiff">Plaintiff</option><option value="defendant">Defendant</option><option value="joint">Joint</option>
+              </select>
+            </label>
+            <label className="block"><span className="mb-1 block text-[11px] font-semibold">No.</span>
+              <input value={f.number ?? ""} onChange={(e) => setF({ ...f, number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} inputMode="numeric" className={`${field} w-16`} />
+            </label>
+            <label className="block"><span className="mb-1 block text-[11px] font-semibold">Label</span>
+              <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="P-1" className={field} />
+            </label>
+          </div>
+
+          <label className="block"><span className="mb-1 block text-[11px] font-semibold">Title</span>
+            <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className={field} />
+          </label>
+          <label className="block"><span className="mb-1 block text-[11px] font-semibold">Description</span>
+            <textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} rows={2} className={`${field} resize-y`} />
+          </label>
+          <label className="block"><span className="mb-1 block text-[11px] font-semibold">Bates</span>
+            <input value={f.bates} onChange={(e) => setF({ ...f, bates: e.target.value })} placeholder="e.g. RES_000260" className={field} />
+          </label>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Priority</span><PriorityChip value={f.priority} onChange={(v) => setF({ ...f, priority: v })} /></div>
+            <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Trial status</span><StatusBubble value={f.trialStatus} onChange={(v) => setF({ ...f, trialStatus: v })} /></div>
+          </div>
+
+          {/* Sponsoring witness / foundation */}
+          <div className="rounded-md border border-[var(--c-border)] p-2.5">
+            <div className="mb-1.5 text-[11px] font-semibold text-[var(--c-ink)]">How it comes in — witness &amp; foundation</div>
+            <div className="space-y-1">
+              {witnesses.length === 0 && <p className="text-[11px] text-[var(--c-ink-muted)]">No witnesses yet. Add one below.</p>}
+              {witnesses.map((w) => (
+                <label key={w.id} className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={f.witnessIds.includes(w.id)} onChange={() => toggleId("witnessIds", w.id)} className="accent-[var(--c-accent)]" />
+                  <span className="flex-1 text-[var(--c-ink)]">{w.name}</span>
+                  <button onClick={() => run(() => deleteExhibitWitness(w.id))} className="text-[var(--c-ink-muted)] hover:text-red-600" title="Remove from list"><X size={12} /></button>
+                </label>
+              ))}
+            </div>
+            <div className="mt-1.5 flex gap-1.5">
+              <input value={newWitness} onChange={(e) => setNewWitness(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addWitness(); } }} placeholder="Add a witness…" className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-xs" />
+              <button onClick={addWitness} className="rounded border border-[var(--c-border)] px-2 text-xs hover:bg-[var(--c-surface2)]">Add</button>
+            </div>
+            <div className="mt-2 border-t border-[var(--c-border)] pt-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Or a foundation shortcut</div>
+              {FOUNDATION_OPTIONS.map((opt) => (
+                <label key={opt.id} className="flex items-start gap-2 py-0.5 text-xs">
+                  <input type="checkbox" checked={f.foundation.includes(opt.id)} onChange={() => toggleFoundation(opt.id)} className="mt-0.5 accent-[var(--c-accent)]" />
+                  <span><span className="text-[var(--c-ink)]">{opt.label}</span> <span className="text-[var(--c-ink-muted)]">— {opt.hint}</span></span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Elements it covers */}
+          <div className="rounded-md border border-[var(--c-border)] p-2.5">
+            <div className="mb-1.5 text-[11px] font-semibold text-[var(--c-ink)]">What it proves — elements</div>
+            {claims.length === 0 && <p className="text-[11px] text-[var(--c-ink-muted)]">No causes of action yet. Add one below, then add its elements.</p>}
+            <div className="space-y-2">
+              {claims.map((c) => (
+                <ClaimBlock key={c.id} setId={setId} claim={c} elements={elements.filter((e) => e.claimId === c.id)} selected={f.elementIds} onToggle={(id) => toggleId("elementIds", id)} onRefresh={() => router.refresh()} onDeleteClaim={() => run(() => deleteExhibitClaim(c.id))} />
+              ))}
+            </div>
+            <div className="mt-2 flex gap-1.5 border-t border-[var(--c-border)] pt-2">
+              <input value={newClaim} onChange={(e) => setNewClaim(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addClaim(); } }} placeholder="Add a cause of action…" className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-xs" />
+              <button onClick={addClaim} className="rounded border border-[var(--c-border)] px-2 text-xs hover:bg-[var(--c-surface2)]">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One cause of action inside the edit dialog: its elements as checkboxes, plus
+ *  an inline "add element" input. */
+function ClaimBlock({ setId, claim, elements, selected, onToggle, onRefresh, onDeleteClaim }: {
+  setId: number; claim: ClaimLite; elements: ElementLite[]; selected: number[];
+  onToggle: (id: number) => void; onRefresh: () => void; onDeleteClaim: () => void;
+}) {
+  const [text, setText] = useState("");
+  async function add() {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    await addExhibitElement(setId, claim.id, t);
+    onRefresh();
+  }
+  return (
+    <div className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="flex-1 text-xs font-semibold text-[var(--c-accent)]">{claim.name}</span>
+        <button onClick={onDeleteClaim} className="text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this cause of action"><Trash2 size={12} /></button>
+      </div>
+      {elements.map((e) => (
+        <label key={e.id} className="flex items-start gap-2 py-0.5 text-xs">
+          <input type="checkbox" checked={selected.includes(e.id)} onChange={() => onToggle(e.id)} className="mt-0.5 accent-[var(--c-accent)]" />
+          <span className="flex-1 text-[var(--c-ink)]">{e.text}</span>
+          <button onClick={async () => { await deleteExhibitElement(e.id); onRefresh(); }} className="text-[var(--c-ink-muted)] hover:text-red-600" title="Remove element"><X size={11} /></button>
+        </label>
+      ))}
+      <div className="mt-1 flex gap-1.5">
+        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} placeholder="Add an element…" className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-0.5 text-[11px]" />
+        <button onClick={add} className="rounded border border-[var(--c-border)] px-2 text-[11px] hover:bg-[var(--c-surface2)]">Add</button>
+      </div>
+    </div>
   );
 }

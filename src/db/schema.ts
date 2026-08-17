@@ -970,6 +970,12 @@ export const exhibitDocs = pgTable(
     /** Trial ruling: none (default) | admitted | pending (offered) | excluded. */
     trialStatus: varchar("trial_status", { length: 16 }).notNull().default("none"),
     bates: varchar("bates", { length: 128 }).notNull().default(""),
+    /** Sponsoring witnesses this exhibit comes in through (exhibit_witnesses ids). */
+    witnessIds: jsonb("witness_ids").notNull().default([]),
+    /** Foundation shortcuts: business-records-affidavit | certified-record | self-authenticating | stipulated. */
+    foundation: jsonb("foundation").notNull().default([]),
+    /** Elements this exhibit helps prove (exhibit_elements ids). */
+    elementIds: jsonb("element_ids").notNull().default([]),
     url: text("url"),
     pathname: text("pathname"),
     contentType: varchar("content_type", { length: 128 }),
@@ -984,8 +990,51 @@ export const exhibitDocs = pgTable(
   (t) => ({ setIdx: index("exhibit_docs_set_idx").on(t.setId) }),
 );
 
+/** A set's witness list — who exhibits get sponsored through. */
+export const exhibitWitnesses = pgTable(
+  "exhibit_witnesses",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    name: varchar("name", { length: 191 }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("exhibit_witnesses_set_idx").on(t.setId) }),
+);
+
+/** A set's causes of action being tried. */
+export const exhibitClaims = pgTable(
+  "exhibit_claims",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("exhibit_claims_set_idx").on(t.setId) }),
+);
+
+/** One element of a cause of action. */
+export const exhibitElements = pgTable(
+  "exhibit_elements",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    claimId: integer("claim_id").notNull(),
+    text: varchar("text", { length: 500 }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ claimIdx: index("exhibit_elements_claim_idx").on(t.claimId) }),
+);
+
 export type ExhibitSet = typeof exhibitSets.$inferSelect;
 export type ExhibitDoc = typeof exhibitDocs.$inferSelect;
+export type ExhibitWitness = typeof exhibitWitnesses.$inferSelect;
+export type ExhibitClaim = typeof exhibitClaims.$inferSelect;
+export type ExhibitElement = typeof exhibitElements.$inferSelect;
 
 export type TrialCase = typeof trialCases.$inferSelect;
 export type TrialDeadline = typeof trialDeadlines.$inferSelect;
