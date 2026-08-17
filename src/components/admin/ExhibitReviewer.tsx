@@ -307,8 +307,12 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
         </p>
       )}
 
+      {/* Frozen controls: the side tabs and the go-to / arrows / search bar stay
+          put at the top while the exhibit list and the viewer scroll on their
+          own, so you never lose them behind a long list. */}
+      <div className="sticky top-9 z-20 -mx-6 space-y-3 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-6 pb-3 pt-2">
       {/* Side tabs */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--c-border)] pb-2">
+      <div className="flex flex-wrap items-center gap-1 pb-1">
         {sidesInUse.map((s) => {
           const n = docs.filter((d) => d.side === s).length;
           return (
@@ -358,11 +362,14 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
           )}
         </div>
       </div>
+      </div>
 
-      {/* Main: list + viewer */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
+      {/* Main: list + viewer — each column is one viewport tall and scrolls
+          inside itself, so paging through 200 exhibits on the left never drags
+          the viewer (or the page) along with it. */}
+      <div className="grid gap-4 lg:h-[80vh] lg:grid-cols-[minmax(240px,320px)_1fr]">
         {/* Exhibit list */}
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2 lg:h-full lg:min-h-0">
           <AddExhibits
             blobReady={blobReady} dragOver={dragOver} uploading={uploading} items={numberedStaged}
             numMode={numMode} onSetMode={changeMode} report={report}
@@ -382,7 +389,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
               No {SIDE_LABEL[side].toLowerCase()} yet. Drop exhibit PDFs above.
             </p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-1 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-0">
               {ordered.map((d, i) => (
                 <ExhibitRow key={d.id} d={d} active={d.id === currentId} index={i}
                   onOpen={() => openDoc(d.id, 1)}
@@ -395,14 +402,14 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
         </div>
 
         {/* Viewer */}
-        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+        <div className="h-[80vh] overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] lg:h-full">
           {!current ? (
-            <div className="flex h-[70vh] flex-col items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
               <FileText size={28} className="opacity-40" />
               {ordered.length ? "Select an exhibit to view it." : "Add exhibits to get started."}
             </div>
           ) : (
-            <div className="flex h-[78vh] flex-col">
+            <div className="flex h-full flex-col">
               {/* Viewer header + in-document search */}
               <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] p-2.5">
                 <div className="min-w-0 flex-1">
@@ -584,6 +591,11 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, bates: d.bates });
   useEffect(() => { setF({ side: d.side, number: d.number, label: d.label, title: d.title, bates: d.bates }); }, [d]);
 
+  // Keep the selected exhibit visible in the list when you page with the arrows.
+  // "nearest" nudges only the list's own scroll, never the page.
+  const rowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => { if (active) rowRef.current?.scrollIntoView({ block: "nearest" }); }, [active]);
+
   if (editing) {
     return (
       <li className="rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] p-2 text-xs">
@@ -605,7 +617,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   }
 
   return (
-    <li className={`group flex items-center gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
+    <li ref={rowRef} className={`group flex items-center gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <span className={`inline-flex h-6 min-w-[2.25rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
           {d.label || (d.number ?? index + 1)}
