@@ -24,23 +24,62 @@ const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)
 const fmtSize = (b?: number | null) => (!b ? "" : b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
 const defaultLabel = (side: Side, n: number | null) => (n == null ? "" : getScheme("dash").format(side, n));
 
-/** A file dropped in, parsed and awaiting the user's confirmation before upload. */
-type Staged = { key: string; file: File; side: Side; number: number | null; label: string; title: string; bates: string };
+/** A file dropped in, parsed and awaiting the user's confirmation before upload.
+ *  `parsed` is the number read from the filename (immutable); `number`/`label`
+ *  are the working values shown and saved. */
+type Staged = { key: string; file: File; side: Side; parsed: number | null; number: number | null; label: string; title: string; bates: string };
+
+/** How the staged batch gets numbered before it's saved. */
+export type NumMode = "keep" | "sequential" | "manual";
 
 /**
- * Auto-numbering: give each staged exhibit its number from its position in the
- * (already number-sorted) list, counting separately per side and continuing from
- * whatever the set already has. This is what saves anyone from typing 200
- * numbers — the drop order is the order, so the numbers just fill themselves in.
- * Manual mode returns the list untouched so hand-entered numbers stand.
+ * Work out each staged exhibit's number, so nobody types 200 of them.
+ *
+ *  - "keep" (default): honour the number read from each filename, so an
+ *    intentional gap in the chain (P-1, P-2, P-4 …) is preserved rather than
+ *    collapsed. Files with no readable number continue the sequence from the
+ *    highest so far.
+ *  - "sequential": ignore the filenames and number straight 1, 2, 3 … in order.
+ *  - "manual": leave the working values alone for hand editing.
+ *
+ * All modes count separately per side and continue from what the set already has.
  */
-function computeNumbers(items: Staged[], autoNumber: boolean, startAt: Record<Side, number>): Staged[] {
-  if (!autoNumber) return items;
-  const c: Record<Side, number> = { ...startAt };
+function computeNumbers(items: Staged[], mode: NumMode, startAt: Record<Side, number>): Staged[] {
+  if (mode === "manual") return items;
+  if (mode === "sequential") {
+    const c: Record<Side, number> = { ...startAt };
+    return items.map((s) => { const n = c[s.side]++; return { ...s, number: n, label: defaultLabel(s.side, n) }; });
+  }
+  // keep: use the parsed number where there is one; fill blanks after the max.
+  const maxN: Record<Side, number> = { plaintiff: startAt.plaintiff - 1, defendant: startAt.defendant - 1, joint: startAt.joint - 1 };
   return items.map((s) => {
-    const n = c[s.side]++;
+    const n = s.parsed ?? maxN[s.side] + 1;
+    maxN[s.side] = Math.max(maxN[s.side], n);
     return { ...s, number: n, label: defaultLabel(s.side, n) };
   });
+}
+
+/** Per-side gaps (skipped numbers) and clashes, so the user can eyeball the
+ *  chain before saving. A gap is usually fine (an omitted exhibit); a clash
+ *  (same number twice, or one that already exists in the set) usually isn't. */
+function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
+  const out: Record<Side, { count: number; min: number; max: number; gaps: number[]; clashes: number[] }> = {
+    plaintiff: { count: 0, min: 0, max: 0, gaps: [], clashes: [] },
+    defendant: { count: 0, min: 0, max: 0, gaps: [], clashes: [] },
+    joint: { count: 0, min: 0, max: 0, gaps: [], clashes: [] },
+  };
+  for (const s of SIDES) {
+    const nums = items.filter((i) => i.side === s && i.number != null).map((i) => i.number as number);
+    if (!nums.length) continue;
+    const set = new Set(nums);
+    const min = Math.min(...nums), max = Math.max(...nums);
+    const gaps: number[] = [];
+    for (let n = min; n <= max; n++) if (!set.has(n)) gaps.push(n);
+    const seen = new Set<number>(), clashes = new Set<number>();
+    for (const n of nums) { if (seen.has(n)) clashes.add(n); seen.add(n); if (existing[s]?.has(n)) clashes.add(n); }
+    out[s] = { count: nums.length, min, max, gaps, clashes: [...clashes].sort((a, b) => a - b) };
+  }
+  return out;
 }
 
 export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; docs: ReviewerDoc[]; blobReady: boolean }) {
@@ -159,29 +198,34 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
   const [staged, setStaged] = useState<Staged[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
-  const [autoNumber, setAutoNumber] = useState(true);
+  const [numMode, setNumMode] = useState<NumMode>("keep");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // New drops continue the set's existing numbering per side, so adding a second
-  // batch doesn't restart at 1.
-  const startAt = useMemo<Record<Side, number>>(() => {
-    const max: Record<Side, number> = { plaintiff: 0, defendant: 0, joint: 0 };
+  // Numbers already used per side, and the next free number, so a second batch
+  // continues rather than restarting at 1 (and so clashes can be flagged).
+  const existingBySide = useMemo<Record<Side, Set<number>>>(() => {
+    const m: Record<Side, Set<number>> = { plaintiff: new Set(), defendant: new Set(), joint: new Set() };
     for (const d of docs) {
       const s: Side = d.side === "defendant" ? "defendant" : d.side === "joint" ? "joint" : "plaintiff";
-      if (typeof d.number === "number") max[s] = Math.max(max[s], d.number);
+      if (typeof d.number === "number") m[s].add(d.number);
     }
-    return { plaintiff: max.plaintiff + 1, defendant: max.defendant + 1, joint: max.joint + 1 };
+    return m;
   }, [docs]);
+  const startAt = useMemo<Record<Side, number>>(() => ({
+    plaintiff: (existingBySide.plaintiff.size ? Math.max(...existingBySide.plaintiff) : 0) + 1,
+    defendant: (existingBySide.defendant.size ? Math.max(...existingBySide.defendant) : 0) + 1,
+    joint: (existingBySide.joint.size ? Math.max(...existingBySide.joint) : 0) + 1,
+  }), [existingBySide]);
 
-  // What the staged rows show and what actually gets uploaded — numbered when in
-  // auto mode, left as typed in manual mode.
-  const numberedStaged = useMemo(() => computeNumbers(staged, autoNumber, startAt), [staged, autoNumber, startAt]);
+  // What the staged rows show and what actually gets uploaded.
+  const numberedStaged = useMemo(() => computeNumbers(staged, numMode, startAt), [staged, numMode, startAt]);
+  const report = useMemo(() => numberingReport(numberedStaged, existingBySide), [numberedStaged, existingBySide]);
 
-  function toggleAuto(next: boolean) {
-    // Leaving auto mode bakes the current numbers in, so manual editing starts
-    // from a filled-in sequence rather than blanks.
-    if (!next) setStaged((prev) => computeNumbers(prev, true, startAt));
-    setAutoNumber(next);
+  function changeMode(next: NumMode) {
+    // Switching to manual bakes the current numbers in, so hand editing starts
+    // from the filled-in sequence rather than blanks.
+    if (next === "manual") setStaged((prev) => computeNumbers(prev, numMode === "manual" ? "keep" : numMode, startAt));
+    setNumMode(next);
   }
 
   const stageFiles = useCallback((picked: PickedFile[]) => {
@@ -195,6 +239,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
         key: `${p.picked.file.name}-${i}-${p.picked.file.size}`,
         file: p.picked.file,
         side: s,
+        parsed: p.number,
         number: p.number,
         label: defaultLabel(s, p.number),
         title: p.title,
@@ -217,7 +262,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
   async function doUpload() {
     if (!staged.length || !blobReady) return;
     setError(null);
-    const finalItems = computeNumbers(staged, autoNumber, startAt);
+    const finalItems = computeNumbers(staged, numMode, startAt);
     setUploading({ done: 0, total: finalItems.length });
     let done = 0;
     for (const item of finalItems) {
@@ -320,7 +365,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
         <div className="space-y-2">
           <AddExhibits
             blobReady={blobReady} dragOver={dragOver} uploading={uploading} items={numberedStaged}
-            autoNumber={autoNumber} onToggleAuto={toggleAuto}
+            numMode={numMode} onSetMode={changeMode} report={report}
             fileRef={fileRef}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
@@ -413,6 +458,8 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
 }
 
 /* --------------------------- add / staged panel --------------------------- */
+type Report = ReturnType<typeof numberingReport>;
+
 /** Per-side numbering summary, e.g. "P-1–P-120 · D-1–D-80". */
 function rangeSummary(items: Staged[]): string {
   const parts: string[] = [];
@@ -425,14 +472,28 @@ function rangeSummary(items: Staged[]): string {
   return parts.join("  ·  ");
 }
 
-function AddExhibits({ blobReady, dragOver, uploading, items, autoNumber, onToggleAuto, fileRef, onDragOver, onDragLeave, onDrop, onPick, onPatch, onRemove, onClear, onUpload }: {
+const MODE_LABEL: Record<NumMode, string> = {
+  keep: "Keep the numbers from the files",
+  sequential: "Renumber 1, 2, 3… in order",
+  manual: "I’ll set the numbers by hand",
+};
+
+function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode, report, fileRef, onDragOver, onDragLeave, onDrop, onPick, onPatch, onRemove, onClear, onUpload }: {
   blobReady: boolean; dragOver: boolean; uploading: { done: number; total: number } | null; items: Staged[];
-  autoNumber: boolean; onToggleAuto: (next: boolean) => void;
+  numMode: NumMode; onSetMode: (m: NumMode) => void; report: Report;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onDragOver: (e: React.DragEvent) => void; onDragLeave: () => void; onDrop: (e: React.DragEvent) => void;
   onPick: (list: FileList | null) => void; onPatch: (key: string, patch: Partial<Staged>) => void;
   onRemove: (key: string) => void; onClear: () => void; onUpload: () => void;
 }) {
+  // Collect gaps and clashes across sides for the notice.
+  const gaps: string[] = [];
+  const clashes: string[] = [];
+  for (const s of SIDES) {
+    for (const n of report[s].gaps) gaps.push(defaultLabel(s, n));
+    for (const n of report[s].clashes) clashes.push(defaultLabel(s, n));
+  }
+
   return (
     <div>
       <div
@@ -453,41 +514,57 @@ function AddExhibits({ blobReady, dragOver, uploading, items, autoNumber, onTogg
             <button onClick={onClear} disabled={!!uploading} className="text-[11px] text-[var(--c-ink-muted)] hover:text-red-600">Clear</button>
           </div>
 
-          {/* The whole point: numbers are filled in from the order, so nobody
-              types them. Confirm, or switch to numbering them by hand. */}
-          <label className="mb-2 flex cursor-pointer items-start gap-2 rounded-md bg-[var(--c-surface2)] p-2 text-[11px]">
-            <input type="checkbox" checked={autoNumber} onChange={(e) => onToggleAuto(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
-            <span>
-              <span className="font-semibold text-[var(--c-ink)]">Number them in this order</span>
-              {autoNumber
-                ? <span className="text-[var(--c-ink-muted)]"> — they’ll be <span className="font-medium text-[var(--c-ink)]">{rangeSummary(items) || "numbered automatically"}</span>. Uncheck to set numbers by hand.</span>
-                : <span className="text-[var(--c-ink-muted)]"> — off; edit each number below.</span>}
-            </span>
-          </label>
+          {/* Plain-language notice of exactly how these will be numbered before
+              anything is saved — so nobody is surprised after the upload. */}
+          <div className="mb-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] p-2 text-[11px]">
+            <div className="mb-1.5 flex items-start gap-1.5">
+              <AlertCircle size={13} className="mt-0.5 shrink-0 text-[var(--c-accent)]" />
+              <span className="text-[var(--c-ink)]">
+                These will be saved as <span className="font-semibold">{rangeSummary(items) || "numbered below"}</span> when you add them. Review the numbers first — change the option below if they’re not right.
+              </span>
+            </div>
+            <select value={numMode} onChange={(e) => onSetMode(e.target.value as NumMode)} className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-[11px]">
+              {(["keep", "sequential", "manual"] as NumMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+            </select>
+
+            {numMode === "keep" && gaps.length > 0 && (
+              <p className="mt-1.5 text-[var(--c-ink-muted)]">
+                <span className="font-semibold text-[var(--c-ink)]">Skipped:</span> {gaps.join(", ")} — left out of the sequence. That’s expected if those exhibits were intentionally omitted; switch to “Renumber 1, 2, 3…” to close the gaps.
+              </p>
+            )}
+            {clashes.length > 0 && (
+              <p className="mt-1.5 text-red-600">
+                <span className="font-semibold">Duplicate number{clashes.length === 1 ? "" : "s"}:</span> {clashes.join(", ")} — two exhibits share a number (or it already exists in this set). Fix it by hand or renumber before adding.
+              </p>
+            )}
+          </div>
 
           <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-            {items.map((s) => (
-              <li key={s.key} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
-                <div className="mb-1 flex items-center gap-1.5">
-                  <select value={s.side} onChange={(e) => onPatch(s.key, { side: e.target.value as Side })} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" title="Side">
-                    <option value="plaintiff">P</option>
-                    <option value="defendant">D</option>
-                    <option value="joint">J</option>
-                  </select>
-                  {autoNumber ? (
-                    <span className="inline-flex h-[22px] min-w-[3rem] items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 text-[11px] font-bold text-[var(--c-accent)]" title="Auto-numbered from the order">{s.label || "—"}</span>
-                  ) : (
-                    <>
-                      <input value={s.number ?? ""} onChange={(e) => onPatch(s.key, { number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} placeholder="#" inputMode="numeric" className="w-10 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
-                      <input value={s.label} onChange={(e) => onPatch(s.key, { label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
-                    </>
-                  )}
-                  <button onClick={() => onRemove(s.key)} disabled={!!uploading} className="ml-auto text-[var(--c-ink-muted)] hover:text-red-600"><X size={13} /></button>
-                </div>
-                <input value={s.title} onChange={(e) => onPatch(s.key, { title: e.target.value })} placeholder="Title" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5 text-[11px]" />
-                <div className="mt-0.5 truncate text-[10px] text-[var(--c-ink-muted)]" title={s.file.name}>{s.file.name}</div>
-              </li>
-            ))}
+            {items.map((s) => {
+              const clash = s.number != null && report[s.side].clashes.includes(s.number);
+              return (
+                <li key={s.key} className={`rounded-md border bg-[var(--c-bg)] p-2 ${clash ? "border-red-500/50" : "border-[var(--c-border)]"}`}>
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <select value={s.side} onChange={(e) => onPatch(s.key, { side: e.target.value as Side })} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" title="Side">
+                      <option value="plaintiff">P</option>
+                      <option value="defendant">D</option>
+                      <option value="joint">J</option>
+                    </select>
+                    {numMode === "manual" ? (
+                      <>
+                        <input value={s.number ?? ""} onChange={(e) => onPatch(s.key, { number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} placeholder="#" inputMode="numeric" className="w-10 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
+                        <input value={s.label} onChange={(e) => onPatch(s.key, { label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
+                      </>
+                    ) : (
+                      <span className={`inline-flex h-[22px] min-w-[3rem] items-center justify-center rounded px-1.5 text-[11px] font-bold ${clash ? "bg-red-500/15 text-red-600" : "bg-[var(--c-accent)]/10 text-[var(--c-accent)]"}`} title={clash ? "Duplicate number" : "Numbered from the order"}>{s.label || "—"}</span>
+                    )}
+                    <button onClick={() => onRemove(s.key)} disabled={!!uploading} className="ml-auto text-[var(--c-ink-muted)] hover:text-red-600"><X size={13} /></button>
+                  </div>
+                  <input value={s.title} onChange={(e) => onPatch(s.key, { title: e.target.value })} placeholder="Title" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5 text-[11px]" />
+                  <div className="mt-0.5 truncate text-[10px] text-[var(--c-ink-muted)]" title={s.file.name}>{s.file.name}</div>
+                </li>
+              );
+            })}
           </ul>
           <button onClick={onUpload} disabled={!blobReady || !!uploading} className="btn btn-accent mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs py-2 disabled:opacity-50">
             {uploading ? <><Loader2 size={13} className="animate-spin" /> Uploading {uploading.done}/{uploading.total}…</> : <><Upload size={13} /> Add {items.length} exhibit{items.length === 1 ? "" : "s"}</>}
