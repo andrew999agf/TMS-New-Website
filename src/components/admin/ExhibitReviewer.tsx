@@ -619,14 +619,17 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   }
 
   return (
-    <li ref={rowRef} className={`group flex items-center gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
-      <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-        <span className={`inline-flex h-6 min-w-[2.25rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
+    <li ref={rowRef} className={`group flex items-start gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
+      <button onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+        <span className={`mt-0.5 inline-flex h-6 min-w-[2.25rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
           {d.label || (d.number ?? index + 1)}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium text-[var(--c-ink)]">{d.title || "Untitled exhibit"}</span>
-          {(d.bates || d.pageCount) && <span className="block truncate text-[10px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+          {/* The description sits between the title and the Bates line, showing up
+              to two full lines of whatever was typed. */}
+          {d.description && <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-[var(--c-ink-muted)]" title={d.description}>{d.description}</span>}
+          {(d.bates || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
         </span>
       </button>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
