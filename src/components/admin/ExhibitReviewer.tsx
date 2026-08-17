@@ -27,6 +27,22 @@ const defaultLabel = (side: Side, n: number | null) => (n == null ? "" : getSche
 /** A file dropped in, parsed and awaiting the user's confirmation before upload. */
 type Staged = { key: string; file: File; side: Side; number: number | null; label: string; title: string; bates: string };
 
+/**
+ * Auto-numbering: give each staged exhibit its number from its position in the
+ * (already number-sorted) list, counting separately per side and continuing from
+ * whatever the set already has. This is what saves anyone from typing 200
+ * numbers — the drop order is the order, so the numbers just fill themselves in.
+ * Manual mode returns the list untouched so hand-entered numbers stand.
+ */
+function computeNumbers(items: Staged[], autoNumber: boolean, startAt: Record<Side, number>): Staged[] {
+  if (!autoNumber) return items;
+  const c: Record<Side, number> = { ...startAt };
+  return items.map((s) => {
+    const n = c[s.side]++;
+    return { ...s, number: n, label: defaultLabel(s.side, n) };
+  });
+}
+
 export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; docs: ReviewerDoc[]; blobReady: boolean }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -143,7 +159,30 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
   const [staged, setStaged] = useState<Staged[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [autoNumber, setAutoNumber] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // New drops continue the set's existing numbering per side, so adding a second
+  // batch doesn't restart at 1.
+  const startAt = useMemo<Record<Side, number>>(() => {
+    const max: Record<Side, number> = { plaintiff: 0, defendant: 0, joint: 0 };
+    for (const d of docs) {
+      const s: Side = d.side === "defendant" ? "defendant" : d.side === "joint" ? "joint" : "plaintiff";
+      if (typeof d.number === "number") max[s] = Math.max(max[s], d.number);
+    }
+    return { plaintiff: max.plaintiff + 1, defendant: max.defendant + 1, joint: max.joint + 1 };
+  }, [docs]);
+
+  // What the staged rows show and what actually gets uploaded — numbered when in
+  // auto mode, left as typed in manual mode.
+  const numberedStaged = useMemo(() => computeNumbers(staged, autoNumber, startAt), [staged, autoNumber, startAt]);
+
+  function toggleAuto(next: boolean) {
+    // Leaving auto mode bakes the current numbers in, so manual editing starts
+    // from a filled-in sequence rather than blanks.
+    if (!next) setStaged((prev) => computeNumbers(prev, true, startAt));
+    setAutoNumber(next);
+  }
 
   const stageFiles = useCallback((picked: PickedFile[]) => {
     const pdfs = picked.filter((p) => /\.pdf$/i.test(p.file.name) || p.file.type === "application/pdf");
@@ -178,9 +217,10 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
   async function doUpload() {
     if (!staged.length || !blobReady) return;
     setError(null);
-    setUploading({ done: 0, total: staged.length });
+    const finalItems = computeNumbers(staged, autoNumber, startAt);
+    setUploading({ done: 0, total: finalItems.length });
     let done = 0;
-    for (const item of staged) {
+    for (const item of finalItems) {
       try {
         const blob = await upload(`exhibit-reviewer/${setId}/${item.file.name}`, item.file, {
           access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId),
@@ -279,7 +319,8 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
         {/* Exhibit list */}
         <div className="space-y-2">
           <AddExhibits
-            blobReady={blobReady} dragOver={dragOver} uploading={uploading} staged={staged}
+            blobReady={blobReady} dragOver={dragOver} uploading={uploading} items={numberedStaged}
+            autoNumber={autoNumber} onToggleAuto={toggleAuto}
             fileRef={fileRef}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
@@ -372,8 +413,21 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
 }
 
 /* --------------------------- add / staged panel --------------------------- */
-function AddExhibits({ blobReady, dragOver, uploading, staged, fileRef, onDragOver, onDragLeave, onDrop, onPick, onPatch, onRemove, onClear, onUpload }: {
-  blobReady: boolean; dragOver: boolean; uploading: { done: number; total: number } | null; staged: Staged[];
+/** Per-side numbering summary, e.g. "P-1–P-120 · D-1–D-80". */
+function rangeSummary(items: Staged[]): string {
+  const parts: string[] = [];
+  for (const s of SIDES) {
+    const nums = items.filter((i) => i.side === s && i.number != null).map((i) => i.number as number);
+    if (!nums.length) continue;
+    const lo = Math.min(...nums), hi = Math.max(...nums);
+    parts.push(lo === hi ? defaultLabel(s, lo) : `${defaultLabel(s, lo)}–${defaultLabel(s, hi)}`);
+  }
+  return parts.join("  ·  ");
+}
+
+function AddExhibits({ blobReady, dragOver, uploading, items, autoNumber, onToggleAuto, fileRef, onDragOver, onDragLeave, onDrop, onPick, onPatch, onRemove, onClear, onUpload }: {
+  blobReady: boolean; dragOver: boolean; uploading: { done: number; total: number } | null; items: Staged[];
+  autoNumber: boolean; onToggleAuto: (next: boolean) => void;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onDragOver: (e: React.DragEvent) => void; onDragLeave: () => void; onDrop: (e: React.DragEvent) => void;
   onPick: (list: FileList | null) => void; onPatch: (key: string, patch: Partial<Staged>) => void;
@@ -392,23 +446,42 @@ function AddExhibits({ blobReady, dragOver, uploading, staged, fileRef, onDragOv
         {!blobReady && <p className="mt-1 text-[11px] text-amber-600">Connect a Blob store to upload files.</p>}
       </div>
 
-      {staged.length > 0 && (
+      {items.length > 0 && (
         <div className="mt-2 rounded-lg border border-[var(--c-accent)]/40 bg-[var(--c-surface)] p-2.5">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold"><ListOrdered size={13} className="text-[var(--c-accent)]" /> {staged.length} to add — check the order</span>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold"><ListOrdered size={13} className="text-[var(--c-accent)]" /> {items.length} to add</span>
             <button onClick={onClear} disabled={!!uploading} className="text-[11px] text-[var(--c-ink-muted)] hover:text-red-600">Clear</button>
           </div>
+
+          {/* The whole point: numbers are filled in from the order, so nobody
+              types them. Confirm, or switch to numbering them by hand. */}
+          <label className="mb-2 flex cursor-pointer items-start gap-2 rounded-md bg-[var(--c-surface2)] p-2 text-[11px]">
+            <input type="checkbox" checked={autoNumber} onChange={(e) => onToggleAuto(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
+            <span>
+              <span className="font-semibold text-[var(--c-ink)]">Number them in this order</span>
+              {autoNumber
+                ? <span className="text-[var(--c-ink-muted)]"> — they’ll be <span className="font-medium text-[var(--c-ink)]">{rangeSummary(items) || "numbered automatically"}</span>. Uncheck to set numbers by hand.</span>
+                : <span className="text-[var(--c-ink-muted)]"> — off; edit each number below.</span>}
+            </span>
+          </label>
+
           <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-            {staged.map((s) => (
+            {items.map((s) => (
               <li key={s.key} className="rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
                 <div className="mb-1 flex items-center gap-1.5">
-                  <select value={s.side} onChange={(e) => onPatch(s.key, { side: e.target.value as Side })} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]">
+                  <select value={s.side} onChange={(e) => onPatch(s.key, { side: e.target.value as Side })} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" title="Side">
                     <option value="plaintiff">P</option>
                     <option value="defendant">D</option>
                     <option value="joint">J</option>
                   </select>
-                  <input value={s.number ?? ""} onChange={(e) => onPatch(s.key, { number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} placeholder="#" inputMode="numeric" className="w-10 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
-                  <input value={s.label} onChange={(e) => onPatch(s.key, { label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
+                  {autoNumber ? (
+                    <span className="inline-flex h-[22px] min-w-[3rem] items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 text-[11px] font-bold text-[var(--c-accent)]" title="Auto-numbered from the order">{s.label || "—"}</span>
+                  ) : (
+                    <>
+                      <input value={s.number ?? ""} onChange={(e) => onPatch(s.key, { number: e.target.value === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")) })} placeholder="#" inputMode="numeric" className="w-10 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
+                      <input value={s.label} onChange={(e) => onPatch(s.key, { label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5 text-[11px]" />
+                    </>
+                  )}
                   <button onClick={() => onRemove(s.key)} disabled={!!uploading} className="ml-auto text-[var(--c-ink-muted)] hover:text-red-600"><X size={13} /></button>
                 </div>
                 <input value={s.title} onChange={(e) => onPatch(s.key, { title: e.target.value })} placeholder="Title" className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5 text-[11px]" />
@@ -417,7 +490,7 @@ function AddExhibits({ blobReady, dragOver, uploading, staged, fileRef, onDragOv
             ))}
           </ul>
           <button onClick={onUpload} disabled={!blobReady || !!uploading} className="btn btn-accent mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs py-2 disabled:opacity-50">
-            {uploading ? <><Loader2 size={13} className="animate-spin" /> Uploading {uploading.done}/{uploading.total}…</> : <><Upload size={13} /> Add {staged.length} exhibit{staged.length === 1 ? "" : "s"}</>}
+            {uploading ? <><Loader2 size={13} className="animate-spin" /> Uploading {uploading.done}/{uploading.total}…</> : <><Upload size={13} /> Add {items.length} exhibit{items.length === 1 ? "" : "s"}</>}
           </button>
         </div>
       )}
