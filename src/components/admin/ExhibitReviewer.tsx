@@ -15,7 +15,7 @@ import {
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
-  id: number; side: string; number: number | null; label: string; title: string; bates: string;
+  id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
 };
 
@@ -414,6 +414,7 @@ export function ExhibitReviewer({ setId, docs, blobReady }: { setId: number; doc
               <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] p-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{current.label ? `${current.label} — ` : ""}{current.title || "Exhibit"}</div>
+                  {current.description && <div className="truncate text-[11px] text-[var(--c-ink)]" title={current.description}>{current.description}</div>}
                   <div className="truncate text-[11px] text-[var(--c-ink-muted)]">
                     {current.bates ? `${current.bates} · ` : ""}{current.pageCount ? `${current.pageCount} page${current.pageCount === 1 ? "" : "s"}` : ""}{current.sizeBytes ? ` · ${fmtSize(current.sizeBytes)}` : ""}
                   </div>
@@ -585,11 +586,11 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; bates?: string }) => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; bates?: string }) => void; onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, bates: d.bates });
-  useEffect(() => { setF({ side: d.side, number: d.number, label: d.label, title: d.title, bates: d.bates }); }, [d]);
+  const [f, setF] = useState({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates });
+  useEffect(() => { setF({ side: d.side, number: d.number, label: d.label, title: d.title, description: d.description, bates: d.bates }); }, [d]);
 
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -607,6 +608,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onDelete }: {
           <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="P-1" className="w-16 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-0.5" />
         </div>
         <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Title" className="mb-1.5 w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
+        <textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Description (optional)" rows={2} className="mb-1.5 w-full resize-y rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
         <input value={f.bates} onChange={(e) => setF({ ...f, bates: e.target.value })} placeholder="Bates (optional)" className="mb-1.5 w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5" />
         <div className="flex justify-end gap-1.5">
           <button onClick={() => setEditing(false)} className="rounded px-2 py-1 text-[var(--c-ink-muted)]">Cancel</button>

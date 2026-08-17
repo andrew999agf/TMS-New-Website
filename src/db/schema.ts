@@ -964,6 +964,7 @@ export const exhibitDocs = pgTable(
     /** Display designation as offered, e.g. "P-1". */
     label: varchar("label", { length: 64 }).notNull().default(""),
     title: varchar("title", { length: 255 }).notNull().default(""),
+    description: text("description").notNull().default(""),
     bates: varchar("bates", { length: 128 }).notNull().default(""),
     url: text("url"),
     pathname: text("pathname"),

@@ -115,6 +115,7 @@ export type DocInput = {
   number?: number | null;
   label?: string;
   title?: string;
+  description?: string;
   bates?: string;
   file?: { url: string; pathname: string; contentType?: string; size?: number };
 };
@@ -145,6 +146,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
         number: n,
         label: str(input.label, 64),
         title: str(input.title, 255),
+        description: str(input.description, 2000),
         bates: str(input.bates, 128),
         url: input.file?.url ?? null,
         pathname: input.file?.pathname ?? null,
@@ -164,7 +166,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; bates?: string }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; bates?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -173,6 +175,7 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.number !== undefined) { set.number = patch.number === null ? null : num(patch.number); set.sort = (patch.number === null ? null : num(patch.number)) ?? 100000; }
     if (patch.label !== undefined) set.label = str(patch.label, 64);
     if (patch.title !== undefined) set.title = str(patch.title, 255);
+    if (patch.description !== undefined) set.description = str(patch.description, 2000);
     if (patch.bates !== undefined) set.bates = str(patch.bates, 128);
     if (Object.keys(set).length === 0) return { ok: true as const };
     const [row] = await db.update(exhibitDocs).set(set).where(eq(exhibitDocs.id, id)).returning({ setId: exhibitDocs.setId });
@@ -231,7 +234,7 @@ export async function searchExhibitSet(setId: number, query: string): Promise<Se
     const docs = await db.select().from(exhibitDocs).where(eq(exhibitDocs.setId, setId)).orderBy(asc(exhibitDocs.sort));
     const hits: SetSearchHit[] = [];
     for (const d of docs) {
-      const meta = `${d.label} ${d.title} ${d.bates}`.toLowerCase();
+      const meta = `${d.label} ${d.title} ${d.description} ${d.bates}`.toLowerCase();
       const metaHit = meta.includes(q);
       const pages: number[] = [];
       let snippet = "";
