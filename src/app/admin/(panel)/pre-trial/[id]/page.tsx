@@ -83,7 +83,7 @@ export default async function PreTrialCasePage({ params }: { params: Promise<{ i
           matters={matters}
         />
 
-        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} pretrialDate={row.pretrialDate} rows={rows} team={team} categories={categories} caseMatter={row.matter} />
+        <PreTrialChecklist caseId={row.id} trialDate={row.trialDate} pretrialDate={row.pretrialDate} rows={rows} team={team} categories={categories} caseMatter={row.matter} matters={matters} />
       </div>
     </>
   );

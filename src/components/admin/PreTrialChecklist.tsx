@@ -9,6 +9,8 @@ import {
 } from "@/lib/pretrial/template";
 import { addDeadline, updateDeadline, toggleDeadline, deleteDeadline, applyTemplate, shiftAllDeadlines, assignDeadline, setPretrialDate, timeEntryDefaults, completeWithTime, setDeadlineDoneBy } from "@/app/admin/(panel)/pre-trial/actions";
 import { PopMenu, PopMenuItem } from "./PopMenu";
+import { MatterPicker, type MatterOption } from "./MatterPicker";
+import { cleanMatterCode, buildActivityNote } from "@/lib/time-entry";
 
 export type DeadlineRow = { id: number; parentId: number | null; assignee: string; title: string; dueDate: string | null; done: boolean; doneAt: string | null; doneBy: string | null; notes: string; sort: number };
 export type TeamMember = { name: string };
@@ -19,11 +21,13 @@ const fmtStamp = (iso: string) => new Date(iso).toLocaleDateString("en-US", { ti
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 type Run = (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
 
-export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team, categories, caseMatter }: { caseId: number; trialDate: string | null; pretrialDate: string | null; rows: DeadlineRow[]; team: TeamMember[]; categories: string[]; caseMatter: string }) {
+export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team, categories, caseMatter, matters }: { caseId: number; trialDate: string | null; pretrialDate: string | null; rows: DeadlineRow[]; team: TeamMember[]; categories: string[]; caseMatter: string; matters: MatterOption[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
+  // Completed items stay visible by default so the list reads as a record of
+  // what's been done, not just what's left. Still collapsible.
+  const [showDone, setShowDone] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState("");
@@ -135,11 +139,17 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
       )}
 
       {doneTree.length > 0 && (
-        <div>
-          <button onClick={() => setShowDone((s) => !s)} className="text-xs font-semibold text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
-            {showDone ? "Hide" : "Show"} {doneTree.length} completed deadline{doneTree.length === 1 ? "" : "s"}
+        <div className="pt-2">
+          <button
+            onClick={() => setShowDone((s) => !s)}
+            aria-expanded={showDone}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3.5 py-2 text-sm font-semibold text-[var(--c-ink)] transition-colors hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+          >
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"><Check size={13} /></span>
+            {doneTree.length} completed deadline{doneTree.length === 1 ? "" : "s"}
+            <ChevronRight size={15} className={`transition-transform ${showDone ? "rotate-90" : ""}`} />
           </button>
-          {showDone && <div className="mt-2 space-y-2">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title, who) => setTimeFor({ id, title, who })} />)}</div>}
+          {showDone && <div className="mt-3 space-y-2 opacity-90">{doneTree.map((t) => <TaskCard key={t.id} caseId={caseId} node={t} team={team} run={run} pending={pending} onCompleted={(id, title, who) => setTimeFor({ id, title, who })} />)}</div>}
         </div>
       )}
 
@@ -155,6 +165,7 @@ export function PreTrialChecklist({ caseId, trialDate, pretrialDate, rows, team,
           defaultWho={timeFor.who}
           categories={categories}
           fallbackMatter={caseMatter}
+          matters={matters}
           onClose={() => { setTimeFor(null); router.refresh(); }}
         />
       )}
@@ -490,9 +501,9 @@ function AssigneePicker({ id, value, team, run, pending, compact }: { id: number
  * can be prefilled is — the person (the assignee), their billing rate, the
  * case's matter, and a note built from the task — so only the hours are left.
  */
-function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallbackMatter, onClose }: {
+function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallbackMatter, matters, onClose }: {
   deadlineId: number; title: string; team: TeamMember[]; defaultWho: string;
-  categories: string[]; fallbackMatter: string; onClose: () => void;
+  categories: string[]; fallbackMatter: string; matters: MatterOption[]; onClose: () => void;
 }) {
   // Who actually did the work — defaults to whoever the task was assigned to.
   const [who, setWho] = useState(defaultWho);
@@ -501,12 +512,19 @@ function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallba
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<{ name: string; rate: number }[]>([]);
+  const matterDesc = useMemo(() => Object.fromEntries(matters.map((m) => [m.displayNumber, m.description])), [matters]);
   const [f, setF] = useState({
     activityUserName: "",
     price: 0,
     quantity: "",
-    matter: fallbackMatter,
-    activityDescription: categories[0] ?? "",
+    // The bare Clio display number only — same as a Time Tracker entry — so it
+    // merges on the right key. The case's linked matter is often stored as
+    // "NUMBER — Description"; strip it back to the number here.
+    matter: cleanMatterCode(fallbackMatter, matters),
+    // The category (e.g. DRAFTING) — goes INTO the note like the tracker does,
+    // not into the activity_description column.
+    category: "",
+    // Free-text notes. Defaults to the task, which is what was done.
     note: title,
     entryDate: new Date().toISOString().slice(0, 10),
     nonBillable: false,
@@ -526,16 +544,36 @@ function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallba
       // Bill it to the person who did the work, at their rate when we know it.
       const chosen = who || d.activityUserName;
       const rate = d.users.find((u) => u.name.toLowerCase() === chosen.toLowerCase())?.rate ?? d.price;
-      setF((s) => ({ ...s, activityUserName: chosen, price: rate, matter: d.matter || fallbackMatter, note: d.note }));
+      setF((s) => ({ ...s, activityUserName: chosen, price: rate, matter: cleanMatterCode(d.matter || fallbackMatter, matters), note: d.taskTitle || s.note }));
     }
     setLoading(false);
     setStep("form");
   }
 
+  // The user we bill under (the "Who" select, falling back to who did it).
+  const billUser = f.activityUserName || who;
+  // Exactly the string the tracker would write: "CATEGORY - Name (Role) - note".
+  const finalNote = buildActivityNote(f.category, f.note, billUser);
+
   function save() {
     setSaving(true);
     setError(null);
-    completeWithTime(deadlineId, { ...f, quantity: Number(f.quantity) }, who || f.activityUserName)
+    completeWithTime(
+      deadlineId,
+      {
+        activityUserName: billUser,
+        price: Number(f.price) || 0,
+        quantity: Number(f.quantity),
+        matter: cleanMatterCode(f.matter, matters),
+        // Matches Time Tracker exactly: activity_description stays empty; the
+        // category is folded into the note.
+        activityDescription: "",
+        note: finalNote,
+        entryDate: f.entryDate,
+        nonBillable: f.nonBillable,
+      },
+      billUser,
+    )
       .then((r) => { if (r.ok) onClose(); else setError(r.error ?? "Couldn't save."); })
       .finally(() => setSaving(false));
   }
@@ -611,14 +649,24 @@ function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallba
                   <input type="number" step="1" min="0" value={f.price} onChange={(e) => setF({ ...f, price: Number(e.target.value) })} className={`${input} w-full`} />
                 </label>
               </div>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Matter</span>
-                <input value={f.matter} onChange={(e) => setF({ ...f, matter: e.target.value })} className={`${input} w-full`} />
-              </label>
+              <div className="block">
+                <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Matter (case code)</span>
+                <MatterPicker
+                  matters={matters}
+                  value={f.matter}
+                  onChange={(v) => setF((s) => ({ ...s, matter: v }))}
+                  placeholder="Search by code, client, or description…"
+                  inputClass={`${input} w-full`}
+                />
+                {matterDesc[f.matter] && (
+                  <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">{matterDesc[f.matter]}</span>
+                )}
+              </div>
               {categories.length > 0 && (
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Activity</span>
-                  <select value={f.activityDescription} onChange={(e) => setF({ ...f, activityDescription: e.target.value })} className={`${input} w-full`}>
+                  <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Category</span>
+                  <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className={`${input} w-full`}>
+                    <option value="">— none —</option>
                     {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </label>
@@ -627,6 +675,12 @@ function LogTimeDialog({ deadlineId, title, team, defaultWho, categories, fallba
                 <span className="mb-1 block text-[11px] font-semibold text-[var(--c-ink)]">Note</span>
                 <textarea value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} rows={2} className={`${input} w-full`} />
               </label>
+              {/* Exactly what lands in the CSV note column — same shape a Time
+                  Tracker entry produces, so billing merges cleanly. */}
+              <p className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface2)] px-2.5 py-1.5 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
+                <span className="font-semibold text-[var(--c-ink)]">Entry preview</span><br />
+                <span className="text-[var(--c-ink)]">{f.matter || "—"}</span> · {finalNote}
+              </p>
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--c-ink-muted)]">
                 <input type="checkbox" checked={f.nonBillable} onChange={(e) => setF({ ...f, nonBillable: e.target.checked })} />
                 Non-billable

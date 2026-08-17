@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { eq, max } from "drizzle-orm";
 import { db } from "@/db";
-import { trialCases, trialDeadlines, timeEntries, timeActivityUsers } from "@/db/schema";
+import { trialCases, trialDeadlines, timeEntries, timeActivityUsers, timeMatters } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { getTemplate, shiftISO } from "@/lib/pretrial/template";
+import { cleanMatterCode } from "@/lib/time-entry";
 
 async function guard() {
   const session = await requireAdmin();
@@ -317,7 +318,10 @@ export async function timeEntryDefaults(deadlineId: number) {
     const [d] = await db.select().from(trialDeadlines).where(eq(trialDeadlines.id, deadlineId));
     if (!d) return null;
     const [c] = await db.select({ name: trialCases.name, matter: trialCases.matter, causeNumber: trialCases.causeNumber }).from(trialCases).where(eq(trialCases.id, d.caseId));
-    const users = await db.select({ name: timeActivityUsers.name, rate: timeActivityUsers.rate }).from(timeActivityUsers);
+    const [users, matterRows] = await Promise.all([
+      db.select({ name: timeActivityUsers.name, rate: timeActivityUsers.rate }).from(timeActivityUsers),
+      db.select({ displayNumber: timeMatters.displayNumber, description: timeMatters.description }).from(timeMatters),
+    ]);
 
     // Bill under the assignee when there is one, otherwise whoever is signed in.
     const who = (d.assignee || "").trim() || (session.name || "").trim();
@@ -325,7 +329,9 @@ export async function timeEntryDefaults(deadlineId: number) {
     return {
       activityUserName: match?.name ?? who,
       price: match?.rate ?? 0,
-      matter: c?.matter ?? "",
+      // The bare Clio display number, so it matches a Time Tracker entry and
+      // merges into billing on the same key.
+      matter: cleanMatterCode(c?.matter ?? "", matterRows),
       // Parent context isn't included — the task title is what was actually done.
       note: `${d.title}${c?.causeNumber ? ` (${c.causeNumber})` : ""}`,
       taskTitle: d.title,
@@ -348,15 +354,22 @@ export async function completeWithTime(
 ) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const hours = Number(entry.quantity);
-  if (!Number.isFinite(hours) || hours <= 0) return { ok: false as const, error: "Enter how long it took." };
+  const raw = Number(entry.quantity);
+  if (!Number.isFinite(raw) || raw <= 0) return { ok: false as const, error: "Enter how long it took." };
+  // Round up to the nearest 0.1 hour (6-minute increment) — the same rounding a
+  // Time Tracker manual entry applies, so the billed quantity matches.
+  const hours = Math.ceil(raw * 10) / 10;
   try {
     const [d] = await db.select({ caseId: trialDeadlines.caseId }).from(trialDeadlines).where(eq(trialDeadlines.id, deadlineId));
     if (!d) return { ok: false as const, error: "Task not found." };
 
+    // Final guard: the matter written to a time entry is the bare Clio display
+    // number, never "NUMBER — Description". Even if a decorated value reaches
+    // here, strip it so the billing CSV merges on the right key.
+    const matterRows = await db.select({ displayNumber: timeMatters.displayNumber, description: timeMatters.description }).from(timeMatters);
     await db.insert(timeEntries).values({
       ownerId: Number(session.sub),
-      matter: str(entry.matter, 500),
+      matter: str(cleanMatterCode(entry.matter, matterRows), 500),
       entryDate: isoDate(entry.entryDate) ?? new Date().toISOString().slice(0, 10),
       activityDescription: str(entry.activityDescription, 500),
       note: str(entry.note, 2000),
