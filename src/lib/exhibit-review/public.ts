@@ -1,0 +1,51 @@
+import "server-only";
+import { db } from "@/db";
+import { exhibitSets, exhibitDocs } from "@/db/schema";
+import { and, asc, eq } from "drizzle-orm";
+
+export type PublicDoc = {
+  id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string;
+  pageCount: number | null;
+};
+export type PublicSet = {
+  id: number; name: string; causeNumber: string; court: string; token: string;
+  docs: PublicDoc[];
+};
+
+/**
+ * Load a shared exhibit set by its public token — but only when sharing is
+ * actually turned on. Returns null otherwise, so a disabled (or unknown) link
+ * simply doesn't resolve. Deliberately returns no storage URLs; the bytes are
+ * streamed through the token-checked file route instead.
+ */
+export async function getPublicSet(token: string): Promise<PublicSet | null> {
+  if (!db || !token) return null;
+  try {
+    const [set] = await db
+      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, isPublic: exhibitSets.isPublic, token: exhibitSets.publicToken })
+      .from(exhibitSets)
+      .where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
+    if (!set) return null;
+    const rows = await db
+      .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, url: exhibitDocs.url, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
+      .from(exhibitDocs)
+      .where(eq(exhibitDocs.setId, set.id))
+      .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+    const docs: PublicDoc[] = rows
+      .filter((r) => r.url)
+      .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount }));
+    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs };
+  } catch {
+    return null;
+  }
+}
+
+/** Natural per-side ordering for the public index. */
+export function orderPublicDocs(docs: PublicDoc[]): PublicDoc[] {
+  const order: Record<string, number> = { plaintiff: 0, defendant: 1, joint: 2 };
+  return docs.slice().sort((a, b) => {
+    const so = (order[a.side] ?? 9) - (order[b.side] ?? 9);
+    if (so !== 0) return so;
+    return (a.number ?? Infinity) - (b.number ?? Infinity) || a.id - b.id;
+  });
+}

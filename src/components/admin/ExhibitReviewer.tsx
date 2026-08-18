@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
+  Share2, Link as LinkIcon, Download, Globe,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages, setSetPublic,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
@@ -182,6 +183,93 @@ function NoteButton({ notes, onSave }: { notes: string; onSave: (v: string) => v
 }
 
 /**
+ * Sharing: the public on/off toggle plus the link tree and download. When on,
+ * anyone with a link can view (no sign-in); off makes every link stop resolving.
+ * Per-exhibit links live on the rows and in the viewer.
+ */
+function ShareControl({ setId, isPublic, token, docs, onCopy, onFlash }: {
+  setId: number; isPublic: boolean; token: string | null; docs: ReviewerDoc[]; onCopy: (text: string, label: string) => void; onFlash: (m: string) => void;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [pub, setPub] = useState(isPublic);
+  const [tok, setTok] = useState(token);
+  useEffect(() => { setPub(isPublic); setTok(token); }, [isPublic, token]);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const treeUrl = tok ? `${origin}/exhibits/${tok}` : "";
+
+  function toggle(next: boolean) {
+    start(async () => {
+      const r = await setSetPublic(setId, next);
+      if (r.ok) { setPub(r.isPublic); setTok(r.token); }
+      router.refresh();
+    });
+  }
+
+  function downloadTree() {
+    if (!tok) return;
+    const order: Record<string, number> = { plaintiff: 0, defendant: 1, joint: 2 };
+    const sorted = docs.slice().sort((a, b) => (order[a.side] - order[b.side]) || (a.number ?? Infinity) - (b.number ?? Infinity) || a.id - b.id);
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const items = sorted.map((d) => `    <li><a href="${origin}/exhibits/${tok}/e/${d.id}">${esc(d.label || String(d.number ?? ""))}${d.title ? ` — ${esc(d.title)}` : ""}</a></li>`).join("\n");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Exhibit links</title><style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;padding:0 16px;color:#26211a}h1{font-size:20px}a{color:#7c1d2b}li{margin:6px 0}p{color:#666;font-size:12px}</style></head><body>
+  <h1>Exhibit links</h1>
+  <p>Open the full index: <a href="${treeUrl}">${treeUrl}</a></p>
+  <ul>
+${items}
+  </ul>
+  <p>These links work only while sharing is turned on.</p>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "exhibit-links.html"; a.click();
+    URL.revokeObjectURL(url);
+    onFlash("Link tree downloaded");
+  }
+
+  const btn = "rounded border border-[var(--c-border)] px-2 py-1 text-[11px] hover:bg-[var(--c-surface2)]";
+  return (
+    <PopMenu
+      width={300}
+      title="Share exhibits"
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${pub ? "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]"}`}
+      label={<>{pub ? <Globe size={13} /> : <Share2 size={13} />} Share</>}
+    >
+      {() => (
+        <div className="space-y-2.5 p-3">
+          <label className="flex cursor-pointer items-start gap-2 text-xs">
+            <input type="checkbox" checked={pub} disabled={pending} onChange={(e) => toggle(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
+            <span>
+              <span className="font-semibold text-[var(--c-ink)]">Anyone with the link can view</span>
+              <span className="mt-0.5 block text-[var(--c-ink-muted)]">No sign-in needed. Turn this off and every link stops working immediately.</span>
+            </span>
+          </label>
+
+          {pub && tok ? (
+            <>
+              <div className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Link tree — all exhibits</div>
+                <div className="mt-1 truncate text-[11px] text-[var(--c-ink)]" title={treeUrl}>{treeUrl}</div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <button onClick={() => onCopy(treeUrl, "Link tree copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
+                  <a href={treeUrl} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Open</a>
+                  <button onClick={downloadTree} className={btn}><Download size={11} className="mr-1 inline" />Download</button>
+                </div>
+              </div>
+              <p className="text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Each exhibit also has its own link — the link icon on a row (or in the viewer) copies it to email.</p>
+            </>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-[var(--c-ink-muted)]">Turn on sharing to get a link you can email or hand out at trial. You can switch it off anytime.</p>
+          )}
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/**
  * The right-hand summary in the frozen bar. Reads at a glance how many exhibits
  * are admitted (and excluded), and opens a grouped, clickable list so you can
  * jump straight to any of them — across both parties.
@@ -291,12 +379,21 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady }: {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, isPublic, publicToken }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
+  isPublic: boolean; publicToken: string | null;
 }) {
   const router = useRouter();
   // The exhibit whose full details dialog (pencil) is open.
   const [editId, setEditId] = useState<number | null>(null);
+  // Brief confirmation toast (copied a link, etc.).
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(null), 2200); }, []);
+  const copy = useCallback((text: string, label: string) => {
+    navigator.clipboard?.writeText(text).then(() => flash(label)).catch(() => flash("Couldn't copy — copy it manually."));
+  }, [flash]);
+  // A per-exhibit public link (works only while sharing is on).
+  const exhibitLink = useCallback((docId: number) => (publicToken && typeof window !== "undefined" ? `${window.location.origin}/exhibits/${publicToken}/e/${docId}` : ""), [publicToken]);
   // Quick name/text lookups for showing sponsors and elements in the viewer.
   const witnessName = useMemo(() => new Map(witnesses.map((w) => [w.id, w.name])), [witnesses]);
   const elementText = useMemo(() => new Map(elements.map((e) => [e.id, e.text])), [elements]);
@@ -528,6 +625,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
   return (
     <div className="space-y-4">
+      {toast && <div className="fixed top-14 right-5 z-[9999] rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-lg" style={{ background: "var(--c-success, #16a34a)" }}>✓ {toast}</div>}
       {error && (
         <p className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span className="flex-1">{error}</span>
@@ -568,6 +666,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         </div>
 
         <div className="ml-auto flex min-w-[240px] flex-1 items-center gap-2 sm:max-w-md">
+          {/* Share links (link tree + per-exhibit) with the public on/off toggle. */}
+          <ShareControl setId={setId} isPublic={isPublic} token={publicToken} docs={docs} onCopy={copy} onFlash={flash} />
           {/* The admitted/trial-status summary sits on the right of the frozen
               bar: a tally that opens a grouped, clickable list of exhibits. */}
           <StatusSummary docs={docs} onOpen={openAnySide} />
@@ -628,6 +728,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   onOpen={() => openDoc(d.id, 1)}
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
                   onEdit={() => setEditId(d.id)}
+                  onCopyLink={isPublic && publicToken ? () => copy(exhibitLink(d.id), "Exhibit link copied") : undefined}
                   onDelete={() => { if (confirm(`Remove ${d.label || d.title || "this exhibit"}?`)) run(() => deleteExhibitDoc(d.id)); }}
                 />
               ))}
@@ -674,6 +775,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <button onClick={() => stepMatch(1)} disabled={!docMatches.length} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-30" title="Next match"><ChevronDown size={14} /></button>
                 </div>
 
+                {isPublic && publicToken && (
+                  <button onClick={() => copy(exhibitLink(current.id), "Exhibit link copied")} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={15} /></button>
+                )}
                 <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
                 <a href={`${proxyBase}/${current.id}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
               </div>
@@ -844,9 +948,9 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onDelete }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onCopyLink, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onCopyLink?: () => void; onDelete: () => void;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -876,6 +980,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onDelete }: {
         <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
       </div>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
+        {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
         <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
       </span>

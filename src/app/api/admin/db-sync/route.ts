@@ -413,6 +413,9 @@ const DDL = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS exhibit_sets_archived_idx ON exhibit_sets (archived)`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS public_token varchar(64)`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false`,
+  `CREATE INDEX IF NOT EXISTS exhibit_sets_token_idx ON exhibit_sets (public_token)`,
   `CREATE TABLE IF NOT EXISTS exhibit_docs (
     id serial PRIMARY KEY,
     set_id integer NOT NULL,

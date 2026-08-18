@@ -943,12 +943,18 @@ export const exhibitSets = pgTable(
     causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
     court: varchar("court", { length: 191 }).notNull().default(""),
     notes: text("notes").notNull().default(""),
+    /** Unguessable token for public share links (the link tree). Minted the
+     *  first time sharing is turned on; stable thereafter so old links keep
+     *  working when sharing is toggled off and back on. */
+    publicToken: varchar("public_token", { length: 64 }),
+    /** When true, anyone with a link can view the exhibits (no sign-in). */
+    isPublic: boolean("is_public").notNull().default(false),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({ archivedIdx: index("exhibit_sets_archived_idx").on(t.archived) }),
+  (t) => ({ archivedIdx: index("exhibit_sets_archived_idx").on(t.archived), tokenIdx: index("exhibit_sets_token_idx").on(t.publicToken) }),
 );
 
 /** One exhibit PDF in a set. */

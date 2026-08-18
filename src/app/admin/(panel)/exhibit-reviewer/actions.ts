@@ -86,6 +86,27 @@ export async function updateExhibitSet(id: number, input: SetInput) {
   }
 }
 
+/**
+ * Turn public sharing on or off for a set. On the first enable we mint a stable,
+ * unguessable token, so every share link (the link tree and each exhibit) keeps
+ * working if sharing is later turned off and back on. Turning it off makes every
+ * public link stop resolving until it's turned back on.
+ */
+export async function setSetPublic(id: number, isPublic: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [cur] = await db.select({ token: exhibitSets.publicToken }).from(exhibitSets).where(eq(exhibitSets.id, id));
+    const token = cur?.token || (await import("crypto")).randomBytes(18).toString("base64url");
+    await db.update(exhibitSets).set({ isPublic, publicToken: token, updatedAt: new Date() }).where(eq(exhibitSets.id, id));
+    await audit(session.email, "update", "exhibit-set", String(id), isPublic ? "Enabled public sharing" : "Disabled public sharing");
+    revalidatePath(`/admin/exhibit-reviewer/${id}`);
+    return { ok: true as const, isPublic, token };
+  } catch {
+    return { ok: false as const, error: "Couldn't update sharing." };
+  }
+}
+
 export async function setExhibitSetArchived(id: number, archived: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
