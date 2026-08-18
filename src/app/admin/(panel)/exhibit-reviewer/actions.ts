@@ -143,7 +143,9 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
     let pageCount: number | null = null;
     let pageText: string[] = [];
     if (input.file?.url) {
-      const extracted = await extractPdfText(input.file.url);
+      // Pass the known size so a large file skips extraction entirely — no fetch,
+      // no parse, no risk of the function being killed and losing this record.
+      const extracted = await extractPdfText(input.file.url, input.file.size);
       pageCount = extracted.pageCount || null;
       pageText = extracted.pages;
     }
