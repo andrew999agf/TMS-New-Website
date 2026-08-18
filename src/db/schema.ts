@@ -947,7 +947,11 @@ export const exhibitSets = pgTable(
      *  first time sharing is turned on; stable thereafter so old links keep
      *  working when sharing is toggled off and back on. */
     publicToken: varchar("public_token", { length: 64 }),
-    /** When true, anyone with a link can view the exhibits (no sign-in). */
+    /** Access mode: off (firm only) | restricted (named people, email code) |
+     *  public (anyone with the link). Default off — nothing is shared until asked. */
+    access: varchar("access", { length: 16 }).notNull().default("off"),
+    /** Kept in step with access ("public") so the open public routes, which key
+     *  on this flag, keep working unchanged. */
     isPublic: boolean("is_public").notNull().default(false),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
@@ -1038,8 +1042,26 @@ export const exhibitElements = pgTable(
   (t) => ({ claimIdx: index("exhibit_elements_claim_idx").on(t.claimId) }),
 );
 
+/** Named people allowed to view a restricted set — each verified by a one-time
+ *  code sent to their own email, and individually revocable. */
+export const exhibitRecipients = pgTable(
+  "exhibit_recipients",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    name: varchar("name", { length: 191 }).notNull().default(""),
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    revoked: boolean("revoked").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("exhibit_recipients_set_idx").on(t.setId), tokenIdx: index("exhibit_recipients_token_idx").on(t.token) }),
+);
+
 export type ExhibitSet = typeof exhibitSets.$inferSelect;
 export type ExhibitDoc = typeof exhibitDocs.$inferSelect;
+export type ExhibitRecipient = typeof exhibitRecipients.$inferSelect;
 export type ExhibitWitness = typeof exhibitWitnesses.$inferSelect;
 export type ExhibitClaim = typeof exhibitClaims.$inferSelect;
 export type ExhibitElement = typeof exhibitElements.$inferSelect;

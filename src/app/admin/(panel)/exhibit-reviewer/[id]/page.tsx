@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { ExhibitReviewer, type ReviewerDoc, type WitnessLite, type ClaimLite, type ElementLite } from "@/components/admin/ExhibitReviewer";
+import { ExhibitReviewer, type ReviewerDoc, type WitnessLite, type ClaimLite, type ElementLite, type RecipientLite } from "@/components/admin/ExhibitReviewer";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements } from "@/db/schema";
+import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 
@@ -38,6 +38,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     db.select().from(exhibitClaims).where(eq(exhibitClaims.setId, id)).orderBy(asc(exhibitClaims.sort)),
     db.select().from(exhibitElements).where(eq(exhibitElements.setId, id)).orderBy(asc(exhibitElements.sort)),
   ]);
+  const recipientRows = await db.select().from(exhibitRecipients).where(eq(exhibitRecipients.setId, id)).orderBy(asc(exhibitRecipients.createdAt));
 
   const numArr = (v: unknown): number[] => (Array.isArray(v) ? (v as number[]) : []);
   const strArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
@@ -50,6 +51,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
   const witnesses: WitnessLite[] = witnessRows.map((w) => ({ id: w.id, name: w.name }));
   const claims: ClaimLite[] = claimRows.map((c) => ({ id: c.id, name: c.name }));
   const elements: ElementLite[] = elementRows.map((e) => ({ id: e.id, claimId: e.claimId, text: e.text }));
+  const recipients: RecipientLite[] = recipientRows.map((r) => ({ id: r.id, email: r.email, name: r.name, token: r.token, revoked: r.revoked }));
 
   return (
     <>
@@ -61,7 +63,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         <Link href="/admin/exhibit-reviewer" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All sets
         </Link>
-        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} isPublic={set.isPublic} publicToken={set.publicToken} />
+        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} access={set.access} publicToken={set.publicToken} recipients={recipients} />
       </div>
     </>
   );

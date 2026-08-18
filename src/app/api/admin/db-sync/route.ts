@@ -415,7 +415,20 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS exhibit_sets_archived_idx ON exhibit_sets (archived)`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS public_token varchar(64)`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS access varchar(16) NOT NULL DEFAULT 'off'`,
   `CREATE INDEX IF NOT EXISTS exhibit_sets_token_idx ON exhibit_sets (public_token)`,
+  `CREATE TABLE IF NOT EXISTS exhibit_recipients (
+    id serial PRIMARY KEY,
+    set_id integer NOT NULL,
+    email varchar(255) NOT NULL,
+    name varchar(191) NOT NULL DEFAULT '',
+    token varchar(64) NOT NULL UNIQUE,
+    revoked boolean NOT NULL DEFAULT false,
+    expires_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS exhibit_recipients_set_idx ON exhibit_recipients (set_id)`,
+  `CREATE INDEX IF NOT EXISTS exhibit_recipients_token_idx ON exhibit_recipients (token)`,
   `CREATE TABLE IF NOT EXISTS exhibit_docs (
     id serial PRIMARY KEY,
     set_id integer NOT NULL,

@@ -5,15 +5,16 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages, setSetPublic,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -26,6 +27,7 @@ export type ReviewerDoc = {
 export type WitnessLite = { id: number; name: string };
 export type ClaimLite = { id: number; name: string };
 export type ElementLite = { id: number; claimId: number; text: string };
+export type RecipientLite = { id: number; email: string; name: string; token: string; revoked: boolean };
 
 /** The review flags, in the order they read on the light. */
 /**
@@ -183,28 +185,51 @@ function NoteButton({ notes, onSave }: { notes: string; onSave: (v: string) => v
 }
 
 /**
- * Sharing: the public on/off toggle plus the link tree and download. When on,
- * anyone with a link can view (no sign-in); off makes every link stop resolving.
- * Per-exhibit links live on the rows and in the viewer.
+ * The sharing dialog: three modes, secure by default.
+ *   Off        — firm only, no links resolve.
+ *   Restricted — named people, each verified by a one-time code emailed to them.
+ *                A forwarded link won't let anyone else in. (Default when sharing.)
+ *   Public     — anyone with the link can view (no sign-in), plus a link tree.
  */
-function ShareControl({ setId, isPublic, token, docs, onCopy, onFlash }: {
-  setId: number; isPublic: boolean; token: string | null; docs: ReviewerDoc[]; onCopy: (text: string, label: string) => void; onFlash: (m: string) => void;
+function ShareDialog({ setId, access, token, recipients, docs, onCopy, onFlash, onClose }: {
+  setId: number; access: string; token: string | null; recipients: RecipientLite[]; docs: ReviewerDoc[];
+  onCopy: (text: string, label: string) => void; onFlash: (m: string) => void; onClose: () => void;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
-  const [pub, setPub] = useState(isPublic);
+  const [, start] = useTransition();
+  const [mode, setMode] = useState(access);
   const [tok, setTok] = useState(token);
-  useEffect(() => { setPub(isPublic); setTok(token); }, [isPublic, token]);
+  const [pendingMode, setPendingMode] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setMode(access); setTok(token); }, [access, token]);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const treeUrl = tok ? `${origin}/exhibits/${tok}` : "";
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => start(async () => { const r = await fn(); if (!r.ok) setError(r.error ?? "Something went wrong."); router.refresh(); });
 
-  function toggle(next: boolean) {
+  function choose(next: string) {
+    setError(null);
+    setMode(next);
+    setPendingMode(true);
     start(async () => {
-      const r = await setSetPublic(setId, next);
-      if (r.ok) { setPub(r.isPublic); setTok(r.token); }
+      const r = await setSetAccess(setId, next);
+      if (r.ok) setTok(r.token); else setError(r.error ?? "Couldn't change sharing.");
+      setPendingMode(false);
       router.refresh();
     });
+  }
+
+  async function add() {
+    const e = email.trim();
+    if (!e) return;
+    setAdding(true); setError(null);
+    const r = await addExhibitRecipient(setId, e, name.trim());
+    setAdding(false);
+    if (r.ok) { setEmail(""); setName(""); onFlash(r.error ? r.error : `Invite sent to ${e}`); router.refresh(); }
+    else setError(r.error ?? "Couldn't add the person.");
   }
 
   function downloadTree() {
@@ -213,59 +238,87 @@ function ShareControl({ setId, isPublic, token, docs, onCopy, onFlash }: {
     const sorted = docs.slice().sort((a, b) => (order[a.side] - order[b.side]) || (a.number ?? Infinity) - (b.number ?? Infinity) || a.id - b.id);
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const items = sorted.map((d) => `    <li><a href="${origin}/exhibits/${tok}/e/${d.id}">${esc(d.label || String(d.number ?? ""))}${d.title ? ` — ${esc(d.title)}` : ""}</a></li>`).join("\n");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Exhibit links</title><style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;padding:0 16px;color:#26211a}h1{font-size:20px}a{color:#7c1d2b}li{margin:6px 0}p{color:#666;font-size:12px}</style></head><body>
-  <h1>Exhibit links</h1>
-  <p>Open the full index: <a href="${treeUrl}">${treeUrl}</a></p>
-  <ul>
-${items}
-  </ul>
-  <p>These links work only while sharing is turned on.</p>
-</body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Exhibit links</title><style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;padding:0 16px;color:#26211a}h1{font-size:20px}a{color:#7c1d2b}li{margin:6px 0}p{color:#666;font-size:12px}</style></head><body>\n  <h1>Exhibit links</h1>\n  <p>Full index: <a href="${treeUrl}">${treeUrl}</a></p>\n  <ul>\n${items}\n  </ul>\n  <p>These links work only while sharing is turned on.</p>\n</body></html>`;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "exhibit-links.html"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "exhibit-links.html"; a.click();
     URL.revokeObjectURL(url);
     onFlash("Link tree downloaded");
   }
 
+  const MODES: { id: string; label: string; hint: string; icon: React.ReactNode }[] = [
+    { id: "off", label: "Off — firm only", hint: "Nothing is shared. No links work.", icon: <Lock size={15} /> },
+    { id: "restricted", label: "Named people (verified by email)", hint: "Each person gets their own link and must enter a one-time code emailed to them. A forwarded link won't work for anyone else.", icon: <ShieldCheck size={15} /> },
+    { id: "public", label: "Anyone with the link", hint: "No sign-in. Anyone who has a link can view — use only when there's no protective order.", icon: <Globe size={15} /> },
+  ];
   const btn = "rounded border border-[var(--c-border)] px-2 py-1 text-[11px] hover:bg-[var(--c-surface2)]";
-  return (
-    <PopMenu
-      width={300}
-      title="Share exhibits"
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${pub ? "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]"}`}
-      label={<>{pub ? <Globe size={13} /> : <Share2 size={13} />} Share</>}
-    >
-      {() => (
-        <div className="space-y-2.5 p-3">
-          <label className="flex cursor-pointer items-start gap-2 text-xs">
-            <input type="checkbox" checked={pub} disabled={pending} onChange={(e) => toggle(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
-            <span>
-              <span className="font-semibold text-[var(--c-ink)]">Anyone with the link can view</span>
-              <span className="mt-0.5 block text-[var(--c-ink-muted)]">No sign-in needed. Turn this off and every link stops working immediately.</span>
-            </span>
-          </label>
 
-          {pub && tok ? (
-            <>
-              <div className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Link tree — all exhibits</div>
-                <div className="mt-1 truncate text-[11px] text-[var(--c-ink)]" title={treeUrl}>{treeUrl}</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  <button onClick={() => onCopy(treeUrl, "Link tree copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
-                  <a href={treeUrl} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Open</a>
-                  <button onClick={downloadTree} className={btn}><Download size={11} className="mr-1 inline" />Download</button>
-                </div>
-              </div>
-              <p className="text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Each exhibit also has its own link — the link icon on a row (or in the viewer) copies it to email.</p>
-            </>
-          ) : (
-            <p className="text-[11px] leading-relaxed text-[var(--c-ink-muted)]">Turn on sharing to get a link you can email or hand out at trial. You can switch it off anytime.</p>
-          )}
+  return (
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="my-6 w-full max-w-lg rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Share2 size={16} className="text-[var(--c-accent)]" /> Share exhibits</h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
         </div>
-      )}
-    </PopMenu>
+
+        {error && <p className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+
+        <div className="space-y-2">
+          {MODES.map((m) => (
+            <label key={m.id} className={`flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 transition-colors ${mode === m.id ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] hover:border-[var(--c-accent)]/40"}`}>
+              <input type="radio" name="access" checked={mode === m.id} disabled={pendingMode} onChange={() => choose(m.id)} className="mt-0.5 accent-[var(--c-accent)]" />
+              <span className="min-w-0">
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--c-ink)]">{m.icon} {m.label}</span>
+                <span className="mt-0.5 block text-xs text-[var(--c-ink-muted)]">{m.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {mode === "restricted" && (
+          <div className="mt-4 rounded-md border border-[var(--c-border)] p-3">
+            <div className="mb-2 text-[11px] font-semibold text-[var(--c-ink)]">People who can view</div>
+            {recipients.length === 0 && <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">No one invited yet. Add an email below — they&apos;ll get a link and verify with a one-time code.</p>}
+            <ul className="space-y-1.5">
+              {recipients.map((r) => (
+                <li key={r.id} className={`flex flex-wrap items-center gap-2 rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2 text-xs ${r.revoked ? "opacity-60" : ""}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-[var(--c-ink)]">{r.email}{r.revoked ? " · revoked" : ""}</span>
+                    {r.name && <span className="block truncate text-[10px] text-[var(--c-ink-muted)]">{r.name}</span>}
+                  </span>
+                  <button onClick={() => onCopy(`${origin}/exhibits/r/${r.token}`, "Personal link copied")} className={btn} title="Copy this person's link"><LinkIcon size={11} className="mr-1 inline" />Link</button>
+                  <button onClick={() => run(() => resendExhibitInvite(r.id))} className={btn} title="Resend the invite email">Resend</button>
+                  <button onClick={() => run(() => setExhibitRecipientRevoked(r.id, !r.revoked))} className={btn}>{r.revoked ? "Restore" : "Revoke"}</button>
+                  <button onClick={() => { if (confirm(`Remove ${r.email}?`)) run(() => deleteExhibitRecipient(r.id)); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600"><Trash2 size={12} /></button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-[1.4fr_1fr_auto]">
+              <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="email@firm.com" className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-xs" />
+              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="Name (optional)" className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-xs" />
+              <button onClick={add} disabled={adding || !email.trim()} className="btn btn-accent inline-flex items-center justify-center gap-1.5 text-xs py-1.5 px-3 disabled:opacity-50">{adding ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Invite</button>
+            </div>
+          </div>
+        )}
+
+        {mode === "public" && tok && (
+          <div className="mt-4 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Link tree — all exhibits</div>
+            <div className="mt-1 truncate text-[11px] text-[var(--c-ink)]" title={treeUrl}>{treeUrl}</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button onClick={() => onCopy(treeUrl, "Link tree copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
+              <a href={treeUrl} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Open</a>
+              <button onClick={downloadTree} className={btn}><Download size={11} className="mr-1 inline" />Download</button>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Each exhibit also has its own link — the link icon on a row (or in the viewer) copies it.</p>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <button onClick={onClose} className="btn btn-accent text-sm py-2 px-4">Done</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -379,13 +432,15 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, isPublic, publicToken }: {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
-  isPublic: boolean; publicToken: string | null;
+  access: string; publicToken: string | null; recipients: RecipientLite[];
 }) {
   const router = useRouter();
+  const isPublic = access === "public";
   // The exhibit whose full details dialog (pencil) is open.
   const [editId, setEditId] = useState<number | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   // Brief confirmation toast (copied a link, etc.).
   const [toast, setToast] = useState<string | null>(null);
   const flash = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(null), 2200); }, []);
@@ -666,8 +721,15 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         </div>
 
         <div className="ml-auto flex min-w-[240px] flex-1 items-center gap-2 sm:max-w-md">
-          {/* Share links (link tree + per-exhibit) with the public on/off toggle. */}
-          <ShareControl setId={setId} isPublic={isPublic} token={publicToken} docs={docs} onCopy={copy} onFlash={flash} />
+          {/* Share: opens the sharing dialog (off / restricted / public). */}
+          <button
+            onClick={() => setShareOpen(true)}
+            title="Share exhibits"
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${access === "off" ? "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]" : "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 text-[var(--c-accent)]"}`}
+          >
+            {access === "public" ? <Globe size={13} /> : access === "restricted" ? <Share2 size={13} /> : <Share2 size={13} />} Share
+            {access !== "off" && <span className="hidden sm:inline">· {access === "public" ? "anyone" : "restricted"}</span>}
+          </button>
           {/* The admitted/trial-status summary sits on the right of the frozen
               bar: a tally that opens a grouped, clickable list of exhibits. */}
           <StatusSummary docs={docs} onOpen={openAnySide} />
@@ -825,6 +887,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           <ExhibitEditDialog setId={setId} doc={d} witnesses={witnesses} claims={claims} elements={elements} onClose={() => setEditId(null)} />
         ) : null;
       })()}
+
+      {shareOpen && (
+        <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
+      )}
     </div>
   );
 }

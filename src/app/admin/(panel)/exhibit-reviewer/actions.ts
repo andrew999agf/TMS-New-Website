@@ -2,12 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { asc, eq, max } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { headers } from "next/headers";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements } from "@/db/schema";
+import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { sendEmail } from "@/lib/email";
+import { FIRM } from "@/lib/firm";
 
 async function guard() {
   const session = await requireAdmin();
@@ -86,24 +90,108 @@ export async function updateExhibitSet(id: number, input: SetInput) {
   }
 }
 
+async function baseUrl(): Promise<string> {
+  const host = ((await headers()).get("host") ?? "").trim();
+  if (!host) return process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+  return `${proto}://${host}`;
+}
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ACCESS = new Set(["off", "restricted", "public"]);
+
 /**
- * Turn public sharing on or off for a set. On the first enable we mint a stable,
- * unguessable token, so every share link (the link tree and each exhibit) keeps
- * working if sharing is later turned off and back on. Turning it off makes every
- * public link stop resolving until it's turned back on.
+ * Set how a set is shared:
+ *   off        — firm only, nothing resolves
+ *   restricted — named people who each verify a one-time code sent to their email
+ *   public     — anyone with the link
+ * We mint the set's token on first share so links stay stable, and keep is_public
+ * in step with "public" so the open public routes work unchanged.
  */
-export async function setSetPublic(id: number, isPublic: boolean) {
+export async function setSetAccess(id: number, access: string) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
+  const mode = ACCESS.has(access) ? access : "off";
   try {
     const [cur] = await db.select({ token: exhibitSets.publicToken }).from(exhibitSets).where(eq(exhibitSets.id, id));
-    const token = cur?.token || (await import("crypto")).randomBytes(18).toString("base64url");
-    await db.update(exhibitSets).set({ isPublic, publicToken: token, updatedAt: new Date() }).where(eq(exhibitSets.id, id));
-    await audit(session.email, "update", "exhibit-set", String(id), isPublic ? "Enabled public sharing" : "Disabled public sharing");
+    const token = cur?.token || randomBytes(18).toString("base64url");
+    await db.update(exhibitSets).set({ access: mode, isPublic: mode === "public", publicToken: token, updatedAt: new Date() }).where(eq(exhibitSets.id, id));
+    await audit(session.email, "update", "exhibit-set", String(id), `Sharing → ${mode}`);
     revalidatePath(`/admin/exhibit-reviewer/${id}`);
-    return { ok: true as const, isPublic, token };
+    return { ok: true as const, access: mode, token };
   } catch {
     return { ok: false as const, error: "Couldn't update sharing." };
+  }
+}
+
+async function sendExhibitInvite(rec: { email: string; name: string; token: string }, setName: string) {
+  const link = `${await baseUrl()}/exhibits/r/${rec.token}`;
+  const who = rec.name?.trim() ? esc(rec.name.trim()) : "there";
+  const html = `
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:520px;line-height:1.6">
+      <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${esc(FIRM.name)}</p>
+      <p style="margin:0 0 12px">Hello ${who},</p>
+      <p style="margin:0 0 12px">${esc(FIRM.name)} has shared the exhibits for <strong>${esc(setName)}</strong> with you.</p>
+      <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">View the exhibits</a></p>
+      <p style="margin:0;font-size:13px;color:#777">This access is specific to you. Opening it asks for a one-time code emailed to <strong>${esc(rec.email)}</strong>, so a forwarded link won't let anyone else in.</p>
+    </div>`;
+  return sendEmail({ to: rec.email, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared exhibits for "${setName}" with you`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
+}
+
+export async function addExhibitRecipient(setId: number, email: string, name: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(cleanEmail)) return { ok: false as const, error: "Enter a valid email address." };
+  try {
+    const [set] = await db.select({ name: exhibitSets.name }).from(exhibitSets).where(eq(exhibitSets.id, setId));
+    if (!set) return { ok: false as const, error: "Set not found." };
+    const token = randomBytes(18).toString("base64url");
+    await db.insert(exhibitRecipients).values({ setId, email: cleanEmail, name: str(name, 191), token });
+    const res = await sendExhibitInvite({ email: cleanEmail, name: str(name, 191), token }, set.name);
+    await audit(session.email, "create", "exhibit-recipient", String(setId), `Invited ${cleanEmail}`);
+    revalidatePath(`/admin/exhibit-reviewer/${setId}`);
+    return { ok: true as const, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
+  } catch {
+    return { ok: false as const, error: "Couldn't add the person." };
+  }
+}
+
+export async function resendExhibitInvite(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [rec] = await db.select().from(exhibitRecipients).where(eq(exhibitRecipients.id, id));
+    if (!rec) return { ok: false as const, error: "Not found." };
+    const [set] = await db.select({ name: exhibitSets.name }).from(exhibitSets).where(eq(exhibitSets.id, rec.setId));
+    const res = await sendExhibitInvite(rec, set?.name ?? "exhibits");
+    return res.sent ? { ok: true as const } : { ok: false as const, error: "Couldn't send the email." };
+  } catch {
+    return { ok: false as const, error: "Couldn't resend." };
+  }
+}
+
+export async function setExhibitRecipientRevoked(id: number, revoked: boolean) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.update(exhibitRecipients).set({ revoked }).where(eq(exhibitRecipients.id, id)).returning({ setId: exhibitRecipients.setId });
+    if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update." };
+  }
+}
+
+export async function deleteExhibitRecipient(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.delete(exhibitRecipients).where(eq(exhibitRecipients.id, id)).returning({ setId: exhibitRecipients.setId });
+    if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't remove." };
   }
 }
 
