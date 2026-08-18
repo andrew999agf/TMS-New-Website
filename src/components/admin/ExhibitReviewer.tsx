@@ -421,7 +421,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   /* ------------------------- add / upload ------------------------- */
   const [staged, setStaged] = useState<Staged[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number; pct?: number } | null>(null);
   const [numMode, setNumMode] = useState<NumMode>("keep");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -493,6 +493,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       try {
         const blob = await upload(`exhibit-reviewer/${setId}/${item.file.name}`, item.file, {
           access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId),
+          // multipart chunks the file so a large PDF uploads reliably instead of
+          // being pushed in one fragile request; progress shows it's moving.
+          multipart: true,
+          onUploadProgress: (e) => setUploading({ done, total: finalItems.length, pct: Math.round(e.percentage) }),
         });
         await addExhibitDoc(setId, {
           side: item.side, number: item.number, label: item.label.trim(), title: item.title.trim(), bates: item.bates.trim(),
@@ -743,7 +747,7 @@ const MODE_LABEL: Record<NumMode, string> = {
 };
 
 function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode, report, fileRef, onDragOver, onDragLeave, onDrop, onPick, onPatch, onRemove, onClear, onUpload }: {
-  blobReady: boolean; dragOver: boolean; uploading: { done: number; total: number } | null; items: Staged[];
+  blobReady: boolean; dragOver: boolean; uploading: { done: number; total: number; pct?: number } | null; items: Staged[];
   numMode: NumMode; onSetMode: (m: NumMode) => void; report: Report;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onDragOver: (e: React.DragEvent) => void; onDragLeave: () => void; onDrop: (e: React.DragEvent) => void;
@@ -831,7 +835,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
             })}
           </ul>
           <button onClick={onUpload} disabled={!blobReady || !!uploading} className="btn btn-accent mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs py-2 disabled:opacity-50">
-            {uploading ? <><Loader2 size={13} className="animate-spin" /> Uploading {uploading.done}/{uploading.total}…</> : <><Upload size={13} /> Add {items.length} exhibit{items.length === 1 ? "" : "s"}</>}
+            {uploading ? <><Loader2 size={13} className="animate-spin" /> Uploading {uploading.done + 1}/{uploading.total}{uploading.pct != null ? ` · ${uploading.pct}%` : "…"}</> : <><Upload size={13} /> Add {items.length} exhibit{items.length === 1 ? "" : "s"}</>}
           </button>
         </div>
       )}

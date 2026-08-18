@@ -85,7 +85,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
       const base = parts.pop() as string;
       const dir = parts.join("/");
       try {
-        const blob = await upload(`share-recipient/${item.rel}`, item.file, { access: "public", handleUploadUrl: `/api/share/${token}/upload` });
+        const blob = await upload(`share-recipient/${item.rel}`, item.file, { access: "public", handleUploadUrl: `/api/share/${token}/upload`, multipart: true });
         const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
         if (!res.ok) throw new Error(res.error ?? "record failed");
       } catch {

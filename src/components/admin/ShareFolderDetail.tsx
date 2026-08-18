@@ -356,7 +356,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     while (queueRef.current.length) {
       const item = queueRef.current.shift()!;
       try {
-        const blob = await upload(`share/${folderId}/${item.rel}`, item.file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId) });
+        const blob = await upload(`share/${folderId}/${item.rel}`, item.file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId), multipart: true });
         const res = await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: item.rel, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
         if (!res.ok) throw new Error(res.error ?? "record failed");
         if (res.id) uploadedIdsRef.current.push(res.id);

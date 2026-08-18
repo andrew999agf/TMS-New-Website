@@ -467,7 +467,7 @@ function BulkImportDialog({ caseId, existing, onClose, run, pending }: {
       let uploaded: StagedRow["file"];
       if (file) {
         try {
-          const blob = await upload(`trial/${caseId}/exhibits/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId) });
+          const blob = await upload(`trial/${caseId}/exhibits/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId), multipart: true });
           uploaded = { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size };
         } catch {
           /* keep the row; it just won't have a file attached */
@@ -627,7 +627,7 @@ function ExhibitForm({ caseId, existing, pending, blobReady, onCancel, onSaved, 
   async function pick(file: File) {
     setUploading(true);
     try {
-      const blob = await upload(`trial/${caseId}/exhibits/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId) });
+      const blob = await upload(`trial/${caseId}/exhibits/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId), multipart: true });
       setUploaded({ url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size });
       setFileName(file.name);
       // Read the number and title straight off the filename, like the batch import.

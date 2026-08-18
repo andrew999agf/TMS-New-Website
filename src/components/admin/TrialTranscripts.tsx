@@ -95,7 +95,7 @@ function TranscriptForm({ caseId, existing, witnesses, pending, blobReady, onCan
   async function pick(file: File) {
     setUploading(true);
     try {
-      const blob = await upload(`trial/${caseId}/transcripts/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId) });
+      const blob = await upload(`trial/${caseId}/transcripts/${file.name}`, file, { access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(caseId), multipart: true });
       setUploaded({ url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size });
       setFileName(file.name);
       if (!f.title.trim()) setF((s) => ({ ...s, title: file.name.replace(/\.[^.]+$/, "") }));

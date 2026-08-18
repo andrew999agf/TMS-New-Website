@@ -408,7 +408,7 @@ function TaskUploader({ token, dir, blobReady }: { token: string; dir: string; b
         const { file, path } = picked[i];
         const base = (path.split("/").pop() as string) || "file";
         setMsg(`Uploading ${i + 1} / ${picked.length}`);
-        const blob = await upload(`share-recipient/${dir}/${base}`, file, { access: "public", handleUploadUrl: `/api/share/${token}/upload` });
+        const blob = await upload(`share-recipient/${dir}/${base}`, file, { access: "public", handleUploadUrl: `/api/share/${token}/upload`, multipart: true });
         const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: file.type || blob.contentType, size: file.size }, { total: picked.length, done: i + 1 });
         if (!res.ok) throw new Error(res.error ?? "Upload failed.");
       }
