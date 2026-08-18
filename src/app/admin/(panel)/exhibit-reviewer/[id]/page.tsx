@@ -28,7 +28,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
       .select({
         id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label,
         title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, url: exhibitDocs.url,
-        witnessIds: exhibitDocs.witnessIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds,
+        witnessIds: exhibitDocs.witnessIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds, notes: exhibitDocs.notes,
         pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
       })
       .from(exhibitDocs)
@@ -44,7 +44,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
 
   const docs: ReviewerDoc[] = rows.map((r) => ({
     id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, priority: r.priority, trialStatus: r.trialStatus, bates: r.bates,
-    witnessIds: numArr(r.witnessIds), foundation: strArr(r.foundation), elementIds: numArr(r.elementIds),
+    witnessIds: numArr(r.witnessIds), foundation: strArr(r.foundation), elementIds: numArr(r.elementIds), notes: r.notes,
     hasFile: Boolean(r.url), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
   }));
   const witnesses: WitnessLite[] = witnessRows.map((w) => ({ id: w.id, name: w.name }));

@@ -427,6 +427,7 @@ const DDL = [
     witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
     foundation jsonb NOT NULL DEFAULT '[]'::jsonb,
     element_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+    notes text NOT NULL DEFAULT '',
     url text,
     pathname text,
     content_type varchar(128),
@@ -442,6 +443,7 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS foundation jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS element_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT ''`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
     id serial PRIMARY KEY,

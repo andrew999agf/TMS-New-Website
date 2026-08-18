@@ -177,7 +177,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; witnessIds?: number[]; foundation?: string[]; elementIds?: number[] }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; witnessIds?: number[]; foundation?: string[]; elementIds?: number[]; notes?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -193,6 +193,7 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.witnessIds !== undefined) set.witnessIds = ids(patch.witnessIds);
     if (patch.foundation !== undefined) set.foundation = foundations(patch.foundation);
     if (patch.elementIds !== undefined) set.elementIds = ids(patch.elementIds);
+    if (patch.notes !== undefined) set.notes = str(patch.notes, 4000);
     if (Object.keys(set).length === 0) return { ok: true as const };
     const [row] = await db.update(exhibitDocs).set(set).where(eq(exhibitDocs.id, id)).returning({ setId: exhibitDocs.setId });
     if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);

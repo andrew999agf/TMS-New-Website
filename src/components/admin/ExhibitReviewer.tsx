@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check,
+  Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -18,7 +18,7 @@ import {
 
 export type ReviewerDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string;
-  witnessIds: number[]; foundation: string[]; elementIds: number[];
+  witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
 };
 
@@ -123,6 +123,58 @@ function StatusBubble({ value, onChange }: { value: string; onChange: (v: string
               </button>
             );
           })}
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/**
+ * The row notepad. The icon is muted while empty and turns amber once there's a
+ * note, so you can see at a glance which exhibits carry one. Clicking opens a
+ * little box; edits autosave (debounced, and again on blur) so closing the
+ * popover — however you close it — never loses what you typed.
+ */
+function NoteButton({ notes, onSave }: { notes: string; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(notes);
+  const focused = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Don't clobber what's being typed when a save round-trips new props back.
+  useEffect(() => { if (!focused.current) setDraft(notes); }, [notes]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const hasNotes = notes.trim().length > 0;
+  const change = (v: string) => {
+    setDraft(v);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => onSave(v), 500);
+  };
+  const flush = (v: string) => { if (timer.current) clearTimeout(timer.current); if (v !== notes) onSave(v); };
+
+  return (
+    <PopMenu
+      width={264}
+      title={hasNotes ? "Notes — click to edit" : "Add a note"}
+      className={`mt-0.5 rounded p-1 transition-colors hover:text-[var(--c-accent)] ${hasNotes ? "text-amber-500 dark:text-amber-400" : "text-[var(--c-ink-muted)] opacity-50 hover:opacity-100"}`}
+      label={<StickyNote size={13} />}
+    >
+      {() => (
+        <div className="p-2">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-ink-muted)]"><StickyNote size={12} className="text-amber-500" /> Notes</div>
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(e) => change(e.target.value)}
+            onFocus={() => { focused.current = true; }}
+            onBlur={(e) => { focused.current = false; flush(e.target.value); }}
+            rows={6}
+            placeholder="Notes about this exhibit…"
+            className="w-full resize-y rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-amber-500"
+          />
+          <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--c-ink-muted)]">
+            <span>Saves automatically</span>
+            {draft.trim() && <button onMouseDown={(e) => { e.preventDefault(); change(""); }} className="hover:text-red-600">Clear</button>}
+          </div>
         </div>
       )}
     </PopMenu>
@@ -790,7 +842,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string }) => void; onEdit: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onDelete: () => void;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -816,6 +868,8 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onDelete }: {
       <div className="flex shrink-0 items-start gap-1">
         <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
         <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
+        {/* Notepad: always visible so its amber "has a note" state shows. */}
+        <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
       </div>
       <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>

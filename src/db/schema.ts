@@ -976,6 +976,8 @@ export const exhibitDocs = pgTable(
     foundation: jsonb("foundation").notNull().default([]),
     /** Elements this exhibit helps prove (exhibit_elements ids). */
     elementIds: jsonb("element_ids").notNull().default([]),
+    /** Free working notes (the notepad button on the row). */
+    notes: text("notes").notNull().default(""),
     url: text("url"),
     pathname: text("pathname"),
     contentType: varchar("content_type", { length: 128 }),
