@@ -868,6 +868,18 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                 </p>
               )}
 
+              {/* On phones, PDFs in an embedded frame often render blank (iOS in
+                  particular), so give a clear full-screen open. Shown only below
+                  the desktop breakpoint — the desktop viewer is unchanged. */}
+              <a
+                href={`${proxyBase}/${current.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden"
+              >
+                <ExternalLink size={16} /> Open exhibit full screen
+              </a>
+
               {/* The PDF itself — native viewer gives scrolling, zoom, and its own
                   find. Keyed on page so #page jumps always take effect. */}
               <iframe
@@ -1045,7 +1057,8 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onCopyLink, onDe
         {/* Notepad: always visible so its amber "has a note" state shows. */}
         <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
       </div>
-      <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Always visible on touch (no hover there); hover-reveal kept on desktop. */}
+      <span className="flex shrink-0 items-center opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
         {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
         <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>

@@ -54,6 +54,10 @@ export default async function PublicExhibitView({ params }: { params: Promise<{ 
           ) : <span className="rounded-md border border-[var(--c-border)] p-1.5 opacity-30"><ChevronRight size={16} /></span>}
         </div>
       </header>
+      {/* Phones often can't show a PDF inside a frame — offer a full-screen open. */}
+      <a href={`/exhibits/${token}/file/${d.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden">
+        Open exhibit full screen
+      </a>
       <iframe src={`/exhibits/${token}/file/${d.id}#zoom=page-width`} title={d.label || d.title || "Exhibit"} className="min-h-0 flex-1 w-full bg-white" />
     </main>
   );
