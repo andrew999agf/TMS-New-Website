@@ -323,6 +323,62 @@ function ShareDialog({ setId, access, token, recipients, docs, onCopy, onFlash, 
 }
 
 /**
+ * Download exhibits as a ZIP: everything, just the current side, or a number
+ * range (e.g. P-1 through P-20). Files come out named in exhibit order.
+ */
+function DownloadZip({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; side: Side }) {
+  const withFile = docs.filter((d) => d.hasFile);
+  const sideDocs = withFile.filter((d) => d.side === side);
+  const nums = sideDocs.map((d) => d.number).filter((n): n is number => n != null);
+  const [rangeSide, setRangeSide] = useState<Side>(side);
+  const [from, setFrom] = useState(nums.length ? String(Math.min(...nums)) : "");
+  const [to, setTo] = useState(nums.length ? String(Math.max(...nums)) : "");
+  useEffect(() => { setRangeSide(side); }, [side]);
+
+  const base = `/admin/exhibit-reviewer/${setId}/zip`;
+  const go = (qs: string) => { const a = document.createElement("a"); a.href = `${base}${qs}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  const item = "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10";
+
+  return (
+    <PopMenu
+      width={280}
+      title="Download exhibits as a ZIP"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)]"
+      label={<><Download size={13} /> ZIP</>}
+    >
+      {(close) => (
+        <div className="p-2">
+          <button onClick={() => { close(); go(""); }} disabled={withFile.length === 0} className={item + " disabled:opacity-40"}>
+            <span className="font-semibold text-[var(--c-ink)]">All exhibits</span> <span className="text-[var(--c-ink-muted)]">({withFile.length})</span>
+          </button>
+          <button onClick={() => { close(); go(`?side=${side}`); }} disabled={sideDocs.length === 0} className={item + " disabled:opacity-40"}>
+            <span className="font-semibold text-[var(--c-ink)]">This tab — {SIDE_LABEL[side]}</span> <span className="text-[var(--c-ink-muted)]">({sideDocs.length})</span>
+          </button>
+          <div className="mt-1.5 border-t border-[var(--c-border)] pt-2">
+            <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">A range</div>
+            <div className="flex flex-wrap items-center gap-1.5 px-2">
+              <select value={rangeSide} onChange={(e) => setRangeSide(e.target.value as Side)} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-1 text-xs">
+                <option value="plaintiff">P</option><option value="defendant">D</option><option value="joint">J</option>
+              </select>
+              <input value={from} onChange={(e) => setFrom(e.target.value.replace(/[^\d]/g, ""))} placeholder="from" inputMode="numeric" className="w-14 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs" />
+              <span className="text-[var(--c-ink-muted)]">to</span>
+              <input value={to} onChange={(e) => setTo(e.target.value.replace(/[^\d]/g, ""))} placeholder="to" inputMode="numeric" className="w-14 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs" />
+              <button
+                onClick={() => { close(); const p = new URLSearchParams({ side: rangeSide }); if (from) p.set("from", from); if (to) p.set("to", to); go(`?${p.toString()}`); }}
+                className="btn btn-accent ml-auto text-xs py-1 px-2.5"
+              >
+                <Download size={12} /> Get
+              </button>
+            </div>
+            <p className="mt-1.5 px-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">e.g. {SIDE_LABEL[rangeSide].replace("'s exhibits", "")} {from || "1"}&ndash;{to || "20"}. Files come out numbered in order.</p>
+          </div>
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/**
  * The right-hand summary in the frozen bar. Reads at a glance how many exhibits
  * are admitted (and excluded), and opens a grouped, clickable list so you can
  * jump straight to any of them — across both parties.
@@ -721,6 +777,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         </div>
 
         <div className="ml-auto flex min-w-[240px] flex-1 items-center gap-2 sm:max-w-md">
+          {/* Download exhibits as a ZIP — all, this side, or a number range. */}
+          <DownloadZip setId={setId} docs={docs} side={side} />
           {/* Share: opens the sharing dialog (off / restricted / public). */}
           <button
             onClick={() => setShareOpen(true)}
