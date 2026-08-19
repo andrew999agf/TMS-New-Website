@@ -22,6 +22,8 @@ export type ReviewerDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string;
   witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
+  /** Changes whenever the underlying PDF changes, so the viewer/cache reload it. */
+  fileTag: string;
 };
 
 export type WitnessLite = { id: number; name: string };
@@ -805,7 +807,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   }));
 
   const proxyBase = `/admin/exhibit-reviewer/${setId}/doc`;
-  const viewerSrc = current ? `${proxyBase}/${current.id}#page=${viewerPage}&zoom=page-width&view=FitH` : "";
+  // The ?v= tag busts the browser cache when a file is replaced, while staying
+  // stable across page jumps (same v) so stepping pages still hits the cache.
+  const viewerSrc = current ? `${proxyBase}/${current.id}?v=${current.fileTag}#page=${viewerPage}&zoom=page-width&view=FitH` : "";
 
   return (
     <div className="space-y-4">
@@ -989,7 +993,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                 )}
                 <button onClick={() => askReplace(current.id)} disabled={replacing} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-50" title="Replace this exhibit's file">{replacing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}</button>
                 <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
-                <a href={`${proxyBase}/${current.id}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
+                <a href={`${proxyBase}/${current.id}?v=${current.fileTag}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
               </div>
 
               {/* How it comes in, and what it proves — the trial-facing detail. */}
@@ -1020,7 +1024,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   particular), so give a clear full-screen open. Shown only below
                   the desktop breakpoint — the desktop viewer is unchanged. */}
               <a
-                href={`${proxyBase}/${current.id}`}
+                href={`${proxyBase}/${current.id}?v=${current.fileTag}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden"
@@ -1029,9 +1033,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
               </a>
 
               {/* The PDF itself — native viewer gives scrolling, zoom, and its own
-                  find. Keyed on page so #page jumps always take effect. */}
+                  find. Keyed on file+page so a replace (new fileTag) or a #page
+                  jump always reloads. */}
               <iframe
-                key={`${current.id}:${viewerPage}`}
+                key={`${current.id}:${current.fileTag}:${viewerPage}`}
                 src={viewerSrc}
                 title={current.label || current.title || "Exhibit"}
                 className="min-h-0 flex-1 w-full rounded-b-lg bg-white"

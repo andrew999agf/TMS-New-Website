@@ -27,7 +27,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     db
       .select({
         id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label,
-        title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, url: exhibitDocs.url,
+        title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, url: exhibitDocs.url, pathname: exhibitDocs.pathname,
         witnessIds: exhibitDocs.witnessIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds, notes: exhibitDocs.notes,
         pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
       })
@@ -42,11 +42,15 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
 
   const numArr = (v: unknown): number[] => (Array.isArray(v) ? (v as number[]) : []);
   const strArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+  // A short token that changes when the file behind an exhibit changes (the blob
+  // pathname is unique per upload), so the viewer and browser cache reload it.
+  const tagOf = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 
   const docs: ReviewerDoc[] = rows.map((r) => ({
     id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, priority: r.priority, trialStatus: r.trialStatus, bates: r.bates,
     witnessIds: numArr(r.witnessIds), foundation: strArr(r.foundation), elementIds: numArr(r.elementIds), notes: r.notes,
     hasFile: Boolean(r.url), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
+    fileTag: tagOf(r.pathname ?? r.url ?? String(r.id)),
   }));
   const witnesses: WitnessLite[] = witnessRows.map((w) => ({ id: w.id, name: w.name }));
   const claims: ClaimLite[] = claimRows.map((c) => ({ id: c.id, name: c.name }));
