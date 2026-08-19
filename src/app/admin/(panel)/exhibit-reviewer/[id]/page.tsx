@@ -59,7 +59,9 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         title={set.name}
         description={[set.causeNumber, set.court, set.matter ? `Matter ${set.matter}` : ""].filter(Boolean).join("  ·  ") || "Exhibit reviewer"}
       />
-      <div className="p-6 max-w-6xl space-y-4">
+      {/* Full width — the reviewer's list + viewer use the whole monitor rather
+          than leaving a wide empty gutter on the right. */}
+      <div className="p-6 space-y-4">
         <Link href="/admin/exhibit-reviewer" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All sets
         </Link>

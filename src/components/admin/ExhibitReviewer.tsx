@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, searchExhibitSet, getDocPages, setSetAccess,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient,
   type SetSearchHit,
@@ -505,6 +505,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   }, [flash]);
   // A per-exhibit public link (works only while sharing is on).
   const exhibitLink = useCallback((docId: number) => (publicToken && typeof window !== "undefined" ? `${window.location.origin}/exhibits/${publicToken}/e/${docId}` : ""), [publicToken]);
+
   // Quick name/text lookups for showing sponsors and elements in the viewer.
   const witnessName = useMemo(() => new Map(witnesses.map((w) => [w.id, w.name])), [witnesses]);
   const elementText = useMemo(() => new Map(elements.map((e) => [e.id, e.text])), [elements]);
@@ -520,6 +521,78 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       router.refresh();
     });
   }, [router]);
+
+  /* -------- replace an exhibit's PDF (keeps all its metadata) -------- */
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceIdRef = useRef<number | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const askReplace = useCallback((docId: number) => {
+    if (!blobReady) { setError("Connect a Blob store to replace files."); return; }
+    if (confirm("Replace this exhibit's file? The number, title, notes and everything else stay — only the PDF changes.")) {
+      replaceIdRef.current = docId;
+      replaceInputRef.current?.click();
+    }
+  }, [blobReady]);
+  async function onReplaceFile(file: File) {
+    const docId = replaceIdRef.current;
+    replaceIdRef.current = null;
+    if (!docId) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { setError("Pick a PDF to replace the exhibit."); return; }
+    setReplacing(true); setError(null); flash("Replacing the exhibit…");
+    try {
+      const blob = await upload(`exhibit-reviewer/${setId}/${file.name}`, file, {
+        access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+      });
+      const r = await replaceExhibitFile(docId, { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size });
+      if (r.ok) flash("Exhibit replaced"); else setError(r.error ?? "Couldn't replace the file.");
+    } catch (err) {
+      setError(`Couldn't replace: ${(err as Error).message}`);
+    }
+    setReplacing(false);
+    router.refresh();
+  }
+
+  /* --------- draggable split between the list and the viewer --------- */
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [listW, setListW] = useState(320);
+  const listWRef = useRef(listW);
+  useEffect(() => { listWRef.current = listW; }, [listW]);
+  const draggingRef = useRef(false);
+  useEffect(() => {
+    const saved = Number(localStorage.getItem("tms_exhibit_listw"));
+    if (Number.isFinite(saved) && saved >= 220 && saved <= 720) setListW(saved);
+  }, []);
+  useEffect(() => {
+    function move(e: MouseEvent | TouchEvent) {
+      if (!draggingRef.current || !splitRef.current) return;
+      const clientX = "touches" in e ? e.touches[0]?.clientX ?? 0 : (e as MouseEvent).clientX;
+      const rect = splitRef.current.getBoundingClientRect();
+      const w = Math.max(220, Math.min(rect.width - 360, clientX - rect.left));
+      setListW(w);
+    }
+    function up() {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try { localStorage.setItem("tms_exhibit_listw", String(Math.round(listWRef.current))); } catch { /* ignore */ }
+    }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", up);
+    };
+  }, []);
+  function startDrag() {
+    draggingRef.current = true;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  }
 
   // Which sides actually have exhibits — plaintiff & defendant always shown,
   // joint only when used.
@@ -737,6 +810,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   return (
     <div className="space-y-4">
       {toast && <div className="fixed top-14 right-5 z-[9999] rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-lg" style={{ background: "var(--c-success, #16a34a)" }}>✓ {toast}</div>}
+      {/* Hidden picker used by the per-exhibit "replace file" action. */}
+      <input ref={replaceInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
       {error && (
         <p className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span className="flex-1">{error}</span>
@@ -819,10 +894,11 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
       {/* Main: list + viewer — each column is one viewport tall and scrolls
           inside itself, so paging through 200 exhibits on the left never drags
-          the viewer (or the page) along with it. */}
-      <div className="grid gap-4 lg:h-[80vh] lg:grid-cols-[minmax(240px,320px)_1fr]">
-        {/* Exhibit list */}
-        <div className="flex flex-col gap-2 lg:h-full lg:min-h-0">
+          the viewer (or the page) along with it. On desktop a draggable divider
+          between them sets how wide the list is; on mobile they stack. */}
+      <div ref={splitRef} className="flex flex-col gap-4 lg:h-[80vh] lg:flex-row lg:gap-0">
+        {/* Exhibit list — fixed (draggable) width on desktop, full width stacked on mobile */}
+        <div style={{ width: listW }} className="flex flex-col gap-2 max-lg:!w-full lg:h-full lg:min-h-0 lg:shrink-0">
           <AddExhibits
             blobReady={blobReady} dragOver={dragOver} uploading={uploading} items={numberedStaged}
             numMode={numMode} onSetMode={changeMode} report={report}
@@ -848,6 +924,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   onOpen={() => openDoc(d.id, 1)}
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
                   onEdit={() => setEditId(d.id)}
+                  onReplace={() => askReplace(d.id)}
                   onCopyLink={isPublic && publicToken ? () => copy(exhibitLink(d.id), "Exhibit link copied") : undefined}
                   onDelete={() => { if (confirm(`Remove ${d.label || d.title || "this exhibit"}?`)) run(() => deleteExhibitDoc(d.id)); }}
                 />
@@ -856,8 +933,20 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           )}
         </div>
 
-        {/* Viewer */}
-        <div className="h-[80vh] overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] lg:h-full">
+        {/* Drag handle — desktop only. Grab and slide to widen either side. */}
+        <div
+          onMouseDown={startDrag}
+          onTouchStart={startDrag}
+          title="Drag to resize"
+          className="group hidden shrink-0 cursor-col-resize items-center justify-center px-1.5 lg:flex"
+        >
+          <div className="flex h-16 w-1.5 items-center justify-center rounded-full bg-[var(--c-border)] transition-colors group-hover:bg-[var(--c-accent)]">
+            <GripVertical size={12} className="text-[var(--c-surface)] opacity-0 group-hover:opacity-100" />
+          </div>
+        </div>
+
+        {/* Viewer — takes the remaining width. */}
+        <div className="h-[80vh] min-w-0 flex-1 overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] lg:h-full">
           {!current ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
               <FileText size={28} className="opacity-40" />
@@ -898,6 +987,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                 {isPublic && publicToken && (
                   <button onClick={() => copy(exhibitLink(current.id), "Exhibit link copied")} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={15} /></button>
                 )}
+                <button onClick={() => askReplace(current.id)} disabled={replacing} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-50" title="Replace this exhibit's file">{replacing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}</button>
                 <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
                 <a href={`${proxyBase}/${current.id}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
               </div>
@@ -1084,9 +1174,9 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onCopyLink, onDelete }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onCopyLink?: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -1118,6 +1208,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onCopyLink, onDe
       {/* Always visible on touch (no hover there); hover-reveal kept on desktop. */}
       <span className="flex shrink-0 items-center opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
         {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
+        <button onClick={onReplace} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Replace this exhibit's file"><RefreshCw size={12} /></button>
         <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
         <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
       </span>

@@ -314,6 +314,39 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
   }
 }
 
+/**
+ * Swap the PDF behind an exhibit, keeping its number, label, title, notes, and
+ * every other field. Re-extracts text for search and deletes the old file.
+ */
+export async function replaceExhibitFile(id: number, file: { url: string; pathname: string; contentType?: string; size?: number }) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!file?.url) return { ok: false as const, error: "No file to use." };
+  try {
+    const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    if (!cur) return { ok: false as const, error: "Exhibit not found." };
+    const extracted = await extractPdfText(file.url, file.size);
+    await db
+      .update(exhibitDocs)
+      .set({
+        url: file.url,
+        pathname: file.pathname,
+        contentType: file.contentType ?? null,
+        sizeBytes: file.size ?? null,
+        pageCount: extracted.pageCount || null,
+        pageText: extracted.pages,
+      })
+      .where(eq(exhibitDocs.id, id));
+    // Remove the old blob now that nothing points at it.
+    if (cur.pathname && cur.pathname !== file.pathname) { try { await del(cur.pathname); } catch { /* best-effort */ } }
+    revalidatePath(`/admin/exhibit-reviewer/${cur.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[exhibit-reviewer] replaceExhibitFile failed:", err);
+    return { ok: false as const, error: "Couldn't replace the file." };
+  }
+}
+
 export async function deleteExhibitDoc(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
