@@ -440,6 +440,7 @@ const DDL = [
     priority varchar(8) NOT NULL DEFAULT 'none',
     trial_status varchar(16) NOT NULL DEFAULT 'none',
     bates varchar(128) NOT NULL DEFAULT '',
+    bates_end varchar(128) NOT NULL DEFAULT '',
     witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
     foundation jsonb NOT NULL DEFAULT '[]'::jsonb,
     element_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -460,6 +461,7 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS foundation jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS element_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT ''`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS bates_end varchar(128) NOT NULL DEFAULT ''`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
     id serial PRIMARY KEY,

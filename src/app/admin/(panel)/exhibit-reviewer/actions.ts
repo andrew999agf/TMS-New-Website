@@ -235,6 +235,7 @@ export type DocInput = {
   priority?: string;
   trialStatus?: string;
   bates?: string;
+  batesEnd?: string;
   file?: { url: string; pathname: string; contentType?: string; size?: number };
 };
 
@@ -270,6 +271,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
         priority: priority(input.priority),
         trialStatus: trialStatus(input.trialStatus),
         bates: str(input.bates, 128),
+        batesEnd: str(input.batesEnd, 128),
         url: input.file?.url ?? null,
         pathname: input.file?.pathname ?? null,
         contentType: input.file?.contentType ?? null,
@@ -288,7 +290,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; witnessIds?: number[]; foundation?: string[]; elementIds?: number[]; notes?: string }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; batesEnd?: string; witnessIds?: number[]; foundation?: string[]; elementIds?: number[]; notes?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -301,6 +303,7 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.priority !== undefined) set.priority = priority(patch.priority);
     if (patch.trialStatus !== undefined) set.trialStatus = trialStatus(patch.trialStatus);
     if (patch.bates !== undefined) set.bates = str(patch.bates, 128);
+    if (patch.batesEnd !== undefined) set.batesEnd = str(patch.batesEnd, 128);
     if (patch.witnessIds !== undefined) set.witnessIds = ids(patch.witnessIds);
     if (patch.foundation !== undefined) set.foundation = foundations(patch.foundation);
     if (patch.elementIds !== undefined) set.elementIds = ids(patch.elementIds);
@@ -374,6 +377,8 @@ export type SetSearchHit = {
   snippet: string;
   /** True when the match was on the number/title/bates rather than body text. */
   metaOnly: boolean;
+  /** True when the query is a Bates number that falls in this exhibit's range. */
+  batesHit: boolean;
 };
 
 const snippetAround = (text: string, term: string): string => {
@@ -384,19 +389,48 @@ const snippetAround = (text: string, term: string): string => {
   return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
 };
 
-/** Search an entire set: matches the exhibit number/label/title/Bates AND the
- *  words inside every PDF, returning which exhibits (and pages) hit. */
+/** The last run of digits in a Bates token, as a number (leading zeros dropped). */
+function batesNum(s: string): number | null {
+  const groups = (s || "").match(/\d+/g);
+  if (!groups?.length) return null;
+  const n = Number(groups[groups.length - 1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * If the query reads like a Bates reference — optional letter prefix and
+ * separators, then digits ("263", "RES_000263", "RES 263") — return its number.
+ * A phrase with words ("exhibit 3 notes") returns null so it isn't misread.
+ */
+function batesQueryNum(q: string): number | null {
+  const m = q.trim().match(/^[A-Za-z]{0,8}[\s._-]*0*(\d{1,9})$/);
+  return m ? Number(m[1]) : null;
+}
+
+/** Search an entire set: matches the exhibit number/label/title/Bates and the
+ *  words inside every PDF — and recognises a Bates number that falls inside an
+ *  exhibit's Bates range, even when the letters are left off. */
 export async function searchExhibitSet(setId: number, query: string): Promise<SetSearchHit[]> {
   await guard();
   if (!db) return [];
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
+  const qNum = batesQueryNum(query);
   try {
     const docs = await db.select().from(exhibitDocs).where(eq(exhibitDocs.setId, setId)).orderBy(asc(exhibitDocs.sort));
     const hits: SetSearchHit[] = [];
     for (const d of docs) {
-      const meta = `${d.label} ${d.title} ${d.description} ${d.bates}`.toLowerCase();
+      const meta = `${d.label} ${d.title} ${d.description} ${d.bates} ${d.batesEnd}`.toLowerCase();
       const metaHit = meta.includes(q);
+
+      // Bates range match: the query number falls within [start, end].
+      let batesHit = false;
+      if (qNum != null) {
+        const lo = batesNum(d.bates);
+        const hi = batesNum(d.batesEnd) ?? lo;
+        if (lo != null && hi != null && qNum >= Math.min(lo, hi) && qNum <= Math.max(lo, hi)) batesHit = true;
+      }
+
       const pages: number[] = [];
       let snippet = "";
       const text = Array.isArray(d.pageText) ? (d.pageText as string[]) : [];
@@ -406,10 +440,16 @@ export async function searchExhibitSet(setId: number, query: string): Promise<Se
           if (!snippet) snippet = snippetAround(text[i], q);
         }
       }
-      if (metaHit || pages.length) {
-        hits.push({ docId: d.id, side: d.side, label: d.label, title: d.title, pages, snippet, metaOnly: pages.length === 0 });
+      if (metaHit || pages.length || batesHit) {
+        if (batesHit && !snippet) {
+          const range = d.batesEnd ? `${d.bates}–${d.batesEnd}` : d.bates;
+          snippet = `Bates ${range}`;
+        }
+        hits.push({ docId: d.id, side: d.side, label: d.label, title: d.title, pages, snippet, metaOnly: pages.length === 0, batesHit });
       }
     }
+    // Bates-range matches first — they're the most precise answer to a number.
+    hits.sort((a, b) => Number(b.batesHit) - Number(a.batesHit));
     return hits;
   } catch {
     return [];

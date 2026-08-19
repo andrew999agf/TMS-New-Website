@@ -19,7 +19,7 @@ import {
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
-  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string;
+  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string; batesEnd: string;
   witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
   /** Changes whenever the underlying PDF changes, so the viewer/cache reload it. */
@@ -430,6 +430,8 @@ function StatusSummary({ docs, onOpen }: { docs: ReviewerDoc[]; onOpen: (d: Revi
 const SIDES: Side[] = ["plaintiff", "defendant", "joint"];
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 const fmtSize = (b?: number | null) => (!b ? "" : b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+/** "RES_000260–RES_000275", or just the start for a single-page exhibit. */
+const batesRange = (start: string, end: string) => (start && end && end !== start ? `${start}–${end}` : start || end);
 const defaultLabel = (side: Side, n: number | null) => (n == null ? "" : getScheme("dash").format(side, n));
 
 /** A file dropped in, parsed and awaiting the user's confirmation before upload.
@@ -883,6 +885,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <div className="flex items-center gap-2 text-sm">
                     <span className="font-semibold text-[var(--c-accent)]">{h.label || h.title || "Exhibit"}</span>
                     <span className="rounded bg-[var(--c-surface2)] px-1.5 text-[10px] uppercase text-[var(--c-ink-muted)]">{h.side}</span>
+                    {h.batesHit && <span className="rounded bg-[var(--c-accent)]/10 px-1.5 text-[10px] font-semibold text-[var(--c-accent)]">Bates</span>}
                     {h.pages.length > 0 && <span className="text-[11px] text-[var(--c-ink-muted)]">p. {h.pages.slice(0, 6).join(", ")}{h.pages.length > 6 ? "…" : ""}</span>}
                   </div>
                   {h.title && <div className="truncate text-xs text-[var(--c-ink-muted)]">{h.title}</div>}
@@ -964,7 +967,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <div className="truncate text-sm font-semibold">{current.label ? `${current.label} — ` : ""}{current.title || "Exhibit"}</div>
                   {current.description && <div className="truncate text-[11px] text-[var(--c-ink)]" title={current.description}>{current.description}</div>}
                   <div className="truncate text-[11px] text-[var(--c-ink-muted)]">
-                    {current.bates ? `${current.bates} · ` : ""}{current.pageCount ? `${current.pageCount} page${current.pageCount === 1 ? "" : "s"}` : ""}{current.sizeBytes ? ` · ${fmtSize(current.sizeBytes)}` : ""}
+                    {batesRange(current.bates, current.batesEnd) ? `${batesRange(current.bates, current.batesEnd)} · ` : ""}{current.pageCount ? `${current.pageCount} page${current.pageCount === 1 ? "" : "s"}` : ""}{current.sizeBytes ? ` · ${fmtSize(current.sizeBytes)}` : ""}
                   </div>
                 </div>
 
@@ -1199,7 +1202,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCop
           {/* The description sits between the title and the Bates line, showing up
               to two full lines of whatever was typed. */}
           {d.description && <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-[var(--c-ink-muted)]" title={d.description}>{d.description}</span>}
-          {(d.bates || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+          {(d.bates || d.batesEnd || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
         </span>
       </button>
       {/* Two flags in the space to the right of the title: prep priority (faded
@@ -1236,7 +1239,7 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
   const [, start] = useTransition();
   const [saving, setSaving] = useState(false);
   const [f, setF] = useState({
-    side: doc.side, number: doc.number, label: doc.label, title: doc.title, description: doc.description, bates: doc.bates,
+    side: doc.side, number: doc.number, label: doc.label, title: doc.title, description: doc.description, bates: doc.bates, batesEnd: doc.batesEnd,
     priority: doc.priority, trialStatus: doc.trialStatus,
     witnessIds: doc.witnessIds, foundation: doc.foundation, elementIds: doc.elementIds,
   });
@@ -1303,9 +1306,15 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
           <label className="block"><span className="mb-1 block text-[11px] font-semibold">Description</span>
             <textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} rows={2} className={`${field} resize-y`} />
           </label>
-          <label className="block"><span className="mb-1 block text-[11px] font-semibold">Bates</span>
-            <input value={f.bates} onChange={(e) => setF({ ...f, bates: e.target.value })} placeholder="e.g. RES_000260" className={field} />
-          </label>
+          <div>
+            <span className="mb-1 block text-[11px] font-semibold">Bates range</span>
+            <div className="flex items-center gap-2">
+              <input value={f.bates} onChange={(e) => setF({ ...f, bates: e.target.value })} placeholder="from — e.g. RES_000260" className={field} />
+              <span className="text-[var(--c-ink-muted)]">to</span>
+              <input value={f.batesEnd} onChange={(e) => setF({ ...f, batesEnd: e.target.value })} placeholder="to — e.g. RES_000275" className={field} />
+            </div>
+            <p className="mt-1 text-[10px] text-[var(--c-ink-muted)]">Leave “to” blank for a single page. Search across all exhibits finds any number inside this range — even just the digits.</p>
+          </div>
 
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Priority</span><PriorityChip value={f.priority} onChange={(v) => setF({ ...f, priority: v })} /></div>

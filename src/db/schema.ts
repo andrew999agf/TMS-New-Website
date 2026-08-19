@@ -979,7 +979,10 @@ export const exhibitDocs = pgTable(
     priority: varchar("priority", { length: 8 }).notNull().default("none"),
     /** Trial ruling: none (default) | admitted | pending (offered) | excluded. */
     trialStatus: varchar("trial_status", { length: 16 }).notNull().default("none"),
+    /** Bates range start (e.g. RES_000260). Single-page exhibits leave end blank. */
     bates: varchar("bates", { length: 128 }).notNull().default(""),
+    /** Bates range end (e.g. RES_000275). */
+    batesEnd: varchar("bates_end", { length: 128 }).notNull().default(""),
     /** Sponsoring witnesses this exhibit comes in through (exhibit_witnesses ids). */
     witnessIds: jsonb("witness_ids").notNull().default([]),
     /** Foundation shortcuts: business-records-affidavit | certified-record | self-authenticating | stipulated. */
