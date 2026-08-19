@@ -2,6 +2,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
 import { ReferralSources, type ReferrerPoint } from "@/components/admin/ReferralSources";
+import { OutboundReferrals, type OutboundPoint } from "@/components/admin/OutboundReferrals";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
@@ -23,7 +24,8 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
 
   let rows: IntakeRow[] = [];
   let leads: LeadPoint[] = [];
-  let referrers: ReferrerPoint[] = [];
+  const referrers: ReferrerPoint[] = [];
+  let outbound: OutboundPoint[] = [];
   let attorneys: string[] = [];
   let referralRows: ReferralAttorneyRow[] = [];
   if (db) {
@@ -56,6 +58,10 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         .from(intakeSubmissions)
         .orderBy(desc(intakeSubmissions.createdAt));
       leads = data.map((r) => ({ createdAt: r.createdAt.toISOString(), source: r.referralSource ?? null }));
+      // Outbound: leads we referred out (a name is recorded in referredTo).
+      outbound = data
+        .filter((r) => (r.referredTo ?? "").trim())
+        .map((r) => ({ createdAt: r.createdAt.toISOString(), referredTo: r.referredTo!.trim() }));
       for (const r of data) {
         const src = r.referralSource ?? "";
         const a = (r.answers as Record<string, unknown>) ?? {};
@@ -118,6 +124,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
         <ReferralSources referrers={referrers} />
+        <OutboundReferrals referrals={outbound} />
         <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} />
       </div>
     </>

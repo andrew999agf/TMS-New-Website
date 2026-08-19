@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { intakeSubmissions, referralAttorneys } from "@/db/schema";
+import { intakeSubmissions } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -61,12 +61,11 @@ export async function setIntakeReferral(
       feeAmount: data.feeExpected ? (data.feeAmount || "").trim() || null : null,
     })
     .where(eq(intakeSubmissions.id, id));
-  // Remember the attorney name for next time.
-  try {
-    await db.insert(referralAttorneys).values({ name: referredTo }).onConflictDoNothing();
-  } catch {
-    /* non-fatal */
-  }
+  // NOTE: we deliberately do NOT add `referredTo` to the referral-attorney list.
+  // Referring out to several attorneys stored a combined "Joe, Bob, Tim" string,
+  // which then showed up as a bogus extra attorney with no contact info. The
+  // attorney list is managed on its own; referring out only records the name(s)
+  // on the lead (which powers the outbound-referrals report).
   await audit(session.email, "update", "intake", String(id), `Referred out → ${referredTo}`);
   const feeNote = data.feeExpected ? ` (fee ${(data.feeAmount || "").trim() || "expected"})` : " (no fee)";
   await notifyIntakeChange(id, `Referred out → ${referredTo}${feeNote}`, session.email);
