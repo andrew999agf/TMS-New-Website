@@ -350,12 +350,42 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
   }
 }
 
+/**
+ * Attach (or replace) an exhibit's optional high-resolution version — a separate
+ * file viewed on demand, leaving the working PDF and its search text untouched.
+ * Pass file=null to remove it.
+ */
+export async function setExhibitHiRes(id: number, file: { url: string; pathname: string; contentType?: string; size?: number } | null) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [cur] = await db.select({ setId: exhibitDocs.setId, hiResPathname: exhibitDocs.hiResPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    if (!cur) return { ok: false as const, error: "Exhibit not found." };
+    await db
+      .update(exhibitDocs)
+      .set({
+        hiResUrl: file?.url ?? null,
+        hiResPathname: file?.pathname ?? null,
+        hiResContentType: file?.contentType ?? null,
+        hiResSizeBytes: file?.size ?? null,
+      })
+      .where(eq(exhibitDocs.id, id));
+    if (cur.hiResPathname && cur.hiResPathname !== file?.pathname) { try { await del(cur.hiResPathname); } catch { /* best-effort */ } }
+    revalidatePath(`/admin/exhibit-reviewer/${cur.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[exhibit-reviewer] setExhibitHiRes failed:", err);
+    return { ok: false as const, error: "Couldn't save the high-res version." };
+  }
+}
+
 export async function deleteExhibitDoc(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (row?.pathname) { try { await del(row.pathname); } catch { /* best-effort */ } }
+    if (row?.hiResPathname) { try { await del(row.hiResPathname); } catch { /* best-effort */ } }
     await db.delete(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
     return { ok: true as const };

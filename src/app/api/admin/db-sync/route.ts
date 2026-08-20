@@ -462,6 +462,10 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS element_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT ''`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS bates_end varchar(128) NOT NULL DEFAULT ''`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_url text`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_pathname text`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_content_type varchar(128)`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_size_bytes integer`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
     id serial PRIMARY KEY,

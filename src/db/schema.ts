@@ -995,6 +995,11 @@ export const exhibitDocs = pgTable(
     pathname: text("pathname"),
     contentType: varchar("content_type", { length: 128 }),
     sizeBytes: integer("size_bytes"),
+    /** Optional high-resolution / print version, viewed on demand. */
+    hiResUrl: text("hi_res_url"),
+    hiResPathname: text("hi_res_pathname"),
+    hiResContentType: varchar("hi_res_content_type", { length: 128 }),
+    hiResSizeBytes: integer("hi_res_size_bytes"),
     /** True page count of the PDF (may exceed the number of stored text pages). */
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) that powers content search. */

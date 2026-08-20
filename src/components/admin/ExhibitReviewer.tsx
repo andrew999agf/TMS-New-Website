@@ -12,7 +12,7 @@ import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIO
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, searchExhibitSet, getDocPages, setSetAccess,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient,
   type SetSearchHit,
@@ -24,6 +24,8 @@ export type ReviewerDoc = {
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
   /** Changes whenever the underlying PDF changes, so the viewer/cache reload it. */
   fileTag: string;
+  /** Optional high-resolution version. */
+  hasHiRes: boolean; hiResTag: string;
 };
 
 export type WitnessLite = { id: number; name: string };
@@ -556,6 +558,34 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     router.refresh();
   }
 
+  /* -------- high-res version: upload one, or view it -------- */
+  const hiResInputRef = useRef<HTMLInputElement>(null);
+  const hiResIdRef = useRef<number | null>(null);
+  // When true, the viewer shows the current exhibit's high-res file.
+  const [hiResView, setHiResView] = useState(false);
+  const askHiRes = useCallback((docId: number) => {
+    if (!blobReady) { setError("Connect a Blob store to upload a high-res version."); return; }
+    hiResIdRef.current = docId;
+    hiResInputRef.current?.click();
+  }, [blobReady]);
+  async function onHiResFile(file: File) {
+    const docId = hiResIdRef.current;
+    hiResIdRef.current = null;
+    if (!docId) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { setError("The high-res version must be a PDF."); return; }
+    setError(null); flash("Uploading the high-res version…");
+    try {
+      const blob = await upload(`exhibit-reviewer/${setId}/hires-${file.name}`, file, {
+        access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+      });
+      const r = await setExhibitHiRes(docId, { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size });
+      if (r.ok) flash("High-res version saved"); else setError(r.error ?? "Couldn't save the high-res version.");
+    } catch (err) {
+      setError(`Couldn't upload: ${(err as Error).message}`);
+    }
+    router.refresh();
+  }
+
   /* --------- draggable split between the list and the viewer --------- */
   const splitRef = useRef<HTMLDivElement>(null);
   const [listW, setListW] = useState(320);
@@ -627,7 +657,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const currentIndex = current ? ordered.findIndex((d) => d.id === current.id) : -1;
 
   const [viewerPage, setViewerPage] = useState(1);
-  const openDoc = useCallback((id: number, page = 1) => { setCurrentId(id); setViewerPage(page); }, []);
+  // Opening an exhibit normally shows the standard file; openHiRes shows the
+  // high-res version. Both are set in the same handler, so the last write wins.
+  const openDoc = useCallback((id: number, page = 1) => { setCurrentId(id); setViewerPage(page); setHiResView(false); }, []);
+  const openHiRes = useCallback((id: number) => { openDoc(id, 1); setHiResView(true); }, [openDoc]);
 
   function step(delta: number) {
     if (currentIndex < 0) return;
@@ -811,13 +844,18 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const proxyBase = `/admin/exhibit-reviewer/${setId}/doc`;
   // The ?v= tag busts the browser cache when a file is replaced, while staying
   // stable across page jumps (same v) so stepping pages still hits the cache.
-  const viewerSrc = current ? `${proxyBase}/${current.id}?v=${current.fileTag}#page=${viewerPage}&zoom=page-width&view=FitH` : "";
+  const showingHiRes = !!current && hiResView && current.hasHiRes;
+  const viewerSrc = current
+    ? `${proxyBase}/${current.id}?${showingHiRes ? `hires=1&v=${current.hiResTag}` : `v=${current.fileTag}`}#page=${viewerPage}&zoom=page-width&view=FitH`
+    : "";
 
   return (
     <div className="space-y-4">
       {toast && <div className="fixed top-14 right-5 z-[9999] rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-lg" style={{ background: "var(--c-success, #16a34a)" }}>✓ {toast}</div>}
       {/* Hidden picker used by the per-exhibit "replace file" action. */}
       <input ref={replaceInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
+      {/* Hidden picker for the per-exhibit high-res upload. */}
+      <input ref={hiResInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onHiResFile(f); if (hiResInputRef.current) hiResInputRef.current.value = ""; }} />
       {error && (
         <p className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span className="flex-1">{error}</span>
@@ -932,6 +970,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
                   onEdit={() => setEditId(d.id)}
                   onReplace={() => askReplace(d.id)}
+                  onHiResUpload={() => askHiRes(d.id)}
+                  onViewHiRes={() => openHiRes(d.id)}
                   onCopyLink={isPublic && publicToken ? () => copy(exhibitLink(d.id), "Exhibit link copied") : undefined}
                   onDelete={() => { if (confirm(`Remove ${d.label || d.title || "this exhibit"}?`)) run(() => deleteExhibitDoc(d.id)); }}
                 />
@@ -991,6 +1031,12 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <button onClick={() => stepMatch(1)} disabled={!docMatches.length} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-30" title="Next match"><ChevronDown size={14} /></button>
                 </div>
 
+                {current.hasHiRes && (
+                  <span className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)] text-[11px]">
+                    <button onClick={() => setHiResView(false)} className={`px-2 py-1 font-medium ${!showingHiRes ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}>Standard</button>
+                    <button onClick={() => setHiResView(true)} className={`px-2 py-1 font-medium ${showingHiRes ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}>High-res</button>
+                  </span>
+                )}
                 {isPublic && publicToken && (
                   <button onClick={() => copy(exhibitLink(current.id), "Exhibit link copied")} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={15} /></button>
                 )}
@@ -1039,7 +1085,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   find. Keyed on file+page so a replace (new fileTag) or a #page
                   jump always reloads. */}
               <iframe
-                key={`${current.id}:${current.fileTag}:${viewerPage}`}
+                key={`${current.id}:${showingHiRes ? `hi${current.hiResTag}` : current.fileTag}:${viewerPage}`}
                 src={viewerSrc}
                 title={current.label || current.title || "Exhibit"}
                 className="min-h-0 flex-1 w-full rounded-b-lg bg-white"
@@ -1182,9 +1228,10 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes }: {
   d: ReviewerDoc; active: boolean; index: number;
   onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
+  onHiResUpload: () => void; onViewHiRes: () => void;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -1205,21 +1252,40 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCop
           {(d.bates || d.batesEnd || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
         </span>
       </button>
-      {/* Two flags in the space to the right of the title: prep priority (faded
-          word pill) and trial status (solid dot). Both always visible. */}
-      <div className="flex shrink-0 items-start gap-1">
-        <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
-        <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
-        {/* Notepad: always visible so its amber "has a note" state shows. */}
-        <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
+      {/* Right column: flags + actions at the top, the High Res control pinned to
+          the bottom-right of the row's box. */}
+      <div className="flex shrink-0 flex-col items-end justify-between gap-2 self-stretch">
+        <div className="flex items-start gap-1">
+          {/* Prep priority (faded word pill) + trial status (solid dot) — always visible. */}
+          <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
+          <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
+          {/* Notepad: always visible so its amber "has a note" state shows. */}
+          <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
+          {/* Always visible on touch (no hover there); hover-reveal kept on desktop. */}
+          <span className="flex items-center opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
+            {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
+            <button onClick={onReplace} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Replace this exhibit's file"><RefreshCw size={12} /></button>
+            <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
+            <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
+          </span>
+        </div>
+
+        {/* High Res: the label opens the high-res version (when one exists); the
+            icon uploads / replaces it. */}
+        <span className="inline-flex shrink-0 items-stretch overflow-hidden rounded-md border border-[var(--c-border)]">
+          <button
+            onClick={onViewHiRes}
+            disabled={!d.hasHiRes}
+            title={d.hasHiRes ? "View the high-res version" : "No high-res version yet — upload one with the icon"}
+            className={`px-1.5 py-0.5 text-[10px] font-bold ${d.hasHiRes ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/20" : "text-[var(--c-ink-muted)] opacity-60"}`}
+          >
+            High Res
+          </button>
+          <button onClick={onHiResUpload} title={d.hasHiRes ? "Replace the high-res version" : "Upload a high-res version"} className="border-l border-[var(--c-border)] px-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)]">
+            <Upload size={12} />
+          </button>
+        </span>
       </div>
-      {/* Always visible on touch (no hover there); hover-reveal kept on desktop. */}
-      <span className="flex shrink-0 items-center opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
-        {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
-        <button onClick={onReplace} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Replace this exhibit's file"><RefreshCw size={12} /></button>
-        <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
-        <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
-      </span>
     </li>
   );
 }

@@ -27,15 +27,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!Number.isFinite(setId) || !Number.isFinite(did)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, setId)));
-  if (!doc || !doc.url) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Serve the high-res version when asked and available; otherwise the working PDF.
+  const wantHiRes = new URL(req.url).searchParams.get("hires") === "1" && !!doc.hiResUrl;
+  const fileUrl = wantHiRes ? doc.hiResUrl! : doc.url;
+  const fileType = wantHiRes ? doc.hiResContentType : doc.contentType;
+  const fileSize = wantHiRes ? doc.hiResSizeBytes : doc.sizeBytes;
+  if (!fileUrl) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const range = req.headers.get("range");
-  const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);
+  const upstream = await fetch(fileUrl, range ? { headers: { Range: range } } : undefined);
   if (!upstream.ok || !upstream.body) return NextResponse.json({ error: "File unavailable." }, { status: 502 });
 
-  const base = (doc.label || doc.title || "exhibit").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  const base = `${(doc.label || doc.title || "exhibit").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'")}${wantHiRes ? " (high-res)" : ""}`;
   const headers = new Headers();
-  headers.set("Content-Type", doc.contentType || "application/pdf");
+  headers.set("Content-Type", fileType || "application/pdf");
   // Inline so the browser's PDF viewer renders it inside the reviewer's iframe.
   headers.set("Content-Disposition", `inline; filename="${base}.pdf"`);
   headers.set("Accept-Ranges", "bytes");
@@ -43,7 +50,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (contentRange) headers.set("Content-Range", contentRange);
   const len = upstream.headers.get("content-length");
   if (len) headers.set("Content-Length", len);
-  else if (doc.sizeBytes && !contentRange) headers.set("Content-Length", String(doc.sizeBytes));
+  else if (fileSize && !contentRange) headers.set("Content-Length", String(fileSize));
   // Private (this browser only, which already holds the session) and short-lived,
   // so jumping between pages/matches re-renders instantly instead of
   // re-downloading the PDF each time. Never shared or persisted server-side.
