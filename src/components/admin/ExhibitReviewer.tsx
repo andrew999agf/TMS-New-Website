@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer, Flag,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -14,7 +14,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -30,6 +30,8 @@ export type ReviewerDoc = {
   colorStatus: string | null;
   /** How many pages stay in color in the print copy. */
   colorPageCount: number;
+  /** 1-based pages the detector was unsure about, awaiting a color/gray call. */
+  reviewPages: number[];
 };
 
 export type WitnessLite = { id: number; name: string };
@@ -428,9 +430,12 @@ function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; 
   const prepared = withFile.filter((d) => d.colorStatus != null);
   const pending = withFile.filter((d) => d.colorStatus == null);
   const colorPagesTotal = prepared.reduce((n, d) => n + (d.colorPageCount || 0), 0);
+  const flagged = withFile.filter((d) => (d.reviewPages?.length ?? 0) > 0);
+  const reviewCount = flagged.reduce((n, d) => n + (d.reviewPages?.length ?? 0), 0);
   const sideDocs = withFile.filter((d) => d.side === side);
   const nums = sideDocs.map((d) => d.number).filter((n): n is number => n != null);
 
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -460,11 +465,12 @@ function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; 
   };
 
   return (
+    <>
     <PopMenu
       width={300}
-      title="Print-optimized (cheaper printing)"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)]"
-      label={<><Printer size={13} /> Print</>}
+      title={reviewCount > 0 ? `Print — ${reviewCount} page${reviewCount === 1 ? "" : "s"} need review` : "Print-optimized (cheaper printing)"}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${reviewCount > 0 ? "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]"}`}
+      label={<><Printer size={13} /> Print{reviewCount > 0 ? <span className="ml-0.5 inline-flex items-center gap-0.5"><Flag size={11} /> {reviewCount}</span> : null}</>}
     >
       {(close) => (
         <div className="p-2">
@@ -474,6 +480,13 @@ function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; 
               Re-saves black-and-white pages as true grayscale so the printer bills them as mono — the exhibit sticker is disregarded, and genuine color pages stay color.
             </p>
           </div>
+
+          {reviewCount > 0 && (
+            <button onClick={() => { close(); setReviewOpen(true); }} className="mx-2 mb-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-md border border-amber-500/60 bg-amber-500/10 px-2.5 py-2 text-left text-[11px] text-amber-800 hover:bg-amber-500/20 dark:text-amber-200">
+              <Flag size={13} className="shrink-0" />
+              <span><strong>{reviewCount} page{reviewCount === 1 ? "" : "s"}</strong> across {flagged.length} exhibit{flagged.length === 1 ? "" : "s"} need your call — color or grayscale.</span>
+            </button>
+          )}
 
           <div className="mx-2 rounded-md bg-[var(--c-surface2)] px-2.5 py-2 text-[11px] text-[var(--c-ink-muted)]">
             {busy && prog ? (
@@ -520,6 +533,78 @@ function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; 
         </div>
       )}
     </PopMenu>
+    {reviewOpen && <ColorReviewDialog setId={setId} docs={flagged} onClose={() => setReviewOpen(false)} />}
+    </>
+  );
+}
+
+/**
+ * Resolve the pages the color detector was unsure about. Each flagged page is
+ * kept in color by default (never wrongly grayscaled); here the user confirms
+ * color or switches it to grayscale with one click. "View" opens the page so
+ * they can see it before deciding. Decisions rebuild that exhibit's print copy.
+ */
+function ColorReviewDialog({ setId, docs, onClose }: { setId: number; docs: ReviewerDoc[]; onClose: () => void }) {
+  const router = useRouter();
+  const proxyBase = `/admin/exhibit-reviewer/${setId}/doc`;
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const rows = docs.flatMap((d) => (d.reviewPages ?? []).map((p) => ({ doc: d, page: p })));
+
+  const decide = async (docId: number, page: number, choice: "gray" | "color") => {
+    setPendingKey(`${docId}:${page}`); setErr(null);
+    try {
+      const r = await decideColorPage(docId, page, choice);
+      if (!r?.ok) setErr(r?.error ?? "Couldn't save that choice.");
+    } catch { setErr("Couldn't save that choice."); }
+    router.refresh();
+    setPendingKey(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
+      <div className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-4 py-3">
+          <Flag size={16} className="text-amber-500" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-[var(--c-ink)]">Pages to review</div>
+            <div className="text-[11px] text-[var(--c-ink-muted)]">Kept in color for now. Confirm color or switch to grayscale for cheaper printing.</div>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={16} /></button>
+        </div>
+        {err && <p className="mx-4 mt-2 text-[11px] text-red-600">{err}</p>}
+        <div className="max-h-[65vh] overflow-y-auto p-3">
+          {rows.length === 0 ? (
+            <div className="py-10 text-center text-sm text-[var(--c-ink-muted)]"><Check size={20} className="mx-auto mb-2 text-green-600" /> All pages reviewed.</div>
+          ) : (
+            <ul className="space-y-1.5">
+              {rows.map(({ doc, page }) => {
+                const key = `${doc.id}:${page}`;
+                const working = pendingKey === key;
+                return (
+                  <li key={key} className="flex items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2">
+                    <span className="inline-flex min-w-[3rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-1 text-xs font-bold text-[var(--c-accent)]">{doc.label || (doc.number ?? "—")}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--c-ink)]">{doc.title || "Exhibit"} <span className="text-[var(--c-ink-muted)]">· page {page}</span></span>
+                    <a href={`${proxyBase}/${doc.id}?v=${doc.fileTag}#page=${page}`} target="_blank" rel="noopener noreferrer" title="View this page" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><ExternalLink size={13} /></a>
+                    {working ? (
+                      <span className="px-2"><Loader2 size={14} className="animate-spin text-[var(--c-accent)]" /></span>
+                    ) : (
+                      <>
+                        <button onClick={() => decide(doc.id, page, "gray")} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-xs font-medium text-[var(--c-ink)] hover:border-[var(--c-accent)]">Grayscale</button>
+                        <button onClick={() => decide(doc.id, page, "color")} className="rounded-md border border-[var(--c-accent)] px-2 py-1 text-xs font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10">Color</button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div className="flex justify-end border-t border-[var(--c-border)] px-4 py-3">
+          <button onClick={onClose} className="btn btn-accent text-sm py-1.5 px-4">Done</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -914,6 +999,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const [staged, setStaged] = useState<Staged[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number; pct?: number } | null>(null);
+  // The "organic read": right after upload we analyze each new exhibit's color
+  // so the print-optimized copy is ready and any unsure pages get flagged.
+  const [autoRead, setAutoRead] = useState<{ done: number; total: number } | null>(null);
   const [numMode, setNumMode] = useState<NumMode>("keep");
 
   // Any upload in flight (batch add, replace, or hi-res). While true we warn the
@@ -991,6 +1079,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     const finalItems = computeNumbers(staged, numMode, startAt);
     setUploading({ done: 0, total: finalItems.length });
     let done = 0;
+    const newIds: number[] = [];
     for (const item of finalItems) {
       try {
         const blob = await upload(`exhibit-reviewer/${setId}/${item.file.name}`, item.file, {
@@ -1000,10 +1089,11 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           multipart: true,
           onUploadProgress: (e) => setUploading({ done, total: finalItems.length, pct: Math.round(e.percentage) }),
         });
-        await addExhibitDoc(setId, {
+        const saved = await addExhibitDoc(setId, {
           side: item.side, number: item.number, label: item.label.trim(), title: item.title.trim(), bates: item.bates.trim(),
           file: { url: blob.url, pathname: blob.pathname, contentType: item.file.type || blob.contentType, size: item.file.size },
         });
+        if (saved?.ok && saved.id) newIds.push(saved.id);
       } catch (err) {
         setError(`Couldn't upload ${item.file.name}: ${(err as Error).message}`);
       }
@@ -1013,6 +1103,19 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     setStaged([]);
     setUploading(null);
     router.refresh();
+
+    // Organic color read: analyze each new exhibit now. Effectively-B&W pages
+    // become grayscale for cheaper printing; anything the detector is unsure of
+    // is flagged for review (the Print menu turns amber). Best-effort per file.
+    if (newIds.length) {
+      setAutoRead({ done: 0, total: newIds.length });
+      for (let i = 0; i < newIds.length; i++) {
+        try { await buildPrintCopy(newIds[i]); } catch { /* leave unprepared; user can Prepare later */ }
+        setAutoRead({ done: i + 1, total: newIds.length });
+      }
+      setAutoRead(null);
+      router.refresh();
+    }
   }
 
   const patchStaged = (key: string, patch: Partial<Staged>) => setStaged((prev) => prev.map((s) => {
@@ -1041,6 +1144,12 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         <div className="fixed left-1/2 top-14 z-[9999] flex -translate-x-1/2 items-center gap-2.5 rounded-lg border border-amber-500/50 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-lg dark:bg-amber-950 dark:text-amber-100">
           <Loader2 size={16} className="animate-spin text-amber-600" />
           <span><strong>Uploading{uploading ? ` ${uploading.done + 1}/${uploading.total}` : ""}…</strong> Please don&apos;t close this tab or leave the page until it finishes, or the upload will be lost.</span>
+        </div>
+      )}
+      {!uploadingActive && autoRead && (
+        <div className="fixed left-1/2 top-14 z-[9999] flex -translate-x-1/2 items-center gap-2.5 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2.5 text-sm text-[var(--c-ink)] shadow-lg">
+          <Loader2 size={16} className="animate-spin text-[var(--c-accent)]" />
+          <span><strong>Reading for color {autoRead.done}/{autoRead.total}…</strong> Preparing cheaper-to-print copies. You can keep working.</span>
         </div>
       )}
       {/* Hidden picker used by the per-exhibit "replace file" action. */}

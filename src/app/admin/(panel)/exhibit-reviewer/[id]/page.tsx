@@ -29,7 +29,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label,
         title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, url: exhibitDocs.url, pathname: exhibitDocs.pathname, hiResUrl: exhibitDocs.hiResUrl, hiResPathname: exhibitDocs.hiResPathname,
         witnessIds: exhibitDocs.witnessIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds, notes: exhibitDocs.notes,
-        colorStatus: exhibitDocs.colorStatus, colorPages: exhibitDocs.colorPages,
+        colorStatus: exhibitDocs.colorStatus, colorPages: exhibitDocs.colorPages, reviewPages: exhibitDocs.reviewPages,
         pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
       })
       .from(exhibitDocs)
@@ -53,7 +53,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     hasFile: Boolean(r.url), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
     fileTag: tagOf(r.pathname ?? r.url ?? String(r.id)),
     hasHiRes: Boolean(r.hiResUrl), hiResTag: tagOf(r.hiResPathname ?? r.hiResUrl ?? ""),
-    colorStatus: r.colorStatus, colorPageCount: numArr(r.colorPages).length,
+    colorStatus: r.colorStatus, colorPageCount: numArr(r.colorPages).length, reviewPages: numArr(r.reviewPages),
   }));
   const witnesses: WitnessLite[] = witnessRows.map((w) => ({ id: w.id, name: w.name }));
   const claims: ClaimLite[] = claimRows.map((c) => ({ id: c.id, name: c.name }));

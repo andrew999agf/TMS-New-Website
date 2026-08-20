@@ -1020,6 +1020,11 @@ export const exhibitDocs = pgTable(
     colorStatus: varchar("color_status", { length: 16 }),
     /** 1-based page numbers that remain in color in the print copy. */
     colorPages: jsonb("color_pages").notNull().default([]),
+    /** 1-based page numbers the detector was unsure about — kept in color and
+     *  flagged for the user to confirm color vs. grayscale. */
+    reviewPages: jsonb("review_pages").notNull().default([]),
+    /** Per-page manual decisions that override the detector: { "3": "gray" }. */
+    colorOverrides: jsonb("color_overrides").notNull().default({}),
     /** True page count of the PDF (may exceed the number of stored text pages). */
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) that powers content search. */

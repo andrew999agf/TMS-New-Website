@@ -479,6 +479,8 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS print_size_bytes integer`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS color_status varchar(16)`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS color_pages jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS review_pages jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS color_overrides jsonb NOT NULL DEFAULT '{}'::jsonb`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
     id serial PRIMARY KEY,

@@ -10,7 +10,7 @@ import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitEleme
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
-import { buildPrintOptimized } from "@/lib/exhibit-review/printcopy";
+import { buildPrintOptimized, type ColorOverrides } from "@/lib/exhibit-review/printcopy";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 
@@ -391,7 +391,7 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
         pageText: extracted.pages,
         // The new file invalidates any existing print-optimized copy.
         printUrl: null, printPathname: null, printContentType: null, printSizeBytes: null,
-        colorStatus: null, colorPages: [],
+        colorStatus: null, colorPages: [], reviewPages: [], colorOverrides: {},
       })
       .where(eq(exhibitDocs.id, id));
     // Remove the old blobs now that nothing points at them.
@@ -462,28 +462,29 @@ export async function buildPrintCopy(id: number) {
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
     const [doc] = await db
-      .select({ setId: exhibitDocs.setId, url: exhibitDocs.url, sizeBytes: exhibitDocs.sizeBytes, printPathname: exhibitDocs.printPathname })
+      .select({ setId: exhibitDocs.setId, url: exhibitDocs.url, sizeBytes: exhibitDocs.sizeBytes, printPathname: exhibitDocs.printPathname, colorOverrides: exhibitDocs.colorOverrides })
       .from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (!doc) return { ok: false as const, error: "Exhibit not found." };
     if (!doc.url) return { ok: false as const, error: "This exhibit has no file yet." };
 
     // Guard the download itself for very large files.
     if (doc.sizeBytes && doc.sizeBytes > 300 * 1024 * 1024) {
-      await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [] }).where(eq(exhibitDocs.id, id));
+      await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [], reviewPages: [] }).where(eq(exhibitDocs.id, id));
       revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
-      return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], converted: 0, pageCount: 0 };
+      return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], reviewPages: [] as number[], converted: 0, pageCount: 0 };
     }
 
     const res = await fetch(doc.url);
     if (!res.ok) return { ok: false as const, error: "Couldn't fetch the exhibit file." };
     const bytes = new Uint8Array(await res.arrayBuffer());
 
-    const built = await buildPrintOptimized(bytes);
+    const overrides = (doc.colorOverrides ?? {}) as ColorOverrides;
+    const built = await buildPrintOptimized(bytes, overrides);
     if (built.status !== "ok" || !built.bytes) {
       if (built.status === "skipped") {
-        await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [] }).where(eq(exhibitDocs.id, id));
+        await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [], reviewPages: [] }).where(eq(exhibitDocs.id, id));
         revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
-        return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], converted: 0, pageCount: built.pageCount };
+        return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], reviewPages: [] as number[], converted: 0, pageCount: built.pageCount };
       }
       return { ok: false as const, error: built.reason || "Couldn't prepare a print copy." };
     }
@@ -499,14 +500,36 @@ export async function buildPrintCopy(id: number) {
       .update(exhibitDocs)
       .set({
         printUrl: blob.url, printPathname: blob.pathname, printContentType: "application/pdf", printSizeBytes: built.bytes.byteLength,
-        colorStatus, colorPages: built.colorPages,
+        colorStatus, colorPages: built.colorPages, reviewPages: built.reviewPages,
       })
       .where(eq(exhibitDocs.id, id));
     revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
-    return { ok: true as const, status: "ok" as const, colorStatus, colorPages: built.colorPages, converted: built.converted, pageCount: built.pageCount };
+    return { ok: true as const, status: "ok" as const, colorStatus, colorPages: built.colorPages, reviewPages: built.reviewPages, converted: built.converted, pageCount: built.pageCount };
   } catch (err) {
     console.error("[exhibit-reviewer] buildPrintCopy failed:", err);
     return { ok: false as const, error: "Couldn't prepare a print copy." };
+  }
+}
+
+/**
+ * Record the user's color-vs-grayscale decision for a flagged (borderline) page
+ * and rebuild that exhibit's print copy so the choice takes effect. The decision
+ * is stored so it survives future rebuilds and the page is never re-flagged.
+ */
+export async function decideColorPage(id: number, page: number, choice: "gray" | "color") {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!Number.isInteger(page) || page < 1) return { ok: false as const, error: "Bad page." };
+  try {
+    const [doc] = await db.select({ colorOverrides: exhibitDocs.colorOverrides }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    if (!doc) return { ok: false as const, error: "Exhibit not found." };
+    const overrides = { ...((doc.colorOverrides ?? {}) as ColorOverrides), [String(page)]: choice };
+    await db.update(exhibitDocs).set({ colorOverrides: overrides }).where(eq(exhibitDocs.id, id));
+    // Rebuild applies the decision and clears the page from the review list.
+    return await buildPrintCopy(id);
+  } catch (err) {
+    console.error("[exhibit-reviewer] decideColorPage failed:", err);
+    return { ok: false as const, error: "Couldn't save that choice." };
   }
 }
 
