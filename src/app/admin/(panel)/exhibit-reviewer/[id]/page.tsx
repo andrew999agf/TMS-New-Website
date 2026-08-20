@@ -70,7 +70,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         <Link href="/admin/exhibit-reviewer" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All sets
         </Link>
-        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} access={set.access} publicToken={set.publicToken} recipients={recipients} hasList={Boolean(set.listUrl)} listName={set.listName} listTag={tagOf(set.listPathname ?? set.listUrl ?? "")} />
+        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} access={set.access} publicToken={set.publicToken} recipients={recipients} ocEnabled={set.ocEnabled} ocToken={set.ocToken} hasList={Boolean(set.listUrl)} listName={set.listName} listTag={tagOf(set.listPathname ?? set.listUrl ?? "")} />
       </div>
     </>
   );

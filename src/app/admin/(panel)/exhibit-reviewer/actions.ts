@@ -124,6 +124,26 @@ export async function setSetAccess(id: number, access: string) {
   }
 }
 
+/**
+ * Turn the opposing-counsel link on or off. It has its own token, separate from
+ * the public/link-tree token, so it can never be edited into the fuller view —
+ * opposing counsel only ever gets the exhibit names and the files.
+ */
+export async function setOcShare(id: number, enabled: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [cur] = await db.select({ token: exhibitSets.ocToken }).from(exhibitSets).where(eq(exhibitSets.id, id));
+    const token = cur?.token || randomBytes(18).toString("base64url");
+    await db.update(exhibitSets).set({ ocEnabled: enabled, ocToken: token, updatedAt: new Date() }).where(eq(exhibitSets.id, id));
+    await audit(session.email, "update", "exhibit-set", String(id), enabled ? "Enabled opposing-counsel link" : "Disabled opposing-counsel link");
+    revalidatePath(`/admin/exhibit-reviewer/${id}`);
+    return { ok: true as const, enabled, token };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the opposing-counsel link." };
+  }
+}
+
 async function sendExhibitInvite(rec: { email: string; name: string; token: string }, setName: string) {
   const link = `${await baseUrl()}/exhibits/r/${rec.token}`;
   const who = rec.name?.trim() ? esc(rec.name.trim()) : "there";

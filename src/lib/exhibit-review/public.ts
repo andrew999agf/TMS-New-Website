@@ -40,6 +40,46 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
   }
 }
 
+/**
+ * Load a set by its opposing-counsel token — only when that link is enabled.
+ * Deliberately strips everything but the exhibit name: no Bates, no page count,
+ * no description are even sent to the client. The files themselves are still
+ * served (opposing counsel needs the exhibits) through the OC file route.
+ */
+export async function getOcSet(token: string): Promise<PublicSet | null> {
+  if (!db || !token) return null;
+  try {
+    const [set] = await db
+      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, ocEnabled: exhibitSets.ocEnabled, token: exhibitSets.ocToken })
+      .from(exhibitSets)
+      .where(and(eq(exhibitSets.ocToken, token), eq(exhibitSets.ocEnabled, true)));
+    if (!set) return null;
+    const rows = await db
+      .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url, sort: exhibitDocs.sort })
+      .from(exhibitDocs)
+      .where(eq(exhibitDocs.setId, set.id))
+      .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+    const docs: PublicDoc[] = rows
+      .filter((r) => r.url)
+      .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: "", bates: "", pageCount: null }));
+    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs };
+  } catch {
+    return null;
+  }
+}
+
+/** The set id for an enabled opposing-counsel token (used by the OC file/zip/book
+ *  routes, which serve the actual PDFs). Null when the link is off or unknown. */
+export async function ocSetForToken(token: string): Promise<{ id: number; name: string } | null> {
+  if (!db || !token) return null;
+  try {
+    const [set] = await db.select({ id: exhibitSets.id, name: exhibitSets.name }).from(exhibitSets).where(and(eq(exhibitSets.ocToken, token), eq(exhibitSets.ocEnabled, true)));
+    return set ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Natural per-side ordering for the public index. */
 export function orderPublicDocs(docs: PublicDoc[]): PublicDoc[] {
   const order: Record<string, number> = { plaintiff: 0, defendant: 1, joint: 2 };

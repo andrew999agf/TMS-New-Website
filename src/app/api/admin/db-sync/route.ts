@@ -421,6 +421,8 @@ const DDL = [
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_content_type varchar(128)`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_size_bytes integer`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_name varchar(255)`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS oc_token varchar(64)`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS oc_enabled boolean NOT NULL DEFAULT false`,
   `CREATE INDEX IF NOT EXISTS exhibit_sets_token_idx ON exhibit_sets (public_token)`,
   `CREATE TABLE IF NOT EXISTS exhibit_recipients (
     id serial PRIMARY KEY,

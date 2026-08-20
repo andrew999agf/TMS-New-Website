@@ -953,6 +953,10 @@ export const exhibitSets = pgTable(
     /** Kept in step with access ("public") so the open public routes, which key
      *  on this flag, keep working unchanged. */
     isPublic: boolean("is_public").notNull().default(false),
+    /** A SEPARATE opposing-counsel link (its own token) that only ever shows the
+     *  exhibit names + the files — never Bates, pages, or descriptions. */
+    ocToken: varchar("oc_token", { length: 64 }),
+    ocEnabled: boolean("oc_enabled").notNull().default(false),
     /** Optional "exhibit list" document for the set — viewed like an exhibit. */
     listUrl: text("list_url"),
     listPathname: text("list_pathname"),

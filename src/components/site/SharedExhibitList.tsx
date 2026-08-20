@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, CheckSquare, ChevronDown, BookOpen, Scale } from "lucide-react";
+import { Download, CheckSquare, ChevronDown, BookOpen } from "lucide-react";
 
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
@@ -15,11 +15,9 @@ const SIDE_LABEL: Record<string, string> = { plaintiff: "Plaintiff's Exhibits", 
  * and download them as a ZIP. "Check all" then unchecking a few, then "Download
  * checked", works as expected.
  */
-export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs: SharedDoc[]; viewBase: string; zipBase: string; bookBase: string }) {
+export function SharedExhibitList({ docs, viewBase, zipBase, bookBase, namesOnly = false }: { docs: SharedDoc[]; viewBase: string; zipBase: string; bookBase: string; namesOnly?: boolean }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [menu, setMenu] = useState<"checked" | "all" | null>(null);
-  // Opposing-counsel view: just the exhibit names, nothing else.
-  const [namesOnly, setNamesOnly] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () => ["plaintiff", "defendant", "joint"].map((s) => ({ side: s, items: docs.filter((d) => d.side === s) })).filter((g) => g.items.length),
@@ -55,14 +53,6 @@ export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs:
         </label>
         <span className="text-xs text-[var(--c-ink-muted)]">{sel.size} of {docs.length} selected</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Opposing-counsel view: strips everything but the exhibit name. */}
-          <button
-            onClick={() => setNamesOnly((v) => !v)}
-            title="Show just the exhibit names — nothing else"
-            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${namesOnly ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]"}`}
-          >
-            <Scale size={14} /> Opposing-counsel view
-          </button>
           {/* Download checked — ZIP, with a caret for the single-PDF-book option */}
           <div className="relative inline-flex">
             <button

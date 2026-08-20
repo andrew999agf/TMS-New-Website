@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -14,7 +14,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -195,8 +195,9 @@ function NoteButton({ notes, onSave }: { notes: string; onSave: (v: string) => v
  *                A forwarded link won't let anyone else in. (Default when sharing.)
  *   Public     — anyone with the link can view (no sign-in), plus a link tree.
  */
-function ShareDialog({ setId, access, token, recipients, docs, onCopy, onFlash, onClose }: {
+function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToken, onCopy, onFlash, onClose }: {
   setId: number; access: string; token: string | null; recipients: RecipientLite[]; docs: ReviewerDoc[];
+  ocEnabled: boolean; ocToken: string | null;
   onCopy: (text: string, label: string) => void; onFlash: (m: string) => void; onClose: () => void;
 }) {
   const router = useRouter();
@@ -208,7 +209,14 @@ function ShareDialog({ setId, access, token, recipients, docs, onCopy, onFlash, 
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setMode(access); setTok(token); }, [access, token]);
+  const [oc, setOc] = useState(ocEnabled);
+  const [ocTok, setOcTok] = useState(ocToken);
+  useEffect(() => { setMode(access); setTok(token); setOc(ocEnabled); setOcTok(ocToken); }, [access, token, ocEnabled, ocToken]);
+
+  function toggleOc(next: boolean) {
+    setOc(next);
+    start(async () => { const r = await setOcShare(setId, next); if (r.ok) setOcTok(r.token); router.refresh(); });
+  }
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const treeUrl = tok ? `${origin}/exhibits/${tok}` : "";
@@ -317,6 +325,26 @@ function ShareDialog({ setId, access, token, recipients, docs, onCopy, onFlash, 
             <p className="mt-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Each exhibit also has its own link — the link icon on a row (or in the viewer) copies it.</p>
           </div>
         )}
+
+        {/* Opposing counsel — a completely separate, names-only link. */}
+        <div className="mt-4 rounded-md border border-[var(--c-border)] p-3">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input type="checkbox" checked={oc} onChange={(e) => toggleOc(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
+            <span className="min-w-0">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--c-ink)]"><Scale size={15} /> Opposing-counsel link (names only)</span>
+              <span className="mt-0.5 block text-xs text-[var(--c-ink-muted)]">A separate link that shows only the exhibit numbers and names and the files themselves — never the Bates, page counts, or descriptions. Safe to send the other side.</span>
+            </span>
+          </label>
+          {oc && ocTok && (
+            <div className="mt-2 rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
+              <div className="truncate text-[11px] text-[var(--c-ink)]" title={`${origin}/exhibits/oc/${ocTok}`}>{origin}/exhibits/oc/{ocTok}</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <button onClick={() => onCopy(`${origin}/exhibits/oc/${ocTok}`, "Opposing-counsel link copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
+                <a href={`${origin}/exhibits/oc/${ocTok}`} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Preview</a>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="mt-4 flex justify-end">
           <button onClick={onClose} className="btn btn-accent text-sm py-2 px-4">Done</button>
@@ -494,9 +522,9 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, hasList, listName, listTag }: {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, hasList, listName, listTag }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
-  access: string; publicToken: string | null; recipients: RecipientLite[];
+  access: string; publicToken: string | null; recipients: RecipientLite[]; ocEnabled: boolean; ocToken: string | null;
   hasList: boolean; listName: string | null; listTag: string;
 }) {
   const router = useRouter();
@@ -1184,7 +1212,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       })()}
 
       {shareOpen && (
-        <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
+        <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} ocEnabled={ocEnabled} ocToken={ocToken} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
       )}
 
       {confirmState && (
