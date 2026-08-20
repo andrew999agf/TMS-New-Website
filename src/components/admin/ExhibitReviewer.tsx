@@ -503,6 +503,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   // The exhibit whose full details dialog (pencil) is open.
   const [editId, setEditId] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  // A styled confirm dialog (replaces the browser's confirm box).
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; confirmLabel: string; onConfirm: () => void } | null>(null);
   // Brief confirmation toast (copied a link, etc.).
   const [toast, setToast] = useState<string | null>(null);
   const flash = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(null), 2200); }, []);
@@ -534,10 +536,12 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const [replacing, setReplacing] = useState(false);
   const askReplace = useCallback((docId: number) => {
     if (!blobReady) { setError("Connect a Blob store to replace files."); return; }
-    if (confirm("Replace this exhibit's file? The number, title, notes and everything else stay — only the PDF changes.")) {
-      replaceIdRef.current = docId;
-      replaceInputRef.current?.click();
-    }
+    setConfirmState({
+      title: "Replace exhibit file",
+      message: "Replace this exhibit's file? The number, label, title, notes and everything else stay — only the PDF changes.",
+      confirmLabel: "Choose file…",
+      onConfirm: () => { replaceIdRef.current = docId; replaceInputRef.current?.click(); },
+    });
   }, [blobReady]);
   async function onReplaceFile(file: File) {
     const docId = replaceIdRef.current;
@@ -563,6 +567,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const hiResIdRef = useRef<number | null>(null);
   // When true, the viewer shows the current exhibit's high-res file.
   const [hiResView, setHiResView] = useState(false);
+  // Which exhibit's hi-res is uploading, and its percent (shown in the row's box).
+  const [hiResBusy, setHiResBusy] = useState<{ id: number; pct: number } | null>(null);
   const askHiRes = useCallback((docId: number) => {
     if (!blobReady) { setError("Connect a Blob store to upload a high-res version."); return; }
     hiResIdRef.current = docId;
@@ -573,16 +579,19 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     hiResIdRef.current = null;
     if (!docId) return;
     if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { setError("The high-res version must be a PDF."); return; }
-    setError(null); flash("Uploading the high-res version…");
+    setError(null);
+    setHiResBusy({ id: docId, pct: 0 });
     try {
       const blob = await upload(`exhibit-reviewer/${setId}/hires-${file.name}`, file, {
         access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+        onUploadProgress: (e) => setHiResBusy({ id: docId, pct: Math.round(e.percentage) }),
       });
       const r = await setExhibitHiRes(docId, { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size });
       if (r.ok) flash("High-res version saved"); else setError(r.error ?? "Couldn't save the high-res version.");
     } catch (err) {
       setError(`Couldn't upload: ${(err as Error).message}`);
     }
+    setHiResBusy(null);
     router.refresh();
   }
 
@@ -741,6 +750,16 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number; pct?: number } | null>(null);
   const [numMode, setNumMode] = useState<NumMode>("keep");
+
+  // Any upload in flight (batch add, replace, or hi-res). While true we warn the
+  // browser AND show an on-screen banner, because leaving the page drops it.
+  const uploadingActive = !!uploading || replacing || !!hiResBusy;
+  useEffect(() => {
+    if (!uploadingActive) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploadingActive]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Numbers already used per side, and the next free number, so a second batch
@@ -852,6 +871,13 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   return (
     <div className="space-y-4">
       {toast && <div className="fixed top-14 right-5 z-[9999] rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-lg" style={{ background: "var(--c-success, #16a34a)" }}>✓ {toast}</div>}
+      {/* Stay-on-page warning while anything is uploading — leaving drops it. */}
+      {uploadingActive && (
+        <div className="fixed left-1/2 top-14 z-[9999] flex -translate-x-1/2 items-center gap-2.5 rounded-lg border border-amber-500/50 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-lg dark:bg-amber-950 dark:text-amber-100">
+          <Loader2 size={16} className="animate-spin text-amber-600" />
+          <span><strong>Uploading{uploading ? ` ${uploading.done + 1}/${uploading.total}` : ""}…</strong> Please don&apos;t close this tab or leave the page until it finishes, or the upload will be lost.</span>
+        </div>
+      )}
       {/* Hidden picker used by the per-exhibit "replace file" action. */}
       <input ref={replaceInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
       {/* Hidden picker for the per-exhibit high-res upload. */}
@@ -895,7 +921,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           <button onClick={() => step(1)} disabled={currentIndex < 0 || currentIndex >= ordered.length - 1} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] disabled:opacity-40" title="Next exhibit"><ChevronRight size={16} /></button>
         </div>
 
-        <div className="ml-auto flex min-w-[240px] flex-1 items-center gap-2 sm:max-w-md">
+        <div className="ml-auto flex min-w-[260px] flex-1 items-center gap-2 lg:max-w-2xl">
           {/* Download exhibits as a ZIP — all, this side, or a number range. */}
           <DownloadZip setId={setId} docs={docs} side={side} />
           {/* Share: opens the sharing dialog (off / restricted / public). */}
@@ -910,7 +936,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           {/* The admitted/trial-status summary sits on the right of the frozen
               bar: a tally that opens a grouped, clickable list of exhibits. */}
           <StatusSummary docs={docs} onOpen={openAnySide} />
-          <div className="relative min-w-0 flex-1">
+          <div className="relative min-w-[200px] flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)]" />
           <input value={setQuery} onChange={(e) => setSetQuery(e.target.value)} placeholder="Search across all exhibits…" className={`${input} pl-8 pr-8`} />
           {setQuery && <button onClick={() => { setSetQuery(""); setSetHits(null); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={14} /></button>}
@@ -972,6 +998,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   onReplace={() => askReplace(d.id)}
                   onHiResUpload={() => askHiRes(d.id)}
                   onViewHiRes={() => openHiRes(d.id)}
+                  hiResPct={hiResBusy?.id === d.id ? hiResBusy.pct : null}
                   onCopyLink={isPublic && publicToken ? () => copy(exhibitLink(d.id), "Exhibit link copied") : undefined}
                   onDelete={() => { if (confirm(`Remove ${d.label || d.title || "this exhibit"}?`)) run(() => deleteExhibitDoc(d.id)); }}
                 />
@@ -1105,6 +1132,34 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       {shareOpen && (
         <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
       )}
+
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={() => { const fn = confirmState.onConfirm; setConfirmState(null); fn(); }}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** A small confirm dialog styled to match the site (in place of window.confirm). */
+function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }: {
+  title: string; message: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        <h3 className="inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><RefreshCw size={16} className="text-[var(--c-accent)]" /> {title}</h3>
+        <p className="mt-2 text-sm text-[var(--c-ink-muted)]">{message}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onCancel} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={onConfirm} autoFocus className="btn btn-accent text-sm py-2 px-4">{confirmLabel}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1228,10 +1283,10 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
   d: ReviewerDoc; active: boolean; index: number;
   onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
-  onHiResUpload: () => void; onViewHiRes: () => void;
+  onHiResUpload: () => void; onViewHiRes: () => void; hiResPct: number | null;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
   // "nearest" nudges only the list's own scroll, never the page.
@@ -1272,17 +1327,17 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCop
 
         {/* High Res: the label opens the high-res version (when one exists); the
             icon uploads / replaces it. */}
-        <span className="inline-flex shrink-0 items-stretch overflow-hidden rounded-md border border-[var(--c-border)]">
+        <span className={`inline-flex shrink-0 items-stretch overflow-hidden rounded-md border ${hiResPct != null ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
           <button
             onClick={onViewHiRes}
-            disabled={!d.hasHiRes}
-            title={d.hasHiRes ? "View the high-res version" : "No high-res version yet — upload one with the icon"}
-            className={`px-1.5 py-0.5 text-[10px] font-bold ${d.hasHiRes ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/20" : "text-[var(--c-ink-muted)] opacity-60"}`}
+            disabled={!d.hasHiRes || hiResPct != null}
+            title={hiResPct != null ? "Uploading — don't leave the page" : d.hasHiRes ? "View the high-res version" : "No high-res version yet — upload one with the icon"}
+            className={`min-w-[3.5rem] px-1.5 py-0.5 text-center text-[10px] font-bold ${hiResPct != null ? "bg-[var(--c-accent)] text-white" : d.hasHiRes ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/20" : "text-[var(--c-ink-muted)] opacity-60"}`}
           >
-            High Res
+            {hiResPct != null ? `${hiResPct}%` : "High Res"}
           </button>
-          <button onClick={onHiResUpload} title={d.hasHiRes ? "Replace the high-res version" : "Upload a high-res version"} className="border-l border-[var(--c-border)] px-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)]">
-            <Upload size={12} />
+          <button onClick={onHiResUpload} disabled={hiResPct != null} title={d.hasHiRes ? "Replace the high-res version" : "Upload a high-res version"} className="border-l border-[var(--c-border)] px-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)] disabled:opacity-50">
+            {hiResPct != null ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
           </button>
         </span>
       </div>

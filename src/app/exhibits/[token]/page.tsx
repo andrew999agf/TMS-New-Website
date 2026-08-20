@@ -37,7 +37,7 @@ export default async function PublicExhibitIndex({ params }: { params: Promise<{
         </p>
       </header>
 
-      <SharedExhibitList docs={ordered} viewBase={`/exhibits/${token}/e`} zipBase={`/exhibits/${token}/zip`} />
+      <SharedExhibitList docs={ordered} viewBase={`/exhibits/${token}/e`} zipBase={`/exhibits/${token}/zip`} bookBase={`/exhibits/${token}/book`} />
 
       <footer className="mt-10 border-t border-[var(--c-border)] pt-5 text-xs text-[var(--c-ink-muted)]">
         Shared by {FIRM.name}. These materials are provided for review only.

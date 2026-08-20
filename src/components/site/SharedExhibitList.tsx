@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, CheckSquare } from "lucide-react";
+import { Download, CheckSquare, ChevronDown, BookOpen } from "lucide-react";
 
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
@@ -15,8 +15,10 @@ const SIDE_LABEL: Record<string, string> = { plaintiff: "Plaintiff's Exhibits", 
  * and download them as a ZIP. "Check all" then unchecking a few, then "Download
  * checked", works as expected.
  */
-export function SharedExhibitList({ docs, viewBase, zipBase }: { docs: SharedDoc[]; viewBase: string; zipBase: string }) {
+export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs: SharedDoc[]; viewBase: string; zipBase: string; bookBase: string }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [menu, setMenu] = useState<"checked" | "all" | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () => ["plaintiff", "defendant", "joint"].map((s) => ({ side: s, items: docs.filter((d) => d.side === s) })).filter((g) => g.items.length),
     [docs],
@@ -27,12 +29,18 @@ export function SharedExhibitList({ docs, viewBase, zipBase }: { docs: SharedDoc
   const toggle = (id: number) => setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleAll = () => setSel(allChecked ? new Set() : new Set(docs.map((d) => d.id)));
 
-  const download = (href: string) => { const a = document.createElement("a"); a.href = href; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  const download = (href: string) => { setMenu(null); const a = document.createElement("a"); a.href = href; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  const idsQ = () => `?ids=${[...sel].join(",")}`;
+  useEffect(() => {
+    function onDoc(e: MouseEvent) { if (barRef.current && !barRef.current.contains(e.target as Node)) setMenu(null); }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   return (
     <div className="mt-8">
       {/* Selection + download toolbar */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2.5">
+      <div ref={barRef} className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2.5">
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--c-ink)]">
           <input
             type="checkbox"
@@ -45,20 +53,39 @@ export function SharedExhibitList({ docs, viewBase, zipBase }: { docs: SharedDoc
         </label>
         <span className="text-xs text-[var(--c-ink-muted)]">{sel.size} of {docs.length} selected</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => download(`${zipBase}?ids=${[...sel].join(",")}`)}
-            disabled={sel.size === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-40"
-          >
-            <CheckSquare size={14} /> Download checked{sel.size ? ` (${sel.size})` : ""}
-          </button>
-          <button
-            onClick={() => download(zipBase)}
-            disabled={docs.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-40"
-          >
-            <Download size={14} /> Download all ({docs.length})
-          </button>
+          {/* Download checked — ZIP, with a caret for the single-PDF-book option */}
+          <div className="relative inline-flex">
+            <button
+              onClick={() => download(`${zipBase}${idsQ()}`)}
+              disabled={sel.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-l-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-40"
+            >
+              <CheckSquare size={14} /> Download checked{sel.size ? ` (${sel.size})` : ""}
+            </button>
+            <button onClick={() => setMenu(menu === "checked" ? null : "checked")} disabled={sel.size === 0} title="More download options" className="rounded-r-md border border-l-0 border-[var(--c-accent)] px-1.5 py-1.5 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-40"><ChevronDown size={14} /></button>
+            {menu === "checked" && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-lg">
+                <button onClick={() => download(`${bookBase}${idsQ()}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--c-accent)]/10"><BookOpen size={14} className="text-[var(--c-accent)]" /> Download all checked to single PDF book</button>
+              </div>
+            )}
+          </div>
+
+          {/* Download all — ZIP, with a caret for the single-PDF-book option */}
+          <div className="relative inline-flex">
+            <button
+              onClick={() => download(zipBase)}
+              disabled={docs.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-l-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-40"
+            >
+              <Download size={14} /> Download all ({docs.length})
+            </button>
+            <button onClick={() => setMenu(menu === "all" ? null : "all")} disabled={docs.length === 0} title="More download options" className="rounded-r-md bg-[var(--c-accent)] px-1.5 py-1.5 text-white hover:brightness-110 disabled:opacity-40"><ChevronDown size={14} /></button>
+            {menu === "all" && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-lg">
+                <button onClick={() => download(bookBase)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--c-accent)]/10"><BookOpen size={14} className="text-[var(--c-accent)]" /> Download all to single PDF book</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
