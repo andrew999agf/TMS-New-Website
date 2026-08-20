@@ -195,6 +195,34 @@ export async function deleteExhibitRecipient(id: number) {
   }
 }
 
+/** Attach (or clear) the set's "exhibit list" document — a single file, viewed
+ *  like an exhibit. Pass file=null to remove it. */
+export async function setExhibitListDoc(id: number, file: { url: string; pathname: string; contentType?: string; size?: number; name?: string } | null) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [cur] = await db.select({ listPathname: exhibitSets.listPathname }).from(exhibitSets).where(eq(exhibitSets.id, id));
+    if (!cur) return { ok: false as const, error: "Set not found." };
+    await db
+      .update(exhibitSets)
+      .set({
+        listUrl: file?.url ?? null,
+        listPathname: file?.pathname ?? null,
+        listContentType: file?.contentType ?? null,
+        listSizeBytes: file?.size ?? null,
+        listName: file?.name ? str(file.name, 255) : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(exhibitSets.id, id));
+    if (cur.listPathname && cur.listPathname !== file?.pathname) { try { await del(cur.listPathname); } catch { /* best-effort */ } }
+    revalidatePath(`/admin/exhibit-reviewer/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[exhibit-reviewer] setExhibitListDoc failed:", err);
+    return { ok: false as const, error: "Couldn't save the exhibit list." };
+  }
+}
+
 export async function setExhibitSetArchived(id: number, archived: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
@@ -212,8 +240,10 @@ export async function deleteExhibitSet(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const docs = await db.select({ pathname: exhibitDocs.pathname }).from(exhibitDocs).where(eq(exhibitDocs.setId, id));
-    for (const d of docs) if (d.pathname) { try { await del(d.pathname); } catch { /* best-effort */ } }
+    const docs = await db.select({ pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname }).from(exhibitDocs).where(eq(exhibitDocs.setId, id));
+    for (const d of docs) { if (d.pathname) { try { await del(d.pathname); } catch { /* best-effort */ } } if (d.hiResPathname) { try { await del(d.hiResPathname); } catch { /* best-effort */ } } }
+    const [s] = await db.select({ listPathname: exhibitSets.listPathname }).from(exhibitSets).where(eq(exhibitSets.id, id));
+    if (s?.listPathname) { try { await del(s.listPathname); } catch { /* best-effort */ } }
     await db.delete(exhibitDocs).where(eq(exhibitDocs.setId, id));
     await db.delete(exhibitSets).where(eq(exhibitSets.id, id));
     await audit(session.email, "delete", "exhibit-set", String(id), "Deleted set and its exhibits");

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, CheckSquare, ChevronDown, BookOpen } from "lucide-react";
+import { Download, CheckSquare, ChevronDown, BookOpen, Scale } from "lucide-react";
 
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
@@ -18,6 +18,8 @@ const SIDE_LABEL: Record<string, string> = { plaintiff: "Plaintiff's Exhibits", 
 export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs: SharedDoc[]; viewBase: string; zipBase: string; bookBase: string }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [menu, setMenu] = useState<"checked" | "all" | null>(null);
+  // Opposing-counsel view: just the exhibit names, nothing else.
+  const [namesOnly, setNamesOnly] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () => ["plaintiff", "defendant", "joint"].map((s) => ({ side: s, items: docs.filter((d) => d.side === s) })).filter((g) => g.items.length),
@@ -53,6 +55,14 @@ export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs:
         </label>
         <span className="text-xs text-[var(--c-ink-muted)]">{sel.size} of {docs.length} selected</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Opposing-counsel view: strips everything but the exhibit name. */}
+          <button
+            onClick={() => setNamesOnly((v) => !v)}
+            title="Show just the exhibit names — nothing else"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${namesOnly ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]"}`}
+          >
+            <Scale size={14} /> Opposing-counsel view
+          </button>
           {/* Download checked — ZIP, with a caret for the single-PDF-book option */}
           <div className="relative inline-flex">
             <button
@@ -104,8 +114,10 @@ export function SharedExhibitList({ docs, viewBase, zipBase, bookBase }: { docs:
                       <span className="mt-0.5 inline-flex min-w-[3rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-1 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
-                        {d.description && <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--c-ink-muted)]">{d.description}</span>}
-                        {(d.bates || d.pageCount) && <span className="mt-0.5 block text-[11px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+                        {/* In opposing-counsel view show nothing but the name — no
+                            description, Bates, or page count. */}
+                        {!namesOnly && d.description && <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--c-ink-muted)]">{d.description}</span>}
+                        {!namesOnly && (d.bates || d.pageCount) && <span className="mt-0.5 block text-[11px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
                       </span>
                     </Link>
                   </li>

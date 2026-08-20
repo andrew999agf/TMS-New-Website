@@ -416,6 +416,11 @@ const DDL = [
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS public_token varchar(64)`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS access varchar(16) NOT NULL DEFAULT 'off'`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_url text`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_pathname text`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_content_type varchar(128)`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_size_bytes integer`,
+  `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS list_name varchar(255)`,
   `CREATE INDEX IF NOT EXISTS exhibit_sets_token_idx ON exhibit_sets (public_token)`,
   `CREATE TABLE IF NOT EXISTS exhibit_recipients (
     id serial PRIMARY KEY,

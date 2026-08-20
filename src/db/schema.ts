@@ -953,6 +953,12 @@ export const exhibitSets = pgTable(
     /** Kept in step with access ("public") so the open public routes, which key
      *  on this flag, keep working unchanged. */
     isPublic: boolean("is_public").notNull().default(false),
+    /** Optional "exhibit list" document for the set — viewed like an exhibit. */
+    listUrl: text("list_url"),
+    listPathname: text("list_pathname"),
+    listContentType: varchar("list_content_type", { length: 128 }),
+    listSizeBytes: integer("list_size_bytes"),
+    listName: varchar("list_name", { length: 255 }),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

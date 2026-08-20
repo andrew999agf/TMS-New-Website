@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, searchExhibitSet, getDocPages, setSetAccess,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient,
   type SetSearchHit,
@@ -494,9 +494,10 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients }: {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, hasList, listName, listTag }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
   access: string; publicToken: string | null; recipients: RecipientLite[];
+  hasList: boolean; listName: string | null; listTag: string;
 }) {
   const router = useRouter();
   const isPublic = access === "public";
@@ -595,6 +596,29 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     router.refresh();
   }
 
+  /* -------- the set's "exhibit list" document: view it, or upload one -------- */
+  const listInputRef = useRef<HTMLInputElement>(null);
+  // When true, the viewer shows the exhibit-list document instead of an exhibit.
+  const [listView, setListView] = useState(false);
+  const [listBusy, setListBusy] = useState<number | null>(null); // upload %, or null
+  const viewList = useCallback(() => setListView(true), []);
+  async function onListFile(file: File) {
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { setError("The exhibit list must be a PDF."); return; }
+    setError(null); setListBusy(0);
+    try {
+      const blob = await upload(`exhibit-reviewer/${setId}/list-${file.name}`, file, {
+        access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+        onUploadProgress: (e) => setListBusy(Math.round(e.percentage)),
+      });
+      const r = await setExhibitListDoc(setId, { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size, name: file.name });
+      if (r.ok) { flash("Exhibit list uploaded"); setListView(true); } else setError(r.error ?? "Couldn't save the exhibit list.");
+    } catch (err) {
+      setError(`Couldn't upload: ${(err as Error).message}`);
+    }
+    setListBusy(null);
+    router.refresh();
+  }
+
   /* --------- draggable split between the list and the viewer --------- */
   const splitRef = useRef<HTMLDivElement>(null);
   const [listW, setListW] = useState(320);
@@ -668,7 +692,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const [viewerPage, setViewerPage] = useState(1);
   // Opening an exhibit normally shows the standard file; openHiRes shows the
   // high-res version. Both are set in the same handler, so the last write wins.
-  const openDoc = useCallback((id: number, page = 1) => { setCurrentId(id); setViewerPage(page); setHiResView(false); }, []);
+  const openDoc = useCallback((id: number, page = 1) => { setCurrentId(id); setViewerPage(page); setHiResView(false); setListView(false); }, []);
   const openHiRes = useCallback((id: number) => { openDoc(id, 1); setHiResView(true); }, [openDoc]);
 
   function step(delta: number) {
@@ -753,7 +777,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
   // Any upload in flight (batch add, replace, or hi-res). While true we warn the
   // browser AND show an on-screen banner, because leaving the page drops it.
-  const uploadingActive = !!uploading || replacing || !!hiResBusy;
+  const uploadingActive = !!uploading || replacing || !!hiResBusy || listBusy != null;
   useEffect(() => {
     if (!uploadingActive) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
@@ -882,6 +906,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       <input ref={replaceInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
       {/* Hidden picker for the per-exhibit high-res upload. */}
       <input ref={hiResInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onHiResFile(f); if (hiResInputRef.current) hiResInputRef.current.value = ""; }} />
+      {/* Hidden picker for the set's exhibit-list document. */}
+      <input ref={listInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onListFile(f); if (listInputRef.current) listInputRef.current.value = ""; }} />
       {error && (
         <p className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           <AlertCircle size={15} className="mt-0.5 shrink-0" /> <span className="flex-1">{error}</span>
@@ -920,6 +946,22 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           </span>
           <button onClick={() => step(1)} disabled={currentIndex < 0 || currentIndex >= ordered.length - 1} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] disabled:opacity-40" title="Next exhibit"><ChevronRight size={16} /></button>
         </div>
+
+        {/* Exhibit list document — kept apart from the exhibits themselves. View
+            opens it in the side screen; the icon uploads/replaces it. */}
+        <span className={`inline-flex shrink-0 items-stretch overflow-hidden rounded-md border ${listBusy != null ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
+          <button
+            onClick={viewList}
+            disabled={!hasList || listBusy != null}
+            title={listBusy != null ? "Uploading — don't leave the page" : hasList ? "View the exhibit list" : "No exhibit list yet — upload one with the icon"}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium ${listBusy != null ? "bg-[var(--c-accent)] text-white" : hasList ? (listView ? "bg-[var(--c-accent)]/15 text-[var(--c-accent)]" : "text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10") : "text-[var(--c-ink-muted)] opacity-70"}`}
+          >
+            <ListChecks size={13} /> {listBusy != null ? `${listBusy}%` : "Exhibit List"}
+          </button>
+          <button onClick={() => listInputRef.current?.click()} disabled={listBusy != null} title={hasList ? "Replace the exhibit list" : "Upload an exhibit list"} className="border-l border-[var(--c-border)] px-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)] disabled:opacity-50">
+            {listBusy != null ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          </button>
+        </span>
 
         <div className="ml-auto flex min-w-[260px] flex-1 items-center gap-2 lg:max-w-2xl">
           {/* Download exhibits as a ZIP — all, this side, or a number range. */}
@@ -1021,7 +1063,19 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
         {/* Viewer — takes the remaining width. */}
         <div className="h-[80vh] min-w-0 flex-1 overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] lg:h-full">
-          {!current ? (
+          {listView && hasList ? (
+            <div className="flex h-full flex-col">
+              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] p-2.5">
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--c-ink)]"><ListChecks size={15} className="text-[var(--c-accent)]" /> Exhibit list</span>
+                {listName && <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--c-ink-muted)]">{listName}</span>}
+                <button onClick={() => setListView(false)} className="ml-auto rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">Back to exhibits</button>
+                <button onClick={() => listInputRef.current?.click()} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Replace the exhibit list"><RefreshCw size={15} /></button>
+                <a href={`/admin/exhibit-reviewer/${setId}/list?v=${listTag}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
+              </div>
+              <a href={`/admin/exhibit-reviewer/${setId}/list?v=${listTag}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden"><ExternalLink size={16} /> Open exhibit list full screen</a>
+              <iframe key={`list:${listTag}`} src={`/admin/exhibit-reviewer/${setId}/list?v=${listTag}#zoom=page-width`} title="Exhibit list" className="min-h-0 flex-1 w-full bg-white" />
+            </div>
+          ) : !current ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[var(--c-ink-muted)]">
               <FileText size={28} className="opacity-40" />
               {ordered.length ? "Select an exhibit to view it." : "Add exhibits to get started."}
