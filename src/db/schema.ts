@@ -1010,6 +1010,16 @@ export const exhibitDocs = pgTable(
     hiResPathname: text("hi_res_pathname"),
     hiResContentType: varchar("hi_res_content_type", { length: 128 }),
     hiResSizeBytes: integer("hi_res_size_bytes"),
+    /** Print-optimized copy: black-and-white pages re-saved as true grayscale so
+     *  a printer bills them as mono. Genuine color pages stay color. */
+    printUrl: text("print_url"),
+    printPathname: text("print_pathname"),
+    printContentType: varchar("print_content_type", { length: 128 }),
+    printSizeBytes: integer("print_size_bytes"),
+    /** Color analysis for the print copy: bw | mixed | color | skipped | null. */
+    colorStatus: varchar("color_status", { length: 16 }),
+    /** 1-based page numbers that remain in color in the print copy. */
+    colorPages: jsonb("color_pages").notNull().default([]),
     /** True page count of the PDF (may exceed the number of stored text pages). */
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) that powers content search. */

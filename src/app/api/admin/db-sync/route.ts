@@ -473,6 +473,12 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_pathname text`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_content_type varchar(128)`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS hi_res_size_bytes integer`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS print_url text`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS print_pathname text`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS print_content_type varchar(128)`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS print_size_bytes integer`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS color_status varchar(16)`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS color_pages jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE INDEX IF NOT EXISTS exhibit_docs_set_idx ON exhibit_docs (set_id)`,
   `CREATE TABLE IF NOT EXISTS exhibit_witnesses (
     id serial PRIMARY KEY,

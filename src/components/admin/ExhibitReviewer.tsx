@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
-  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale,
+  Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -14,7 +14,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -26,6 +26,10 @@ export type ReviewerDoc = {
   fileTag: string;
   /** Optional high-resolution version. */
   hasHiRes: boolean; hiResTag: string;
+  /** Print-optimized copy state: null (not prepared) | bw | mixed | color | skipped. */
+  colorStatus: string | null;
+  /** How many pages stay in color in the print copy. */
+  colorPageCount: number;
 };
 
 export type WitnessLite = { id: number; name: string };
@@ -403,6 +407,115 @@ function DownloadZip({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]
               </button>
             </div>
             <p className="mt-1.5 px-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">e.g. {SIDE_LABEL[rangeSide].replace("'s exhibits", "")} {from || "1"}&ndash;{to || "20"}. Files come out numbered in order.</p>
+          </div>
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/**
+ * Print-optimized ("cheaper printing") copy. Scans read as color at the print
+ * shop even when the document is black-and-white — the exhibit sticker and
+ * scanner noise trip the printer's auto color detection, doubling the cost.
+ * This prepares a grayscale copy of every effectively-B&W page (disregarding
+ * the sticker) while leaving genuinely-color pages in color, then downloads it
+ * as one book the printer bills correctly on its own. Deliberately low-key.
+ */
+function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; side: Side }) {
+  const router = useRouter();
+  const withFile = docs.filter((d) => d.hasFile);
+  const prepared = withFile.filter((d) => d.colorStatus != null);
+  const pending = withFile.filter((d) => d.colorStatus == null);
+  const colorPagesTotal = prepared.reduce((n, d) => n + (d.colorPageCount || 0), 0);
+  const sideDocs = withFile.filter((d) => d.side === side);
+  const nums = sideDocs.map((d) => d.number).filter((n): n is number => n != null);
+
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [rangeSide, setRangeSide] = useState<Side>(side);
+  const [from, setFrom] = useState(nums.length ? String(Math.min(...nums)) : "");
+  const [to, setTo] = useState(nums.length ? String(Math.max(...nums)) : "");
+  useEffect(() => { setRangeSide(side); }, [side]);
+
+  const base = `/admin/exhibit-reviewer/${setId}/print-book`;
+  const go = (qs: string) => { const a = document.createElement("a"); a.href = `${base}${qs}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  const item = "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10";
+
+  // Prepare copies one exhibit at a time (keeps each request small), optionally
+  // rebuilding everything. Refreshes the page data when done.
+  const prepare = async (all: boolean) => {
+    const targets = all ? withFile : pending;
+    if (targets.length === 0 || busy) return;
+    setBusy(true); setErr(null); setProg({ done: 0, total: targets.length });
+    let failed = 0;
+    for (let i = 0; i < targets.length; i++) {
+      try { const r = await buildPrintCopy(targets[i].id); if (!r?.ok) failed++; } catch { failed++; }
+      setProg({ done: i + 1, total: targets.length });
+    }
+    router.refresh();
+    setBusy(false); setProg(null);
+    if (failed) setErr(`${failed} exhibit${failed === 1 ? "" : "s"} couldn't be prepared (too large or unreadable).`);
+  };
+
+  return (
+    <PopMenu
+      width={300}
+      title="Print-optimized (cheaper printing)"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs text-[var(--c-ink-muted)] transition-colors hover:border-[var(--c-accent)]"
+      label={<><Printer size={13} /> Print</>}
+    >
+      {(close) => (
+        <div className="p-2">
+          <div className="px-2 pb-2">
+            <div className="text-xs font-semibold text-[var(--c-ink)]">Cheaper printing (grayscale)</div>
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
+              Re-saves black-and-white pages as true grayscale so the printer bills them as mono — the exhibit sticker is disregarded, and genuine color pages stay color.
+            </p>
+          </div>
+
+          <div className="mx-2 rounded-md bg-[var(--c-surface2)] px-2.5 py-2 text-[11px] text-[var(--c-ink-muted)]">
+            {busy && prog ? (
+              <span className="inline-flex items-center gap-1.5 text-[var(--c-accent)]"><Loader2 size={12} className="animate-spin" /> Preparing {prog.done} / {prog.total}…</span>
+            ) : (
+              <>
+                <span className="font-semibold text-[var(--c-ink)]">{prepared.length}</span> of {withFile.length} prepared
+                {prepared.length > 0 && <> · <span className="font-semibold text-[var(--c-ink)]">{colorPagesTotal}</span> color page{colorPagesTotal === 1 ? "" : "s"}</>}
+              </>
+            )}
+          </div>
+          {err && <p className="mx-2 mt-1.5 text-[11px] text-red-600">{err}</p>}
+
+          <div className="mt-2 flex gap-1.5 px-2">
+            <button onClick={() => prepare(false)} disabled={busy || pending.length === 0} className="btn btn-accent flex-1 text-xs py-1.5 disabled:opacity-40">
+              {pending.length === 0 && !busy ? "All prepared" : `Prepare ${pending.length || ""}`.trim()}
+            </button>
+            <button onClick={() => prepare(true)} disabled={busy || withFile.length === 0} title="Rebuild every exhibit's print copy" className="rounded-md border border-[var(--c-border)] px-2 py-1.5 text-xs text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] disabled:opacity-40">
+              <RefreshCw size={12} />
+            </button>
+          </div>
+
+          <div className="mt-2 border-t border-[var(--c-border)] pt-2">
+            <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Download print book</div>
+            <button onClick={() => { close(); go(""); }} disabled={withFile.length === 0} className={item + " disabled:opacity-40"}>
+              <span className="font-semibold text-[var(--c-ink)]">All exhibits</span> <span className="text-[var(--c-ink-muted)]">({withFile.length})</span>
+            </button>
+            <button onClick={() => { close(); go(`?side=${side}`); }} disabled={sideDocs.length === 0} className={item + " disabled:opacity-40"}>
+              <span className="font-semibold text-[var(--c-ink)]">This tab — {SIDE_LABEL[side]}</span> <span className="text-[var(--c-ink-muted)]">({sideDocs.length})</span>
+            </button>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-2">
+              <select value={rangeSide} onChange={(e) => setRangeSide(e.target.value as Side)} className="rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1 py-1 text-xs">
+                <option value="plaintiff">P</option><option value="defendant">D</option><option value="joint">J</option>
+              </select>
+              <input value={from} onChange={(e) => setFrom(e.target.value.replace(/[^\d]/g, ""))} placeholder="from" inputMode="numeric" className="w-14 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs" />
+              <span className="text-[var(--c-ink-muted)]">to</span>
+              <input value={to} onChange={(e) => setTo(e.target.value.replace(/[^\d]/g, ""))} placeholder="to" inputMode="numeric" className="w-14 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs" />
+              <button onClick={() => { close(); const p = new URLSearchParams({ side: rangeSide }); if (from) p.set("from", from); if (to) p.set("to", to); go(`?${p.toString()}`); }} className="btn btn-accent ml-auto text-xs py-1 px-2.5">
+                <Download size={12} /> Get
+              </button>
+            </div>
+            <p className="mt-1.5 px-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Exhibits you haven&apos;t prepared yet fall back to the original file.</p>
           </div>
         </div>
       )}
@@ -994,6 +1107,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         <div className="ml-auto flex min-w-[260px] flex-1 items-center gap-2 lg:max-w-2xl">
           {/* Download exhibits as a ZIP — all, this side, or a number range. */}
           <DownloadZip setId={setId} docs={docs} side={side} />
+          {/* Print-optimized (grayscale) copy for cheaper printing. Low-key, by
+              the other download/share controls. */}
+          <PrintPrep setId={setId} docs={docs} side={side} />
           {/* Share: opens the sharing dialog (off / restricted / public). */}
           <button
             onClick={() => setShareOpen(true)}

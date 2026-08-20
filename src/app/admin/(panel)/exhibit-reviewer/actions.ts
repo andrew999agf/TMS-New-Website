@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 import { asc, eq, max } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
-import { del } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { db } from "@/db";
 import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { buildPrintOptimized } from "@/lib/exhibit-review/printcopy";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 
@@ -376,7 +377,7 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
   if (!db) return { ok: false as const, error: "Database not configured." };
   if (!file?.url) return { ok: false as const, error: "No file to use." };
   try {
-    const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, printPathname: exhibitDocs.printPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (!cur) return { ok: false as const, error: "Exhibit not found." };
     const extracted = await extractPdfText(file.url, file.size);
     await db
@@ -388,10 +389,14 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
         sizeBytes: file.size ?? null,
         pageCount: extracted.pageCount || null,
         pageText: extracted.pages,
+        // The new file invalidates any existing print-optimized copy.
+        printUrl: null, printPathname: null, printContentType: null, printSizeBytes: null,
+        colorStatus: null, colorPages: [],
       })
       .where(eq(exhibitDocs.id, id));
-    // Remove the old blob now that nothing points at it.
+    // Remove the old blobs now that nothing points at them.
     if (cur.pathname && cur.pathname !== file.pathname) { try { await del(cur.pathname); } catch { /* best-effort */ } }
+    if (cur.printPathname) { try { await del(cur.printPathname); } catch { /* best-effort */ } }
     revalidatePath(`/admin/exhibit-reviewer/${cur.setId}`);
     return { ok: true as const };
   } catch (err) {
@@ -433,14 +438,75 @@ export async function deleteExhibitDoc(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname, printPathname: exhibitDocs.printPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (row?.pathname) { try { await del(row.pathname); } catch { /* best-effort */ } }
     if (row?.hiResPathname) { try { await del(row.hiResPathname); } catch { /* best-effort */ } }
+    if (row?.printPathname) { try { await del(row.printPathname); } catch { /* best-effort */ } }
     await db.delete(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't remove the exhibit." };
+  }
+}
+
+/**
+ * Build (or rebuild) the print-optimized copy of one exhibit: black-and-white
+ * pages re-saved as true grayscale so a printer bills them as mono, genuine
+ * color pages kept in color. Done one exhibit at a time so the client can show
+ * progress and never trips a serverless timeout. Non-destructive — the original
+ * file is untouched.
+ */
+export async function buildPrintCopy(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [doc] = await db
+      .select({ setId: exhibitDocs.setId, url: exhibitDocs.url, sizeBytes: exhibitDocs.sizeBytes, printPathname: exhibitDocs.printPathname })
+      .from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    if (!doc) return { ok: false as const, error: "Exhibit not found." };
+    if (!doc.url) return { ok: false as const, error: "This exhibit has no file yet." };
+
+    // Guard the download itself for very large files.
+    if (doc.sizeBytes && doc.sizeBytes > 300 * 1024 * 1024) {
+      await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [] }).where(eq(exhibitDocs.id, id));
+      revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+      return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], converted: 0, pageCount: 0 };
+    }
+
+    const res = await fetch(doc.url);
+    if (!res.ok) return { ok: false as const, error: "Couldn't fetch the exhibit file." };
+    const bytes = new Uint8Array(await res.arrayBuffer());
+
+    const built = await buildPrintOptimized(bytes);
+    if (built.status !== "ok" || !built.bytes) {
+      if (built.status === "skipped") {
+        await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [] }).where(eq(exhibitDocs.id, id));
+        revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+        return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], converted: 0, pageCount: built.pageCount };
+      }
+      return { ok: false as const, error: built.reason || "Couldn't prepare a print copy." };
+    }
+
+    const blob = await put(`exhibit-print/${doc.setId}/${id}.pdf`, Buffer.from(built.bytes), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+
+    const colorStatus = built.colorPages.length === 0 ? "bw" : built.colorPages.length >= built.pageCount ? "color" : "mixed";
+    // Remove any previous print blob before pointing at the new one.
+    if (doc.printPathname && doc.printPathname !== blob.pathname) { try { await del(doc.printPathname); } catch { /* best-effort */ } }
+    await db
+      .update(exhibitDocs)
+      .set({
+        printUrl: blob.url, printPathname: blob.pathname, printContentType: "application/pdf", printSizeBytes: built.bytes.byteLength,
+        colorStatus, colorPages: built.colorPages,
+      })
+      .where(eq(exhibitDocs.id, id));
+    revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+    return { ok: true as const, status: "ok" as const, colorStatus, colorPages: built.colorPages, converted: built.converted, pageCount: built.pageCount };
+  } catch (err) {
+    console.error("[exhibit-reviewer] buildPrintCopy failed:", err);
+    return { ok: false as const, error: "Couldn't prepare a print copy." };
   }
 }
 
