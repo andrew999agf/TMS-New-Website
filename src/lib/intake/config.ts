@@ -642,6 +642,7 @@ export const BRANCHES: Branch[] = [
     summaryNoun: "a criminal matter",
     keywords: [
       "criminal", "crime", "arrested", "arrest", "charged", "charge", "criminal charge", "dwi", "dui",
+      "accused", "accuse", "accusation", "falsely accused", "prosecuted", "prosecution",
       "drunk driving", "assault", "family violence", "domestic violence", "theft", "drugs", "possession",
       "investigation", "investigated", "detective", "jail", "in jail", "bond", "bail", "warrant",
       "police", "indicted", "felony", "misdemeanor", "probation", "probation violation", "expunction",
