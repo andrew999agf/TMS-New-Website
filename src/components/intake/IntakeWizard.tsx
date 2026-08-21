@@ -192,6 +192,7 @@ export function IntakeWizard({
     if (!query.trim()) return BRANCHES;
     return rankBranches(query);
   }, [query]);
+  const queryWordCount = query.trim() ? query.trim().split(/\s+/).length : 0;
 
   // Conditional steps: a step is shown only when its showIf condition holds
   // (e.g. ask for trustee details only if the visitor checked a trust).
@@ -382,14 +383,22 @@ export function IntakeWizard({
             </button>
           ))}
         </div>
-        {filteredBranches.length === 0 && (
-          <p className="mt-6 text-[var(--c-ink-muted)]">
-            Nothing matched. Try a different word, or{" "}
-            <button onClick={() => setBranch(BRANCHES.find((b) => b.id === "other")!)} className="text-[var(--c-accent)] underline">
-              start a general consultation
-            </button>
-            .
-          </p>
+        {filteredBranches.length === 0 && query.trim() && (
+          // While someone is mid-thought (a word or two), a red "Nothing matched"
+          // is jarring — e.g. typing "Mom…" before "Mom passed away". Nudge them
+          // to keep going, and only offer the fallback once they've written
+          // enough (3+ words) that a real match should have surfaced.
+          queryWordCount < 3 ? (
+            <p className="mt-6 text-[var(--c-ink-muted)]">Keep typing…</p>
+          ) : (
+            <p className="mt-6 text-[var(--c-ink-muted)]">
+              Still nothing matched. Try a different word, or{" "}
+              <button onClick={() => setBranch(BRANCHES.find((b) => b.id === "other")!)} className="text-[var(--c-accent)] underline">
+                start a general consultation
+              </button>
+              .
+            </p>
+          )
         )}
       </div>
     );
