@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Fuse from "fuse.js";
 import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2, Eye } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
   BRANCHES,
+  rankBranches,
   branchForPractice,
   COMMON_STEPS,
   condMet,
@@ -134,7 +134,6 @@ export function IntakeWizard({
     } catch {
       /* corrupt record — ignore */
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resumeSaved() {
@@ -189,20 +188,10 @@ export function IntakeWizard({
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [stepIndex, branch]);
 
-  const fuse = useMemo(
-    () =>
-      new Fuse(BRANCHES, {
-        keys: ["label", "blurb", "keywords"],
-        threshold: 0.4,
-        ignoreLocation: true,
-      }),
-    [],
-  );
-
   const filteredBranches = useMemo(() => {
     if (!query.trim()) return BRANCHES;
-    return fuse.search(query).map((r) => r.item);
-  }, [query, fuse]);
+    return rankBranches(query);
+  }, [query]);
 
   // Conditional steps: a step is shown only when its showIf condition holds
   // (e.g. ask for trustee details only if the visitor checked a trust).

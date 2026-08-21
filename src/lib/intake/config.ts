@@ -684,9 +684,9 @@ export const BRANCHES: Branch[] = [
     summaryNoun: "an estate planning matter",
     keywords: [
       "estate", "estate plan", "estate planning", "estate planning attorney", "plan ahead", "when i die",
-      "leave to my kids", "beneficiary", "inherit", "inheritance plan", "succession", "farm", "ranch", "land",
+      "leave to my kids", "beneficiary", "inherit", "inheritance plan", "succession", "farm", "ranch",
       // wills
-      "will", "last will", "last will and testament", "make a will", "standard will", "simple will",
+      "last will", "last will and testament", "make a will", "standard will", "simple will",
       "update my will", "new will", "holographic will",
       // trusts
       "trust", "living trust", "revocable living trust", "revocable trust", "testamentary trust",
@@ -1172,6 +1172,157 @@ export const BRANCHES: Branch[] = [
     ],
   },
 ];
+
+/* ----------------------- entry-screen matching ------------------------- */
+/*
+ * The bubble filter used to be a loose Fuse.js fuzzy search (threshold 0.4,
+ * ignoreLocation), which produced embarrassing results: "real estate" matched
+ * "Estate planning" (the word "estate") AND fuzzily hit unrelated labels like
+ * "Criminal charge or investigation". This replaces it with a deterministic,
+ * phrase-aware scorer:
+ *   - whole multi-word phrases score highest ("real estate", "slip and fall"),
+ *   - then exact keyword words, then the label, then a tight prefix/one-typo
+ *     allowance — no cross-field fuzzing.
+ * Only strong matches show, and secondary hits far below the top score are
+ * dropped, so the user sees the one or two branches that actually fit — or a
+ * clean "nothing matched" rather than a wrong guess.
+ */
+
+/** Generic words ignored when scoring (so "my", "need a lawyer", etc. don't
+ *  match everything). "will" is here on purpose — as a bare word it's the verb
+ *  far more often than the document; real will requests match via phrases. */
+const MATCH_STOP = new Set([
+  "a", "an", "the", "and", "or", "of", "to", "for", "in", "on", "at", "is", "am", "are", "was", "were",
+  "be", "been", "being", "it", "its", "this", "that", "these", "those", "my", "me", "mine", "we", "us",
+  "our", "you", "your", "they", "them", "their", "he", "she", "his", "her", "do", "does", "did", "have",
+  "has", "had", "get", "got", "getting", "give", "going", "gonna", "want", "wants", "wanted", "need",
+  "needs", "needed", "about", "with", "without", "someone", "somebody", "anyone", "people", "person",
+  "please", "just", "really", "very", "legal", "lawyer", "lawyers", "attorney", "attorneys", "law",
+  "matter", "matters", "case", "cases", "issue", "issues", "help", "thing", "things", "something",
+  "anything", "advice", "question", "questions", "consultation", "general", "not", "sure", "know",
+  "some", "any", "how", "what", "when", "where", "who", "why", "can", "could", "would", "should",
+  "will", "if", "so", "but", "because", "over", "into", "out", "up", "down", "there",
+]);
+
+/** Extra multi-word triggers that should match as PHRASES only (they don't add
+ *  their individual words to a branch's word set, so common terms like "estate"
+ *  in "real estate" don't leak into the wrong branch). Kept here rather than in
+ *  the editable keyword lists to keep those clean. */
+const EXTRA_PHRASES: Record<string, string[]> = {
+  estate: [
+    "a will", "my will", "the will", "need a will", "make a will", "write a will", "draft a will",
+    "update my will", "get a will", "power of attorney", "living will", "plan my estate",
+    "leave my house to", "leave everything to",
+  ],
+  probate: ["no will", "will contest", "contest a will", "contesting a will", "without a will", "died without"],
+  business: [
+    "real estate", "real property", "real estate dispute", "commercial lease", "lease agreement",
+    "earnest money", "purchase agreement", "buy a business", "sell a business", "non compete",
+    "business dispute", "buy a house", "sell a house", "buying a house", "selling a house",
+    "buying property", "selling property", "closing on a house",
+    "small business", "my business", "start a business", "new business", "open a business",
+  ],
+  sue: [
+    "boundary dispute", "property dispute", "property line", "title dispute", "quiet title",
+    "adverse possession", "breach of contract", "owes me money", "not paying me",
+    "lied about me", "spreading lies",
+  ],
+  criminal: ["criminal charge", "under investigation", "charged with", "warrant for my arrest"],
+  injured: ["car accident", "car wreck", "slip and fall", "hit by a car", "loved one died"],
+  creditor: ["about to lose my house", "foreclosure sale", "wages garnished", "froze my account"],
+  appeal: ["lost my case", "lost at trial", "appeal a judgment", "notice of appeal"],
+  sued: ["being sued", "served with papers", "notice to vacate", "default judgment"],
+};
+
+function normText(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Meaningful words from a string: length ≥ 3 and not a stop word. */
+function contentTokens(s: string): string[] {
+  return normText(s).split(" ").filter((t) => t.length >= 3 && !MATCH_STOP.has(t));
+}
+
+/** True when the edit distance between a and b is ≤ 1 (one typo). */
+function within1Edit(a: string, b: string): boolean {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (la > lb) i++; else if (lb > la) j++; else { i++; j++; }
+  }
+  if (i < la || j < lb) edits++;
+  return edits <= 1;
+}
+
+type BranchLex = { branch: Branch; phrases: string[]; words: Set<string>; labelWords: Set<string> };
+
+const BRANCH_LEX: BranchLex[] = BRANCHES.map((b) => {
+  const phrases: string[] = [];
+  const words = new Set<string>();
+  for (const raw of b.keywords ?? []) {
+    const p = normText(raw);
+    if (!p) continue;
+    const parts = p.split(" ");
+    if (parts.length > 1) phrases.push(p);
+    for (const w of parts) if (w.length >= 3 && !MATCH_STOP.has(w)) words.add(w);
+  }
+  for (const p of EXTRA_PHRASES[b.id] ?? []) { const n = normText(p); if (n) phrases.push(n); }
+  const labelWords = new Set<string>();
+  for (const w of normText(b.label).split(" ")) if (w.length >= 3 && !MATCH_STOP.has(w) && !words.has(w)) labelWords.add(w);
+  return { branch: b, phrases, words, labelWords };
+});
+
+/**
+ * Rank the intake branches for a free-text query. Returns the branches that
+ * genuinely fit, best first (empty when nothing matches well). Scoring:
+ *   phrase hit = 4 + 2×words · exact keyword word = 4 · label word = 2 ·
+ *   prefix or one-typo on a keyword word = 2. Only branches at or above both a
+ *   floor and 60% of the top score are returned, so weak/irrelevant hits drop.
+ */
+export function rankBranches(query: string, limit = 4): Branch[] {
+  const scored = scoreBranches(query);
+  if (!scored.length) return [];
+  const top = scored[0].score;
+  // A scatter of weak, equal single-token hits (no phrase, no clear leader) means
+  // the query is genuinely ambiguous — show the "nothing matched, start a general
+  // consultation" prompt instead of a row of wrong guesses.
+  if (top <= 4 && scored.filter((s) => s.score === top).length >= 3) return [];
+  // Keep only branches close to the leader so a strong match doesn't drag along
+  // unrelated secondary hits.
+  const cut = Math.max(4, top * 0.75);
+  return scored.filter((x) => x.score >= cut).slice(0, limit).map((x) => x.branch);
+}
+
+/** Raw per-branch scores, best first (score > 0 only). Exported for tuning/tests. */
+export function scoreBranches(query: string): { branch: Branch; score: number }[] {
+  const norm = normText(query);
+  if (!norm) return [];
+  const padded = ` ${norm} `;
+  const tokens = [...new Set(contentTokens(query))];
+  const scored: { branch: Branch; score: number }[] = [];
+
+  for (const lex of BRANCH_LEX) {
+    let score = 0;
+    for (const p of lex.phrases) if (padded.includes(` ${p} `)) score += 4 + 2 * p.split(" ").length;
+    for (const t of tokens) {
+      if (lex.words.has(t)) { score += 4; continue; }
+      if (lex.labelWords.has(t)) { score += 2; continue; }
+      let soft = 0;
+      for (const w of lex.words) {
+        if (w.length >= 4 && t.length >= 4 && (w.startsWith(t) || t.startsWith(w))) { soft = 2; break; }
+        if (w.length >= 5 && t.length >= 5 && within1Edit(t, w)) { soft = 2; break; }
+      }
+      score += soft;
+    }
+    if (score > 0) scored.push({ branch: lex.branch, score });
+  }
+  scored.sort((a, b) => b.score - a.score || BRANCHES.indexOf(a.branch) - BRANCHES.indexOf(b.branch));
+  return scored;
+}
 
 /**
  * Every free-text (textarea) field across all flows, as {name, label} — used to
