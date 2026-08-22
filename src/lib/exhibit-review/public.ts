@@ -29,7 +29,7 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
     const rows = await db
       .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, url: exhibitDocs.url, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
       .from(exhibitDocs)
-      .where(eq(exhibitDocs.setId, set.id))
+      .where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)))
       .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
     const docs: PublicDoc[] = rows
       .filter((r) => r.url)
@@ -57,7 +57,7 @@ export async function getOcSet(token: string): Promise<PublicSet | null> {
     const rows = await db
       .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url, sort: exhibitDocs.sort })
       .from(exhibitDocs)
-      .where(eq(exhibitDocs.setId, set.id))
+      .where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)))
       .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
     const docs: PublicDoc[] = rows
       .filter((r) => r.url)

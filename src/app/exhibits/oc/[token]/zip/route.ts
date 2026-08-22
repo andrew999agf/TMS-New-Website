@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { exhibitDocs } from "@/db/schema";
 import { parseFileIds } from "@/lib/share/zip";
@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const rows = await db
     .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url })
-    .from(exhibitDocs).where(eq(exhibitDocs.setId, set.id)).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+    .from(exhibitDocs).where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false))).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
 
   const ids = parseFileIds(new URL(req.url).searchParams.get("ids"));
   const zip = zipExhibits(rows, ids, `${set.name || "exhibits"} exhibits${ids ? " (selected)" : ""}.zip`);

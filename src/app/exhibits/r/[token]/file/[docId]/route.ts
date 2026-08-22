@@ -22,7 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!ctx) return new NextResponse("This link is not available.", { status: 404 });
   if (!(await isVerifiedAs(ctx.rec.email))) return new NextResponse("Please verify your email to view this.", { status: 401 });
 
-  const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, ctx.set.id)));
+  const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, ctx.set.id), eq(exhibitDocs.omitted, false)));
   if (!doc || !doc.url) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");

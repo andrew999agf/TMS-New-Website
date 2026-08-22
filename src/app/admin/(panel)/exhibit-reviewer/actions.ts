@@ -369,6 +369,23 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
 }
 
 /**
+ * Toggle whether an exhibit is "on the list" or "omitted". Omitted exhibits are
+ * kept (never deleted) but drop out of the hidden view / downloads and every
+ * external share link. Purely a flag flip — nothing else changes.
+ */
+export async function setExhibitOmitted(id: number, omitted: boolean) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.update(exhibitDocs).set({ omitted }).where(eq(exhibitDocs.id, id)).returning({ setId: exhibitDocs.setId });
+    if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
+    return { ok: true as const, omitted };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the exhibit." };
+  }
+}
+
+/**
  * Swap the PDF behind an exhibit, keeping its number, label, title, notes, and
  * every other field. Re-extracts text for search and deletes the old file.
  */

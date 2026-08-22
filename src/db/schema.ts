@@ -1001,6 +1001,11 @@ export const exhibitDocs = pgTable(
     elementIds: jsonb("element_ids").notNull().default([]),
     /** Free working notes (the notepad button on the row). */
     notes: text("notes").notNull().default(""),
+    /** Soft "taken off the exhibit list" flag. Omitted exhibits are kept (never
+     *  deleted) and stay visible in the reviewer behind a toggle, but drop out of
+     *  the ZIP/print downloads when hidden and are always excluded from every
+     *  external share link (public, recipient, and opposing counsel). */
+    omitted: boolean("omitted").notNull().default(false),
     url: text("url"),
     pathname: text("pathname"),
     contentType: varchar("content_type", { length: 128 }),

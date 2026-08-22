@@ -40,15 +40,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const toRaw = url.searchParams.get("to");
   const from = fromRaw != null && fromRaw !== "" ? Number(fromRaw) : null;
   const to = toRaw != null && toRaw !== "" ? Number(toRaw) : null;
+  // Omitted exhibits are included unless explicitly excluded (?omitted=0), which
+  // is what the reviewer sends when the "include omitted" toggle is off — so the
+  // download mirrors exactly what the user is looking at.
+  const includeOmitted = url.searchParams.get("omitted") !== "0";
 
   const rows = await db
-    .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url, sort: exhibitDocs.sort })
+    .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url, omitted: exhibitDocs.omitted, sort: exhibitDocs.sort })
     .from(exhibitDocs)
     .where(eq(exhibitDocs.setId, setId))
     .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
 
   const selected = rows
     .filter((r) => r.url)
+    .filter((r) => (includeOmitted || !r.omitted))
     .filter((r) => (ids ? ids.has(r.id) : true))
     .filter((r) => (side && !ids ? r.side === side : true))
     .filter((r) => (!ids && from != null ? (r.number ?? Infinity) >= from : true))

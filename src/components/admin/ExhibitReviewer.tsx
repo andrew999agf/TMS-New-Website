@@ -15,13 +15,15 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string; batesEnd: string;
   witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
+  /** Soft "taken off the exhibit list" flag. */
+  omitted: boolean;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
   /** Changes whenever the underlying PDF changes, so the viewer/cache reload it. */
   fileTag: string;
@@ -365,7 +367,7 @@ function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToke
  * Download exhibits as a ZIP: everything, just the current side, or a number
  * range (e.g. P-1 through P-20). Files come out named in exhibit order.
  */
-function DownloadZip({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; side: Side }) {
+function DownloadZip({ setId, docs, side, includeOmitted }: { setId: number; docs: ReviewerDoc[]; side: Side; includeOmitted: boolean }) {
   const withFile = docs.filter((d) => d.hasFile);
   const sideDocs = withFile.filter((d) => d.side === side);
   const nums = sideDocs.map((d) => d.number).filter((n): n is number => n != null);
@@ -375,7 +377,9 @@ function DownloadZip({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]
   useEffect(() => { setRangeSide(side); }, [side]);
 
   const base = `/admin/exhibit-reviewer/${setId}/zip`;
-  const go = (qs: string) => { const a = document.createElement("a"); a.href = `${base}${qs}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  // When omitted exhibits are hidden, the download excludes them too, so it
+  // mirrors exactly what's on screen.
+  const go = (qs: string) => { const full = includeOmitted ? qs : `${qs}${qs.includes("?") ? "&" : "?"}omitted=0`; const a = document.createElement("a"); a.href = `${base}${full}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
   const item = "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10";
 
   return (
@@ -425,7 +429,7 @@ function DownloadZip({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]
  * the sticker) while leaving genuinely-color pages in color, then downloads it
  * as one book the printer bills correctly on its own. Deliberately low-key.
  */
-function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; side: Side }) {
+function PrintPrep({ setId, docs, side, includeOmitted }: { setId: number; docs: ReviewerDoc[]; side: Side; includeOmitted: boolean }) {
   const router = useRouter();
   const withFile = docs.filter((d) => d.hasFile);
   const prepared = withFile.filter((d) => d.colorStatus != null);
@@ -446,7 +450,7 @@ function PrintPrep({ setId, docs, side }: { setId: number; docs: ReviewerDoc[]; 
   useEffect(() => { setRangeSide(side); }, [side]);
 
   const base = `/admin/exhibit-reviewer/${setId}/print-book`;
-  const go = (qs: string) => { const a = document.createElement("a"); a.href = `${base}${qs}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  const go = (qs: string) => { const full = includeOmitted ? qs : `${qs}${qs.includes("?") ? "&" : "?"}omitted=0`; const a = document.createElement("a"); a.href = `${base}${full}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
   const item = "block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10";
 
   // Prepare copies one exhibit at a time (keeps each request small), optionally
@@ -952,15 +956,20 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   }, [docs]);
   const [side, setSide] = useState<Side>("plaintiff");
 
+  // "Include omitted" toggle: when off, exhibits taken off the list drop out of
+  // the reviewer (and, via the download param, out of the ZIP/print downloads).
+  const [showOmitted, setShowOmitted] = useState(true);
+  const omittedCount = useMemo(() => docs.filter((d) => d.side === side && d.omitted).length, [docs, side]);
+
   const ordered = useMemo(() => {
-    const inSide = docs.filter((d) => d.side === side);
+    const inSide = docs.filter((d) => d.side === side && (showOmitted || !d.omitted));
     return inSide.slice().sort((a, b) => {
       const an = a.number ?? Infinity, bn = b.number ?? Infinity;
       if (an !== bn) return an - bn;
       if (a.sort !== b.sort) return a.sort - b.sort;
       return a.id - b.id;
     });
-  }, [docs, side]);
+  }, [docs, side, showOmitted]);
 
   const [currentId, setCurrentId] = useState<number | null>(null);
   // Keep a valid selection as the side/list changes.
@@ -1279,10 +1288,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
         <div className="ml-auto flex min-w-[260px] flex-1 items-center gap-2 lg:max-w-2xl">
           {/* Download exhibits as a ZIP — all, this side, or a number range. */}
-          <DownloadZip setId={setId} docs={docs} side={side} />
+          <DownloadZip setId={setId} docs={docs} side={side} includeOmitted={showOmitted} />
           {/* Print-optimized (grayscale) copy for cheaper printing. Low-key, by
               the other download/share controls. */}
-          <PrintPrep setId={setId} docs={docs} side={side} />
+          <PrintPrep setId={setId} docs={docs} side={side} includeOmitted={showOmitted} />
           {/* Share: opens the sharing dialog (off / restricted / public). */}
           <button
             onClick={() => setShareOpen(true)}
@@ -1350,9 +1359,19 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
             onUpload={doUpload}
           />
 
+          {/* Include-omitted toggle — appears once anything on this side is
+              omitted. Off hides them here and from the ZIP/print downloads. */}
+          {omittedCount > 0 && (
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-xs text-[var(--c-ink)]">
+              <input type="checkbox" checked={showOmitted} onChange={(e) => setShowOmitted(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--c-accent)]" />
+              <span>Include omitted exhibits <span className="text-[var(--c-ink-muted)]">({omittedCount})</span></span>
+              <span className="ml-auto text-[10px] text-[var(--c-ink-muted)]">{showOmitted ? "showing" : "hidden — downloads exclude them"}</span>
+            </label>
+          )}
+
           {ordered.length === 0 ? (
             <p className="rounded-lg border border-dashed border-[var(--c-border)] p-4 text-center text-xs text-[var(--c-ink-muted)]">
-              No {SIDE_LABEL[side].toLowerCase()} yet. Drop exhibit PDFs above.
+              No {SIDE_LABEL[side].toLowerCase()} {omittedCount > 0 && !showOmitted ? "on the list" : "yet. Drop exhibit PDFs above."}
             </p>
           ) : (
             <ul className="space-y-1 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-0">
@@ -1360,6 +1379,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                 <ExhibitRow key={d.id} d={d} active={d.id === currentId} index={i}
                   onOpen={() => openDoc(d.id, 1)}
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
+                  onToggleOmit={() => run(() => setExhibitOmitted(d.id, !d.omitted))}
                   onEdit={() => setEditId(d.id)}
                   onReplace={() => askReplace(d.id)}
                   onHiResUpload={() => askHiRes(d.id)}
@@ -1661,9 +1681,9 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
+function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
   d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
   onHiResUpload: () => void; onViewHiRes: () => void; hiResPct: number | null;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
@@ -1672,8 +1692,17 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCop
   useEffect(() => { if (active) rowRef.current?.scrollIntoView({ block: "nearest" }); }, [active]);
 
   return (
-    <li ref={rowRef} className={`group flex items-start gap-2 rounded-md border p-2 transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
-      <button onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+    <li ref={rowRef} className={`group flex items-stretch overflow-hidden rounded-md border transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
+      {/* Left sliver tab: a thin strip of vertical text you click to keep an
+          exhibit on the list or take it off — kept, never deleted. */}
+      <button
+        onClick={onToggleOmit}
+        title={d.omitted ? "Omitted from the exhibit list — click to put it back on" : "On the exhibit list — click to omit it (kept, not deleted)"}
+        className={`flex w-5 shrink-0 items-center justify-center border-r ${d.omitted ? "border-red-500/30 bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "border-green-500/30 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300"}`}
+      >
+        <span className="[writing-mode:vertical-rl] rotate-180 py-1 text-[9px] font-bold uppercase tracking-wide">{d.omitted ? "Omitted" : "On list"}</span>
+      </button>
+      <button onClick={onOpen} className={`flex min-w-0 flex-1 items-start gap-2 p-2 text-left ${d.omitted ? "opacity-55" : ""}`}>
         <span className={`mt-0.5 inline-flex h-6 min-w-[2.25rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
           {d.label || (d.number ?? index + 1)}
         </span>
@@ -1687,7 +1716,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onEdit, onReplace, onCop
       </button>
       {/* Right column: flags + actions at the top, the High Res control pinned to
           the bottom-right of the row's box. */}
-      <div className="flex shrink-0 flex-col items-end justify-between gap-2 self-stretch">
+      <div className={`flex shrink-0 flex-col items-end justify-between gap-2 self-stretch p-2 pl-0 ${d.omitted ? "opacity-55" : ""}`}>
         <div className="flex items-start gap-1">
           {/* Prep priority (faded word pill) + trial status (solid dot) — always visible. */}
           <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />

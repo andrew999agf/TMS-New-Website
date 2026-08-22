@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const [set] = await db.select({ id: exhibitSets.id }).from(exhibitSets).where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
   if (!set) return new NextResponse("This link is not available.", { status: 404 });
 
-  const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, set.id)));
+  const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)));
   if (!doc || !doc.url) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");
