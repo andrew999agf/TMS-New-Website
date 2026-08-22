@@ -1691,62 +1691,71 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, on
   const rowRef = useRef<HTMLLIElement>(null);
   useEffect(() => { if (active) rowRef.current?.scrollIntoView({ block: "nearest" }); }, [active]);
 
+  const iconBtn = "rounded p-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)]";
   return (
     <li ref={rowRef} className={`group flex items-stretch overflow-hidden rounded-md border transition-colors ${active ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)] bg-[var(--c-surface)] hover:border-[var(--c-accent)]/40"}`}>
-      {/* Left sliver tab: a thin strip of vertical text you click to keep an
-          exhibit on the list or take it off — kept, never deleted. */}
-      <button
-        onClick={onToggleOmit}
-        title={d.omitted ? "Omitted from the exhibit list — click to put it back on" : "On the exhibit list — click to omit it (kept, not deleted)"}
-        className={`flex w-5 shrink-0 items-center justify-center border-r ${d.omitted ? "border-red-500/30 bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "border-green-500/30 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300"}`}
+      {/* Left sliver tab: a thin strip of vertical text. Clicking it opens a small
+          yes/no confirm (via the portaled menu) so it can't be flipped by accident. */}
+      <PopMenu
+        width={230}
+        title={d.omitted ? "Omitted from the exhibit list" : "On the exhibit list"}
+        className={`flex w-5 shrink-0 items-center justify-center border-r transition-colors ${d.omitted ? "border-red-500/30 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-500/15 dark:text-red-300" : "border-green-500/30 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-500/15 dark:text-green-300"}`}
+        label={<span className="[writing-mode:vertical-rl] rotate-180 py-1 text-[9px] font-bold uppercase tracking-wide">{d.omitted ? "Omitted" : "On list"}</span>}
       >
-        <span className="[writing-mode:vertical-rl] rotate-180 py-1 text-[9px] font-bold uppercase tracking-wide">{d.omitted ? "Omitted" : "On list"}</span>
-      </button>
-      <button onClick={onOpen} className={`flex min-w-0 flex-1 items-start gap-2 p-2 text-left ${d.omitted ? "opacity-55" : ""}`}>
-        <span className={`mt-0.5 inline-flex h-6 min-w-[2.25rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
-          {d.label || (d.number ?? index + 1)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium text-[var(--c-ink)]">{d.title || "Untitled exhibit"}</span>
-          {/* The description sits between the title and the Bates line, showing up
-              to two full lines of whatever was typed. */}
-          {d.description && <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-[var(--c-ink-muted)]" title={d.description}>{d.description}</span>}
-          {(d.bates || d.batesEnd || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
-        </span>
-      </button>
-      {/* Right column: flags + actions at the top, the High Res control pinned to
-          the bottom-right of the row's box. */}
-      <div className={`flex shrink-0 flex-col items-end justify-between gap-2 self-stretch p-2 pl-0 ${d.omitted ? "opacity-55" : ""}`}>
-        <div className="flex items-start gap-1">
-          {/* Prep priority (faded word pill) + trial status (solid dot) — always visible. */}
+        {(close) => (
+          <div className="p-2.5">
+            <p className="mb-2 text-xs leading-snug text-[var(--c-ink)]">{d.omitted ? "Put this exhibit back on the list?" : "Take this off the exhibit list? It's kept (not deleted) and left out of shares."}</p>
+            <div className="flex gap-2">
+              <button onClick={() => { close(); onToggleOmit(); }} className={`flex-1 rounded-md px-2 py-1.5 text-xs font-semibold text-white ${d.omitted ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}`}>{d.omitted ? "Put back on list" : "Omit"}</button>
+              <button onClick={close} className="rounded-md border border-[var(--c-border)] px-3 py-1.5 text-xs hover:bg-[var(--c-surface2)]">Cancel</button>
+            </div>
+          </div>
+        )}
+      </PopMenu>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Top: everything you read — number, name, description, Bates. Clicking
+            opens the exhibit. Full row width so nothing is squeezed. */}
+        <button onClick={onOpen} className={`flex min-w-0 items-start gap-2 px-2 pt-2 text-left ${d.omitted ? "opacity-55" : ""}`}>
+          <span className={`inline-flex h-6 min-w-[2.5rem] shrink-0 items-center justify-center rounded px-1 text-[11px] font-bold ${active ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-ink)]"}`}>
+            {d.label || (d.number ?? index + 1)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold leading-snug text-[var(--c-ink)] line-clamp-2">{d.title || "Untitled exhibit"}</span>
+            {d.description && <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-[var(--c-ink-muted)]" title={d.description}>{d.description}</span>}
+            {(d.bates || d.batesEnd || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+          </span>
+        </button>
+
+        {/* Bottom: one control bar. Priority + status + actions run along the
+            left; the notepad is pushed to the far right. Wraps on narrow widths
+            (phones) instead of overflowing. */}
+        <div className={`mt-1 flex flex-wrap items-center gap-0.5 px-1.5 pb-1.5 ${d.omitted ? "opacity-55" : ""}`}>
           <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
           <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
-          {/* Notepad: always visible so its amber "has a note" state shows. */}
-          <NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} />
-          {/* Always visible on touch (no hover there); hover-reveal kept on desktop. */}
-          <span className="flex items-center opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
-            {onCopyLink && <button onClick={onCopyLink} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={12} /></button>}
-            <button onClick={onReplace} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Replace this exhibit's file"><RefreshCw size={12} /></button>
-            <button onClick={onEdit} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit details, sponsors & elements"><Pencil size={12} /></button>
-            <button onClick={onDelete} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove"><Trash2 size={12} /></button>
-          </span>
-        </div>
+          {onCopyLink && <button onClick={onCopyLink} className={iconBtn} title="Copy this exhibit's share link"><LinkIcon size={13} /></button>}
+          <button onClick={onReplace} className={iconBtn} title="Replace this exhibit's file"><RefreshCw size={13} /></button>
+          <button onClick={onEdit} className={iconBtn} title="Edit details, sponsors & elements"><Pencil size={13} /></button>
+          <button onClick={onDelete} className="rounded p-1.5 text-[var(--c-ink-muted)] hover:bg-red-500/10 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
 
-        {/* High Res: the label opens the high-res version (when one exists); the
-            icon uploads / replaces it. */}
-        <span className={`inline-flex shrink-0 items-stretch overflow-hidden rounded-md border ${hiResPct != null ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
-          <button
-            onClick={onViewHiRes}
-            disabled={!d.hasHiRes || hiResPct != null}
-            title={hiResPct != null ? "Uploading — don't leave the page" : d.hasHiRes ? "View the high-res version" : "No high-res version yet — upload one with the icon"}
-            className={`min-w-[3.5rem] px-1.5 py-0.5 text-center text-[10px] font-bold ${hiResPct != null ? "bg-[var(--c-accent)] text-white" : d.hasHiRes ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/20" : "text-[var(--c-ink-muted)] opacity-60"}`}
-          >
-            {hiResPct != null ? `${hiResPct}%` : "High Res"}
-          </button>
-          <button onClick={onHiResUpload} disabled={hiResPct != null} title={d.hasHiRes ? "Replace the high-res version" : "Upload a high-res version"} className="border-l border-[var(--c-border)] px-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)] disabled:opacity-50">
-            {hiResPct != null ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-          </button>
-        </span>
+          {/* High Res: the label opens the high-res version; the icon uploads it. */}
+          <span className={`ml-1 inline-flex shrink-0 items-stretch overflow-hidden rounded-md border ${hiResPct != null ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
+            <button
+              onClick={onViewHiRes}
+              disabled={!d.hasHiRes || hiResPct != null}
+              title={hiResPct != null ? "Uploading — don't leave the page" : d.hasHiRes ? "View the high-res version" : "No high-res version yet — upload one with the icon"}
+              className={`px-1.5 py-0.5 text-center text-[10px] font-bold ${hiResPct != null ? "bg-[var(--c-accent)] text-white" : d.hasHiRes ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)] hover:bg-[var(--c-accent)]/20" : "text-[var(--c-ink-muted)] opacity-60"}`}
+            >
+              {hiResPct != null ? `${hiResPct}%` : "High Res"}
+            </button>
+            <button onClick={onHiResUpload} disabled={hiResPct != null} title={d.hasHiRes ? "Replace the high-res version" : "Upload a high-res version"} className="border-l border-[var(--c-border)] px-1 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)] disabled:opacity-50">
+              {hiResPct != null ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            </button>
+          </span>
+
+          {/* Notepad pinned to the far right; amber when it holds a note. */}
+          <span className="ml-auto"><NoteButton notes={d.notes} onSave={(v) => onSave({ notes: v })} /></span>
+        </div>
       </div>
     </li>
   );
