@@ -6,6 +6,7 @@ import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
   Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer, Flag,
+  LayoutGrid, List as ListIcon,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -720,6 +721,62 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
   return out;
 }
 
+/**
+ * A single grid cell: the exhibit's first page rendered as a thumbnail. The
+ * iframe is only mounted while the card is near the viewport (and unmounted when
+ * far away) so a set of hundreds of exhibits doesn't try to render every PDF at
+ * once. Clicking anywhere on the card opens that exhibit in the reader.
+ */
+function GridCard({ d, proxyBase, onOpen }: { d: ReviewerDoc; proxyBase: string; onOpen: (id: number) => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") { setNear(true); return; }
+    const io = new IntersectionObserver((entries) => { for (const e of entries) setNear(e.isIntersecting); }, { rootMargin: "800px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <button ref={ref} onClick={() => onOpen(d.id)} title={`${d.label || d.number || ""} ${d.title || ""}`.trim() || "Exhibit"} className="group flex flex-col overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] text-left transition-shadow hover:border-[var(--c-accent)] hover:shadow-md">
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-white">
+        {d.hasFile && near ? (
+          <iframe
+            src={`${proxyBase}/${d.id}?v=${d.fileTag}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
+            title={d.title || d.label || "Exhibit"}
+            className="pointer-events-none absolute inset-0 h-full w-full border-0"
+            loading="lazy"
+            tabIndex={-1}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
+        )}
+        {/* Transparent layer so the click always lands on the card, not the PDF. */}
+        <span className="absolute inset-0" aria-hidden />
+      </div>
+      <div className="flex items-center gap-2 border-t border-[var(--c-border)] px-2.5 py-2">
+        <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+      </div>
+    </button>
+  );
+}
+
+/** The thumbnail wall for the current side — rows of four on wide screens. */
+function ExhibitGrid({ docs, side, proxyBase, onOpen }: { docs: ReviewerDoc[]; side: Side; proxyBase: string; onOpen: (id: number) => void }) {
+  if (docs.length === 0) {
+    return <p className="rounded-lg border border-dashed border-[var(--c-border)] p-6 text-center text-sm text-[var(--c-ink-muted)]">No {SIDE_LABEL[side].toLowerCase()} to show.</p>;
+  }
+  return (
+    <div>
+      <p className="mb-3 text-xs text-[var(--c-ink-muted)]">Showing {docs.length} {SIDE_LABEL[side].toLowerCase()} in order — click any exhibit to open it. Handy for spotting duplicates or gaps.</p>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {docs.map((d) => <GridCard key={d.id} d={d} proxyBase={proxyBase} onOpen={onOpen} />)}
+      </div>
+    </div>
+  );
+}
+
 export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, hasList, listName, listTag }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
   access: string; publicToken: string | null; recipients: RecipientLite[]; ocEnabled: boolean; ocToken: string | null;
@@ -920,6 +977,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   // high-res version. Both are set in the same handler, so the last write wins.
   const openDoc = useCallback((id: number, page = 1) => { setCurrentId(id); setViewerPage(page); setHiResView(false); setListView(false); }, []);
   const openHiRes = useCallback((id: number) => { openDoc(id, 1); setHiResView(true); }, [openDoc]);
+  // Grid view: a wall of first-page thumbnails for the current side, for
+  // eyeballing duplicates / gaps. Clicking one drops back to the reader on it.
+  const [gridView, setGridView] = useState(false);
 
   function step(delta: number) {
     if (currentIndex < 0) return;
@@ -1169,7 +1229,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           put at the top while the exhibit list and the viewer scroll on their
           own, so you never lose them behind a long list. */}
       <div className="sticky top-9 z-20 -mx-6 space-y-3 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-6 pb-3 pt-2">
-      {/* Side tabs */}
+      {/* Side tabs, with the list/grid view toggle pinned to the right */}
       <div className="flex flex-wrap items-center gap-1 pb-1">
         {sidesInUse.map((s) => {
           const n = docs.filter((d) => d.side === s).length;
@@ -1179,6 +1239,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
             </button>
           );
         })}
+        <div className="ml-auto inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
+          <button onClick={() => setGridView(false)} title="Reader view" className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium ${!gridView ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}><ListIcon size={13} /> <span className="hidden sm:inline">Reader</span></button>
+          <button onClick={() => setGridView(true)} title="Grid view — thumbnails to scan for duplicates" className={`inline-flex items-center gap-1.5 border-l border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium ${gridView ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}><LayoutGrid size={13} /> <span className="hidden sm:inline">Grid</span></button>
+        </div>
       </div>
 
       {/* Toolbar: go-to-number, prev/next, cross-set search */}
@@ -1258,11 +1322,18 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       </div>
       </div>
 
+      {/* Grid view: a wall of first-page thumbnails for the current side. */}
+      {gridView && (
+        <ExhibitGrid docs={ordered} side={side} proxyBase={proxyBase} onOpen={(id) => { openDoc(id); setGridView(false); }} />
+      )}
+
       {/* Main: list + viewer — each column is one viewport tall and scrolls
           inside itself, so paging through 200 exhibits on the left never drags
           the viewer (or the page) along with it. On desktop a draggable divider
-          between them sets how wide the list is; on mobile they stack. */}
-      <div ref={splitRef} className="flex flex-col gap-4 lg:h-[80vh] lg:flex-row lg:gap-0">
+          between them sets how wide the list is; on mobile they stack. Kept
+          mounted (just hidden) in grid view so the divider width and selection
+          survive toggling back. */}
+      <div ref={splitRef} className={`flex flex-col gap-4 lg:h-[80vh] lg:flex-row lg:gap-0 ${gridView ? "hidden" : ""}`}>
         {/* Exhibit list — fixed (draggable) width on desktop, full width stacked on mobile */}
         <div style={{ width: listW }} className="flex flex-col gap-2 max-lg:!w-full lg:h-full lg:min-h-0 lg:shrink-0">
           <AddExhibits
