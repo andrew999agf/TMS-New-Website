@@ -7,15 +7,40 @@ export const runtime = "nodejs";
 // Streaming replies can run a while; give the function room.
 export const maxDuration = 120;
 
-/** The firm assistant's standing instructions. Kept here (not in the repo's
- *  public surface) and prepended to every conversation. Behavior only — no
- *  confidential data lives here. */
-const SYSTEM_PROMPT =
+/** Shared ground rules for every mode. Behavior only — no confidential data. */
+const BASE_PROMPT =
   "You are the in-house assistant for a Texas trial law firm, used only by firm staff inside the admin panel. " +
-  "Your priorities, in order: (1) writing and debugging code, (2) drafting and editing clear written work, (3) general knowledge. " +
-  "Be direct and practical. When you write code, make it correct and runnable. When you draft, match a professional legal-office tone. " +
-  "You are not a substitute for a lawyer's judgment and you do not give legal advice to the public. " +
+  "Be direct and practical. You are not a substitute for a lawyer's judgment and you do not give legal advice to the public. " +
   "If you are unsure, say so rather than inventing facts, citations, or case law.";
+
+/**
+ * Per-mode instructions and settings. The UI offers General / Drafting / Coding;
+ * each gets its own system prompt and temperature. Prompts live server-side so
+ * they can't be tampered with from the browser.
+ */
+const MODES: Record<string, { prompt: string; temperature: number }> = {
+  general: {
+    prompt:
+      `${BASE_PROMPT} This is a general conversation: stay well balanced across topics — ` +
+      "answer questions, think through problems, summarize, and explain clearly at whatever depth the question deserves.",
+    temperature: 0.6,
+  },
+  draft: {
+    prompt:
+      `${BASE_PROMPT} You are in DRAFTING mode. Produce polished written work: letters, memos, clauses, emails, ` +
+      "policies, and edits to prose. Match a professional legal-office tone unless told otherwise. When asked to draft, " +
+      "return the complete document ready to copy out — not an outline — and put the document itself first, with any " +
+      "notes or options after it. When editing, preserve the author's voice and flag anything substantive you changed.",
+    temperature: 0.5,
+  },
+  code: {
+    prompt:
+      `${BASE_PROMPT} You are in CODING mode — your top priority. Write correct, runnable code and debug precisely. ` +
+      "Always put code in fenced blocks with the language tag. Prefer complete working solutions over fragments, state " +
+      "assumptions briefly, and when fixing a bug explain the root cause in a sentence or two before the fix.",
+    temperature: 0.2,
+  },
+};
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -36,13 +61,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "The assistant isn't configured yet. Set AI_BASE_URL, AI_API_KEY, and AI_MODEL." }, { status: 503 });
   }
 
-  let body: { messages?: Msg[] };
+  let body: { messages?: Msg[]; mode?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
+  const mode = MODES[body.mode ?? "general"] ?? MODES.general;
   const incoming = Array.isArray(body.messages) ? body.messages : [];
   // Keep only well-formed user/assistant turns, cap the history, and cap each
   // message length so a runaway payload can't be sent upstream.
@@ -52,14 +78,14 @@ export async function POST(req: Request) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 24000) }));
   if (history.length === 0) return NextResponse.json({ error: "Nothing to send." }, { status: 400 });
 
-  const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...history];
+  const messages: Msg[] = [{ role: "system", content: mode.prompt }, ...history];
 
   let upstream: Response;
   try {
     upstream = await fetch(`${cfg.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: 0.3 }),
+      body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: mode.temperature }),
     });
   } catch {
     return NextResponse.json({ error: "Couldn't reach the AI provider." }, { status: 502 });
