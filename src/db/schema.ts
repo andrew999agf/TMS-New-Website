@@ -1124,3 +1124,38 @@ export type BannerItem = typeof bannerItems.$inferSelect;
 export type Testimonial = typeof testimonials.$inferSelect;
 export type IntakeSubmission = typeof intakeSubmissions.$inferSelect;
 export type PageRecord = typeof pages.$inferSelect;
+
+/* ------------------------- AI Assistant threads ------------------------- */
+
+/** A saved Assistant conversation. Scoped to the staff member who had it; one
+ *  thread belongs to one tool (general | draft | code). */
+export const assistantThreads = pgTable(
+  "assistant_threads",
+  {
+    id: serial("id").primaryKey(),
+    /** The admin account (email) that owns this conversation. */
+    userEmail: varchar("user_email", { length: 255 }).notNull(),
+    mode: varchar("mode", { length: 16 }).notNull().default("general"),
+    /** Auto-titled from the first message; renamable. */
+    title: varchar("title", { length: 200 }).notNull().default("New conversation"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ userIdx: index("assistant_threads_user_idx").on(t.userEmail) }),
+);
+
+/** One turn in a saved conversation. */
+export const assistantMessages = pgTable(
+  "assistant_messages",
+  {
+    id: serial("id").primaryKey(),
+    threadId: integer("thread_id").notNull().references(() => assistantThreads.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 16 }).notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ threadIdx: index("assistant_messages_thread_idx").on(t.threadId) }),
+);
+
+export type AssistantThread = typeof assistantThreads.$inferSelect;
+export type AssistantMessage = typeof assistantMessages.$inferSelect;

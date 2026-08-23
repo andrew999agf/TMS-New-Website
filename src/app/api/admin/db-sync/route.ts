@@ -510,6 +510,24 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS exhibit_elements_claim_idx ON exhibit_elements (claim_id)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_day_idx ON voice_diagnostics (day)`,
   `CREATE INDEX IF NOT EXISTS voice_diag_browser_idx ON voice_diagnostics (browser)`,
+  // AI Assistant: saved conversations, per staff member.
+  `CREATE TABLE IF NOT EXISTS assistant_threads (
+    id serial PRIMARY KEY,
+    user_email varchar(255) NOT NULL,
+    mode varchar(16) NOT NULL DEFAULT 'general',
+    title varchar(200) NOT NULL DEFAULT 'New conversation',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS assistant_threads_user_idx ON assistant_threads (user_email)`,
+  `CREATE TABLE IF NOT EXISTS assistant_messages (
+    id serial PRIMARY KEY,
+    thread_id integer NOT NULL REFERENCES assistant_threads(id) ON DELETE CASCADE,
+    role varchar(16) NOT NULL,
+    content text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS assistant_messages_thread_idx ON assistant_messages (thread_id)`,
 ];
 
 export async function POST() {

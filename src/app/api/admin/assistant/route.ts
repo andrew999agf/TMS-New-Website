@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { aiConfig } from "@/lib/ai/config";
+import { aiConfig, modelForMode } from "@/lib/ai/config";
+import { db } from "@/db";
+import { assistantThreads, assistantMessages } from "@/db/schema";
 
 export const runtime = "nodejs";
 // Streaming replies can run a while; give the function room.
@@ -61,14 +64,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "The assistant isn't configured yet. Set AI_BASE_URL, AI_API_KEY, and AI_MODEL." }, { status: 503 });
   }
 
-  let body: { messages?: Msg[]; mode?: string };
+  let body: { messages?: Msg[]; mode?: string; threadId?: number | null; regen?: boolean };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
-  const mode = MODES[body.mode ?? "general"] ?? MODES.general;
+  const modeKey = MODES[body.mode ?? "general"] ? (body.mode ?? "general") : "general";
+  const mode = MODES[modeKey];
   const incoming = Array.isArray(body.messages) ? body.messages : [];
   // Keep only well-formed user/assistant turns, cap the history, and cap each
   // message length so a runaway payload can't be sent upstream.
@@ -77,6 +81,39 @@ export async function POST(req: Request) {
     .slice(-20)
     .map((m) => ({ role: m.role, content: m.content.slice(0, 24000) }));
   if (history.length === 0) return NextResponse.json({ error: "Nothing to send." }, { status: 400 });
+  const lastUser = history[history.length - 1];
+
+  // Saved conversations: resolve (or create) the caller's thread and persist the
+  // user turn now; the assistant turn is persisted when the stream finishes.
+  // With no database configured the chat still works — it's just not saved.
+  let threadId: number | null = null;
+  if (db) {
+    try {
+      if (typeof body.threadId === "number" && Number.isFinite(body.threadId)) {
+        const [t] = await db
+          .select({ id: assistantThreads.id })
+          .from(assistantThreads)
+          .where(and(eq(assistantThreads.id, body.threadId), eq(assistantThreads.userEmail, session.email)));
+        threadId = t?.id ?? null;
+      }
+      if (threadId == null && lastUser.role === "user" && !body.regen) {
+        const title = lastUser.content.replace(/\s+/g, " ").trim().slice(0, 80) || "New conversation";
+        const [t] = await db
+          .insert(assistantThreads)
+          .values({ userEmail: session.email, mode: modeKey, title })
+          .returning({ id: assistantThreads.id });
+        threadId = t.id;
+      }
+      // On regenerate the user turn is already saved — only the fresh assistant
+      // reply should be appended.
+      if (threadId != null && lastUser.role === "user" && !body.regen) {
+        await db.insert(assistantMessages).values({ threadId, role: "user", content: lastUser.content });
+        await db.update(assistantThreads).set({ updatedAt: new Date() }).where(eq(assistantThreads.id, threadId));
+      }
+    } catch {
+      threadId = null; // saving is best-effort; never block the reply
+    }
+  }
 
   const messages: Msg[] = [{ role: "system", content: mode.prompt }, ...history];
 
@@ -85,7 +122,7 @@ export async function POST(req: Request) {
     upstream = await fetch(`${cfg.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: mode.temperature }),
+      body: JSON.stringify({ model: modelForMode(modeKey) ?? cfg.model, messages, stream: true, temperature: mode.temperature }),
     });
   } catch {
     return NextResponse.json({ error: "Couldn't reach the AI provider." }, { status: 502 });
@@ -96,13 +133,61 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `AI provider error (${upstream.status}).`, detail: detail.slice(0, 500) }, { status: 502 });
   }
 
-  // Pipe the provider's server-sent-events stream straight through; the client
-  // parses the OpenAI-style delta chunks.
-  return new Response(upstream.body, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-store",
-      Connection: "keep-alive",
+  // Pipe the provider's server-sent-events stream through to the client while
+  // accumulating the assistant's text server-side, so the finished (or
+  // interrupted) reply is saved to the thread even if the tab closes mid-answer.
+  const upstreamReader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  let acc = "";
+  let sseBuf = "";
+  let saved = false;
+  const persist = async () => {
+    if (saved || threadId == null || !db || !acc.trim()) return;
+    saved = true;
+    try {
+      await db.insert(assistantMessages).values({ threadId, role: "assistant", content: acc });
+      await db.update(assistantThreads).set({ updatedAt: new Date() }).where(eq(assistantThreads.id, threadId));
+    } catch { /* best-effort */ }
+  };
+  const collect = (chunk: Uint8Array) => {
+    sseBuf += decoder.decode(chunk, { stream: true });
+    const lines = sseBuf.split("\n");
+    sseBuf = lines.pop() ?? "";
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("data:")) continue;
+      const data = t.slice(5).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+        if (delta) acc += delta;
+      } catch { /* keep-alive lines */ }
+    }
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await upstreamReader.read();
+        if (done) { await persist(); controller.close(); return; }
+        if (value) { collect(value); controller.enqueue(value); }
+      } catch {
+        await persist();
+        controller.close();
+      }
+    },
+    async cancel() {
+      // Client stopped the generation or closed the tab: keep the partial reply.
+      try { await upstreamReader.cancel(); } catch { /* already closed */ }
+      await persist();
     },
   });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+  };
+  if (threadId != null) headers["X-Thread-Id"] = String(threadId);
+  return new Response(stream, { headers });
 }

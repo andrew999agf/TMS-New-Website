@@ -10,9 +10,16 @@
  * Required (set in the hosting env, e.g. Vercel → Project → Environment):
  *   AI_BASE_URL   OpenAI-compatible base, e.g. https://api.together.xyz/v1
  *   AI_API_KEY    the provider key (a server-only secret)
- *   AI_MODEL      the model id, e.g. meta-llama/Llama-3.3-70B-Instruct-Turbo
+ *   AI_MODEL      the default model id, e.g. meta-llama/Llama-3.3-70B-Instruct-Turbo
  * Optional:
- *   AI_MODEL_LABEL  friendly name shown in the UI (defaults to AI_MODEL)
+ *   AI_MODEL_LABEL    friendly name shown in the UI (defaults to AI_MODEL)
+ *   AI_MODEL_CODE     model override for the Coding tool (e.g. a code specialist)
+ *   AI_MODEL_DRAFT    model override for the Drafting tool
+ *   AI_MODEL_GENERAL  model override for the General tool
+ *
+ * Per-task routing is how an open stack punches at top-tier quality: run a code
+ * specialist in Coding and the strongest generalist in Drafting/General. All
+ * overrides fall back to AI_MODEL, and all must live at the same AI_BASE_URL.
  *
  * Nothing here is confidential; the key lives only in the server environment and
  * is read exclusively by server code (the /api/admin/assistant route).
@@ -38,6 +45,17 @@ export function aiConfig(): AiConfig | null {
     model,
     label: process.env.AI_MODEL_LABEL?.trim() || model,
   };
+}
+
+/** The model to use for a given tool — per-mode override, else the default. */
+export function modelForMode(mode: string): string | null {
+  const cfg = aiConfig();
+  if (!cfg) return null;
+  const override =
+    mode === "code" ? process.env.AI_MODEL_CODE :
+    mode === "draft" ? process.env.AI_MODEL_DRAFT :
+    mode === "general" ? process.env.AI_MODEL_GENERAL : undefined;
+  return override?.trim() || cfg.model;
 }
 
 /** True once a provider, key, and model are all set. Used to light up the tab. */
