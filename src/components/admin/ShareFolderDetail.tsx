@@ -14,7 +14,7 @@ import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { LinkTreeDialog } from "./ShareLinkTree";
-import { ListTree, ListOrdered } from "lucide-react";
+import { ListTree, ListOrdered, FileText, X } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
@@ -264,6 +264,8 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   const [creatingDir, setCreatingDir] = useState(false);
   const [revealPath, setRevealPath] = useState<string | null>(null); // just-created folder to expand & scroll to
   const [showLinkTree, setShowLinkTree] = useState(false);
+  // Table-of-contents dialog: null = closed; "" = whole folder; "A/B" = sub-folder.
+  const [tocScope, setTocScope] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // After a firm upload finishes, ask whether to notify the recipients.
@@ -463,7 +465,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
           <button onClick={() => setShowLinkTree(true)} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListTree size={13} /> Download link tree</button>
         )}
         {files.length > 0 && (
-          <a href={`/admin/share-folders/${folderId}/toc`} title="Word table of contents for the whole folder (Texas-pleading style)" className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListOrdered size={13} /> Table of contents</a>
+          <button onClick={() => setTocScope("")} title="Table of contents for the whole folder (Word or PDF, pleading style)" className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListOrdered size={13} /> Table of contents</button>
         )}
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
@@ -499,7 +501,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
         dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
-        dirTocHref={(p) => `/admin/share-folders/${folderId}/toc?dir=${encodeURIComponent(p)}`}
+        onDirToc={(p) => setTocScope(p)}
         // Only offered when per-file links are switched on for this folder.
         copyLinkFor={filePublicToken ? (id) => `${window.location.origin}/share/f/${filePublicToken}/${id}` : undefined}
         onUpload={blobReady ? onUpload : undefined}
@@ -510,6 +512,9 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
       )}
       {showLinkTree && (
         <LinkTreeDialog folderId={folderId} folderName={folderName} files={files.map((f) => ({ id: f.id, url: f.url, filename: f.filename }))} publicToken={filePublicToken} onClose={() => setShowLinkTree(false)} />
+      )}
+      {tocScope !== null && (
+        <TocDialog folderId={folderId} scope={tocScope} onClose={() => setTocScope(null)} />
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
@@ -744,5 +749,82 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
         {r.revoked ? <RotateCw size={14} /> : <Ban size={14} />}
       </button>
     </li>
+  );
+}
+
+/**
+ * Format picker for the folder table of contents: Word (.docx) or PDF, with an
+ * optional pass that tidies raw file names into title-cased document
+ * descriptions. Generates via /toc and closes.
+ */
+function TocDialog({ folderId, scope, onClose }: { folderId: number; scope: string; onClose: () => void }) {
+  const [fmt, setFmt] = useState<"docx" | "pdf">("docx");
+  const [clean, setClean] = useState(true);
+
+  function generate() {
+    const p = new URLSearchParams();
+    if (scope) p.set("dir", scope);
+    p.set("fmt", fmt);
+    if (clean) p.set("clean", "1");
+    const href = `/admin/share-folders/${folderId}/toc?${p.toString()}`;
+    if (fmt === "pdf") {
+      window.open(href, "_blank", "noopener");
+    } else {
+      const a = document.createElement("a");
+      a.href = href;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    onClose();
+  }
+
+  const scopeLabel = scope ? scope.split("/").pop() : "the whole folder";
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        <div className="mb-1.5 flex items-center gap-2">
+          <ListOrdered size={16} className="text-[var(--c-accent)]" />
+          <h3 className="font-[family-name:var(--font-display)] text-base">Table of contents</h3>
+          <button onClick={onClose} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>
+        </div>
+        <p className="mb-4 text-sm text-[var(--c-ink-muted)]">
+          A pleading-styled index of <strong className="text-[var(--c-ink)]">{scopeLabel}</strong> — caption, then every document in a ruled table (tab number, date, description).
+        </p>
+
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setFmt("docx")}
+            className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-3 text-sm transition-colors ${fmt === "docx" ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]/50"}`}
+          >
+            <FileText size={20} />
+            <span className="font-semibold">Word (.docx)</span>
+            <span className="text-[10px]">edit before filing</span>
+          </button>
+          <button
+            onClick={() => setFmt("pdf")}
+            className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-3 text-sm transition-colors ${fmt === "pdf" ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)]/50"}`}
+          >
+            <FileText size={20} />
+            <span className="font-semibold">PDF</span>
+            <span className="text-[10px]">opens anywhere</span>
+          </button>
+        </div>
+
+        <label className="mb-4 flex cursor-pointer items-start gap-2 text-xs text-[var(--c-ink)]">
+          <input type="checkbox" checked={clean} onChange={(e) => setClean(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-[var(--c-accent)]" />
+          <span>
+            <strong>Improve document titles</strong>
+            <span className="block text-[var(--c-ink-muted)]">Tidies raw file names — strips numbering and Bates digits, applies title case. Uncheck to use file names exactly as-is.</span>
+          </span>
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:bg-[var(--c-surface2)]">Cancel</button>
+          <button onClick={generate} className="btn btn-accent text-sm py-1.5 px-4">Generate</button>
+        </div>
+      </div>
+    </div>
   );
 }

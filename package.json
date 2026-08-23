@@ -29,6 +29,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "docx": "^9.7.1",
     "drizzle-orm": "^0.38.3",
     "fuse.js": "^7.0.0",
     "heic2any": "^0.0.4",
