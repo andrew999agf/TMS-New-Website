@@ -14,24 +14,52 @@ import {
 type Msg = { role: "user" | "assistant"; content: string };
 type Mode = "general" | "draft" | "code";
 
-const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string }> = {
+const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string; starters: string[] }> = {
   general: {
     label: "General", icon: MessageSquare,
     hint: "Ask anything…  (Enter to send, Shift+Enter for a new line)",
     empty: "A balanced, all-purpose conversation. Ask questions, think through problems, summarize, explain.",
+    starters: [
+      "Summarize the key points of the text I'm about to paste",
+      "Help me think through the pros and cons of a decision",
+      "Explain a concept to me in plain English",
+    ],
   },
   draft: {
     label: "Drafting", icon: FileText,
     hint: "Describe the document you need, or paste text to edit…",
     empty: "Letters, memos, clauses, emails, edits. You get a complete document back — copy it out or download it.",
+    starters: [
+      "Draft a professional letter — I'll give you the details",
+      "Tighten and polish the paragraph I'm about to paste",
+      "Write a firm memo announcing a policy change",
+    ],
   },
   code: {
     label: "Coding", icon: Code2,
     hint: "Describe what to build, or paste code to debug…",
     empty: "Write and debug code. Fenced, copyable code blocks; root-cause explanations with fixes.",
+    starters: [
+      "Write a function that — I'll describe what it should do",
+      "Debug this error — I'll paste the code and the message",
+      "Explain what a piece of code does, line by line",
+    ],
   },
 };
 const MODE_ICON: Record<string, typeof MessageSquare> = { general: MessageSquare, draft: FileText, code: Code2 };
+
+/** Compact "2h ago"-style stamp for the history rail. */
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
+}
 
 /* ---------------- minimal SpeechRecognition typings (Chrome/Safari) -------- */
 type SpeechAlt = { transcript: string };
@@ -396,26 +424,32 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
   const meta = MODE_META[mode];
 
   return (
-    <div className="flex h-[calc(100vh-11rem)] max-w-6xl rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+    <div className="relative flex h-[calc(100vh-11rem)] max-w-6xl overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-sm">
       {/* History rail — saved conversations. Always present on desktop; a
-          toggled overlay panel on phones. */}
+          toggled overlay panel on phones. Cream inset so it reads as the
+          "shelf" beside the white conversation surface. */}
       {saveable && (
-        <div className={`${histOpen ? "absolute inset-0 z-40 block bg-[var(--c-surface)] lg:static lg:z-auto" : "hidden"} w-full shrink-0 flex-col border-r border-[var(--c-border)] lg:flex lg:w-60 rounded-l-lg`}>
-          <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-3 py-2.5">
-            <History size={14} className="text-[var(--c-ink-muted)]" />
-            <span className="text-xs font-semibold text-[var(--c-ink)]">Conversations</span>
-            <button onClick={newConversation} className="ml-auto inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" title="Start a new conversation in the current tool">
+        <div className={`${histOpen ? "absolute inset-0 z-40 flex bg-[var(--c-bg)] lg:static lg:z-auto" : "hidden"} w-full shrink-0 flex-col border-r border-[var(--c-border)] bg-[var(--c-bg)] lg:flex lg:w-64`}>
+          <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-3 py-3">
+            <History size={14} className="text-[var(--c-accent)]" />
+            <span className="font-[family-name:var(--font-display)] text-sm text-[var(--c-ink)]">Conversations</span>
+            <button onClick={newConversation} className="ml-auto inline-flex items-center gap-1 rounded-md border border-[var(--c-accent)]/40 px-2 py-1 text-[11px] font-medium text-[var(--c-accent)] transition-colors hover:bg-[var(--c-accent)] hover:text-[var(--c-on-accent)]" title="Start a new conversation in the current tool">
               <Plus size={12} /> New
             </button>
             <button onClick={() => setHistOpen(false)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] lg:hidden"><X size={14} /></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-1.5">
-            {history.length === 0 && <p className="px-2 py-6 text-center text-xs text-[var(--c-ink-muted)]">Conversations save here automatically.</p>}
+          <div className="flex-1 overflow-y-auto px-2 py-2">
+            {history.length === 0 && (
+              <div className="px-3 py-8 text-center">
+                <History size={20} className="mx-auto mb-2 text-[var(--c-ink-muted)] opacity-40" />
+                <p className="text-xs leading-relaxed text-[var(--c-ink-muted)]">Conversations save here automatically as you work.</p>
+              </div>
+            )}
             {history.map((t) => {
               const Icon = MODE_ICON[t.mode] ?? MessageSquare;
               const active = threadIds[mode] === t.id;
               return (
-                <div key={t.id} className={`group/th flex items-center gap-1.5 rounded-md px-2 py-1.5 ${active ? "bg-[var(--c-accent)]/10" : "hover:bg-[var(--c-surface2)]"}`}>
+                <div key={t.id} className={`group/th mb-0.5 flex items-center gap-2 rounded-md px-2.5 py-2 transition-colors ${active ? "bg-[var(--c-accent)]/10 ring-1 ring-inset ring-[var(--c-accent)]/25" : "hover:bg-[var(--c-surface)]"}`}>
                   {renamingId === t.id ? (
                     <input
                       autoFocus
@@ -423,17 +457,18 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                       onChange={(e) => setRenameText(e.target.value)}
                       onBlur={() => void saveRename(t.id)}
                       onKeyDown={(e) => { if (e.key === "Enter") void saveRename(t.id); if (e.key === "Escape") setRenamingId(null); }}
-                      className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-1 text-xs outline-none focus:border-[var(--c-accent)]"
+                      className="w-full rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-1.5 py-1 text-xs outline-none focus:border-[var(--c-accent)]"
                     />
                   ) : (
                     <>
-                      <button onClick={() => void openThread(t)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={t.title}>
-                        <Icon size={12} className={`shrink-0 ${active ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"}`} />
-                        <span className={`truncate text-xs ${active ? "font-semibold text-[var(--c-accent)]" : "text-[var(--c-ink)]"}`}>{t.title}</span>
+                      <Icon size={13} className={`shrink-0 ${active ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"}`} />
+                      <button onClick={() => void openThread(t)} className="min-w-0 flex-1 text-left" title={t.title}>
+                        <span className={`block truncate text-xs ${active ? "font-semibold text-[var(--c-accent)]" : "font-medium text-[var(--c-ink)]"}`}>{t.title}</span>
+                        <span className="block text-[10px] text-[var(--c-ink-muted)]">{timeAgo(t.updatedAt)}</span>
                       </button>
-                      <span className="hidden shrink-0 items-center group-hover/th:flex">
-                        <button onClick={() => { setRenamingId(t.id); setRenameText(t.title); }} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename"><Pencil size={11} /></button>
-                        <button onClick={() => void removeThread(t)} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-red-600" title="Delete"><Trash2 size={11} /></button>
+                      <span className="hidden shrink-0 items-center gap-0.5 group-hover/th:flex">
+                        <button onClick={() => { setRenamingId(t.id); setRenameText(t.title); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename"><Pencil size={11} /></button>
+                        <button onClick={() => void removeThread(t)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Delete"><Trash2 size={11} /></button>
                       </span>
                     </>
                   )}
@@ -446,23 +481,23 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header: the three tools + voice + model chip */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2.5">
           {saveable && (
-            <button onClick={() => setHistOpen(true)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] lg:hidden" title="Conversations">
+            <button onClick={() => setHistOpen(true)} className="rounded-md border border-[var(--c-border)] p-2 text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] lg:hidden" title="Conversations">
               <History size={14} />
             </button>
           )}
-          <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
+          <div className="inline-flex rounded-lg bg-[var(--c-surface-2)] p-0.5">
             {(Object.keys(MODE_META) as Mode[]).map((m) => {
               const Icon = MODE_META[m].icon;
               return (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${m !== "general" ? "border-l border-[var(--c-border)]" : ""} ${mode === m ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${mode === m ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] shadow-sm" : "text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"}`}
                 >
                   <Icon size={13} /> {MODE_META[m].label}
-                  {threads[m].length > 0 && mode !== m && <span className="rounded-full bg-[var(--c-surface2)] px-1 text-[9px]">{threads[m].length}</span>}
+                  {threads[m].length > 0 && mode !== m && <span className="rounded-full bg-[var(--c-surface)] px-1.5 text-[9px] text-[var(--c-ink-muted)]">{threads[m].length}</span>}
                 </button>
               );
             })}
@@ -485,7 +520,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
             >
               {speakReplies ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </button>
-            {label && <span className="hidden rounded bg-[var(--c-surface2)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] sm:inline">{label}</span>}
+            {label && <span className="hidden rounded bg-[var(--c-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] sm:inline">{label}</span>}
             {messages.length > 0 && (
               <button onClick={newConversation} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-[var(--c-ink-muted)] hover:text-red-600" title={`Clear and start a new ${meta.label} conversation`}>
                 <Trash2 size={13} />
@@ -494,21 +529,35 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.length === 0 && (
-            <div className="mx-auto mt-10 max-w-md text-center text-sm text-[var(--c-ink-muted)]">
-              <meta.icon size={28} className="mx-auto mb-2 text-[var(--c-accent)]/60" />
-              <p className="font-medium text-[var(--c-ink)]">{meta.label}</p>
-              <p className="mt-1 leading-relaxed">{meta.empty}</p>
-              {speechOk && <p className="mt-3 text-xs">Tip: the mic dictates into the box; <strong>Voice</strong> is a hands-free back-and-forth.</p>}
+            <div className="mx-auto mt-8 max-w-lg text-center">
+              <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-accent)]/10">
+                <meta.icon size={22} className="text-[var(--c-accent)]" />
+              </span>
+              <p className="font-[family-name:var(--font-display)] text-xl text-[var(--c-ink)]">{meta.label}</p>
+              <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-[var(--c-ink-muted)]">{meta.empty}</p>
+              {/* One-click starters: drop a prompt into the box, ready to edit. */}
+              <div className="mt-5 flex flex-col items-center gap-2">
+                {meta.starters.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setInput(s); taRef.current?.focus(); }}
+                    className="w-full max-w-sm rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3.5 py-2.5 text-left text-xs text-[var(--c-ink)] transition-colors hover:border-[var(--c-accent)] hover:bg-[var(--c-accent)]/5"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {speechOk && <p className="mt-5 text-xs text-[var(--c-ink-muted)]">Tip: the mic dictates into the box; <strong className="text-[var(--c-ink)]">Voice</strong> is a hands-free back-and-forth.</p>}
             </div>
           )}
           {messages.map((m, i) => (
-            <div key={i} className={`flex gap-2.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-              <span className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${m.role === "user" ? "bg-[var(--c-accent)] text-white" : "bg-[var(--c-surface2)] text-[var(--c-accent)]"}`}>
-                {m.role === "user" ? <User size={14} /> : <Bot size={14} />}
+            <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+              <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${m.role === "user" ? "bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-accent)]"}`}>
+                {m.role === "user" ? <User size={14} /> : <Bot size={15} />}
               </span>
-              <div className={`min-w-0 max-w-[88%] rounded-lg px-3 py-2 ${m.role === "user" ? "whitespace-pre-wrap bg-[var(--c-accent)] text-sm leading-relaxed text-white" : "bg-[var(--c-bg)] text-[var(--c-ink)]"}`}>
+              <div className={`min-w-0 max-w-[85%] rounded-xl px-3.5 py-2.5 ${m.role === "user" ? "whitespace-pre-wrap rounded-tr-sm bg-[var(--c-accent)] text-sm leading-relaxed text-[var(--c-on-accent)]" : "rounded-tl-sm border border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-ink)]"}`}>
                 {m.role === "assistant"
                   ? (m.content
                       ? <>
@@ -519,7 +568,9 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                             </button>
                           )}
                         </>
-                      : (busy && i === messages.length - 1 ? <Loader2 size={14} className="animate-spin" /> : null))
+                      : (busy && i === messages.length - 1
+                          ? <span className="inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin text-[var(--c-accent)]" /> Thinking…</span>
+                          : null))
                   : m.content}
               </div>
             </div>
@@ -532,16 +583,16 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
           </p>
         )}
 
-        <div className="border-t border-[var(--c-border)] p-3">
-          <div className="flex items-end gap-2">
+        <div className="border-t border-[var(--c-border)] bg-[var(--c-bg)] p-3 sm:px-4">
+          <div className={`flex items-end gap-1.5 rounded-xl border bg-[var(--c-surface)] p-1.5 transition-colors ${voiceChat ? "border-[var(--c-accent)]" : "border-[var(--c-border)] focus-within:border-[var(--c-accent)]"}`}>
             {speechOk && (
               <button
                 onClick={toggleDictation}
                 disabled={voiceChat}
                 title={listening && !voiceChat ? "Stop dictating" : "Dictate into the box"}
-                className={`rounded-md border p-2.5 ${listening && !voiceChat ? "border-red-500 bg-red-500/10 text-red-600" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"} disabled:opacity-40`}
+                className={`rounded-lg p-2.5 transition-colors ${listening && !voiceChat ? "bg-red-500/10 text-red-600" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)]"} disabled:opacity-40`}
               >
-                {listening && !voiceChat ? <MicOff size={15} /> : <Mic size={15} />}
+                {listening && !voiceChat ? <MicOff size={16} /> : <Mic size={16} />}
               </button>
             )}
             <textarea
@@ -551,15 +602,15 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
               onKeyDown={onKey}
               rows={1}
               placeholder={voiceChat ? "Voice conversation is on — just talk…" : meta.hint}
-              className="max-h-40 min-h-[2.5rem] flex-1 resize-y rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]"
+              className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70"
             />
             {busy ? (
-              <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-md border border-red-500 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/20" title="Stop generating">
+              <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700" title="Stop generating">
                 <Square size={13} /> Stop
               </button>
             ) : (
-              <button onClick={() => void send()} disabled={!input.trim()} className="btn btn-accent inline-flex items-center gap-1.5 px-3 py-2 text-sm disabled:opacity-40">
-                <Send size={15} />
+              <button onClick={() => void send()} disabled={!input.trim()} title="Send" className="rounded-lg bg-[var(--c-accent)] p-2.5 text-[var(--c-on-accent)] transition-colors hover:bg-[var(--c-accent-2)] disabled:opacity-35">
+                <Send size={16} />
               </button>
             )}
           </div>
