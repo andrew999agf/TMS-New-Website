@@ -141,6 +141,9 @@ function NewFolderForm({ matters, onDone }: { matters: MatterOption[]; onDone: (
   const [name, setName] = useState("");
   const [matter, setMatter] = useState("");
   const [court, setCourt] = useState("");
+  const [county, setCounty] = useState("");
+  const [plaintiff, setPlaintiff] = useState("");
+  const [defendant, setDefendant] = useState("");
   const [type, setType] = useState(SHARE_TYPES[0].key);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -151,7 +154,7 @@ function NewFolderForm({ matters, onDone }: { matters: MatterOption[]; onDone: (
     setError(null);
     start(async () => {
       try {
-        const res = await createFolder({ caseNumber, name, matter, court, type });
+        const res = await createFolder({ caseNumber, name, matter, court, county, plaintiff, defendant, type });
         if (res.ok) onDone(res.id);
         else setError(res.error ?? "Couldn't create the folder.");
       } catch {
@@ -178,7 +181,21 @@ function NewFolderForm({ matters, onDone }: { matters: MatterOption[]; onDone: (
         </label>
         <label className="text-xs">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span>
-          <input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="e.g., 141st District Court, Tarrant County" className={`${input} w-full`} />
+          <input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="e.g., 141st District Court" className={`${input} w-full`} />
+        </label>
+        {/* Caption fields — used when generating pleading-styled documents from
+            this folder (e.g. the Word table of contents). Blank = fill-in blank. */}
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">County <span className="opacity-70">(for pleading captions)</span></span>
+          <input value={county} onChange={(e) => setCounty(e.target.value)} placeholder="e.g., Tarrant" className={`${input} w-full`} />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff(s) <span className="opacity-70">(as styled)</span></span>
+          <input value={plaintiff} onChange={(e) => setPlaintiff(e.target.value)} placeholder="e.g., John Doe" className={`${input} w-full`} />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block text-[var(--c-ink-muted)]">Defendant(s) <span className="opacity-70">(as styled)</span></span>
+          <input value={defendant} onChange={(e) => setDefendant(e.target.value)} placeholder="e.g., Acme Corp." className={`${input} w-full`} />
         </label>
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Folder type</span>

@@ -410,6 +410,11 @@ export const shareFolders = pgTable(
     name: varchar("name", { length: 191 }).notNull(), // client name (the folder's display name)
     matter: text("matter").notNull().default(""), // Clio/Time-Tracker matter reference
     court: varchar("court", { length: 191 }).notNull().default(""), // court / location
+    /** Caption fields for generated pleadings (table of contents, etc.). Blank
+     *  fields render as fill-in blanks in the caption. */
+    county: varchar("county", { length: 96 }).notNull().default(""),
+    plaintiff: text("plaintiff").notNull().default(""),
+    defendant: text("defendant").notNull().default(""),
     type: varchar("type", { length: 32 }).notNull(), // SHARE_TYPES key (discovery, client, expert, …)
     notes: text("notes"),
     /** Optional viewer-facing workspace: causes of action, notes, to-do tasks. */

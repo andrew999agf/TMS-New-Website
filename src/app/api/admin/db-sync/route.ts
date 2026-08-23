@@ -137,6 +137,9 @@ const DDL = [
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS court varchar(191) NOT NULL DEFAULT ''`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS require_auth boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS county varchar(96) NOT NULL DEFAULT ''`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS plaintiff text NOT NULL DEFAULT ''`,
+  `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS defendant text NOT NULL DEFAULT ''`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS kind varchar(24) NOT NULL DEFAULT ''`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS require_auth boolean NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS portal_users (

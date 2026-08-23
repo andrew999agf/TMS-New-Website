@@ -14,7 +14,7 @@ import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { LinkTreeDialog } from "./ShareLinkTree";
-import { ListTree } from "lucide-react";
+import { ListTree, ListOrdered } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
@@ -23,7 +23,7 @@ import {
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
-export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
+export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; county: string; plaintiff: string; defendant: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string; by: string };
 export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; requireAuth: boolean; revoked: boolean };
 
@@ -161,12 +161,15 @@ function FolderHeader({ folder, matters }: { folder: FolderData; matters: Matter
   const [name, setName] = useState(folder.name);
   const [matter, setMatter] = useState(folder.matter);
   const [court, setCourt] = useState(folder.court);
+  const [county, setCounty] = useState(folder.county);
+  const [plaintiff, setPlaintiff] = useState(folder.plaintiff);
+  const [defendant, setDefendant] = useState(folder.defendant);
   const [type, setType] = useState(folder.type);
   const [pending, start] = useTransition();
 
   function save() {
     start(async () => {
-      await updateFolder(folder.id, { caseNumber, name, matter, court, type });
+      await updateFolder(folder.id, { caseNumber, name, matter, court, county, plaintiff, defendant, type });
       setEditing(false);
       router.refresh();
     });
@@ -179,7 +182,12 @@ function FolderHeader({ folder, matters }: { folder: FolderData; matters: Matter
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Client name</span><input value={name} onChange={(e) => setName(e.target.value)} className={`${input} w-full`} /></label>
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(Clio list)</span></span><MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter…" /></label>
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span><input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} /></label>
-          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span><input value={court} onChange={(e) => setCourt(e.target.value)} className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span><input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="e.g., 393rd Judicial District Court" className={`${input} w-full`} /></label>
+          {/* Caption fields for generated pleadings (table of contents, etc.).
+              Anything left blank renders as a fill-in blank in the caption. */}
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">County <span className="opacity-70">(for pleading captions)</span></span><input value={county} onChange={(e) => setCounty(e.target.value)} placeholder="e.g., Tarrant" className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff(s) <span className="opacity-70">(as styled)</span></span><input value={plaintiff} onChange={(e) => setPlaintiff(e.target.value)} placeholder="e.g., John Doe" className={`${input} w-full`} /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Defendant(s) <span className="opacity-70">(as styled)</span></span><input value={defendant} onChange={(e) => setDefendant(e.target.value)} placeholder="e.g., Acme Corp." className={`${input} w-full`} /></label>
           <label className="text-xs sm:col-span-2"><span className="mb-1 block text-[var(--c-ink-muted)]">Folder type</span>
             <select value={type} onChange={(e) => setType(e.target.value)} className={`${input} w-full`}>
               {SHARE_TYPES.map((tt) => <option key={tt.key} value={tt.key}>{tt.label}</option>)}
@@ -197,7 +205,8 @@ function FolderHeader({ folder, matters }: { folder: FolderData; matters: Matter
             <div className="mt-0.5 space-y-0.5 text-sm text-[var(--c-ink-muted)]">
               {folder.matter && <p>Matter: {folder.matter}</p>}
               {folder.caseNumber && <p>Case {folder.caseNumber}</p>}
-              {folder.court && <p>{folder.court}</p>}
+              {folder.court && <p>{folder.court}{folder.county ? ` · ${folder.county} County` : ""}</p>}
+              {(folder.plaintiff || folder.defendant) && <p>{folder.plaintiff || "________"} v. {folder.defendant || "________"}</p>}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -453,6 +462,9 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         {files.length > 0 && (
           <button onClick={() => setShowLinkTree(true)} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListTree size={13} /> Download link tree</button>
         )}
+        {files.length > 0 && (
+          <a href={`/admin/share-folders/${folderId}/toc`} title="Word table of contents for the whole folder (Texas-pleading style)" className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListOrdered size={13} /> Table of contents</a>
+        )}
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
@@ -487,6 +499,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
         dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
+        dirTocHref={(p) => `/admin/share-folders/${folderId}/toc?dir=${encodeURIComponent(p)}`}
         // Only offered when per-file links are switched on for this folder.
         copyLinkFor={filePublicToken ? (id) => `${window.location.origin}/share/f/${filePublicToken}/${id}` : undefined}
         onUpload={blobReady ? onUpload : undefined}
@@ -552,7 +565,9 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
   const [permission, setPermission] = useState("download");
   const [kind, setKind] = useState(defaultKindForType(typeKey));
   const [ack, setAck] = useState(false);
-  const [expiry, setExpiry] = useState(toDateInput(new Date(Date.now() + expiryDaysForType(typeKey) * 86_400_000)));
+  // Lazy initializer: the "now + N days" default is computed once on mount,
+  // not on every render (React Compiler purity rule).
+  const [expiry, setExpiry] = useState(() => toDateInput(new Date(Date.now() + expiryDaysForType(typeKey) * 86_400_000)));
   const [openSug, setOpenSug] = useState(false);
   const sugRef = useRef<HTMLDivElement>(null);
 

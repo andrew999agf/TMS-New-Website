@@ -44,7 +44,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /* --------------------------------- folders --------------------------------- */
 
-export async function createFolder(input: { caseNumber: string; name: string; matter?: string; court?: string; type: string }) {
+export async function createFolder(input: { caseNumber: string; name: string; matter?: string; court?: string; county?: string; plaintiff?: string; defendant?: string; type: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const name = input.name.trim();
@@ -57,6 +57,9 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
         name,
         matter: (input.matter ?? "").trim(),
         court: (input.court ?? "").trim(),
+        county: (input.county ?? "").trim(),
+        plaintiff: (input.plaintiff ?? "").trim(),
+        defendant: (input.defendant ?? "").trim(),
         type: input.type,
         requireAuth: true, // secure by default — the sender unchecks to send an open link
         createdBy: session.email,
@@ -71,7 +74,7 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
   }
 }
 
-export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; type?: string; notes?: string; requireAuth?: boolean }) {
+export async function updateFolder(id: number, patch: { caseNumber?: string; name?: string; matter?: string; court?: string; county?: string; plaintiff?: string; defendant?: string; type?: string; notes?: string; requireAuth?: boolean }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -79,6 +82,9 @@ export async function updateFolder(id: number, patch: { caseNumber?: string; nam
   if (patch.name !== undefined) set.name = patch.name.trim();
   if (patch.matter !== undefined) set.matter = patch.matter.trim();
   if (patch.court !== undefined) set.court = patch.court.trim();
+  if (patch.county !== undefined) set.county = patch.county.trim();
+  if (patch.plaintiff !== undefined) set.plaintiff = patch.plaintiff.trim();
+  if (patch.defendant !== undefined) set.defendant = patch.defendant.trim();
   if (patch.type !== undefined && shareType(patch.type)) set.type = patch.type;
   if (patch.notes !== undefined) set.notes = patch.notes;
   if (patch.requireAuth !== undefined) set.requireAuth = patch.requireAuth;
