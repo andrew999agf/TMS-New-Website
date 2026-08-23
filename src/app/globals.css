@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
 /*
+ * The site (public and admin) is designed light-only — its palette comes from
+ * the theme tokens below, not from the visitor's OS setting. Tailwind v4's
+ * default `dark:` variant follows prefers-color-scheme, which made scattered
+ * `dark:` utility classes fire on phones in system dark mode and render
+ * near-invisible text on the light admin background. Redefine `dark:` as
+ * class-based (a `.dark` ancestor that nothing sets), so those variants are
+ * inert unless we ever ship a real dark theme.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Tailwind v4 theme bridge.
  *
  * The actual color/font values live in runtime CSS custom properties (--c-*,
