@@ -47,6 +47,65 @@ export type TocModel = {
 
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
+/* --------------------------- filename dates ------------------------------ */
+
+const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+
+const validDate = (y: number, mo: number, d: number) =>
+  y >= 1900 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(y, mo, 0).getDate();
+
+const fmtUs = (y: number, mo: number, d: number) => `${String(mo).padStart(2, "0")}/${String(d).padStart(2, "0")}/${y}`;
+
+/** Two-digit years: 00–49 → 2000s, 50–99 → 1900s. */
+const fullYear = (yy: number) => (yy < 100 ? (yy < 50 ? 2000 + yy : 1900 + yy) : yy);
+
+/**
+ * Pull a document date out of a file name, trying the formats people actually
+ * use: 2024-03-12 / 2024.03.12 / 20240312 · 3-12-2024 / 03.12.24 / 3/12/24 ·
+ * "March 12, 2024" / "Mar 12 2024" / "12 March 2024". Returns MM/DD/YYYY or
+ * null when nothing in the name reads as a real date.
+ */
+export function extractFilenameDate(name: string): { date: string; matched: string } | null {
+  const s = name.replace(/\.[a-z0-9]{2,5}$/i, "");
+
+  // ISO: 2024-03-12 (also . _ separators)
+  let m = s.match(/(?<!\d)(19|20)(\d{2})[-._](0?[1-9]|1[0-2])[-._](0?[1-9]|[12]\d|3[01])(?!\d)/);
+  if (m) {
+    const y = Number(`${m[1]}${m[2]}`), mo = Number(m[3]), d = Number(m[4]);
+    if (validDate(y, mo, d)) return { date: fmtUs(y, mo, d), matched: m[0] };
+  }
+  // US: 3-12-2024, 03.12.24, 3/12/24
+  m = s.match(/(?<!\d)(0?[1-9]|1[0-2])[-./](0?[1-9]|[12]\d|3[01])[-./]((?:19|20)\d{2}|\d{2})(?!\d)/);
+  if (m) {
+    const mo = Number(m[1]), d = Number(m[2]), y = fullYear(Number(m[3]));
+    if (validDate(y, mo, d)) return { date: fmtUs(y, mo, d), matched: m[0] };
+  }
+  // Month name first: "March 12, 2024" / "Mar. 12 2024"
+  m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+((?:19|20)\d{2})\b/i);
+  if (m) {
+    const mo = MONTHS[m[1].toLowerCase()], d = Number(m[2]), y = Number(m[3]);
+    if (validDate(y, mo, d)) return { date: fmtUs(y, mo, d), matched: m[0] };
+  }
+  // Day first: "12 March 2024"
+  m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+((?:19|20)\d{2})\b/i);
+  if (m) {
+    const d = Number(m[1]), mo = MONTHS[m[2].toLowerCase()], y = Number(m[3]);
+    if (validDate(y, mo, d)) return { date: fmtUs(y, mo, d), matched: m[0] };
+  }
+  // Compact: 20240312 (kept last — Bates-style digit runs rarely start 19/20
+  // AND parse as a real calendar date, but real dates should win first)
+  m = s.match(/(?<!\d)((?:19|20)\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)/);
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+    if (validDate(y, mo, d)) return { date: fmtUs(y, mo, d), matched: m[0] };
+  }
+  return null;
+}
+
+export function dateFromFilename(name: string): string | null {
+  return extractFilenameDate(name)?.date ?? null;
+}
+
 /** Small words kept lowercase in title case (unless first/last). */
 const SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the", "to", "v", "vs", "with"]);
 
@@ -126,10 +185,17 @@ export function buildTocModel(
       : dir.split("/").join("  /  ").toUpperCase();
     const rows = entries.map((e) => {
       n++;
+      // The document's own date, read from the file name ("2024-03-12 demand
+      // letter", "Depo 3.12.24", …). Blank when the name has none — the upload
+      // date isn't the document's date, so it's not a fallback.
+      const fd = extractFilenameDate(e.base);
+      // With cleanup on, drop the date text from the description too — it now
+      // lives in the DATE column.
+      const titleSource = fd && cleanTitles ? e.base.replace(fd.matched, " ") : e.base;
       return {
         n,
-        date: e.at ? new Date(e.at).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }) : "",
-        title: cleanTitles ? improveTitle(e.base) : plainTitle(e.base),
+        date: fd?.date ?? "",
+        title: cleanTitles ? improveTitle(titleSource) : plainTitle(e.base),
       };
     });
     groups.push({ heading, rows, empty: rows.length === 0 });
