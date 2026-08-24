@@ -10,6 +10,7 @@ import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitEleme
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { isVideoFile } from "@/lib/exhibit-review/media";
 import { buildPrintOptimized, type ColorOverrides } from "@/lib/exhibit-review/printcopy";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
@@ -303,9 +304,10 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
     const n = input.number ?? null;
     let pageCount: number | null = null;
     let pageText: string[] = [];
-    if (input.file?.url) {
+    if (input.file?.url && !isVideoFile(input.file.pathname, input.file.contentType)) {
       // Pass the known size so a large file skips extraction entirely — no fetch,
       // no parse, no risk of the function being killed and losing this record.
+      // Videos are stored as-is: no pages, no text.
       const extracted = await extractPdfText(input.file.url, input.file.size);
       pageCount = extracted.pageCount || null;
       pageText = extracted.pages;
@@ -396,7 +398,7 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
   try {
     const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, printPathname: exhibitDocs.printPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (!cur) return { ok: false as const, error: "Exhibit not found." };
-    const extracted = await extractPdfText(file.url, file.size);
+    const extracted = isVideoFile(file.pathname, file.contentType) ? { pageCount: 0, pages: [] as string[] } : await extractPdfText(file.url, file.size);
     await db
       .update(exhibitDocs)
       .set({
@@ -479,10 +481,17 @@ export async function buildPrintCopy(id: number) {
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
     const [doc] = await db
-      .select({ setId: exhibitDocs.setId, url: exhibitDocs.url, sizeBytes: exhibitDocs.sizeBytes, printPathname: exhibitDocs.printPathname, colorOverrides: exhibitDocs.colorOverrides })
+      .select({ setId: exhibitDocs.setId, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, sizeBytes: exhibitDocs.sizeBytes, printPathname: exhibitDocs.printPathname, colorOverrides: exhibitDocs.colorOverrides })
       .from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (!doc) return { ok: false as const, error: "Exhibit not found." };
     if (!doc.url) return { ok: false as const, error: "This exhibit has no file yet." };
+
+    // Videos have no print copy — mark skipped WITHOUT downloading the file.
+    if (isVideoFile(doc.pathname ?? doc.url, doc.contentType)) {
+      await db.update(exhibitDocs).set({ colorStatus: "skipped", colorPages: [], reviewPages: [] }).where(eq(exhibitDocs.id, id));
+      revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+      return { ok: true as const, status: "skipped" as const, colorStatus: "skipped" as const, colorPages: [] as number[], reviewPages: [] as number[], converted: 0, pageCount: 0 };
+    }
 
     // Guard the download itself for very large files.
     if (doc.sizeBytes && doc.sizeBytes > 300 * 1024 * 1024) {

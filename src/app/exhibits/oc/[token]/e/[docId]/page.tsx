@@ -38,12 +38,22 @@ export default async function OpposingCounselView({ params }: { params: Promise<
           {next ? <Link href={`/exhibits/oc/${token}/e/${next.id}`} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Next"><ChevronRight size={16} /></Link> : <span className="rounded-md border border-[var(--c-border)] p-1.5 opacity-30"><ChevronRight size={16} /></span>}
         </div>
       </header>
-      {/* Phones get a fit-to-screen page viewer (whole page visible, arrows +
-          swipe); desktop keeps the browser's own PDF frame unchanged. */}
-      <div className="flex min-h-0 flex-1 flex-col lg:hidden">
-        <PhoneExhibitViewer src={`/exhibits/oc/${token}/file/${d.id}`} title={d.label || d.title || "Exhibit"} />
-      </div>
-      <iframe src={`/exhibits/oc/${token}/file/${d.id}#zoom=page-width`} title={d.label || d.title || "Exhibit"} className="hidden min-h-0 flex-1 w-full bg-white lg:block" />
+      {d.isVideo ? (
+        /* Video exhibit: the native player everywhere — seekable via the
+           Range-forwarding file route. */
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-black">
+          <video src={`/exhibits/oc/${token}/file/${d.id}`} controls playsInline preload="metadata" className="max-h-full max-w-full" />
+        </div>
+      ) : (
+        <>
+          {/* Phones get a fit-to-screen page viewer (whole page visible, arrows +
+              swipe); desktop keeps the browser's own PDF frame unchanged. */}
+          <div className="flex min-h-0 flex-1 flex-col lg:hidden">
+            <PhoneExhibitViewer src={`/exhibits/oc/${token}/file/${d.id}`} title={d.label || d.title || "Exhibit"} />
+          </div>
+          <iframe src={`/exhibits/oc/${token}/file/${d.id}#zoom=page-width`} title={d.label || d.title || "Exhibit"} className="hidden min-h-0 flex-1 w-full bg-white lg:block" />
+        </>
+      )}
     </main>
   );
 }

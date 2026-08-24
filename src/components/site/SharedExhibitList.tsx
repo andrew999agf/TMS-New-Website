@@ -6,6 +6,7 @@ import { Download, CheckSquare, ChevronDown, BookOpen } from "lucide-react";
 
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
+  isVideo?: boolean;
 };
 
 const SIDE_LABEL: Record<string, string> = { plaintiff: "Plaintiff's Exhibits", defendant: "Defendant's Exhibits", joint: "Joint Exhibits" };
@@ -107,7 +108,7 @@ export function SharedExhibitList({ docs, viewBase, zipBase, bookBase, namesOnly
                         {/* In opposing-counsel view show nothing but the name — no
                             description, Bates, or page count. */}
                         {!namesOnly && d.description && <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--c-ink-muted)]">{d.description}</span>}
-                        {!namesOnly && (d.bates || d.pageCount) && <span className="mt-0.5 block text-[11px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+                        {!namesOnly && (d.bates || d.pageCount || d.isVideo) && <span className="mt-0.5 block text-[11px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && (d.pageCount || d.isVideo) ? " · " : ""}{d.isVideo ? "Video" : d.pageCount ? `${d.pageCount} pp` : ""}</span>}
                       </span>
                     </Link>
                   </li>

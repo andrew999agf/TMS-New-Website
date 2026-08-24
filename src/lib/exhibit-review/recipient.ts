@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { exhibitSets, exhibitDocs, exhibitRecipients } from "@/db/schema";
 import { portalEmail } from "@/lib/share/portal-session";
 import type { PublicDoc } from "./public";
+import { isVideoFile } from "./media";
 
 export type RecipientContext = {
   rec: { id: number; setId: number; email: string; name: string; token: string };
@@ -39,9 +40,10 @@ export async function isVerifiedAs(email: string): Promise<boolean> {
 export async function recipientDocs(setId: number): Promise<PublicDoc[]> {
   if (!db) return [];
   const rows = await db
-    .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, url: exhibitDocs.url, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
+    .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
     .from(exhibitDocs)
-    .where(and(eq(exhibitDocs.setId, setId)))
+    // Omitted exhibits never reach recipients (their file routes refuse them too).
+    .where(and(eq(exhibitDocs.setId, setId), eq(exhibitDocs.omitted, false)))
     .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
-  return rows.filter((r) => r.url).map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount }));
+  return rows.filter((r) => r.url).map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType) }));
 }

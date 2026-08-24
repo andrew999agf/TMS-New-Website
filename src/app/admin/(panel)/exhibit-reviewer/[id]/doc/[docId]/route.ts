@@ -41,10 +41,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!upstream.ok || !upstream.body) return NextResponse.json({ error: "File unavailable." }, { status: 502 });
 
   const base = `${(doc.label || doc.title || "exhibit").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'")}${wantHiRes ? " (high-res)" : ""}`;
+  const ext = ((doc.pathname ?? doc.url ?? "").match(/\.([a-z0-9]{2,5})(\?.*)?$/i)?.[1] ?? "pdf").toLowerCase();
   const headers = new Headers();
   headers.set("Content-Type", fileType || "application/pdf");
   // Inline so the browser's PDF viewer renders it inside the reviewer's iframe.
-  headers.set("Content-Disposition", `inline; filename="${base}.pdf"`);
+  headers.set("Content-Disposition", `inline; filename="${base}.${ext}"`);
   headers.set("Accept-Ranges", "bytes");
   const contentRange = upstream.headers.get("content-range");
   if (contentRange) headers.set("Content-Range", contentRange);

@@ -9,6 +9,7 @@ import { db } from "@/db";
 import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
+import { isVideoFile } from "@/lib/exhibit-review/media";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     db
       .select({
         id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label,
-        title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, url: exhibitDocs.url, pathname: exhibitDocs.pathname, hiResUrl: exhibitDocs.hiResUrl, hiResPathname: exhibitDocs.hiResPathname,
+        title: exhibitDocs.title, description: exhibitDocs.description, priority: exhibitDocs.priority, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, hiResUrl: exhibitDocs.hiResUrl, hiResPathname: exhibitDocs.hiResPathname,
         witnessIds: exhibitDocs.witnessIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds, notes: exhibitDocs.notes, omitted: exhibitDocs.omitted,
         colorStatus: exhibitDocs.colorStatus, colorPages: exhibitDocs.colorPages, reviewPages: exhibitDocs.reviewPages,
         pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
@@ -50,7 +51,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
   const docs: ReviewerDoc[] = rows.map((r) => ({
     id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, priority: r.priority, trialStatus: r.trialStatus, bates: r.bates, batesEnd: r.batesEnd,
     witnessIds: numArr(r.witnessIds), foundation: strArr(r.foundation), elementIds: numArr(r.elementIds), notes: r.notes, omitted: r.omitted,
-    hasFile: Boolean(r.url), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
+    hasFile: Boolean(r.url), isVideo: isVideoFile(r.pathname ?? r.url, r.contentType), pageCount: r.pageCount, sizeBytes: r.sizeBytes, sort: r.sort,
     fileTag: tagOf(r.pathname ?? r.url ?? String(r.id)),
     hasHiRes: Boolean(r.hiResUrl), hiResTag: tagOf(r.hiResPathname ?? r.hiResUrl ?? ""),
     colorStatus: r.colorStatus, colorPageCount: numArr(r.colorPages).length, reviewPages: numArr(r.reviewPages),

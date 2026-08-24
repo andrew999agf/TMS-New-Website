@@ -6,10 +6,11 @@ import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
   Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer, Flag,
-  LayoutGrid, List as ListIcon,
+  LayoutGrid, List as ListIcon, Film,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
+import { isPdfFile, isVideoFile, EXHIBIT_ACCEPT } from "@/lib/exhibit-review/media";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
 import {
@@ -24,6 +25,8 @@ export type ReviewerDoc = {
   witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   /** Soft "taken off the exhibit list" flag. */
   omitted: boolean;
+  /** Video exhibit (body cam, dash cam, depo clip, …) — played, not paged. */
+  isVideo: boolean;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
   /** Changes whenever the underlying PDF changes, so the viewer/cache reload it. */
   fileTag: string;
@@ -744,7 +747,12 @@ function GridCard({ d, proxyBase, onOpen }: { d: ReviewerDoc; proxyBase: string;
   return (
     <button ref={ref} onClick={() => onOpen(d.id)} title={`${d.label || d.number || ""} ${d.title || ""}`.trim() || "Exhibit"} className="group flex flex-col overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] text-left transition-shadow hover:border-[var(--c-accent)] hover:shadow-md">
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-white">
-        {d.hasFile && near ? (
+        {d.isVideo ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#16130f] text-[#e8e2d6]">
+            <Film size={30} className="opacity-70" />
+            <span className="text-[10px] uppercase tracking-wide opacity-60">Video</span>
+          </div>
+        ) : d.hasFile && near ? (
           <iframe
             src={`${proxyBase}/${d.id}?v=${d.fileTag}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
             title={d.title || d.label || "Exhibit"}
@@ -835,7 +843,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     const docId = replaceIdRef.current;
     replaceIdRef.current = null;
     if (!docId) return;
-    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { setError("Pick a PDF to replace the exhibit."); return; }
+    if (!isPdfFile(file.name, file.type) && !isVideoFile(file.name, file.type)) { setError("Pick a PDF or video file to replace the exhibit."); return; }
     setReplacing(true); setError(null); flash("Replacing the exhibit…");
     try {
       const blob = await upload(`exhibit-reviewer/${setId}/${file.name}`, file, {
@@ -1112,9 +1120,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   }
 
   const stageFiles = useCallback((picked: PickedFile[]) => {
-    const pdfs = picked.filter((p) => /\.pdf$/i.test(p.file.name) || p.file.type === "application/pdf");
-    if (!pdfs.length) { setError("Drop PDF files — the reviewer reads exhibits as PDFs."); return; }
-    const parsed = pdfs.map((p) => ({ picked: p, ...parseExhibitName(p.file.name) }));
+    const usable = picked.filter((p) => isPdfFile(p.file.name, p.file.type) || isVideoFile(p.file.name, p.file.type));
+    if (!usable.length) { setError("Drop PDF or video files — the reviewer reads exhibits as PDFs and plays common video formats."); return; }
+    const parsed = usable.map((p) => ({ picked: p, ...parseExhibitName(p.file.name) }));
     const sorted = suggestOrder(parsed);
     const items: Staged[] = sorted.map((p, i) => {
       const s = (p.side as Side | null) ?? side;
@@ -1162,7 +1170,8 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           side: item.side, number: item.number, label: item.label.trim(), title: item.title.trim(), bates: item.bates.trim(),
           file: { url: blob.url, pathname: blob.pathname, contentType: item.file.type || blob.contentType, size: item.file.size },
         });
-        if (saved?.ok && saved.id) newIds.push(saved.id);
+        // Videos skip the color read — there's no print copy to prepare.
+        if (saved?.ok && saved.id && !isVideoFile(item.file.name, item.file.type)) newIds.push(saved.id);
       } catch (err) {
         setError(`Couldn't upload ${item.file.name}: ${(err as Error).message}`);
       }
@@ -1222,7 +1231,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         </div>
       )}
       {/* Hidden picker used by the per-exhibit "replace file" action. */}
-      <input ref={replaceInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
+      <input ref={replaceInputRef} type="file" accept={EXHIBIT_ACCEPT} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceFile(f); if (replaceInputRef.current) replaceInputRef.current.value = ""; }} />
       {/* Hidden picker for the per-exhibit high-res upload. */}
       <input ref={hiResInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onHiResFile(f); if (hiResInputRef.current) hiResInputRef.current.value = ""; }} />
       {/* Hidden picker for the set's exhibit-list document. */}
@@ -1496,25 +1505,43 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
               {/* On phones, PDFs in an embedded frame often render blank (iOS in
                   particular), so give a clear full-screen open. Shown only below
-                  the desktop breakpoint — the desktop viewer is unchanged. */}
-              <a
-                href={`${proxyBase}/${current.id}?v=${current.fileTag}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden"
-              >
-                <ExternalLink size={16} /> Open exhibit full screen
-              </a>
+                  the desktop breakpoint — the desktop viewer is unchanged. Video
+                  plays inline fine on phones, so it skips the banner. */}
+              {!current.isVideo && (
+                <a
+                  href={`${proxyBase}/${current.id}?v=${current.fileTag}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-accent)] px-3 py-2.5 text-sm font-semibold text-white lg:hidden"
+                >
+                  <ExternalLink size={16} /> Open exhibit full screen
+                </a>
+              )}
 
-              {/* The PDF itself — native viewer gives scrolling, zoom, and its own
-                  find. Keyed on file+page so a replace (new fileTag) or a #page
-                  jump always reloads. */}
-              <iframe
-                key={`${current.id}:${showingHiRes ? `hi${current.hiResTag}` : current.fileTag}:${viewerPage}`}
-                src={viewerSrc}
-                title={current.label || current.title || "Exhibit"}
-                className="min-h-0 flex-1 w-full rounded-b-lg bg-white"
-              />
+              {current.isVideo ? (
+                /* Video exhibit: the browser player, seekable (the proxy route
+                   forwards Range), sized to the viewer pane. */
+                <div className="flex min-h-0 flex-1 items-center justify-center rounded-b-lg bg-black">
+                  <video
+                    key={`${current.id}:${current.fileTag}`}
+                    src={`${proxyBase}/${current.id}?v=${current.fileTag}`}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="max-h-full max-w-full"
+                  />
+                </div>
+              ) : (
+                /* The PDF itself — native viewer gives scrolling, zoom, and its
+                   own find. Keyed on file+page so a replace (new fileTag) or a
+                   #page jump always reloads. */
+                <iframe
+                  key={`${current.id}:${showingHiRes ? `hi${current.hiResTag}` : current.fileTag}:${viewerPage}`}
+                  src={viewerSrc}
+                  title={current.label || current.title || "Exhibit"}
+                  className="min-h-0 flex-1 w-full rounded-b-lg bg-white"
+                />
+              )}
             </div>
           )}
         </div>
@@ -1608,7 +1635,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
         <Upload size={18} className="mx-auto mb-1 text-[var(--c-ink-muted)]" />
         <p className="text-xs text-[var(--c-ink-muted)]">Drop exhibit PDFs here, or</p>
         <button onClick={() => fileRef.current?.click()} className="mt-1 text-xs font-semibold text-[var(--c-accent)] hover:underline">Choose files</button>
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={(e) => { onPick(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
+        <input ref={fileRef} type="file" accept={EXHIBIT_ACCEPT} multiple className="hidden" onChange={(e) => { onPick(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
         {!blobReady && <p className="mt-1 text-[11px] text-amber-600">Connect a Blob store to upload files.</p>}
       </div>
 
@@ -1723,7 +1750,7 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, on
           <span className="min-w-0 flex-1">
             <span className="block text-xs font-semibold leading-snug text-[var(--c-ink)] line-clamp-2">{d.title || "Untitled exhibit"}</span>
             {d.description && <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-[11px] leading-snug text-[var(--c-ink-muted)]" title={d.description}>{d.description}</span>}
-            {(d.bates || d.batesEnd || d.pageCount) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && d.pageCount ? " · " : ""}{d.pageCount ? `${d.pageCount} pp` : ""}</span>}
+            {(d.bates || d.batesEnd || d.pageCount || d.isVideo) && <span className="mt-0.5 block truncate text-[10px] text-[var(--c-ink-muted)]">{batesRange(d.bates, d.batesEnd)}{batesRange(d.bates, d.batesEnd) && (d.pageCount || d.isVideo) ? " · " : ""}{d.isVideo ? "Video" : d.pageCount ? `${d.pageCount} pp` : ""}</span>}
           </span>
         </button>
 

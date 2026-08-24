@@ -30,9 +30,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!upstream.ok || !upstream.body) return new NextResponse("File unavailable.", { status: 502 });
 
   const base = (doc.label || doc.title || "exhibit").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  const ext = ((doc.pathname ?? doc.url ?? "").match(/\.([a-z0-9]{2,5})(\?.*)?$/i)?.[1] ?? "pdf").toLowerCase();
   const headers = new Headers();
   headers.set("Content-Type", doc.contentType || "application/pdf");
-  headers.set("Content-Disposition", `inline; filename="${base}.pdf"`);
+  headers.set("Content-Disposition", `inline; filename="${base}.${ext}"`);
   headers.set("Accept-Ranges", "bytes");
   const contentRange = upstream.headers.get("content-range");
   if (contentRange) headers.set("Content-Range", contentRange);

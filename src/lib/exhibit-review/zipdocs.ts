@@ -22,7 +22,9 @@ export function zipExhibits(
   const files = selected.map((r, i) => {
     const seq = String(i + 1).padStart(3, "0");
     const base = cleanName([r.label, r.title].filter(Boolean).join(" ") || `Exhibit ${r.number ?? r.id}`);
-    return { url: r.url as string, name: `${seq} - ${base}.pdf` };
+    // Keep the file's real extension (videos aren't PDFs).
+    const ext = ((r.url as string).split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1] ?? "pdf").toLowerCase();
+    return { url: r.url as string, name: `${seq} - ${base}.${ext}` };
   });
   return zipResponse(files, zipName);
 }

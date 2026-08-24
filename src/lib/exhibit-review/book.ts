@@ -1,5 +1,6 @@
 import "server-only";
 import { PDFDocument } from "pdf-lib";
+import { isVideoFile } from "./media";
 
 const SIDE_RANK: Record<string, number> = { plaintiff: 0, defendant: 1, joint: 2 };
 /** Soft memory guard so a huge set can't OOM the merge. */
@@ -17,6 +18,9 @@ export async function mergeExhibits(
 ): Promise<Response | null> {
   const selected = rows
     .filter((r) => r.url)
+    // Videos can't be merged into a PDF book — skip them up front rather than
+    // downloading a huge file only to fail parsing it.
+    .filter((r) => !isVideoFile(r.url))
     .filter((r) => (ids ? ids.has(r.id) : true))
     .sort((a, b) => (SIDE_RANK[a.side] ?? 9) - (SIDE_RANK[b.side] ?? 9) || (a.number ?? Infinity) - (b.number ?? Infinity) || a.id - b.id);
   if (selected.length === 0) return null;
