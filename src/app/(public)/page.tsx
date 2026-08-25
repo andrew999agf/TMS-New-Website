@@ -80,7 +80,17 @@ export default async function HomePage() {
           </p>
           <div className="mt-9 flex flex-wrap gap-4 fade-up">
             <Link href={home["home.hero.ctaHref"] || "/consultation"} className="btn btn-accent">
-              {home["home.hero.ctaLabel"]}
+              {/* On phones the main CTA reads "Request an Intake Call"; desktop
+                  keeps the editable label. Swapped only while the label still
+                  says "consultation" so an admin edit isn't overridden. */}
+              {/consultation/i.test(home["home.hero.ctaLabel"] ?? "") ? (
+                <>
+                  <span className="sm:hidden">Request an Intake Call</span>
+                  <span className="hidden sm:inline">{home["home.hero.ctaLabel"]}</span>
+                </>
+              ) : (
+                home["home.hero.ctaLabel"]
+              )}
               <ArrowRight size={18} />
             </Link>
             <Link href={home["home.hero.cta2Href"] || "/results"} className="btn btn-ghost-dark">
