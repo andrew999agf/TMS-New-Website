@@ -44,7 +44,6 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
   const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
   const firmName = globals["global.firmName"] || FIRM.name;
   const greeting = opts.name?.trim() ? esc(opts.name.trim()) : "there";
-  const area = (opts.referralArea?.trim() || "a licensed attorney in the appropriate practice area");
 
   const attorneys = opts.attorneys.filter((a) => a.name?.trim());
   let referralBlock = "";
@@ -122,7 +121,7 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
 
   const body = `
     <p style="margin:0 0 14px">Dear ${greeting},</p>
-    <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with ${esc(area)} in your area who may be able to help.</p>
+    <p style="margin:0 0 16px">Thank you for reaching out to our office. After reviewing your inquiry, we are unfortunately not able to assist you with this matter. We encourage you to consult with an attorney in your area who may be able to help.</p>
     ${note ? `<p style="margin:0 0 16px;white-space:pre-wrap">${esc(note)}</p>` : ""}
     <p style="${quiet}"><strong style="color:${colors.ink}">Please act promptly.</strong> Legal matters are often subject to strict deadlines, such as a statute of limitations. If a deadline passes, you may lose the right to pursue your claim entirely. We strongly encourage you to speak with an attorney as soon as possible to protect your rights.</p>
     ${referralBlock}
