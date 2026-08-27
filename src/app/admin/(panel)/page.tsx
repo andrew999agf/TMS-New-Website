@@ -84,7 +84,7 @@ export default async function DashboardPage() {
     { label: "Published posts", value: s.published, icon: Newspaper, href: "/admin/blog" },
     { label: "Scheduled posts", value: s.scheduled, icon: CalendarClock, href: "/admin/blog" },
     { label: "Intake submissions", value: s.intakeCount, icon: Inbox, href: "/admin/intake" },
-    { label: "Views (30 days)", value: s.views30, icon: Eye, href: "/admin/settings" },
+    { label: "Views (30 days)", value: s.views30, icon: Eye, href: "/admin/analytics" },
   ];
 
   return (
@@ -162,7 +162,10 @@ export default async function DashboardPage() {
         </div>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
-          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-4">Top pages — last 30 days</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-[family-name:var(--font-ui)] font-semibold">Top pages — last 30 days</h2>
+            <Link href="/admin/analytics" className="text-sm text-[var(--c-accent)]">Full analytics</Link>
+          </div>
           {s.topPaths.length === 0 ? (
             <p className="text-sm text-[var(--c-ink-muted)]">
               No traffic recorded yet. First-party page views accrue once the database is live.

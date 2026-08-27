@@ -10,6 +10,7 @@ export type AdminSection = { key: string; label: string; href: string; toggleabl
 
 export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "dashboard", label: "Dashboard", href: "/admin", toggleable: false },
+  { key: "analytics", label: "Analytics", href: "/admin/analytics", toggleable: true },
   { key: "pages", label: "Pages", href: "/admin/pages", toggleable: true },
   { key: "team", label: "Our Team", href: "/admin/team", toggleable: true },
   { key: "banner", label: "Home Banner", href: "/admin/banner", toggleable: true },

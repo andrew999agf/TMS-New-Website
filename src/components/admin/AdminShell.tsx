@@ -6,6 +6,7 @@ import { TimeClockButton } from "./TimeClockButton";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
+  BarChart3,
   FileText,
   Scale,
   Trophy,
@@ -64,6 +65,7 @@ const WEBSITE_SECTIONS = new Set(WEBSITE_TABS.map((t) => t.section));
 
 const NAV = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { label: "Website Management", href: "/admin/pages", icon: Globe },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
   { label: "Document Generator", href: "/admin/documents", icon: FileSignature },
