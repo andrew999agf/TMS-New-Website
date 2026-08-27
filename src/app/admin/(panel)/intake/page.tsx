@@ -3,6 +3,7 @@ import { IntakeTable, type IntakeRow } from "@/components/admin/IntakeTable";
 import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
 import { ReferralSources, type ReferrerPoint } from "@/components/admin/ReferralSources";
 import { OutboundReferrals, type OutboundPoint } from "@/components/admin/OutboundReferrals";
+import { AmountMetrics, type AmountPoint } from "@/components/admin/AmountMetrics";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
@@ -24,6 +25,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
 
   let rows: IntakeRow[] = [];
   let leads: LeadPoint[] = [];
+  let amounts: AmountPoint[] = [];
   const referrers: ReferrerPoint[] = [];
   let outbound: OutboundPoint[] = [];
   let attorneys: string[] = [];
@@ -58,6 +60,10 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         .from(intakeSubmissions)
         .orderBy(desc(intakeSubmissions.createdAt));
       leads = data.map((r) => ({ createdAt: r.createdAt.toISOString(), source: r.referralSource ?? null }));
+      // Amount-in-controversy points for the lead-value metrics panel.
+      amounts = data
+        .map((r) => ({ createdAt: r.createdAt.toISOString(), range: String((r.answers as Record<string, unknown>)?.amountRange ?? "").trim() }))
+        .filter((a) => a.range);
       // Outbound: leads we referred out (a name is recorded in referredTo).
       outbound = data
         .filter((r) => (r.referredTo ?? "").trim())
@@ -123,6 +129,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         />
         <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
+        <AmountMetrics points={amounts} />
         <ReferralSources referrers={referrers} />
         <OutboundReferrals referrals={outbound} />
         <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} />

@@ -68,6 +68,10 @@ export type Field = {
    *  question the client may not know how to answer. A standard "answer to the
    *  best of your ability / contact us" note is appended automatically. */
   guidance?: string;
+  /** Inline glossary: a legal term inside the label the client may not know.
+   *  It's rendered in the accent color; hover or tap reveals a plain-language
+   *  definition so they know exactly what the question is asking for. */
+  defs?: { term: string; title: string; body: string }[];
   /** Label for a repeater's/party's add button (e.g. "Add a co-executor"). */
   addLabel?: string;
   /** Max entries for a party field (e.g. up to four co-agents). */
@@ -156,6 +160,31 @@ export const COURT_HELP =
 
 const COURT_HELP_CRIMINAL =
   "It’s on your citation, bond paperwork, or court notice — e.g. “County Criminal Court No. 3, Tarrant County,” “396th District Court, Tarrant County,” or for a ticket, “City of Fort Worth Municipal Court.”";
+
+/**
+ * Canonical "amount in controversy" buckets, used by every money branch so the
+ * admin metrics can compare like with like. Exported so the metrics panel and
+ * the intake flow read from the same list.
+ */
+export const AMOUNT_RANGE = ["Under $25,000", "$25,000–$100,000", "$100,000–$500,000", "$500,000–$1M", "Over $1M", "Not sure"] as const;
+
+/** Reusable inline definition for the amount question. */
+const AMOUNT_DEF = {
+  term: "amount in controversy",
+  title: "Amount in controversy",
+  body: "Your best estimate of the total dollars at stake — what you hope to recover, or what is being claimed against you. A rough range is fine; choose “Not sure” if you don’t know yet.",
+};
+
+/** A standardized amount-in-controversy question for a money branch. `guidance`
+ *  is added for injury-type matters where the value truly isn't known early. */
+const amountField = (guidance?: string): Field => ({
+  name: "amountRange",
+  label: "Approximate amount in controversy",
+  type: "select",
+  options: [...AMOUNT_RANGE],
+  defs: [AMOUNT_DEF],
+  ...(guidance ? { guidance } : {}),
+});
 
 /** Steps appended to every branch before submission. */
 export const COMMON_STEPS: Step[] = [
@@ -429,7 +458,7 @@ export const BRANCHES: Branch[] = [
               "Other / Not listed",
             ],
           },
-          { name: "amountClaimed", label: "Amount claimed (if stated)", type: "text", placeholder: "$" },
+          { ...amountField(), label: "Approximate amount in controversy (claimed against you)" },
           { name: "served", label: "Have you been served with papers?", type: "yesno" },
           { name: "servedWhen", label: "If served, when?", type: "date" },
           { name: "court", label: "Which court? (named on the papers)", type: "text", placeholder: "e.g., County Court at Law No. 2, Tarrant County", help: COURT_HELP },
@@ -469,11 +498,15 @@ export const BRANCHES: Branch[] = [
         id: "stakes",
         title: "What is at stake?",
         fields: [
+          amountField(),
           {
-            name: "amount",
-            label: "Approximate amount at issue",
-            type: "select",
-            options: ["Under $25,000", "$25,000–$100,000", "$100,000–$500,000", "$500,000–$1M", "Over $1M", "Not sure"],
+            name: "eventDate",
+            label: "Approximate date of the breach or wrongful act (if known)",
+            type: "date",
+            defs: [
+              { term: "breach", title: "Breach of contract", body: "The date the other side failed to do what the contract required — a missed payment, an undelivered product or service, or any broken promise in the agreement. Your best estimate is fine." },
+              { term: "wrongful act", title: "Wrongful act", body: "For non-contract claims (fraud, defamation, a partnership dispute), the date the harmful conduct happened — when you were defrauded, when the false statement was made, and so on." },
+            ],
           },
           { name: "documents", label: "Do key documents exist (contracts, emails)?", type: "yesno" },
           { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
@@ -514,7 +547,7 @@ export const BRANCHES: Branch[] = [
             options: ["Vehicle wreck", "18-wheeler / commercial truck", "Premises (slip/fall, property)", "Workplace", "Other"],
             required: true,
           },
-          { name: "incidentDate", label: "Date of the incident", type: "date" },
+          { name: "incidentDate", label: "Date of the incident", type: "date", defs: [{ term: "incident", title: "Date of the incident", body: "The day the accident, injury, fire, or event happened. If you're not certain, your best estimate is fine — the exact date can be confirmed later." }] },
         ],
       },
       {
@@ -529,6 +562,7 @@ export const BRANCHES: Branch[] = [
           },
           { name: "yourInsurer", label: "Have you spoken to any insurer yet?", type: "yesno" },
           { name: "otherInsurer", label: "Do you know the other side's insurer?", type: "text" },
+          amountField("Injury cases are hard to value early — before treatment is complete. Just give your rough sense of the harm, or choose “Not sure.”"),
           { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
         ],
       },
@@ -597,6 +631,7 @@ export const BRANCHES: Branch[] = [
               "Other driver is uninsured or fled",
             ],
           },
+          { ...amountField(), label: "Approximate amount in controversy (repair / value of the loss)" },
         ],
       },
       {
@@ -1069,6 +1104,7 @@ export const BRANCHES: Branch[] = [
           },
           { name: "entityType", label: "Entity type & stage", type: "text", placeholder: "e.g., new LLC, existing corporation" },
           { name: "counterpart", label: "Counterparty (if any)", type: "text" },
+          { ...amountField(), label: "Approximate amount in controversy (for a dispute)", showIf: { field: "businessNeed", equals: "Dispute" } },
         ],
       },
     ],
@@ -1105,7 +1141,7 @@ export const BRANCHES: Branch[] = [
             placeholder: "Notice received? Sale date set? Writ served?",
           },
           { name: "court", label: "Court that issued the order (if known)", type: "text", placeholder: "e.g., 348th District Court, Tarrant County", help: COURT_HELP },
-          { name: "amounts", label: "Amounts involved", type: "text", placeholder: "$" },
+          { ...amountField(), label: "Approximate amount in controversy (debt, judgment, or property at risk)" },
         ],
       },
     ],

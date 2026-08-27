@@ -625,7 +625,7 @@ function FieldInput({
   const labelEl = (
     <div className="flex items-center gap-1.5 font-[family-name:var(--font-ui)] font-medium mb-2">
       <span>
-        {field.label}
+        {field.defs?.length ? <TermLabel label={field.label} defs={field.defs} /> : field.label}
         {field.required && <span className="text-[var(--c-accent)]"> *</span>}
       </span>
       {field.help && <InfoTip text={field.help} />}
@@ -1057,6 +1057,51 @@ function ResiduaryField({ value, onChange, people }: { value: ResiduaryValue | u
 }
 
 /** Small info icon that reveals help text on hover (desktop) or tap (mobile). */
+/** A legal term inside a question label, shown in the accent color; hover or tap
+ *  reveals a plain-language definition so the client knows what's being asked. */
+function TermTip({ term, title, body }: { term: string; title: string; body: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onBlur={() => setShow(false)}
+        className="cursor-help font-semibold text-[var(--c-accent)] underline decoration-dotted underline-offset-2"
+      >
+        {term}
+      </button>
+      {show && (
+        <span
+          role="tooltip"
+          className="absolute left-0 bottom-[calc(100%+8px)] z-30 w-72 max-w-[80vw] rounded-md bg-[var(--c-ink)] px-3 py-2 text-xs font-normal leading-relaxed text-[var(--c-bg)] shadow-lg"
+        >
+          <span className="mb-0.5 block font-semibold">{title}</span>
+          {body}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Render a label with any defined terms highlighted as TermTips. */
+function TermLabel({ label, defs }: { label: string; defs: NonNullable<Field["defs"]> }) {
+  const terms = defs.map((d) => d.term).filter(Boolean);
+  if (!terms.length) return <>{label}</>;
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(${escaped.join("|")})`, "gi");
+  return (
+    <>
+      {label.split(re).map((part, i) => {
+        const def = defs.find((d) => d.term.toLowerCase() === part.toLowerCase());
+        return def ? <TermTip key={i} term={part} title={def.title} body={def.body} /> : <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 function InfoTip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
   return (
