@@ -30,7 +30,11 @@ export type FieldType =
   /** Residuary beneficiaries with an even-split toggle and percentage validation. */
   | "residuary"
   /** Drag-and-drop document upload (court papers etc.); value is IntakeFile[]. */
-  | "files";
+  | "files"
+  /** Not an input: a prominent inline panel (label = heading, help = body).
+   *  With `blocking: true` it also stops the flow while visible — used to
+   *  decline matter types the firm does not accept. */
+  | "notice";
 
 /** An uploaded document attached to a submission (stored in media storage). */
 export type IntakeFile = { name: string; url: string; size?: number };
@@ -72,6 +76,8 @@ export type Field = {
    *  It's rendered in the accent color; hover or tap reveals a plain-language
    *  definition so they know exactly what the question is asking for. */
   defs?: { term: string; title: string; body: string }[];
+  /** For type "notice": while visible, Next/Submit are disabled. */
+  blocking?: boolean;
   /** Label for a repeater's/party's add button (e.g. "Add a co-executor"). */
   addLabel?: string;
   /** Max entries for a party field (e.g. up to four co-agents). */
@@ -477,8 +483,10 @@ export const BRANCHES: Branch[] = [
       "money owed", "unpaid", "didn't pay", "not paid", "won't pay", "claim", "breach", "breach of contract",
       "contract dispute", "fraud", "scammed", "ripped off", "cheated", "partnership", "partnership dispute",
       "business partner", "defamation", "slander", "libel", "property dispute", "boundary dispute",
+      // NOTE: "lemon" and "warranty" are deliberately NOT keywords — they pull
+      // in consumer used-car purchase disputes, which the firm does not accept.
       "contractor", "bad contractor", "unpaid invoice", "collect", "deceptive trade", "dtpa",
-      "consumer protection", "lemon", "warranty", "negligence",
+      "consumer protection", "negligence",
     ],
     steps: [
       {
@@ -491,6 +499,24 @@ export const BRANCHES: Branch[] = [
             type: "radio",
             options: ["Contract", "Fraud", "Partnership dispute", "Property", "Defamation", "Other"],
             required: true,
+          },
+          // Screen out consumer vehicle-purchase disputes (used-car dealers,
+          // vehicle warranty companies) — a large share of unwanted inquiries.
+          // Business/commercial vehicle matters continue normally.
+          {
+            name: "vehiclePurchase",
+            label: "Is this dispute about a vehicle you bought or leased (car, truck, trailer, or RV)?",
+            type: "radio",
+            options: ["No", "Yes — for personal or family use", "Yes — a business or commercial vehicle (company truck, CDL rig, fleet)"],
+            required: true,
+          },
+          {
+            name: "vehicleDecline",
+            label: "We can't help with this one",
+            type: "notice",
+            blocking: true,
+            help: "This firm does not accept consumer disputes over the purchase or lease of a vehicle — including used-car dealers, trailer and RV lots, and vehicle warranty companies. Rather than take your time, we'll say so up front. The State Bar of Texas Lawyer Referral Service can connect you with a consumer attorney: texasbar.com or (800) 252-9690. If your dispute is actually about a business or commercial vehicle, change your answer above and continue.",
+            showIf: { field: "vehiclePurchase", equals: "Yes — for personal or family use" },
           },
         ],
       },

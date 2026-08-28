@@ -32,6 +32,11 @@ export default async function ConsultationPage({
         focal={blocks["consultation.hero.image.focal"]}
       />
       <div className="container-page py-16 lg:py-24">
+        {/* Stated before the wizard so nobody — person or AI assistant routing
+            them here — spends time on a matter type the firm doesn't accept. */}
+        <p className="mb-8 max-w-2xl rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3 text-sm leading-relaxed text-[var(--c-ink-muted)]">
+          <strong className="text-[var(--c-ink)]">One limit, stated up front:</strong> this firm does not accept consumer disputes over the purchase of a vehicle — used-car dealers, trailer and RV lots, or vehicle warranty companies. Disputes involving <strong className="text-[var(--c-ink)]">business and commercial vehicles</strong> (company trucks, CDL rigs, fleets) are welcome.
+        </p>
         <IntakeWizard
           initialPractice={practice}
           initialAnswers={initialAnswers}

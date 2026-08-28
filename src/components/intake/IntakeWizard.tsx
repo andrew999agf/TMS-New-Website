@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2, Eye } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileText, Loader2, Eye, AlertTriangle } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
@@ -233,6 +233,8 @@ export function IntakeWizard({
 
   function canAdvance(step: Step): boolean {
     return visibleFields(step).every((f) => {
+      // A visible blocking notice (e.g. a declined matter type) halts the flow.
+      if (f.type === "notice") return !f.blocking;
       // A residuary must total exactly 100% (when not split evenly) before moving on.
       if (f.type === "residuary") {
         const v = answers[f.name] as ResiduaryValue | undefined;
@@ -635,6 +637,18 @@ function FieldInput({
   const inputClass =
     "w-full border border-[var(--c-border)] bg-[var(--c-surface)] py-3 px-4 focus:border-[var(--c-accent)] outline-none";
 
+  if (field.type === "notice") {
+    // Not an input — a prominent inline panel (used to decline matter types the
+    // firm doesn't accept). When blocking, the step's Next button is disabled.
+    return (
+      <div className="rounded-lg border-2 border-[var(--c-accent)]/50 bg-[var(--c-accent)]/[0.06] p-5">
+        <p className="flex items-center gap-2 font-[family-name:var(--font-ui)] font-semibold text-[var(--c-accent)]">
+          <AlertTriangle size={17} /> {field.label}
+        </p>
+        {field.help && <p className="mt-2 text-sm leading-relaxed text-[var(--c-ink)]">{field.help}</p>}
+      </div>
+    );
+  }
   if (field.type === "party") {
     return (
       <div>
