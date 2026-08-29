@@ -213,6 +213,38 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "Texas DTPA attorney. Consumer deception, defective goods, and misrepresentation claims and defense prepared for trial. We do not handle claims against vehicle dealerships.",
   },
   {
+    slug: "data-center-easements",
+    title: "Data Center & Utility Easements",
+    group: "litigation",
+    sort: 6,
+    tagline: "They need your land. That is leverage — if you use it before you sign.",
+    body: [
+      "Data centers are being built across Texas, and every one of them needs more than a building site. They need water, power, gas, and fiber — and those lines have to cross somebody's land. If a data center developer, a water supplier, or a pipeline or transmission company has contacted you about a waterline easement or any other utility easement, understand what is actually happening: they have a route problem, and your property is the solution. That is a negotiation, not a formality.",
+      "The first offer that arrives with the friendly letter is rarely the market. An easement is a permanent burden on your land — it affects what you can build, where you can fence, what a future buyer will pay, and what happens every time a crew wants access. We represent landowners statewide in negotiating these agreements: the price, but also the terms that matter for the next fifty years — the width and route of the corridor, surface use and access rules, damage and restoration obligations, fencing and gates, depth of bury, abandonment and termination, insurance and indemnity, and whether the easement can be assigned or widened later without paying you again.",
+      "When a data center goes in, whole neighborhoods get letters at once. If your neighbors are being approached for the same waterline or transmission corridor, that changes the leverage — a route is only as cheap as its most expensive parcel. We advise individual owners and groups of neighboring owners, and we structure terms so early signers aren't left worse off than the holdouts.",
+      "One question controls the posture of every one of these negotiations: can they take the easement if you say no? Some water suppliers, pipelines, and electric utilities hold condemnation power; a private data center developer generally does not. Which case you are in determines whether the fight is about maximizing compensation in a condemnation framework or simply saying no until the number and the terms are right. We tell you which one you are in before you make a single decision.",
+      "We negotiate from a trial firm's posture. The other side's land agents make a living on landowners who sign the first draft. Ours make a living on the ones who don't.",
+    ],
+    approach:
+      "We prepare every negotiation as if it ends in a courtroom — because the ones that are prepared that way rarely need to. A developer on a construction schedule pays for certainty; our job is to make your signature the expensive part of their route.",
+    keywords: [
+      "easement",
+      "waterline",
+      "water line",
+      "data center",
+      "utility easement",
+      "pipeline",
+      "right of way",
+      "transmission line",
+      "land agent",
+      "eminent domain",
+      "condemnation",
+    ],
+    seoTitle: "Data Center Easement Lawyer | Waterline & Utility Easements | Texas Statewide",
+    seoDescription:
+      "Texas lawyer for landowners approached by data centers, water suppliers, and utilities for waterline, electric, gas, and pipeline easements. We negotiate price and terms — statewide, for individual owners and groups of neighbors.",
+  },
+  {
     slug: "probate",
     title: "Probate & Estate Administration",
     group: "counsel",

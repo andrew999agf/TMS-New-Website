@@ -1101,6 +1101,9 @@ export const BRANCHES: Branch[] = [
     label: "Business matter",
     blurb: "Formation, contracts, or a dispute",
     practiceSlug: "business-related-matters",
+    /* Easement negotiations (data centers, waterlines, utilities) intake
+     * through the business flow — it fits the transactional shape. */
+    alsoPractices: ["data-center-easements"],
     summaryNoun: "a business matter",
     keywords: [
       "business", "llc", "corporation", "incorporate", "company", "form a company", "formation",
@@ -1108,6 +1111,9 @@ export const BRANCHES: Branch[] = [
       "draft a contract", "vendor", "buy a business", "sell a business", "business sale", "succession",
       "shareholder", "member dispute", "business dispute", "commercial dispute", "commercial litigation",
       "non-compete", "deal", "transaction",
+      // Landowner easement work (data centers, waterlines, utilities).
+      "easement", "waterline", "water line", "data center", "utility easement", "pipeline",
+      "right of way", "transmission line", "land agent", "condemnation", "eminent domain",
     ],
     commonOverrides: {
       conflict: involvedStep(

@@ -1018,7 +1018,44 @@ const educational2027: BlogPostSeed[] = eduRaw2027.map((e, i) => ({
   tags: [e.category],
 }));
 
-export const BLOG_POSTS: BlogPostSeed[] = [...firmNews, ...educational, ...educational2027];
+/* ==================== STANDALONE — DATA CENTER EASEMENTS ================== */
+/* Published immediately: targets landowners searching for help with data-center
+ * waterline and utility easement offers — a fast-growing Texas search topic. */
+
+const dataCenterEasementPost: BlogPostSeed = {
+  slug: "negotiating-waterline-easements-data-centers-texas",
+  title: "A Data Center Wants a Waterline Easement Across Your Land. Now What?",
+  excerpt:
+    "Texas landowners are getting letters from data center developers, water suppliers, and utilities asking for waterline, electric, and gas easements. Before you sign anything, understand what an easement really gives away — and what the first offer usually leaves out.",
+  body: html([
+    ["p", "Data centers are going up across Texas — and long before the building rises, the land agents go to work. A hyperscale data center needs enormous amounts of water for cooling and enormous amounts of power, and both have to travel across private land to get there. If you own property anywhere near a planned data center site, there is a real chance you have already received the letter: a company you have never heard of would like a waterline easement across your property, and they have enclosed a modest check amount and a prepared agreement for your convenience."],
+    ["h2", "What an easement actually is"],
+    ["p", "An easement is not a one-time transaction. It is a permanent legal interest in your land — recorded in the county records, binding on you and on everyone who ever owns the property after you. The company gets the right to install its line, to come back onto your land to maintain and repair it, and often far more than that, depending on the words in the document. The check they are offering is for signing those words. Once you sign, the leverage is gone."],
+    ["h2", "The first offer is a starting point, not the market"],
+    ["p", "The land agent's draft is written for the company, and the price is set assuming you will not negotiate. Both are negotiable — and not just the dollars. The terms that determine what your land is worth for the next fifty years usually matter more than the initial payment:"],
+    ["p", "<strong>Width and route.</strong> A vaguely-described \"blanket\" easement over your whole tract is worth far less to you than a tightly-defined corridor along a fence line. <strong>Access.</strong> When can crews enter, on what notice, and on which roads? <strong>Damages and restoration.</strong> Who pays when construction ruins a crop year, cuts a fence, or compacts a pasture — and what does \"restore\" mean in writing? <strong>Depth and surface use.</strong> Deep bury protects your ability to cross, build, and work the surface. <strong>Assignment and expansion.</strong> Can the easement be sold, widened, or used for a second line later without paying you again? <strong>Abandonment.</strong> If the line is ever unused, does the easement end — or burden your title forever? <strong>Insurance and indemnity.</strong> If their line leaks, fails, or hurts someone on your land, whose problem is it?"],
+    ["h2", "If your neighbors got the same letter"],
+    ["p", "Utility corridors cross many parcels, and when a data center goes in, whole stretches of a county get letters within weeks of each other. That is leverage — a route is only as cheap as its most expensive parcel, and a developer on a construction schedule cannot afford a broken corridor. Neighboring owners who coordinate — on price, on terms, or simply on information — consistently do better than owners picked off one at a time. Group representation can also be structured so that early signers are protected if a later holdout gets a better deal."],
+    ["h2", "Electric, gas, and fiber lines follow the same playbook"],
+    ["p", "Waterlines are only the beginning. Data centers pull transmission-scale electricity, and many sites bring new gas lines and fiber routes with them. Each comes with its own land agents and its own prepared agreements, and each is negotiated on the same principles: define the corridor, price the burden honestly, and write the protections into the recorded document rather than trusting the friendly voice on the phone."],
+    ["h2", "The question that controls everything: can they condemn?"],
+    ["p", "Some entities that want easements — certain water suppliers, pipelines, and electric utilities — hold the power of eminent domain, meaning that if you refuse, they can file a condemnation proceeding and take the easement at a court-determined price, subject to the protections of the Texas Landowner's Bill of Rights. A private data center developer, by contrast, generally has no condemnation power of its own: if you say no, they need a new route. Which situation you are in changes the entire negotiation — maximizing compensation within a condemnation framework is a different fight from simply declining until the number and terms are right. Finding out which case is yours should happen before you make any decision at all."],
+    ["h2", "Before you sign"],
+    ["p", `An easement negotiation is one of the few times an ordinary landowner holds real leverage over a large company — but only before signing. Have the agreement reviewed, price the burden honestly, and negotiate the terms while the route still depends on you. We ${paLink("data-center-easements", "represent Texas landowners statewide")} in data center, waterline, and utility easement negotiations — individual owners and groups of neighbors. If a land agent has reached out about your property, <a href="/consultation">talk to us before you respond</a>.`],
+  ]),
+  category: "data-center-easements",
+  tags: ["data-center-easements", "civil-commercial-litigation"],
+  author: AUTHOR,
+  isFirmNews: false,
+  status: "published",
+  publishAt: "2026-08-28T14:00:00Z",
+  seoTitle: "Data Center Waterline Easements: A Texas Landowner's Guide | T. Maxwell Smith, PLLC",
+  seoDescription:
+    "A data center or utility wants a waterline, electric, or gas easement across your Texas land? What the first offer leaves out, the terms that matter, whether they can condemn, and why neighbors have leverage together. Statewide representation.",
+  relatedPractices: ["data-center-easements", "civil-commercial-litigation"],
+};
+
+export const BLOG_POSTS: BlogPostSeed[] = [...firmNews, ...educational, ...educational2027, dataCenterEasementPost];
 
 export const EDUCATIONAL_COUNT = educational.length + educational2027.length;
 export const FIRM_NEWS_COUNT = firmNews.length;

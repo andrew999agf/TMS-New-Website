@@ -11,6 +11,10 @@ export const FAQS: Faq[] = [
     a: "T. Maxwell Smith, PLLC is a trial firm with a general practice. We handle personal injury and wrongful death, civil and commercial litigation, probate and estate administration, business formation and disputes, appeals, criminal defense, and consumer and commercial debt matters including foreclosures, garnishments, and receiverships. One limit worth stating up front: we handle Deceptive Trade Practices Act claims, but we do not take DTPA claims against vehicle dealerships — car lots, truck dealers, trailer lots, or RV dealers.",
   },
   {
+    q: "Do you help landowners with data center and utility easements?",
+    a: "Yes. We represent Texas landowners — statewide, individually and in groups of neighbors — who have been approached by data center developers, water suppliers, or utility companies seeking waterline, electric, gas, pipeline, or fiber easements across their property. We negotiate both the compensation and the terms of the easement (route, width, access, damages, restoration, assignment, abandonment), and we advise on whether the requesting party actually holds condemnation power, which changes the negotiation entirely.",
+  },
+  {
     q: "Where are the firm's offices?",
     a: "The firm has three Texas offices: a litigation hub in Fort Worth (1612 Summit Ave.), its principal office in Meridian in Bosque County, and a by-appointment office in Weatherford in Parker County.",
   },

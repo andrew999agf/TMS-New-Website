@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { notInArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { contentBlocks, caseResults, practiceAreas, glossaryTerms, teamMembers } from "@/db/schema";
+import { contentBlocks, caseResults, practiceAreas, glossaryTerms, teamMembers, blogPosts } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { CONTENT_BLOCKS } from "@/lib/content/defaults/blocks";
 import { PRACTICE_AREAS } from "@/lib/content/defaults/practice-areas";
 import { CASE_RESULTS } from "@/lib/content/defaults/results";
 import { GLOSSARY_TERMS } from "@/lib/content/defaults/glossary";
 import { TEAM } from "@/lib/content/defaults/team";
+import { BLOG_POSTS } from "@/lib/content/defaults/posts";
 
 export const runtime = "nodejs";
 
@@ -99,6 +100,33 @@ export async function POST() {
         .onConflictDoUpdate({ target: glossaryTerms.slug, set: { term: t.term, definition: t.definition, hypothetical: t.hypothetical, relatedPractices: t.relatedPractices, aliases: t.aliases ?? [] } });
     }
     applied.push(`Refreshed ${GLOSSARY_TERMS.length} glossary terms`);
+
+    // 4b) Blog posts — insert NEW seed posts only. Existing posts (including
+    // any the admin has edited, retitled, or unpublished) are never touched:
+    // onConflictDoNothing means a slug that already exists is left exactly as
+    // it is in the database.
+    try {
+      let added = 0;
+      for (const p of BLOG_POSTS) {
+        const publishAt = p.publishAt ? new Date(p.publishAt) : null;
+        const inserted = await db
+          .insert(blogPosts)
+          .values({
+            slug: p.slug, title: p.title, excerpt: p.excerpt, body: p.body,
+            bannerImage: p.bannerImage, category: p.category, tags: p.tags,
+            author: p.author ?? "T. Maxwell Smith", isFirmNews: p.isFirmNews ?? false,
+            status: p.status, publishAt, publishedAt: p.status === "published" ? publishAt : null,
+            seoTitle: p.seoTitle, seoDescription: p.seoDescription,
+            relatedPractices: p.relatedPractices, relatedPosts: p.relatedPosts,
+          })
+          .onConflictDoNothing({ target: blogPosts.slug })
+          .returning({ slug: blogPosts.slug });
+        added += inserted.length;
+      }
+      if (added) applied.push(`Added ${added} new blog post${added === 1 ? "" : "s"}`);
+    } catch {
+      /* blog table may not exist yet — non-fatal */
+    }
 
     // 5) Team bios — upsert text (preserve uploaded photo).
     try {
