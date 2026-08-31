@@ -1,14 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, exhibitSets, exhibitDocs } from "@/db/schema";
+import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, exhibitSets, exhibitDocs } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { partyToReviewerSide } from "@/lib/portal";
 import { cleanMatterCode } from "@/lib/time-entry";
+import { sendEmail } from "@/lib/email";
+import { FIRM } from "@/lib/firm";
 import { extractPdfText } from "@/lib/exhibit-review/text";
 import { isVideoFile } from "@/lib/exhibit-review/media";
 
@@ -265,5 +269,87 @@ export async function deletePortalDoc(id: number) {
   await db.delete(portalDocs).where(eq(portalDocs.id, id));
   if (!blobShared && d.pathname) { try { await del(d.pathname); } catch { /* best-effort */ } }
   reval(m?.groupId, d.matterId);
+  return { ok: true as const };
+}
+
+/* ---------------------------- client portal access ------------------------ */
+
+async function portalBaseUrl(): Promise<string> {
+  const host = ((await headers()).get("host") ?? "").trim();
+  if (!host) return process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+  return `${proto}://${host}`;
+}
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function sendPortalInviteEmail(member: { email: string; name: string; token: string }, groupName: string) {
+  const link = `${await portalBaseUrl()}/portal/${member.token}`;
+  const who = member.name.trim() ? escHtml(member.name.trim()) : "there";
+  const html = `
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.6">
+      <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${escHtml(FIRM.name)}</p>
+      <p style="margin:0 0 12px">Hi ${who},</p>
+      <p style="margin:0 0 12px">${escHtml(FIRM.name)} has set up a private client portal for <strong>${escHtml(groupName)}</strong>. In it you can see your active matters, upload documents the office needs, check off requested items, and message the team on each matter.</p>
+      <p style="margin:18px 0">
+        <a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Open your client portal</a>
+      </p>
+      <p style="margin:0 0 12px;font-size:13px;color:#555">The first time you open it (and periodically after), we'll email a one-time sign-in code to this address — no password to remember. The link is personal to you (${escHtml(member.email)}); please don't forward it.</p>
+      <p style="margin:0;font-size:12px;color:#888">If the button doesn't work, copy this address into your browser:<br/>${link}</p>
+    </div>`;
+  return sendEmail({ to: member.email, fromName: `${FIRM.name} — Client Portal`, subject: `Your client portal with ${FIRM.name}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
+}
+
+/** Invite someone into a group's client portal: creates their personal link and
+ *  emails it. Safe to call for an email already invited — it resends instead. */
+export async function addPortalMember(groupId: number, input: { email: string; name: string }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter a valid email address." };
+  const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, groupId));
+  if (!group) return { ok: false as const, error: "Group not found." };
+  try {
+    const [existing] = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, groupId), eq(portalMembers.email, email)));
+    if (existing) {
+      if (existing.revoked) await db.update(portalMembers).set({ revoked: false }).where(eq(portalMembers.id, existing.id));
+      const sent = await sendPortalInviteEmail({ email, name: existing.name || input.name.trim(), token: existing.token }, group.name);
+      reval(groupId);
+      return sent.sent ? { ok: true as const, resent: true } : { ok: false as const, error: "Couldn't send the invite email." };
+    }
+    const token = randomBytes(18).toString("base64url");
+    await db.insert(portalMembers).values({ groupId, email, name: input.name.trim().slice(0, 191), token });
+    const sent = await sendPortalInviteEmail({ email, name: input.name.trim(), token }, group.name);
+    await audit(session.email, "create", "portal-member", email, `Invited to ${group.name}`);
+    reval(groupId);
+    return sent.sent ? { ok: true as const, resent: false } : { ok: true as const, resent: false, warning: "Invite saved, but the email couldn't be sent — use Copy link." };
+  } catch {
+    return { ok: false as const, error: "Couldn't invite them. Run Settings → Database updates once, then retry." };
+  }
+}
+
+export async function resendPortalInvite(id: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [mem] = await db.select().from(portalMembers).where(eq(portalMembers.id, id));
+  if (!mem || mem.revoked) return { ok: false as const, error: "Not found (or revoked)." };
+  const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, mem.groupId));
+  if (!group) return { ok: false as const, error: "Group not found." };
+  const sent = await sendPortalInviteEmail({ email: mem.email, name: mem.name, token: mem.token }, group.name);
+  return sent.sent ? { ok: true as const } : { ok: false as const, error: "Couldn't send the email." };
+}
+
+export async function setPortalMemberRevoked(id: number, revoked: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  const [mem] = await db.update(portalMembers).set({ revoked }).where(eq(portalMembers.id, id)).returning();
+  if (mem) { await audit(session.email, "update", "portal-member", mem.email, revoked ? "Portal access revoked" : "Portal access restored"); reval(mem.groupId); }
+  return { ok: true as const };
+}
+
+export async function deletePortalMember(id: number) {
+  await guard();
+  if (!db) return { ok: false as const };
+  const [mem] = await db.delete(portalMembers).where(eq(portalMembers.id, id)).returning();
+  if (mem) reval(mem.groupId);
   return { ok: true as const };
 }

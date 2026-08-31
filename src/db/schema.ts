@@ -1279,3 +1279,21 @@ export const portalDocs = pgTable(
 
 export type PortalGroup = typeof portalGroups.$inferSelect;
 export type PortalMatter = typeof portalMatters.$inferSelect;
+
+/** People invited into a Case Portal group's client-facing portal. Each gets an
+ *  unguessable link; identity is verified by a one-time email code (the same
+ *  portal_users OTP flow the share system uses). */
+export const portalMembers = pgTable(
+  "portal_members",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id").notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    name: varchar("name", { length: 191 }).notNull().default(""),
+    token: varchar("token", { length: 64 }).notNull(),
+    revoked: boolean("revoked").notNull().default(false),
+    lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ groupIdx: index("portal_members_group_idx").on(t.groupId), tokenIdx: index("portal_members_token_idx").on(t.token) }),
+);

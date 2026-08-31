@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks } from "lucide-react";
-import { addPortalCompany, removePortalCompany, createPortalMatter } from "@/app/admin/(panel)/case-portal/actions";
+import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2 } from "lucide-react";
+import { addPortalCompany, removePortalCompany, createPortalMatter, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { POSTURES } from "@/lib/portal";
 
@@ -13,6 +13,7 @@ export type MatterRow = {
   id: number; title: string; companyId: number | null; companyName: string | null;
   clioMatter: string; posture: string; status: string; openTasks: number;
 };
+export type MemberRow = { id: number; email: string; name: string; token: string; revoked: boolean; lastAccessAt: string | null };
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
@@ -23,8 +24,8 @@ const POSTURE_META: Record<string, { label: string; icon: typeof Scale; cls: str
 };
 
 /** A client group's page: its companies, and its matters split Open / Closed. */
-export function CasePortalGroup({ groupId, companies, matters, clioMatters }: {
-  groupId: number; companies: CompanyRow[]; matters: MatterRow[]; clioMatters: MatterOption[];
+export function CasePortalGroup({ groupId, companies, matters, clioMatters, members }: {
+  groupId: number; companies: CompanyRow[]; matters: MatterRow[]; clioMatters: MatterOption[]; members: MemberRow[];
 }) {
   const router = useRouter();
   const [companyName, setCompanyName] = useState("");
@@ -105,6 +106,76 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters }: {
 
       <MatterList groupId={groupId} items={open} heading="Open matters" />
       <MatterList groupId={groupId} items={closed} heading="Closed matters" />
+
+      <PortalAccess groupId={groupId} members={members} />
+    </div>
+  );
+}
+
+/**
+ * Client portal access for this group: invite the client's manager (or several
+ * people) by email — each gets a personal link and signs in with a one-time
+ * email code. They see the group's open matters: their to-dos, client
+ * documents (view + upload), and the correspondence thread. Never the firm
+ * checklist, pleadings, discovery, exhibits, or time.
+ */
+function PortalAccess({ groupId, members }: { groupId: number; members: MemberRow[] }) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function invite() {
+    setError(null); setMsg(null);
+    start(async () => {
+      const r = await addPortalMember(groupId, { email, name });
+      if (!r.ok) { setError(r.error ?? "Couldn't send the invite."); return; }
+      setMsg("warning" in r && r.warning ? r.warning : r.resent ? `Invite re-sent to ${email.trim()}.` : `Invite sent to ${email.trim()}.`);
+      setName(""); setEmail("");
+      router.refresh();
+    });
+  }
+  const copyLink = (token: string) => {
+    void navigator.clipboard.writeText(`${window.location.origin}/portal/${token}`);
+    setMsg("Portal link copied — it only works for the invited email after they verify.");
+  };
+
+  return (
+    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+      <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold"><Share2 size={15} className="text-[var(--c-accent)]" /> Client portal access</p>
+      <p className="mb-3 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
+        Invite the client by email. They get a personal link and sign in with a one-time code sent to their address — no password. In the portal they see this group&apos;s <strong>open matters</strong>, their <strong>to-do items</strong>, <strong>client documents</strong> (view and upload), and a <strong>message thread</strong> per matter. They never see the firm checklist, pleadings, discovery, exhibits, or time records.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className={`${input} w-40`} />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") invite(); }} placeholder="email@company.com" className={`${input} min-w-[220px] flex-1`} />
+        <button onClick={invite} disabled={pending || !email.trim()} className="btn btn-accent text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <><Mail size={14} /> Send invite</>}</button>
+      </div>
+      {msg && <p className="mt-2 text-xs text-green-700">{msg}</p>}
+      {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+
+      {members.length > 0 && (
+        <ul className="mt-4 divide-y divide-[var(--c-border)] border-t border-[var(--c-border)]">
+          {members.map((mem) => (
+            <li key={mem.id} className={`flex flex-wrap items-center gap-2 py-2.5 ${mem.revoked ? "opacity-60" : ""}`}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-[var(--c-ink)]">{mem.name ? `${mem.name} — ` : ""}{mem.email}</span>
+                <span className="block text-[11px] text-[var(--c-ink-muted)]">
+                  {mem.revoked ? "Access revoked" : mem.lastAccessAt ? `Last visit ${new Date(mem.lastAccessAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Invited — hasn't signed in yet"}
+                </span>
+              </span>
+              <button onClick={() => copyLink(mem.token)} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]" title="Copy their portal link"><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
+              {!mem.revoked && <button onClick={() => start(async () => { const r = await resendPortalInvite(mem.id); setMsg(r.ok ? `Invite re-sent to ${mem.email}.` : null); setError(r.ok ? null : (r.error ?? "Couldn't resend.")); })} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"><Mail size={11} className="mr-1 inline" />Resend</button>}
+              <button onClick={() => start(async () => { await setPortalMemberRevoked(mem.id, !mem.revoked); router.refresh(); })} className={`rounded-md border px-2 py-1 text-[11px] ${mem.revoked ? "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-green-600 hover:text-green-700" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"}`}>
+                {mem.revoked ? <><RotateCcw size={11} className="mr-1 inline" />Restore</> : <><Ban size={11} className="mr-1 inline" />Revoke</>}
+              </button>
+              {mem.revoked && <button onClick={() => { if (confirm(`Delete ${mem.email}'s portal access entirely?`)) start(async () => { await deletePortalMember(mem.id); router.refresh(); }); }} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"><Trash2 size={11} className="mr-1 inline" />Delete</button>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

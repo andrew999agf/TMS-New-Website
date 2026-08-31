@@ -599,6 +599,18 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS portal_docs_matter_idx ON portal_docs (matter_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_members (
+    id serial PRIMARY KEY,
+    group_id integer NOT NULL,
+    email varchar(255) NOT NULL,
+    name varchar(191) NOT NULL DEFAULT '',
+    token varchar(64) NOT NULL,
+    revoked boolean NOT NULL DEFAULT false,
+    last_access_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_members_group_idx ON portal_members (group_id)`,
+  `CREATE INDEX IF NOT EXISTS portal_members_token_idx ON portal_members (token)`,
 ];
 
 export async function POST() {

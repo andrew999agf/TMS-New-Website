@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { CasePortalGroup, type CompanyRow, type MatterRow } from "@/components/admin/CasePortalGroup";
+import { CasePortalGroup, type CompanyRow, type MatterRow, type MemberRow } from "@/components/admin/CasePortalGroup";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { portalGroups, portalCompanies, portalMatters, portalTasks, timeMatters } from "@/db/schema";
+import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMembers, timeMatters } from "@/db/schema";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
@@ -21,10 +21,11 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
   const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, groupId));
   if (!group) notFound();
 
-  const [companies, matters, clioMatters] = await Promise.all([
+  const [companies, matters, clioMatters, members] = await Promise.all([
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, groupId)).orderBy(asc(portalCompanies.sort), asc(portalCompanies.name)),
     db.select().from(portalMatters).where(eq(portalMatters.groupId, groupId)).orderBy(asc(portalMatters.title)),
     db.select().from(timeMatters).orderBy(asc(timeMatters.sort)),
+    db.select().from(portalMembers).where(eq(portalMembers.groupId, groupId)).orderBy(asc(portalMembers.createdAt)).catch(() => []),
   ]);
   // Open-task counts per matter, for the list badges.
   const taskRows = matters.length
@@ -43,6 +44,10 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
     openTasks: taskRows.filter((t) => t.matterId === m.id && !t.done).length,
   }));
   const matterOptions: MatterOption[] = clioMatters.map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
+  const memberRows: MemberRow[] = members.map((x) => ({
+    id: x.id, email: x.email, name: x.name, token: x.token, revoked: x.revoked,
+    lastAccessAt: x.lastAccessAt ? x.lastAccessAt.toISOString() : null,
+  }));
 
   return (
     <>
@@ -51,7 +56,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
         <Link href="/admin/case-portal" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All client groups
         </Link>
-        <CasePortalGroup groupId={groupId} companies={companyRows} matters={matterRows} clioMatters={matterOptions} />
+        <CasePortalGroup groupId={groupId} companies={companyRows} matters={matterRows} clioMatters={matterOptions} members={memberRows} />
       </div>
     </>
   );
