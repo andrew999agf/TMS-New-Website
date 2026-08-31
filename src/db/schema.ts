@@ -1164,3 +1164,118 @@ export const assistantMessages = pgTable(
 
 export type AssistantThread = typeof assistantThreads.$inferSelect;
 export type AssistantMessage = typeof assistantMessages.$inferSelect;
+
+/* ------------------------------ Case Portal ------------------------------ */
+/*
+ * Matter portal for select business clients. An enterprise GROUP (custom name,
+ * e.g. one manager's family of companies) holds COMPANIES; matters belong to a
+ * group (and optionally one of its companies). A matter carries a posture
+ * (transactional | pre-litigation | litigation — litigation reveals pleadings/
+ * discovery/exhibits), links outward to the firm's other tools (exhibit
+ * reviewer set, share folder), and ties to Clio time via the matter display
+ * number — the portal reads time_entries (active AND archived) for a running
+ * tally that survives the tracker's export/archive cycles. Messages carry
+ * fromClient for the future client-facing surface.
+ */
+
+export const portalGroups = pgTable("portal_groups", {
+  id: serial("id").primaryKey(),
+  /** Custom display name, e.g. "Jones Enterprise Group". */
+  name: varchar("name", { length: 191 }).notNull(),
+  notes: text("notes").notNull().default(""),
+  archived: boolean("archived").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const portalCompanies = pgTable(
+  "portal_companies",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id").notNull(),
+    name: varchar("name", { length: 191 }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ groupIdx: index("portal_companies_group_idx").on(t.groupId) }),
+);
+
+export const portalMatters = pgTable(
+  "portal_matters",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id").notNull(),
+    companyId: integer("company_id"),
+    title: varchar("title", { length: 255 }).notNull(),
+    /** Clio matter display number — the join key to time_entries.matter. */
+    clioMatter: text("clio_matter").notNull().default(""),
+    /** transactional | pre-litigation | litigation */
+    posture: varchar("posture", { length: 16 }).notNull().default("transactional"),
+    /** open | closed */
+    status: varchar("status", { length: 8 }).notNull().default("open"),
+    /** Linked exhibit-reviewer set (created on first exhibit upload). */
+    exhibitSetId: integer("exhibit_set_id"),
+    /** Linked share folder, when one exists for this matter. */
+    shareFolderId: integer("share_folder_id"),
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ groupIdx: index("portal_matters_group_idx").on(t.groupId) }),
+);
+
+export const portalTasks = pgTable(
+  "portal_tasks",
+  {
+    id: serial("id").primaryKey(),
+    matterId: integer("matter_id").notNull(),
+    /** client (for the client to do) | firm (the attorney's checklist). */
+    kind: varchar("kind", { length: 8 }).notNull().default("firm"),
+    title: text("title").notNull(),
+    done: boolean("done").notNull().default(false),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ matterIdx: index("portal_tasks_matter_idx").on(t.matterId) }),
+);
+
+export const portalMessages = pgTable(
+  "portal_messages",
+  {
+    id: serial("id").primaryKey(),
+    matterId: integer("matter_id").notNull(),
+    author: varchar("author", { length: 255 }).notNull().default(""),
+    /** For the future client-facing surface. */
+    fromClient: boolean("from_client").notNull().default(false),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ matterIdx: index("portal_messages_matter_idx").on(t.matterId) }),
+);
+
+export const portalDocs = pgTable(
+  "portal_docs",
+  {
+    id: serial("id").primaryKey(),
+    matterId: integer("matter_id").notNull(),
+    /** client | pleading | discovery | exhibit */
+    tab: varchar("tab", { length: 16 }).notNull().default("client"),
+    /** For exhibits: plaintiff | defendant | joint | intervenor | third-party.
+     *  Wider than the reviewer's three sides on purpose — future party types
+     *  live here even before the reviewer UI grows to match. */
+    party: varchar("party", { length: 24 }).notNull().default(""),
+    name: varchar("name", { length: 255 }).notNull(),
+    url: text("url").notNull(),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    /** When an exhibit was pushed into the exhibit reviewer, its doc id there. */
+    exhibitDocId: integer("exhibit_doc_id"),
+    uploadedBy: varchar("uploaded_by", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ matterIdx: index("portal_docs_matter_idx").on(t.matterId) }),
+);
+
+export type PortalGroup = typeof portalGroups.$inferSelect;
+export type PortalMatter = typeof portalMatters.$inferSelect;

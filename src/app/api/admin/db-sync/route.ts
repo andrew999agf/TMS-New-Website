@@ -531,6 +531,74 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS assistant_messages_thread_idx ON assistant_messages (thread_id)`,
+  // Case Portal: enterprise groups -> companies -> matters with tasks,
+  // correspondence, and documents; matters link out to the exhibit reviewer,
+  // share folders, and Clio time via the matter display number.
+  `CREATE TABLE IF NOT EXISTS portal_groups (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL,
+    notes text NOT NULL DEFAULT '',
+    archived boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS portal_companies (
+    id serial PRIMARY KEY,
+    group_id integer NOT NULL,
+    name varchar(191) NOT NULL,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_companies_group_idx ON portal_companies (group_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_matters (
+    id serial PRIMARY KEY,
+    group_id integer NOT NULL,
+    company_id integer,
+    title varchar(255) NOT NULL,
+    clio_matter text NOT NULL DEFAULT '',
+    posture varchar(16) NOT NULL DEFAULT 'transactional',
+    status varchar(8) NOT NULL DEFAULT 'open',
+    exhibit_set_id integer,
+    share_folder_id integer,
+    notes text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_matters_group_idx ON portal_matters (group_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_tasks (
+    id serial PRIMARY KEY,
+    matter_id integer NOT NULL,
+    kind varchar(8) NOT NULL DEFAULT 'firm',
+    title text NOT NULL,
+    done boolean NOT NULL DEFAULT false,
+    done_at timestamptz,
+    sort integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_tasks_matter_idx ON portal_tasks (matter_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_messages (
+    id serial PRIMARY KEY,
+    matter_id integer NOT NULL,
+    author varchar(255) NOT NULL DEFAULT '',
+    from_client boolean NOT NULL DEFAULT false,
+    body text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_messages_matter_idx ON portal_messages (matter_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_docs (
+    id serial PRIMARY KEY,
+    matter_id integer NOT NULL,
+    tab varchar(16) NOT NULL DEFAULT 'client',
+    party varchar(24) NOT NULL DEFAULT '',
+    name varchar(255) NOT NULL,
+    url text NOT NULL,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    exhibit_doc_id integer,
+    uploaded_by varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_docs_matter_idx ON portal_docs (matter_id)`,
 ];
 
 export async function POST() {

@@ -86,6 +86,7 @@ const CASE_TOOLS = [
   { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
   { label: "Pre-Trial Checklist", href: "/admin/pre-trial", icon: CalendarClock },
   { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
+  { label: "Case Portal", href: "/admin/case-portal", icon: Briefcase },
   { label: "Assistant", href: "/admin/assistant", icon: Bot },
 ];
 
