@@ -104,19 +104,17 @@ export default async function SettingsPage() {
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Refresh site text</h2>
           <p className="text-sm text-[var(--c-ink-muted)] mb-4">
             Pull the latest wording, results, counties, glossary, and team bios into the live site.
-            <strong> Your uploaded logos, photos, banners, and badges are kept.</strong> Note: this
-            overwrites text you may have hand-edited here with the latest version.
+            <strong> Your uploaded logos, photos, banners, badges, and the Make a Payment link are kept.</strong>{" "}
+            Note: this overwrites text you may have hand-edited here with the latest version.
           </p>
           <ContentRefreshButton />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
-          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Appearance &amp; Payment</h2>
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Appearance</h2>
           <p className="text-sm text-[var(--c-ink-muted)]">
             Theme (colors + fonts) is managed in{" "}
-            <Link href="/admin/appearance" className="text-[var(--c-accent)]">Appearance</Link>. The
-            Clio payment link is edited in{" "}
-            <Link href="/admin/pages/payment" className="text-[var(--c-accent)]">Pages → Payment</Link>.
+            <Link href="/admin/appearance" className="text-[var(--c-accent)]">Appearance</Link>.
           </p>
         </section>
 

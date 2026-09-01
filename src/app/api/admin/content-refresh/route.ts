@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { contentBlocks, caseResults, practiceAreas, glossaryTerms, teamMembers, blogPosts } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { CONTENT_BLOCKS } from "@/lib/content/defaults/blocks";
+import { CONTENT_BLOCKS, OPERATOR_BLOCK_KEYS } from "@/lib/content/defaults/blocks";
 import { PRACTICE_AREAS } from "@/lib/content/defaults/practice-areas";
 import { CASE_RESULTS } from "@/lib/content/defaults/results";
 import { GLOSSARY_TERMS } from "@/lib/content/defaults/glossary";
@@ -29,10 +29,12 @@ export async function POST() {
 
   try {
     // 1) Content blocks — text only (skip image/video/focal so uploads and
-    //    chosen banner crop positions are kept).
+    //    chosen banner crop positions are kept, and skip operator-owned
+    //    settings like the Clio payment link so a refresh never reverts them).
     let blockCount = 0;
     for (const b of CONTENT_BLOCKS) {
       if (b.type === "image" || b.type === "video" || b.type === "focal") continue;
+      if (OPERATOR_BLOCK_KEYS.has(b.key)) continue;
       await db
         .insert(contentBlocks)
         .values({ key: b.key, page: b.page, section: b.section, label: b.label, type: b.type, value: b.value })

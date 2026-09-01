@@ -137,3 +137,11 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
 export const BLOCK_DEFAULTS: Record<string, string> = Object.fromEntries(
   CONTENT_BLOCKS.map((b) => [b.key, b.value]),
 );
+
+/**
+ * Operator-owned blocks: values the office sets once (account links, etc.),
+ * as opposed to site copy. "Refresh site text" and re-seeding must never
+ * overwrite these, and they are edited in Settings only — not in the
+ * per-page content editors.
+ */
+export const OPERATOR_BLOCK_KEYS = new Set<string>(["payment.url"]);

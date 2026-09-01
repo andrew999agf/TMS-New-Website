@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import bcrypt from "bcryptjs";
 import * as schema from "../schema";
-import { CONTENT_BLOCKS } from "@/lib/content/defaults/blocks";
+import { CONTENT_BLOCKS, OPERATOR_BLOCK_KEYS } from "@/lib/content/defaults/blocks";
 import { PRACTICE_AREAS } from "@/lib/content/defaults/practice-areas";
 import { CASE_RESULTS } from "@/lib/content/defaults/results";
 import { GLOSSARY_TERMS } from "@/lib/content/defaults/glossary";
@@ -31,20 +31,24 @@ async function main() {
 
   console.log("Seeding content blocks…");
   for (const b of CONTENT_BLOCKS) {
-    await db
-      .insert(schema.contentBlocks)
-      .values({
-        key: b.key,
-        page: b.page,
-        section: b.section,
-        label: b.label,
-        type: b.type,
-        value: b.value,
-      })
-      .onConflictDoUpdate({
+    const insert = db.insert(schema.contentBlocks).values({
+      key: b.key,
+      page: b.page,
+      section: b.section,
+      label: b.label,
+      type: b.type,
+      value: b.value,
+    });
+    // Operator-owned settings (e.g. the Clio payment link) are seeded only if
+    // absent — re-running the seed must not revert a value the office set.
+    if (OPERATOR_BLOCK_KEYS.has(b.key)) {
+      await insert.onConflictDoNothing({ target: schema.contentBlocks.key });
+    } else {
+      await insert.onConflictDoUpdate({
         target: schema.contentBlocks.key,
         set: { label: b.label, type: b.type, value: b.value },
       });
+    }
   }
 
   console.log("Seeding practice areas…");
