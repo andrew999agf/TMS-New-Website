@@ -147,7 +147,7 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
     setTform((f) => ({ ...f, notes: "", nonBillable: false }));
     resetTimer();
   }
-  function addManualEntry() {
+  function addManualEntry(keepForm = false) {
     const hours = parseFloat(manual.hours);
     if (!manual.matter || !hours) { alert("Please fill in Matter/Client and Hours fields"); return; }
     if (!manual.date) { alert("Please select a date"); return; }
@@ -158,6 +158,9 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
       price: fix(rate, 2), quantity: fix(Math.ceil(hours * 10) / 10, 1), activityUserName: manual.user, nonBillable: manual.nonBillable,
     };
     run(() => addTimeEntry(input));
+    // "Add & Duplicate Another" keeps the whole form — date, case, category,
+    // hours, rate, notes — so back-dated entries don't have to be retyped.
+    if (keepForm) { note("Entry added — details kept for the next one"); return; }
     setManual((f) => ({ ...f, notes: "", nonBillable: false, hours: "", date: todayISO() }));
   }
 
@@ -302,7 +305,10 @@ export function TimeTracker({ entries, activityUsers, categories, matters, me, o
                 <Field label="Notes"><textarea rows={3} placeholder="Additional notes…" className={input} value={manual.notes} onChange={(e) => setManual((f) => ({ ...f, notes: e.target.value }))} /></Field>
                 <label className="flex items-center gap-2 text-sm p-2.5 cursor-pointer"><input type="checkbox" className="accent-[var(--c-accent)]" checked={manual.nonBillable} onChange={(e) => setManual((f) => ({ ...f, nonBillable: e.target.checked }))} /> Non-Billable</label>
               </div>
-              <button onClick={addManualEntry} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50">Add Manual Entry</button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => addManualEntry()} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50">Add Manual Entry</button>
+                <button onClick={() => addManualEntry(true)} disabled={pending} title="Adds this entry and keeps the date, case, category, hours, rate, and notes filled in for the next one" className="btn btn-outline text-sm disabled:opacity-50"><Copy size={15} /> Add &amp; Duplicate Another</button>
+              </div>
             </section>
           ) : (
             <section className="rounded-lg border border-[var(--c-border)] border-l-4 border-l-[var(--c-accent)] bg-[var(--c-surface)] p-6 mb-6 space-y-4">
