@@ -9,6 +9,7 @@ import {
   rankBranches,
   branchForPractice,
   COMMON_STEPS,
+  LEAD_STEP_IDS,
   condMet,
   condMetAll,
   ESTATE_DEPTH,
@@ -40,6 +41,16 @@ function formatPhone(input: string): string {
 
 /** The name portion of a "Full name — DOB" style entry (strips a trailing date). */
 const nameOnly = (s: string): string => String(s).replace(/\s*[—–-]\s*\d.*$/, "").replace(/,\s*\d.*$/, "").trim();
+
+/** Fill "{{county}}" in a field label with the county the visitor gave in the
+ *  contact step ("Tarrant" → "Tarrant County"), so the location check reads
+ *  "Did this happen in Tarrant County?" */
+function substCounty(f: Field, answers: Answers): Field {
+  if (!f.label.includes("{{county}}")) return f;
+  const raw = String(answers.county ?? "").trim().replace(/,.*$/, "");
+  const county = raw ? (/county/i.test(raw) ? raw : `${raw} County`) : "your home county";
+  return { ...f, label: f.label.replaceAll("{{county}}", county) };
+}
 
 /** Every distinct person already entered anywhere in the flow — for autocomplete. */
 function collectPeople(answers: Answers): Person[] {
@@ -196,9 +207,19 @@ export function IntakeWizard({
 
   // Conditional steps: a step is shown only when its showIf condition holds
   // (e.g. ask for trustee details only if the visitor checked a trust).
-  const allSteps: Step[] = branch
-    ? [...branch.steps, ...COMMON_STEPS.map((s) => branch.commonOverrides?.[s.id] ?? s)]
-    : [];
+  // Contact info (and the where-did-it-happen check) run FIRST, then the
+  // branch's own questions, then the remaining shared steps.
+  const allSteps: Step[] = (() => {
+    if (!branch) return [];
+    const common = COMMON_STEPS
+      .map((s) => branch.commonOverrides?.[s.id] ?? s)
+      .filter((s) => !s.skipForBranches?.includes(branch.id));
+    return [
+      ...common.filter((s) => LEAD_STEP_IDS.has(s.id)),
+      ...branch.steps,
+      ...common.filter((s) => !LEAD_STEP_IDS.has(s.id)),
+    ];
+  })();
   const steps: Step[] = allSteps.filter((s) => condMet(s.showIf, answers) && condMetAll(s.requireIf, answers));
   const totalSteps = steps.length;
   // Selections can change which steps exist; never index past the end.
@@ -246,6 +267,11 @@ export function IntakeWizard({
       if (!f.required) return true;
       const v = answers[f.name];
       if (f.type === "party") return asPeople(v).some((p) => p.name.trim());
+      // A required address needs its real parts — the object itself is always truthy.
+      if (f.type === "address") {
+        const a = (v && typeof v === "object" ? v : {}) as Address;
+        return Boolean(String(a.street ?? "").trim() && String(a.city ?? "").trim() && String(a.zip ?? "").trim());
+      }
       if (Array.isArray(v)) return v.length > 0;
       return Boolean(v && String(v).trim());
     });
@@ -443,7 +469,7 @@ export function IntakeWizard({
           <div key={f.name}>
             {f.guidance && <GuidanceNote text={f.guidance} />}
             <FieldInput
-              field={f}
+              field={substCounty(f, answers)}
               value={answers[f.name]}
               onChange={(v) => setField(f.name, v)}
               consentText={f.name === "consent" ? consentText : undefined}

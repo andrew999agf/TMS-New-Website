@@ -24,7 +24,7 @@ export default async function ShareFoldersPage() {
       // Select only the columns the list needs, so newer columns that haven't
       // been created yet (before a Database Sync) can't make the list go blank.
       const rows = await db
-        .select({ id: shareFolders.id, caseNumber: shareFolders.caseNumber, name: shareFolders.name, matter: shareFolders.matter, court: shareFolders.court, type: shareFolders.type, archived: shareFolders.archived, updatedAt: shareFolders.updatedAt })
+        .select({ id: shareFolders.id, caseNumber: shareFolders.caseNumber, name: shareFolders.name, matter: shareFolders.matter, court: shareFolders.court, county: shareFolders.county, plaintiff: shareFolders.plaintiff, defendant: shareFolders.defendant, type: shareFolders.type, archived: shareFolders.archived, updatedAt: shareFolders.updatedAt })
         .from(shareFolders)
         .orderBy(desc(shareFolders.updatedAt));
       const fc = await db.select({ fid: shareFiles.folderId, n: sql<number>`count(*)::int` }).from(shareFiles).groupBy(shareFiles.folderId);
@@ -41,6 +41,9 @@ export default async function ShareFoldersPage() {
         name: f.name,
         matter: f.matter,
         court: f.court,
+        county: f.county ?? "",
+        plaintiff: f.plaintiff ?? "",
+        defendant: f.defendant ?? "",
         type: f.type,
         archived: f.archived,
         updatedAt: f.updatedAt.toISOString(),

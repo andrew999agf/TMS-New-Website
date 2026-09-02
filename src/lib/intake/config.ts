@@ -95,6 +95,9 @@ export type Step = {
   showIf?: Condition | Condition[];
   /** ALL of these must also hold (AND) — combined with showIf's OR list. */
   requireIf?: Condition | Condition[];
+  /** Branch ids this shared step is dropped from entirely (e.g. estate
+   *  planning has no "where did it happen"). */
+  skipForBranches?: string[];
 };
 
 /**
@@ -192,22 +195,83 @@ const amountField = (guidance?: string): Field => ({
   ...(guidance ? { guidance } : {}),
 });
 
-/** Steps appended to every branch before submission. */
+/* Conditions for the contact step's progressive disclosure: pick personal vs.
+ * business first, then the rest of the contact fields appear (with wording that
+ * matches the choice). */
+const IS_BIZ: Condition = { field: "forBusiness", equals: "For a business" };
+const CHOSE: Condition = { field: "forBusiness" }; // either option picked
+
+/**
+ * Shared steps for every branch. The wizard shows "contact" and "location"
+ * FIRST (before the branch's own questions) — we always get the person's full
+ * name, address, phone, and email up front — and the rest after the branch
+ * steps. See LEAD_STEP_IDS.
+ */
 export const COMMON_STEPS: Step[] = [
   {
     id: "contact",
-    title: "How can we reach you?",
+    title: "First, tell us about you",
+    subtitle: "Your contact details come first so we know who we're talking with and can check our records.",
     fields: [
-      { name: "name", label: "Full name", type: "text", required: true },
-      { name: "phone", label: "Phone", type: "tel", required: true },
-      { name: "email", label: "Email", type: "email", required: true },
+      {
+        name: "forBusiness",
+        label: "Is this for you personally, or for a business?",
+        type: "radio",
+        options: ["For me personally", "For a business"],
+        required: true,
+      },
+      { name: "businessName", label: "Business name", type: "text", required: true, showIf: IS_BIZ },
+      {
+        name: "businessRole",
+        label: "Are you the owner, or a representative of the company?",
+        type: "radio",
+        options: ["Owner", "Representative of the company"],
+        required: true,
+        showIf: IS_BIZ,
+      },
+      {
+        name: "name", label: "Your full name", type: "text", required: true, showIf: CHOSE,
+        help: "For a business inquiry, you'll be our point of contact.",
+      },
+      { name: "phone", label: "Phone", type: "tel", required: true, showIf: CHOSE },
+      { name: "email", label: "Email", type: "email", required: true, showIf: CHOSE },
+      {
+        name: "address", label: "Mailing address", type: "address", required: true, showIf: CHOSE,
+        help: "For a business, use the business's address.",
+      },
+      {
+        name: "county", label: "Your county", type: "text", required: true, placeholder: "e.g., Tarrant", showIf: CHOSE,
+        help: "The county where you live — or, for a business, the county of its main office.",
+      },
       {
         name: "preferredContact",
         label: "Preferred contact method",
         type: "radio",
         options: ["Telephone", "Email"],
+        showIf: CHOSE,
       },
-      { name: "county", label: "Your county or city", type: "text" },
+    ],
+  },
+  {
+    id: "location",
+    title: "Where did this happen?",
+    skipForBranches: ["estate"],
+    fields: [
+      {
+        name: "incidentInHomeCounty",
+        label: "Did this happen in {{county}}?",
+        type: "yesno",
+        required: true,
+        help: "“This” meaning the incident, dispute, deal, or matter you're contacting us about. If it spans several places, answer for where the most important part happened.",
+      },
+      {
+        name: "incidentLocation",
+        label: "Where did it happen?",
+        type: "text",
+        required: true,
+        placeholder: "County and city — e.g., Dallas County, near Mesquite",
+        showIf: { field: "incidentInHomeCounty", equals: "No" },
+      },
     ],
   },
   {
@@ -315,6 +379,9 @@ export const COMMON_STEPS: Step[] = [
     ],
   },
 ];
+
+/** The shared steps the wizard runs BEFORE the branch's own questions. */
+export const LEAD_STEP_IDS = new Set(["contact", "location"]);
 
 /**
  * Reusable replacements for the shared conflict/urgency steps, for matters where
