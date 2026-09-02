@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarClock, Check, Download, Printer } from "lucide-react";
-import { getPunchRange, savePayrollSchedule, type RangePunch } from "@/app/admin/(panel)/timeclock/actions";
-import type { PayrollSchedule } from "@/app/admin/(panel)/timeclock/payroll";
+import { CalendarClock, Check, Download, Printer, Save } from "lucide-react";
+import { getPunchRange, savePayrollSchedule, savePayrollPeriod, type RangePunch } from "@/app/admin/(panel)/timeclock/actions";
+import type { PayrollSchedule, PayrollPeriod } from "@/app/admin/(panel)/timeclock/payroll";
 
 const IN = "border border-[var(--c-border)] bg-[var(--c-bg)] rounded px-2 py-1.5 text-xs";
 const CT = "America/Chicago";
@@ -132,17 +132,35 @@ const hoursOf = (p: RangePunch) => (p.clockOut ? Math.max(0, (new Date(p.clockOu
 const csvCell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function TimeClockReportCard({ people }: { people: { id: number; name: string }[] }) {
+export function TimeClockReportCard({ people, period = null }: { people: { id: number; name: string }[]; period?: PayrollPeriod | null }) {
   const today = new Date();
   const twoWeeksAgo = new Date(today.getTime() - 13 * dayMs);
-  const [from, setFrom] = useState(toIso(twoWeeksAgo));
-  const [to, setTo] = useState(toIso(today));
+  // The report opens on the current payroll period (the saved range, rolled
+  // forward two weeks at a time as periods end); last two weeks until one is saved.
+  const [from, setFrom] = useState(period?.from ?? toIso(twoWeeksAgo));
+  const [to, setTo] = useState(period?.through ?? toIso(today));
+  const [savedPeriod, setSavedPeriod] = useState<PayrollPeriod | null>(period);
   const [mode, setMode] = useState<PeopleMode>("with-hours");
   const [selected, setSelected] = useState<number[]>(people.map((p) => p.id));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const label = useMemo(() => `${from} to ${to}`, [from, to]);
+  const isCurrentPeriod = savedPeriod != null && from === savedPeriod.from && to === savedPeriod.through;
+
+  function savePeriod() {
+    setError(null);
+    start(async () => {
+      try {
+        const res = await savePayrollPeriod({ from, through: to });
+        if (!res.ok) setError(res.error ?? "Couldn't save the period.");
+        else setSavedPeriod({ from, through: to });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Save didn't go through (${msg.slice(0, 140)}). Refresh this page and try again.`);
+      }
+    });
+  }
 
   /** Fetch, filter by the people mode, and group per person. */
   async function collect(): Promise<{ name: string; rows: RangePunch[]; total: number }[] | null> {
@@ -258,7 +276,16 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
 
   return (
     <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-      <p className="mb-2 text-sm font-semibold">Payroll report</p>
+      <p className="mb-1 text-sm font-semibold">Payroll report</p>
+      <p className="mb-2 text-xs text-[var(--c-ink-muted)]">
+        {isCurrentPeriod ? (
+          <>Showing the <strong className="text-[var(--c-ink)]">current payroll period</strong> — when it ends, the range moves to the next two weeks on its own.</>
+        ) : savedPeriod ? (
+          <>Current payroll period: {savedPeriod.from} through {savedPeriod.through}. The dates below differ — save them to make this the payroll period.</>
+        ) : (
+          <>No payroll period saved yet — set From/Through to the current two-week period and hit &quot;Save as payroll period.&quot;</>
+        )}
+      </p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs">
           <span className="mb-1 block text-[var(--c-ink-muted)]">From</span>
@@ -268,6 +295,11 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
           <span className="mb-1 block text-[var(--c-ink-muted)]">Through</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={IN} />
         </label>
+        {!isCurrentPeriod && (
+          <button onClick={savePeriod} disabled={pending} title="Save this From/Through as the payroll period — it advances two weeks at a time as each period ends" className="flex items-center gap-1.5 rounded border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white disabled:opacity-50">
+            <Save size={12} /> Save as payroll period
+          </button>
+        )}
         <label className="text-xs">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Include</span>
           <select value={mode} onChange={(e) => setMode(e.target.value as PeopleMode)} className={IN}>
@@ -300,7 +332,7 @@ export function TimeClockReportCard({ people }: { people: { id: number; name: st
         </div>
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-      <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Times in Central Time. Use the browser print dialog&apos;s &quot;Save as PDF&quot; for a PDF copy.</p>
+      <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">This is the report that goes to the payroll department before payroll is finalized. Times in Central Time. Use the browser print dialog&apos;s &quot;Save as PDF&quot; for a PDF copy.</p>
     </div>
   );
 }

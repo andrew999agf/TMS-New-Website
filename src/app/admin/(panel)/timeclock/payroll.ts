@@ -84,3 +84,28 @@ export function payPeriodForDeadline(cfg: PayrollSchedule, deadlineIso: string):
   const start = end - payPeriodDays(cfg.frequency) * DAY;
   return { startIso: fmtISO(start), endIso: fmtISO(end) };
 }
+
+/* ------------------------- saved payroll-report period -------------------------
+ * The office saves the current period's From/Through once; after that, whenever
+ * today moves past the saved Through, the period rolls forward in two-week
+ * steps on its own — so the Payroll Report always opens on the period that
+ * goes to the payroll department next. */
+
+export type PayrollPeriod = { from: string; through: string };
+
+export const PAYROLL_PERIOD_KEY = "timeclock.payrollPeriod";
+
+/** The saved period rolled forward (14-day steps) until it ends on/after today. */
+export function currentPayrollPeriod(saved: PayrollPeriod | null | undefined, todayIso: string): PayrollPeriod | null {
+  if (!saved || !/^\d{4}-\d{2}-\d{2}$/.test(saved.from) || !/^\d{4}-\d{2}-\d{2}$/.test(saved.through)) return null;
+  let from = parseISO(saved.from);
+  let through = parseISO(saved.through);
+  if (!Number.isFinite(from) || !Number.isFinite(through) || through < from) return null;
+  const today = parseISO(todayIso);
+  const STEP = 14 * DAY;
+  while (through < today) {
+    from += STEP;
+    through += STEP;
+  }
+  return { from: fmtISO(from), through: fmtISO(through) };
+}

@@ -2,7 +2,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { TimeClockManager, type PunchView } from "@/components/admin/TimeClockManager";
 import { PayrollScheduleCard, TimeClockReportCard } from "@/components/admin/TimeClockAdminTools";
 import { getSetting } from "@/lib/content";
-import { PAYROLL_KEY, PAYROLL_DEFAULT, type PayrollSchedule } from "./payroll";
+import { PAYROLL_KEY, PAYROLL_DEFAULT, PAYROLL_PERIOD_KEY, currentPayrollPeriod, type PayrollSchedule, type PayrollPeriod } from "./payroll";
 import { requireAdmin, isFullAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { admins, timeClockPunches } from "@/db/schema";
@@ -18,6 +18,11 @@ export default async function TimeClockPage() {
   const me = Number(session.sub);
   // Handbook default: biweekly Fridays, payroll finalized two days ahead.
   const payroll = await getSetting<PayrollSchedule>(PAYROLL_KEY, PAYROLL_DEFAULT);
+  // Saved payroll-report period, rolled forward two weeks at a time once its
+  // Through date has passed — the report card opens on this range.
+  const savedPeriod = await getSetting<PayrollPeriod | null>(PAYROLL_PERIOD_KEY, null);
+  const todayCT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const period = currentPayrollPeriod(savedPeriod, todayCT);
 
   let punches: PunchView[] = [];
   let people: { id: number; name: string }[] = [];
@@ -57,7 +62,7 @@ export default async function TimeClockPage() {
       />
       <div className="max-w-4xl space-y-4 p-8">
         {admin && <PayrollScheduleCard initial={payroll} />}
-        {admin && <TimeClockReportCard people={people} />}
+        {admin && <TimeClockReportCard people={people} period={period} />}
         <TimeClockManager punches={punches} people={people} canEdit={admin} />
       </div>
     </>

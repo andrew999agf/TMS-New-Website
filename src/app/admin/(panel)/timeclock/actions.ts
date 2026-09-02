@@ -172,7 +172,7 @@ export async function getPunchRange(fromIso: string, toIso: string): Promise<{ p
   }
 }
 
-import { PAYROLL_KEY, type PayrollSchedule } from "./payroll";
+import { PAYROLL_KEY, PAYROLL_PERIOD_KEY, type PayrollSchedule, type PayrollPeriod } from "./payroll";
 
 /** Save the firm's payroll pattern (drives the payday/deadline banner). */
 export async function savePayrollSchedule(cfg: PayrollSchedule) {
@@ -196,6 +196,33 @@ export async function savePayrollSchedule(cfg: PayrollSchedule) {
     return { ok: false as const, error: "Couldn't save — database hiccup, try again." };
   }
   await audit(session.email, "update", "timeclock", PAYROLL_KEY, `Payroll: ${cfg.frequency}, anchor ${cfg.anchorPayday}, lead ${leadDays}d`);
+  revalidatePath("/admin/timeclock");
+  return { ok: true as const };
+}
+
+/** Save the current payroll-report period. After the Through date passes, the
+ *  saved period rolls forward two weeks at a time on its own. */
+export async function savePayrollPeriod(period: PayrollPeriod) {
+  const session = await requireAdmin();
+  if (!isFullAdmin(session.role)) return { ok: false as const, error: "Admins only." };
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(period.from) || !/^\d{4}-\d{2}-\d{2}$/.test(period.through)) {
+    return { ok: false as const, error: "Pick both dates." };
+  }
+  if (period.through < period.from) return { ok: false as const, error: "Through must be on or after From." };
+  const value = { from: period.from, through: period.through };
+  try {
+    await withRetry(() =>
+      db!
+        .insert(settings)
+        .values({ key: PAYROLL_PERIOD_KEY, value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } }),
+    );
+  } catch (err) {
+    console.error("[timeclock] payroll period save failed:", err);
+    return { ok: false as const, error: "Couldn't save — database hiccup, try again." };
+  }
+  await audit(session.email, "update", "timeclock", PAYROLL_PERIOD_KEY, `Payroll period ${period.from} → ${period.through}`);
   revalidatePath("/admin/timeclock");
   return { ok: true as const };
 }
