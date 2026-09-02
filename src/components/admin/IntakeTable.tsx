@@ -275,6 +275,8 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
         <EngagementLetterDialog
           key={engageFor.id}
           intakeId={engageFor.id}
+          branch={engageFor.branch}
+          answers={engageFor.answers}
           presetName={engageFor.name ?? ""}
           presetEmail={engageFor.email ?? ""}
           presetCounty={engageFor.county ?? ""}

@@ -119,6 +119,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
           office: l.office as LetterRow["office"], side: l.side as LetterRow["side"],
           generalDescription: l.generalDescription, caseNumber: l.caseNumber, caseStyling: l.caseStyling,
           phase1Custom: l.phase1Custom, phase2Custom: l.phase2Custom,
+          phase1: l.phase1 ?? true, phase2: l.phase2 ?? true,
           fees: l.fees,
           openUntil: l.openUntil ? l.openUntil.toISOString() : null,
           status: l.status as LetterRow["status"],

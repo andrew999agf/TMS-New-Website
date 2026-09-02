@@ -2,13 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert } from "lucide-react";
+import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye } from "lucide-react";
 import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
 import {
   resolveOffice, defaultFees, defaultOpenUntil, OFFICE_INFO,
   PHASE1_STANDARD, PHASE2_STANDARD,
   type EngagementOffice, type EngagementSide,
 } from "@/lib/engagement/config";
+import { engagementPrefill } from "@/lib/intake/config";
 import type { EngagementFees } from "@/db/schema";
 
 /** Serialized engagement letter row, as the intake page ships it to the client. */
@@ -20,6 +21,7 @@ export type LetterRow = {
   office: EngagementOffice; side: EngagementSide;
   generalDescription: string; caseNumber: string; caseStyling: string;
   phase1Custom: string; phase2Custom: string;
+  phase1: boolean; phase2: boolean;
   fees: EngagementFees;
   openUntil: string | null;
   status: "draft" | "sent" | "signed" | "declined";
@@ -49,8 +51,10 @@ function Field({ label, children, className }: { label: string; children: React.
  * Somervell → Meridian, everything else → Fort Worth — and every fee default
  * follows from that choice. All figures stay editable.
  */
-export function EngagementLetterDialog({ intakeId, presetName, presetEmail, presetCounty, letters, onClose }: {
+export function EngagementLetterDialog({ intakeId, branch, answers, presetName, presetEmail, presetCounty, letters, onClose }: {
   intakeId: number;
+  branch: string;
+  answers: Record<string, unknown>;
   presetName: string;
   presetEmail: string;
   presetCounty: string;
@@ -59,38 +63,56 @@ export function EngagementLetterDialog({ intakeId, presetName, presetEmail, pres
 }) {
   const router = useRouter();
   const draft = letters.find((l) => l.status === "draft");
+  // Everything the intake already told us: side, matter description, active
+  // case details, mailing address, business name. All editable below.
+  const pre = useMemo(() => engagementPrefill(branch, answers), [branch, answers]);
+  // The office comes from the client's ADDRESS county — the one they gave in
+  // the intake — decided once, with everything else flowing from it.
   const initialOffice: EngagementOffice = draft?.office ?? resolveOffice(presetCounty);
   const openDefault = useMemo(() => defaultOpenUntil(), []);
 
   const [id, setId] = useState<number | null>(draft?.id ?? null);
   const [form, setForm] = useState(() => ({
     clientName: draft?.clientName ?? presetName,
-    businessName: draft?.businessName ?? "",
+    businessName: draft?.businessName ?? pre.businessName,
     officerTitle: draft?.officerTitle ?? "",
     andIndividually: draft?.andIndividually ?? true,
     email: draft?.email ?? presetEmail,
-    street: draft?.street ?? "",
-    city: draft?.city ?? "",
-    state: draft?.state ?? "Texas",
-    zip: draft?.zip ?? "",
+    street: draft?.street ?? pre.street,
+    city: draft?.city ?? pre.city,
+    state: draft?.state ?? pre.state,
+    zip: draft?.zip ?? pre.zip,
     county: draft?.county ?? presetCounty,
-    side: (draft?.side ?? "plaintiff") as EngagementSide,
-    generalDescription: draft?.generalDescription ?? "",
-    caseNumber: draft?.caseNumber ?? "",
-    caseStyling: draft?.caseStyling ?? "",
+    side: (draft?.side ?? pre.side ?? "plaintiff") as EngagementSide,
+    generalDescription: draft?.generalDescription ?? pre.description,
+    caseNumber: draft?.caseNumber ?? pre.caseNumber,
+    caseStyling: draft?.caseStyling ?? pre.caseStyling,
     phase1Custom: draft?.phase1Custom ?? "",
     phase2Custom: draft?.phase2Custom ?? "",
+    // An already-filed case skips the demand-letter phase by default.
+    phase1: draft?.phase1 ?? !pre.activeCase,
+    phase2: draft?.phase2 ?? true,
     openUntilDate: draft?.openUntil ? ymdCT(new Date(draft.openUntil)) : ymdCT(openDefault),
     openUntilTime: draft?.openUntil ? hmCT(new Date(draft.openUntil)) : "17:00",
   }));
   const [office, setOffice] = useState<EngagementOffice>(initialOffice);
   const [fees, setFees] = useState<EngagementFees>(draft?.fees ?? defaultFees(initialOffice));
+  const [showStandards, setShowStandards] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
 
   const set = (k: string, v: string | boolean) => { setForm((f) => ({ ...f, [k]: v })); setSaved(false); };
   const setFee = (k: keyof EngagementFees, v: string) => { setFees((f) => ({ ...f, [k]: parseFloat(v) || 0 })); setSaved(false); };
+  /** At least one phase always stays on. */
+  const togglePhase = (k: "phase1" | "phase2") => {
+    setForm((f) => {
+      const next = !f[k];
+      if (!next && !(k === "phase1" ? f.phase2 : f.phase1)) return f;
+      return { ...f, [k]: next };
+    });
+    setSaved(false);
+  };
 
   /** County typed → recompute the office, and reset fees to that office's defaults. */
   function onCounty(v: string) {
@@ -224,18 +246,66 @@ export function EngagementLetterDialog({ intakeId, presetName, presetEmail, pres
             <Field label="Case style (if filed)"><input className={input} value={form.caseStyling} onChange={(e) => set("caseStyling", e.target.value)} placeholder="Smith v. Jones" /></Field>
           </div>
 
-          {/* Phase specifics */}
+          {/* Phases — an engagement doesn't have to be demand-letter-then-lawsuit. */}
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">What does this engagement include?</div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="accent-[var(--c-accent)]" checked={form.phase1} onChange={() => togglePhase("phase1")} />
+                {form.side === "plaintiff" ? "Pre-litigation (demand letter)" : "Pre-litigation (respond to the demand)"}
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="accent-[var(--c-accent)]" checked={form.phase2} onChange={() => togglePhase("phase2")} />
+                Lawsuit
+              </label>
+            </div>
+            <p className="mt-1.5 text-[11px] text-[var(--c-ink-muted)]">
+              {form.phase1 && form.phase2
+                ? "Two phases: the letter presents Phase 1 (pre-litigation) with Phase 2 (lawsuit) as optional."
+                : "One phase: the letter drops the phase numbering and simply calls it the representation."}
+            </p>
+          </div>
+
+          {/* Case-specific scope additions, with the standard language on demand */}
           <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface-2)]/50 p-3 text-xs text-[var(--c-ink-muted)]">
             <CircleAlert size={13} className="inline mr-1 -mt-0.5 text-[var(--c-accent)]" />
-            The letter already includes the standard {form.side} language for each phase — add anything case-specific below (one item per line), or leave blank.
+            The letter already includes the standard {form.side} language — add anything case-specific below (one item per line), or leave blank.
+            <button onClick={() => setShowStandards((v) => !v)} className="ml-2 inline-flex items-center gap-1 font-medium text-[var(--c-accent)] hover:underline">
+              <Eye size={12} /> {showStandards ? "Hide the standard language" : "See what's already included"}
+            </button>
           </div>
+          {showStandards && (
+            <div className="rounded-md border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/[0.04] p-3 text-xs leading-relaxed">
+              {form.phase1 && (
+                <div>
+                  <p className="font-semibold text-[var(--c-ink)]">{form.phase1 && form.phase2 ? "Phase 1" : "Representation"} — standard {form.side} items:</p>
+                  <ul className="mt-1 list-disc pl-4 text-[var(--c-ink-muted)]">
+                    {PHASE1_STANDARD[form.side].map((b) => <li key={b}>{b};</li>)}
+                  </ul>
+                </div>
+              )}
+              {form.phase2 && (
+                <div className={form.phase1 ? "mt-2" : ""}>
+                  <p className="font-semibold text-[var(--c-ink)]">{form.phase1 ? "Phase 2" : "Representation"} — standard {form.side} items:</p>
+                  <ul className="mt-1 list-disc pl-4 text-[var(--c-ink-muted)]">
+                    {PHASE2_STANDARD[form.side].map((b) => <li key={b}>{b};</li>)}
+                  </ul>
+                </div>
+              )}
+              <p className="mt-2 text-[var(--c-ink-muted)]">Each list closes with: &ldquo;Assisting and otherwise counsel the Client regarding the matter.&rdquo;</p>
+            </div>
+          )}
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Phase 1 (demand letter) — case-specific additions">
-              <textarea rows={3} className={input} value={form.phase1Custom} onChange={(e) => set("phase1Custom", e.target.value)} placeholder={PHASE1_STANDARD[form.side][0].slice(0, 60) + "… is already included"} />
-            </Field>
-            <Field label="Phase 2 (lawsuit) — case-specific additions">
-              <textarea rows={3} className={input} value={form.phase2Custom} onChange={(e) => set("phase2Custom", e.target.value)} placeholder={PHASE2_STANDARD[form.side][0].slice(0, 60) + "… is already included"} />
-            </Field>
+            {form.phase1 && (
+              <Field label={`${form.phase1 && form.phase2 ? "Phase 1 (pre-litigation)" : "Representation"} — case-specific additions`}>
+                <textarea rows={3} className={input} value={form.phase1Custom} onChange={(e) => set("phase1Custom", e.target.value)} placeholder="One item per line — added after the standard language" />
+              </Field>
+            )}
+            {form.phase2 && (
+              <Field label={`${form.phase1 && form.phase2 ? "Phase 2 (lawsuit)" : "Representation"} — case-specific additions`}>
+                <textarea rows={3} className={input} value={form.phase2Custom} onChange={(e) => set("phase2Custom", e.target.value)} placeholder="One item per line — added after the standard language" />
+              </Field>
+            )}
           </div>
 
           {/* Fees */}
@@ -245,10 +315,14 @@ export function EngagementLetterDialog({ intakeId, presetName, presetEmail, pres
               <Field label="Attorney ($/hr)"><input type="number" step="5" className={input} value={fees.attorneyRate} onChange={(e) => setFee("attorneyRate", e.target.value)} /></Field>
               <Field label="Associates / contract ($/hr)"><input type="number" step="5" className={input} value={fees.associateRate} onChange={(e) => setFee("associateRate", e.target.value)} /></Field>
               <Field label="Staff / clerical ($/hr)"><input type="number" step="5" className={input} value={fees.staffRate} onChange={(e) => setFee("staffRate", e.target.value)} /></Field>
-              <Field label="Phase 1 retainer ($)"><input type="number" step="100" className={input} value={fees.phase1Retainer} onChange={(e) => setFee("phase1Retainer", e.target.value)} /></Field>
-              <Field label="Phase 2 litigation retainer ($)"><input type="number" step="500" className={input} value={fees.litigationRetainer} onChange={(e) => setFee("litigationRetainer", e.target.value)} /></Field>
-              <Field label="Minimum trust balance ($)"><input type="number" step="500" className={input} value={fees.minTrustBalance} onChange={(e) => setFee("minTrustBalance", e.target.value)} /></Field>
-              <Field label="Trial retainer ($)"><input type="number" step="500" className={input} value={fees.trialRetainer} onChange={(e) => setFee("trialRetainer", e.target.value)} /></Field>
+              {form.phase1 && (
+                <Field label={form.phase2 ? "Phase 1 retainer ($)" : "Initial retainer ($)"}><input type="number" step="100" className={input} value={fees.phase1Retainer} onChange={(e) => setFee("phase1Retainer", e.target.value)} /></Field>
+              )}
+              {form.phase2 && (<>
+                <Field label={form.phase1 ? "Phase 2 litigation retainer ($)" : "Litigation retainer ($)"}><input type="number" step="500" className={input} value={fees.litigationRetainer} onChange={(e) => setFee("litigationRetainer", e.target.value)} /></Field>
+                <Field label="Minimum trust balance ($)"><input type="number" step="500" className={input} value={fees.minTrustBalance} onChange={(e) => setFee("minTrustBalance", e.target.value)} /></Field>
+                <Field label="Trial retainer ($)"><input type="number" step="500" className={input} value={fees.trialRetainer} onChange={(e) => setFee("trialRetainer", e.target.value)} /></Field>
+              </>)}
             </div>
           </div>
 

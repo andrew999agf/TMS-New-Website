@@ -32,6 +32,11 @@ export type LetterData = {
   caseStyling: string;
   phase1Custom: string;
   phase2Custom: string;
+  /** Whether the engagement includes the pre-litigation phase / the lawsuit
+   *  phase. At least one must be true; a single phase renders as plain
+   *  "REPRESENTATION" with no phase numbering. */
+  phase1: boolean;
+  phase2: boolean;
   fees: EngagementFees;
   openUntil: Date | null;
 };
@@ -77,6 +82,77 @@ function dropParagraph(xml: string, token: string): string {
   return xml.slice(0, start) + xml.slice(end);
 }
 
+/** Swap the text of one uniquely-identified run. Throws if the template drifted. */
+function swapRun(xml: string, from: string, to: string): string {
+  const needle = `>${from}</w:t>`;
+  if (!xml.includes(needle)) throw new Error(`engagement template: run not found: ${from.slice(0, 40)}`);
+  return xml.replace(needle, `>${esc(to)}</w:t>`);
+}
+
+/** Remove a whole scope section: its heading paragraph, the scope-item
+ *  paragraph, and the "Assisting and otherwise counsel…" closer that follows. */
+function dropScopeSection(xml: string, headingNeedle: string, itemToken: string): string {
+  const h = xml.indexOf(headingNeedle);
+  if (h >= 0) {
+    const p = paragraphAt(xml, h);
+    xml = xml.slice(0, p.start) + xml.slice(p.end);
+  }
+  const i = xml.indexOf(itemToken);
+  if (i < 0) return xml;
+  const p = paragraphAt(xml, i);
+  let end = p.end;
+  const nextEnd = xml.indexOf("</w:p>", p.end);
+  if (nextEnd >= 0 && xml.slice(p.end, nextEnd).includes("Assisting and otherwise")) end = nextEnd + "</w:p>".length;
+  return xml.slice(0, p.start) + xml.slice(end);
+}
+
+/**
+ * Shape the letter's phase structure. Both phases keep the Phase 1 / Phase 2
+ * framing (with a defendant getting "PRE-LITIGATION" instead of "DEMAND
+ * LETTER"); a single phase drops the numbering entirely — the scope heading
+ * becomes "REPRESENTATION" and the fee paragraph opens "RETAINER:". A letter
+ * without the lawsuit phase also drops the trial-retainer paragraphs.
+ */
+function applyPhases(xml: string, d: Pick<LetterData, "phase1" | "phase2" | "side">): string {
+  const both = d.phase1 && d.phase2;
+  const defendant = d.side === "defendant";
+
+  if (d.phase1) {
+    xml = swapRun(xml, "PHASE 1: DEMAND LETTER ",
+      both ? (defendant ? "PHASE 1: PRE-LITIGATION " : "PHASE 1: DEMAND LETTER ") : "REPRESENTATION");
+    if (!both) {
+      xml = swapRun(xml, "PHASE 1:", "RETAINER:");
+      xml = swapRun(xml, "Phase 1 of this representation will require an Initial Retainer of ",
+        "This representation will require an Initial Retainer of ");
+    }
+    if (defendant) {
+      xml = xml.replace("prepare a demand letter, and correspond", "respond to any demand received, and correspond");
+    }
+  } else {
+    xml = dropScopeSection(xml, ">PHASE 1: DEMAND LETTER </w:t>", "{{PHASE1_ITEM}}");
+    xml = dropParagraph(xml, ">PHASE 1:</w:t>"); // the Phase 1 fee paragraph
+  }
+
+  if (d.phase2) {
+    if (!both) {
+      xml = swapRun(xml, "PHASE 2: LAWSUIT ", "REPRESENTATION");
+      xml = swapRun(xml, "PHASE 2 ", "RETAINER");
+      xml = swapRun(xml, "Phase 2 of this representation will require that the client bring its retainer to an amount of ",
+        "This representation will require a retainer of ");
+      // Both "(this phase is optional)" runs — the scope heading's and the fee
+      // paragraph's — go away when this is the only phase.
+      xml = xml.replaceAll(">(this phase is optional)</w:t>", "></w:t>");
+    }
+  } else {
+    xml = dropScopeSection(xml, ">PHASE 2: LAWSUIT </w:t>", "{{PHASE2_ITEM}}");
+    xml = dropParagraph(xml, ">PHASE 2 </w:t>"); // the Phase 2 fee paragraph
+    // No lawsuit phase → the trial-retainer language doesn't belong.
+    xml = dropParagraph(xml, ">TRIAL RETAINER: </w:t>");
+    xml = dropParagraph(xml, "{{TRIAL_RETAINER}}");
+  }
+  return xml;
+}
+
 /**
  * Expand a scope-item token into one cloned paragraph per bullet, keeping the
  * template paragraph's indentation/formatting. All but the last end with ";",
@@ -110,10 +186,13 @@ export function letterFileName(d: Pick<LetterData, "clientName" | "businessName"
 }
 
 export async function buildEngagementLetter(d: LetterData): Promise<Buffer> {
+  if (!d.phase1 && !d.phase2) throw new Error("engagement letter needs at least one phase");
   const zip = await JSZip.loadAsync(Buffer.from(ENGAGEMENT_TEMPLATE_B64, "base64"));
   const doc = zip.file("word/document.xml");
   if (!doc) throw new Error("engagement template: word/document.xml missing");
   let xml = await doc.async("string");
+
+  xml = applyPhases(xml, d);
 
   // RE: line — skip empty pieces so there's no "; ;" litter.
   const reTail = [
@@ -132,8 +211,8 @@ export async function buildEngagementLetter(d: LetterData): Promise<Buffer> {
   const signer1 = d.clientName.trim() + (d.businessName.trim() && d.andIndividually ? ", Individually" : "");
 
   // Phase scope items: standard language for the side + case-specific lines.
-  xml = expandItems(xml, "{{PHASE1_ITEM}}", [...PHASE1_STANDARD[d.side], ...customLines(d.phase1Custom)]);
-  xml = expandItems(xml, "{{PHASE2_ITEM}}", [...PHASE2_STANDARD[d.side], ...customLines(d.phase2Custom)]);
+  if (d.phase1) xml = expandItems(xml, "{{PHASE1_ITEM}}", [...PHASE1_STANDARD[d.side], ...customLines(d.phase1Custom)]);
+  if (d.phase2) xml = expandItems(xml, "{{PHASE2_ITEM}}", [...PHASE2_STANDARD[d.side], ...customLines(d.phase2Custom)]);
 
   const values: Record<string, string> = {
     TODAY: longDate(new Date()),

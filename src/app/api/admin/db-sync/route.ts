@@ -280,6 +280,8 @@ const DDL = [
   )`,
   `CREATE INDEX IF NOT EXISTS engagement_letters_intake_idx ON engagement_letters (intake_id)`,
   `CREATE INDEX IF NOT EXISTS engagement_letters_status_idx ON engagement_letters (status)`,
+  `ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS phase1 boolean NOT NULL DEFAULT true`,
+  `ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS phase2 boolean NOT NULL DEFAULT true`,
   `CREATE TABLE IF NOT EXISTS referral_attorneys (
     id serial PRIMARY KEY,
     name varchar(191) NOT NULL UNIQUE,

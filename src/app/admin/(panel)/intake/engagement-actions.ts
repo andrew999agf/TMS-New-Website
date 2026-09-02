@@ -27,6 +27,8 @@ export type EngagementInput = {
   caseStyling: string;
   phase1Custom: string;
   phase2Custom: string;
+  phase1: boolean;
+  phase2: boolean;
   fees: EngagementFees;
   /** Wall-clock Central time, from the dialog's date + time inputs. */
   openUntilDate: string; // YYYY-MM-DD ("" = none)
@@ -55,6 +57,7 @@ export async function saveEngagementLetter(input: EngagementInput): Promise<{ ok
   const session = await requireAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
   if (!input.clientName.trim()) return { ok: false, error: "Enter the client's name." };
+  if (!input.phase1 && !input.phase2) return { ok: false, error: "Keep at least one phase in the engagement." };
 
   const office: EngagementOffice = input.office === "meridian" ? "meridian" : "fort-worth";
   const values = {
@@ -76,6 +79,8 @@ export async function saveEngagementLetter(input: EngagementInput): Promise<{ ok
     caseStyling: input.caseStyling.trim().slice(0, 255),
     phase1Custom: input.phase1Custom.trim(),
     phase2Custom: input.phase2Custom.trim(),
+    phase1: Boolean(input.phase1),
+    phase2: Boolean(input.phase2),
     fees: cleanFees(input.fees),
     openUntil: /^\d{4}-\d{2}-\d{2}$/.test(input.openUntilDate)
       ? centralTime(input.openUntilDate, /^\d{2}:\d{2}$/.test(input.openUntilTime) ? input.openUntilTime : "17:00")

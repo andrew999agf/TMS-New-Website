@@ -22,6 +22,9 @@ import {
   type ResiduaryValue,
   type IntakeFile,
   type Address,
+  type CaseParties,
+  asCaseParties,
+  sideForIntake,
   formatAddress,
 } from "@/lib/intake/config";
 
@@ -225,7 +228,8 @@ export function IntakeWizard({
   // Selections can change which steps exist; never index past the end.
   const safeIndex = Math.min(stepIndex, Math.max(0, totalSteps - 1));
   const currentStep = steps[safeIndex];
-  const visibleFields = (step: Step) => step.fields.filter((f) => condMet(f.showIf, answers));
+  const visibleFields = (step: Step) =>
+    step.fields.filter((f) => condMet(f.showIf, answers) && !(branch && f.skipForBranches?.includes(branch.id)));
   // People entered anywhere so far — powers the in-flow autocomplete. Children,
   // spouse, and other dependents are surfaced first, since a plan usually names
   // them as the executor and beneficiaries.
@@ -468,6 +472,14 @@ export function IntakeWizard({
         {visibleFields(currentStep).map((f) => (
           <div key={f.name}>
             {f.guidance && <GuidanceNote text={f.guidance} />}
+            {f.name === "opposingParty" && branch && (
+              <OpposingSuggestion
+                answers={answers}
+                branchId={branch.id}
+                current={String(answers.opposingParty ?? "")}
+                onUse={(text) => setField("opposingParty", text)}
+              />
+            )}
             <FieldInput
               field={substCounty(f, answers)}
               value={answers[f.name]}
@@ -637,6 +649,103 @@ function FilesField({ value, onChange, max = 5 }: { value: IntakeFile[]; onChang
   );
 }
 
+/** One list of party names with an add button (and remove ×s). `allowEmpty`
+ *  keeps the list collapsed to just the add button until it's used. */
+function PartyNameList({ names, onChange, addLabel, placeholder, allowEmpty }: {
+  names: string[]; onChange: (v: string[]) => void; addLabel: string; placeholder?: string; allowEmpty?: boolean;
+}) {
+  const list = names.length || allowEmpty ? names : [""];
+  const cls = "w-full border border-[var(--c-border)] bg-[var(--c-surface)] py-2.5 px-4 focus:border-[var(--c-accent)] outline-none text-sm";
+  return (
+    <div className="space-y-2">
+      {list.map((n, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input value={n} onChange={(e) => { const next = [...list]; next[i] = e.target.value; onChange(next); }} placeholder={placeholder} className={cls} />
+          {(list.length > 1 || allowEmpty) && (
+            <button type="button" onClick={() => onChange(list.filter((_, x) => x !== i))} aria-label="Remove" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><X size={15} /></button>
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...list, ""])} className="inline-flex items-center gap-1 text-sm font-medium text-[var(--c-accent)] hover:underline">
+        <Plus size={14} /> {addLabel}
+      </button>
+    </div>
+  );
+}
+
+/** Structured case parties: plaintiffs, a "v." divider, defendants, and an
+ *  optional list of parties not aligned with either side. */
+function CasePartiesField({ value, onChange }: { value: CaseParties; onChange: (v: CaseParties) => void }) {
+  return (
+    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-3">
+      <div>
+        <p className="mb-1.5 text-sm font-semibold text-[var(--c-ink)]">Plaintiff(s)</p>
+        <PartyNameList names={value.plaintiffs} onChange={(l) => onChange({ ...value, plaintiffs: l })} addLabel="Add another plaintiff" placeholder="Name exactly as the papers show it" />
+      </div>
+      <p className="text-center font-[family-name:var(--font-display)] text-lg italic text-[var(--c-ink-muted)]">v.</p>
+      <div>
+        <p className="mb-1.5 text-sm font-semibold text-[var(--c-ink)]">Defendant(s)</p>
+        <PartyNameList names={value.defendants} onChange={(l) => onChange({ ...value, defendants: l })} addLabel="Add another defendant" placeholder="Name exactly as the papers show it" />
+      </div>
+      <div className="border-t border-[var(--c-border)] pt-3">
+        <p className="mb-1.5 text-sm text-[var(--c-ink-muted)]">Are there other parties not aligned with the plaintiff or the defendant (an intervenor or third party)?</p>
+        <PartyNameList names={value.others} onChange={(l) => onChange({ ...value, others: l })} addLabel={value.others.length ? "Add another party" : "Add an unaffiliated party"} placeholder="Name — and describe their role as best you can" allowEmpty />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * On the conflicts ("who is on the other side?") step: if the visitor already
+ * listed the case's parties, offer them — but NEVER guess. When their side is
+ * known, only the OPPOSITE side is suggested as opposing (unaffiliated parties
+ * are labeled separately); when their side is unknown, the parties are shown
+ * with their case labels rather than being called the other side.
+ */
+function OpposingSuggestion({ answers, branchId, current, onUse }: {
+  answers: Answers; branchId: string; current: string; onUse: (text: string) => void;
+}) {
+  const cp = asCaseParties(answers.caseParties);
+  const clean = (a: string[]) => a.map((s) => s.trim()).filter(Boolean);
+  const ps = clean(cp.plaintiffs);
+  const ds = clean(cp.defendants);
+  const os = clean(cp.others);
+  if (!ps.length && !ds.length && !os.length) return null;
+  const side = sideForIntake(branchId, answers);
+  let lines: string[] = [];
+  if (side) {
+    const opposing = side === "plaintiff" ? ds : ps;
+    lines = [
+      opposing.length ? `Opposing side: ${opposing.join("; ")}` : "",
+      os.length ? `Other parties (not on either side): ${os.join("; ")}` : "",
+    ].filter(Boolean);
+  } else {
+    lines = [
+      ps.length ? `Plaintiff(s): ${ps.join("; ")}` : "",
+      ds.length ? `Defendant(s): ${ds.join("; ")}` : "",
+      os.length ? `Other parties: ${os.join("; ")}` : "",
+    ].filter(Boolean);
+  }
+  if (!lines.length) return null;
+  const text = lines.join("\n");
+  if (current.trim() === text.trim()) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/[0.05] p-3.5 text-sm">
+      <p className="font-medium text-[var(--c-ink)]">
+        {side
+          ? "From the case parties you entered earlier, the other side appears to be:"
+          : "You listed these parties earlier — shown with their case labels, since you weren't sure which side you're on:"}
+      </p>
+      <p className="mt-1.5 whitespace-pre-wrap text-[var(--c-ink-muted)]">{text}</p>
+      {!current.trim() && (
+        <button type="button" onClick={() => onUse(text)} className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-[var(--c-on-accent)]">
+          <Check size={13} /> Use these names
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FieldInput({
   field,
   value,
@@ -688,6 +797,14 @@ function FieldInput({
       <div>
         {labelEl}
         <AddressField value={(value && typeof value === "object" ? value : {}) as Address} onChange={onChange} />
+      </div>
+    );
+  }
+  if (field.type === "caseParties") {
+    return (
+      <div>
+        {labelEl}
+        <CasePartiesField value={asCaseParties(value)} onChange={onChange} />
       </div>
     );
   }

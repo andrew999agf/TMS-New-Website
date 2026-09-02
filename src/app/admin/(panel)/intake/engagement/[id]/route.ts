@@ -40,6 +40,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     caseStyling: letter.caseStyling,
     phase1Custom: letter.phase1Custom,
     phase2Custom: letter.phase2Custom,
+    phase1: letter.phase1,
+    phase2: letter.phase2,
     fees: letter.fees,
     openUntil: letter.openUntil,
   });

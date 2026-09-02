@@ -31,6 +31,9 @@ export type FieldType =
   | "residuary"
   /** Drag-and-drop document upload (court papers etc.); value is IntakeFile[]. */
   | "files"
+  /** The parties on a filed case: plaintiffs "v." defendants, plus parties not
+   *  aligned with either side; value is a CaseParties object. */
+  | "caseParties"
   /** Not an input: a prominent inline panel (label = heading, help = body).
    *  With `blocking: true` it also stops the flow while visible — used to
    *  decline matter types the firm does not accept. */
@@ -41,6 +44,27 @@ export type IntakeFile = { name: string; url: string; size?: number };
 
 /** A mailing address captured as separate parts. */
 export type Address = { street?: string; city?: string; state?: string; zip?: string };
+
+/** The parties on a filed case, exactly as the style lists them. `others` are
+ *  parties not aligned with either side (intervenors, third parties…). */
+export type CaseParties = { plaintiffs: string[]; defendants: string[]; others: string[] };
+
+export function asCaseParties(v: unknown): CaseParties {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<CaseParties>;
+  const arr = (x: unknown) => (Array.isArray(x) ? x.map((s) => String(s)) : []);
+  return { plaintiffs: arr(o.plaintiffs), defendants: arr(o.defendants), others: arr(o.others) };
+}
+
+const cleanNames = (a: string[]) => a.map((s) => s.trim()).filter(Boolean);
+
+/** "A, B v. C" — the case style from the parties entered. */
+export function formatCaseStyle(v: unknown): string {
+  const p = asCaseParties(v);
+  const ps = cleanNames(p.plaintiffs);
+  const ds = cleanNames(p.defendants);
+  if (!ps.length && !ds.length) return "";
+  return `${ps.join(", ") || "________"} v. ${ds.join(", ") || "________"}`;
+}
 
 /** Format an address (object or legacy string) as "Street, City, ST ZIP". */
 export function formatAddress(a?: Address | string | null): string {
@@ -84,6 +108,9 @@ export type Field = {
   max?: number;
   /** Show this field only when the condition(s) are met (array = OR). */
   showIf?: Condition | Condition[];
+  /** Branch ids this shared field is dropped from (e.g. don't ask which side
+   *  they're on when the branch already says — "I'm being sued" = defendant). */
+  skipForBranches?: string[];
 };
 
 export type Step = {
@@ -275,6 +302,65 @@ export const COMMON_STEPS: Step[] = [
     ],
   },
   {
+    id: "case",
+    title: "Is there a case in court yet?",
+    // Estate planning has no case; criminal and appeals have their own
+    // case/court questions written for those matters.
+    skipForBranches: ["estate", "criminal", "appeal"],
+    fields: [
+      {
+        name: "partySide",
+        label: "Are you (or would you be) the plaintiff or the defendant?",
+        type: "radio",
+        options: ["Plaintiff", "Defendant", "Not sure"],
+        // These branches already say which side the visitor is on.
+        skipForBranches: ["sued", "sue", "injured", "wreck-pd", "creditor"],
+        defs: [
+          { term: "plaintiff", title: "Plaintiff", body: "The party who files the lawsuit and brings the claim — the one asking the court for something." },
+          { term: "defendant", title: "Defendant", body: "The party the lawsuit is filed against — the one defending against the claim." },
+        ],
+      },
+      {
+        name: "activeCase",
+        label: "Is there an active case already filed in court?",
+        type: "radio",
+        options: ["Yes", "No", "Not sure"],
+        required: true,
+      },
+      {
+        name: "caseNumber",
+        label: "Case / cause number",
+        type: "text",
+        placeholder: "e.g., 141-350557-24",
+        help: "Near the top of the first page of the court papers, after “Cause No.” or “Case No.” Leave blank if you don't have the papers handy.",
+        showIf: { field: "activeCase", equals: "Yes" },
+      },
+      {
+        name: "caseCounty",
+        label: "What county is the case in?",
+        type: "text",
+        placeholder: "e.g., Tarrant",
+        showIf: { field: "activeCase", equals: "Yes" },
+      },
+      {
+        name: "court",
+        label: "Which court? (named on the papers)",
+        type: "text",
+        placeholder: "e.g., 141st District Court, Tarrant County",
+        help: COURT_HELP,
+        showIf: { field: "activeCase", equals: "Yes" },
+      },
+      {
+        name: "caseParties",
+        label: "Who are the parties on the case?",
+        type: "caseParties",
+        showIf: { field: "activeCase", equals: "Yes" },
+        guidance:
+          "Every case has a “style” — the party names at the top of the court papers, like “John Smith v. Acme Corp.” The plaintiff(s) filed the case; the defendant(s) are who it was filed against. Copy each name the way the papers show it, and add every party listed — including yourself or your business.",
+      },
+    ],
+  },
+  {
     id: "conflict",
     title: "Who is on the other side?",
     subtitle:
@@ -381,7 +467,77 @@ export const COMMON_STEPS: Step[] = [
 ];
 
 /** The shared steps the wizard runs BEFORE the branch's own questions. */
-export const LEAD_STEP_IDS = new Set(["contact", "location"]);
+export const LEAD_STEP_IDS = new Set(["contact", "location", "case"]);
+
+/**
+ * Which side of the "v." a branch's visitor is on, where the branch itself
+ * says so ("I'm being sued" = defendant). Branches not listed are ambiguous
+ * and the case step asks. Used to default the engagement letter's side and to
+ * keep the conflicts suggestion from ever labeling the client's own side as
+ * the opposing party.
+ */
+export const BRANCH_SIDE: Record<string, "plaintiff" | "defendant"> = {
+  sued: "defendant",
+  sue: "plaintiff",
+  injured: "plaintiff",
+  "wreck-pd": "plaintiff",
+  criminal: "defendant",
+  creditor: "defendant",
+};
+
+/** Client's side for a submission: their explicit answer first, else the branch. */
+export function sideForIntake(branchId: string, answers: Record<string, unknown>): "plaintiff" | "defendant" | null {
+  const a = String(answers.partySide ?? "").toLowerCase();
+  if (a === "plaintiff" || a === "defendant") return a;
+  return BRANCH_SIDE[branchId] ?? null;
+}
+
+/** Everything an engagement letter can prefill from an intake submission. */
+export type EngagementPrefill = {
+  side: "plaintiff" | "defendant" | null;
+  description: string;
+  activeCase: boolean;
+  caseNumber: string;
+  caseCounty: string;
+  caseStyling: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  businessName: string;
+};
+
+export function engagementPrefill(branchId: string, answers: Record<string, unknown>): EngagementPrefill {
+  const addr = (answers.address && typeof answers.address === "object" ? answers.address : {}) as Address;
+  const activeCase = answers.activeCase === "Yes";
+  return {
+    side: sideForIntake(branchId, answers),
+    description: BRANCH_MATTER_DESCRIPTION[branchId] ?? "",
+    activeCase,
+    caseNumber: activeCase ? String(answers.caseNumber ?? "").trim() : "",
+    caseCounty: activeCase ? String(answers.caseCounty ?? "").trim() : "",
+    caseStyling: activeCase ? formatCaseStyle(answers.caseParties) : "",
+    street: String(addr.street ?? "").trim(),
+    city: String(addr.city ?? "").trim(),
+    state: String(addr.state ?? "").trim() || "Texas",
+    zip: String(addr.zip ?? "").trim(),
+    businessName: answers.forBusiness === "For a business" ? String(answers.businessName ?? "").trim() : "",
+  };
+}
+
+/** Default engagement-letter "general description" per branch (editable). */
+export const BRANCH_MATTER_DESCRIPTION: Record<string, string> = {
+  sued: "Defense of a civil lawsuit",
+  sue: "Civil claim — breach of contract / money owed",
+  injured: "Personal injury claim",
+  "wreck-pd": "Vehicle property-damage claim",
+  criminal: "Criminal defense",
+  probate: "Probate matter",
+  business: "Business matter",
+  creditor: "Defense of a creditor action",
+  appeal: "Appeal",
+  estate: "Estate planning",
+};
 
 /**
  * Reusable replacements for the shared conflict/urgency steps, for matters where
@@ -534,7 +690,7 @@ export const BRANCHES: Branch[] = [
           { ...amountField(), label: "Approximate amount in controversy (claimed against you)" },
           { name: "served", label: "Have you been served with papers?", type: "yesno" },
           { name: "servedWhen", label: "If served, when?", type: "date" },
-          { name: "court", label: "Which court? (named on the papers)", type: "text", placeholder: "e.g., County Court at Law No. 2, Tarrant County", help: COURT_HELP },
+          // Court/case number/parties are collected up front in the shared "case" step.
         ],
       },
     ],
@@ -602,7 +758,6 @@ export const BRANCHES: Branch[] = [
             ],
           },
           { name: "documents", label: "Do key documents exist (contracts, emails)?", type: "yesno" },
-          { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
           {
             name: "timeline",
             label: "Brief timeline of events",
@@ -656,7 +811,6 @@ export const BRANCHES: Branch[] = [
           { name: "yourInsurer", label: "Have you spoken to any insurer yet?", type: "yesno" },
           { name: "otherInsurer", label: "Do you know the other side's insurer?", type: "text" },
           amountField("Injury cases are hard to value early — before treatment is complete. Just give your rough sense of the harm, or choose “Not sure.”"),
-          { name: "court", label: "If a lawsuit has already been filed, which court?", type: "text", placeholder: "e.g., 141st District Court, Tarrant County", help: COURT_HELP },
         ],
       },
     ],
@@ -1509,6 +1663,15 @@ export function formatAnswerValue(v: unknown): string {
     return [p?.name?.trim(), p?.phone?.trim(), addr].filter(Boolean).join(" — ");
   };
   const fmtObj = (o: Record<string, unknown>): string => {
+    if ("plaintiffs" in o || "defendants" in o) {
+      const cp = asCaseParties(o);
+      const parts = [
+        cp.plaintiffs.filter((s) => s.trim()).length ? `Plaintiff(s): ${cp.plaintiffs.filter((s) => s.trim()).join("; ")}` : "",
+        cp.defendants.filter((s) => s.trim()).length ? `Defendant(s): ${cp.defendants.filter((s) => s.trim()).join("; ")}` : "",
+        cp.others.filter((s) => s.trim()).length ? `Other parties: ${cp.others.filter((s) => s.trim()).join("; ")}` : "",
+      ].filter(Boolean);
+      return parts.join("  |  ");
+    }
     if ("street" in o || "city" in o || "state" in o || "zip" in o) return formatAddress(o as Address);
     if ("item" in o && "to" in o) { const g = o as Gift; return `${String(g.item ?? "").trim()} → ${(g.to ?? []).map(personLine).filter(Boolean).join(", ")}`; }
     if ("shares" in o) {

@@ -674,6 +674,11 @@ export const engagementLetters = pgTable(
     office: varchar("office", { length: 16 }).notNull().default("fort-worth"),
     /** "plaintiff" | "defendant" — picks the Phase 1/2 standard language. */
     side: varchar("side", { length: 16 }).notNull().default("plaintiff"),
+    /** Which phases the engagement includes. One phase renders as plain
+     *  "REPRESENTATION" (no phase numbering); defending drops the demand-letter
+     *  framing. At least one is always true. */
+    phase1: boolean("phase1").notNull().default(true),
+    phase2: boolean("phase2").notNull().default(true),
     generalDescription: varchar("general_description", { length: 255 }).notNull().default(""),
     caseNumber: varchar("case_number", { length: 128 }).notNull().default(""),
     caseStyling: varchar("case_styling", { length: 255 }).notNull().default(""),
