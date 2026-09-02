@@ -601,6 +601,7 @@ const DDL = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS portal_matters_group_idx ON portal_matters (group_id)`,
+  `ALTER TABLE portal_matters ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS portal_tasks (
     id serial PRIMARY KEY,
     matter_id integer NOT NULL,

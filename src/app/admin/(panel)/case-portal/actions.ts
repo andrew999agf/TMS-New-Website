@@ -124,6 +124,19 @@ export async function updatePortalMatter(id: number, patch: {
   return { ok: true as const };
 }
 
+/** Tuck a matter out of sight in the firm's list (or bring it back). Firm-side
+ *  only — the client portal is unaffected. */
+export async function setMatterHidden(id: number, hidden: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [cur] = await db.select({ groupId: portalMatters.groupId }).from(portalMatters).where(eq(portalMatters.id, id));
+  if (!cur) return { ok: false as const, error: "Matter not found." };
+  await db.update(portalMatters).set({ hidden, updatedAt: new Date() }).where(eq(portalMatters.id, id));
+  await audit(session.email, "update", "portal-matter", String(id), hidden ? "Hidden from list" : "Unhidden");
+  reval(cur.groupId, id);
+  return { ok: true as const };
+}
+
 /* --------------------------------- tasks --------------------------------- */
 
 export async function addPortalTask(matterId: number, kind: "client" | "firm", title: string) {

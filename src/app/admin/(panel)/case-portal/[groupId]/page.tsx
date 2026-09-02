@@ -41,6 +41,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
     clioMatter: m.clioMatter,
     posture: m.posture,
     status: m.status,
+    hidden: m.hidden ?? false,
     openTasks: taskRows.filter((t) => t.matterId === m.id && !t.done).length,
   }));
   const matterOptions: MatterOption[] = clioMatters.map((m) => ({ displayNumber: m.displayNumber, description: m.description }));

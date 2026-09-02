@@ -3,15 +3,15 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2 } from "lucide-react";
-import { addPortalCompany, removePortalCompany, createPortalMatter, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember } from "@/app/admin/(panel)/case-portal/actions";
+import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2, Eye, EyeOff } from "lucide-react";
+import { addPortalCompany, removePortalCompany, createPortalMatter, setMatterHidden, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { POSTURES } from "@/lib/portal";
 
 export type CompanyRow = { id: number; name: string };
 export type MatterRow = {
   id: number; title: string; companyId: number | null; companyName: string | null;
-  clioMatter: string; posture: string; status: string; openTasks: number;
+  clioMatter: string; posture: string; status: string; hidden: boolean; openTasks: number;
 };
 export type MemberRow = { id: number; email: string; name: string; token: string; revoked: boolean; lastAccessAt: string | null };
 
@@ -37,8 +37,10 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const open = matters.filter((m) => m.status === "open");
-  const closed = matters.filter((m) => m.status !== "open");
+  const open = matters.filter((m) => m.status === "open" && !m.hidden);
+  const closed = matters.filter((m) => m.status !== "open" && !m.hidden);
+  const hidden = matters.filter((m) => m.hidden);
+  const [showHidden, setShowHidden] = useState(false);
 
   function addCompany() {
     const n = companyName.trim();
@@ -106,6 +108,16 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
 
       <MatterList groupId={groupId} items={open} heading="Open matters" />
       <MatterList groupId={groupId} items={closed} heading="Closed matters" />
+
+      {/* Hidden matters stay out of sight until deliberately revealed. */}
+      {hidden.length > 0 && (
+        <div>
+          <button onClick={() => setShowHidden((v) => !v)} className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
+            <EyeOff size={13} /> Hidden matters ({hidden.length}) {showHidden ? "— hide" : "— show"}
+          </button>
+          {showHidden && <div className="mt-2"><MatterList groupId={groupId} items={hidden} heading="" hiddenView /></div>}
+        </div>
+      )}
 
       <PortalAccess groupId={groupId} members={members} />
     </div>
@@ -181,10 +193,16 @@ function PortalAccess({ groupId, members }: { groupId: number; members: MemberRo
 }
 
 /** Matters split Open / Closed on the group page. */
-function MatterList({ groupId, items, heading }: { groupId: number; items: MatterRow[]; heading: string }) {
+function MatterList({ groupId, items, heading, hiddenView }: { groupId: number; items: MatterRow[]; heading: string; hiddenView?: boolean }) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<number | null>(null);
+  function toggleHide(m: MatterRow) {
+    setBusyId(m.id);
+    void setMatterHidden(m.id, !m.hidden).then(() => { setBusyId(null); router.refresh(); });
+  }
   return (
     <section>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-ink-muted)]">{heading} ({items.length})</h3>
+      {heading && <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--c-ink-muted)]">{heading} ({items.length})</h3>}
       {items.length === 0 ? (
         <p className="rounded-md border border-dashed border-[var(--c-border)] p-4 text-center text-xs text-[var(--c-ink-muted)]">None.</p>
       ) : (
@@ -193,7 +211,7 @@ function MatterList({ groupId, items, heading }: { groupId: number; items: Matte
             const pm = POSTURE_META[m.posture] ?? POSTURE_META.transactional;
             return (
               <li key={m.id}>
-                <Link href={`/admin/case-portal/${groupId}/matter/${m.id}`} className="flex items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5 transition-colors hover:border-[var(--c-accent)]">
+                <Link href={`/admin/case-portal/${groupId}/matter/${m.id}`} className={`flex items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5 transition-colors hover:border-[var(--c-accent)] ${hiddenView ? "opacity-70" : ""}`}>
                   <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--c-surface-2)] text-[var(--c-accent)]"><Briefcase size={15} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-[var(--c-ink)]">{m.title}</span>
@@ -205,6 +223,14 @@ function MatterList({ groupId, items, heading }: { groupId: number; items: Matte
                     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--c-accent)]"><ListChecks size={11} /> {m.openTasks}</span>
                   )}
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pm.cls}`}>{pm.label}</span>
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleHide(m); }}
+                    disabled={busyId === m.id}
+                    title={m.hidden ? "Bring this matter back into the list" : "Hide this matter from the list (nothing is deleted — find it under Hidden matters below)"}
+                    className="shrink-0 rounded-md border border-transparent p-1.5 text-[var(--c-ink-muted)] hover:border-[var(--c-border)] hover:text-[var(--c-ink)] disabled:opacity-50"
+                  >
+                    {busyId === m.id ? <Loader2 size={15} className="animate-spin" /> : m.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
                   <ChevronRight size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
                 </Link>
               </li>
