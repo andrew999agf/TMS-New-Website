@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail } from "lucide-react";
+import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail, FileSignature } from "lucide-react";
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 import { LeadDetailDrawer, TurnbackDialog } from "@/components/admin/IntakeLeadPanels";
+import { EngagementLetterDialog, type LetterRow } from "@/components/admin/EngagementLetterDialog";
 import type { ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 
 export type IntakeRow = {
@@ -17,7 +18,7 @@ export type IntakeRow = {
   county: string | null;
   isUrgent: boolean;
   deadline: string | null;
-  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined";
+  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined" | "letter-sent" | "converted";
   archived: boolean;
   referredTo: string | null;
   feeExpected: boolean;
@@ -30,9 +31,10 @@ export type IntakeRow = {
   answers: Record<string, unknown>;
 };
 
-const STATUSES = ["new", "contacted", "scheduled", "declined", "referred-out", "client-declined"] as const;
+const STATUSES = ["new", "contacted", "scheduled", "letter-sent", "converted", "declined", "referred-out", "client-declined"] as const;
 const STATUS_LABEL: Record<string, string> = {
   all: "all", new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred Out", "client-declined": "Client Declined",
+  "letter-sent": "Letter Sent", converted: "Converted",
 };
 
 /** Human label for the Status column / CSV — referrals show the attorney + fee. */
@@ -42,7 +44,7 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId = null }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[]; initialLeadId?: number | null }) {
+export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId = null, letters = {} }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[]; initialLeadId?: number | null; letters?: Record<number, LetterRow[]> }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
@@ -51,6 +53,7 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
   const [turnbackFor, setTurnbackFor] = useState<IntakeRow | null>(null);
   const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
   const [sendFor, setSendFor] = useState<IntakeRow | null>(null);
+  const [engageFor, setEngageFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Deep-link from the intake notification email: open that lead's drawer.
@@ -176,8 +179,8 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
                     )}
                   </div>
                   <div className="text-xs text-[var(--c-ink-muted)] break-all">{r.email}</div>
-                  {r.email && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {r.email && (<>
                       <button
                         onClick={(e) => { e.stopPropagation(); setTurnbackFor(r); }}
                         title="Send a turn-back / decline email to this person"
@@ -192,8 +195,15 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
                       >
                         <Send size={13} /> Send intake
                       </button>
-                    </div>
-                  )}
+                    </>)}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEngageFor(r); }}
+                      title="Draft, download, and track the engagement letter for this lead"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+                    >
+                      <FileSignature size={13} /> Engagement letter{(letters[r.id]?.length ?? 0) > 0 ? ` (${letters[r.id]!.length})` : ""}
+                    </button>
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <div>{r.branch}</div>
@@ -258,6 +268,18 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
           presetName={sendFor.name ?? ""}
           presetEmail={sendFor.email ?? ""}
           onClose={() => setSendFor(null)}
+        />
+      )}
+
+      {engageFor && (
+        <EngagementLetterDialog
+          key={engageFor.id}
+          intakeId={engageFor.id}
+          presetName={engageFor.name ?? ""}
+          presetEmail={engageFor.email ?? ""}
+          presetCounty={engageFor.county ?? ""}
+          letters={letters[engageFor.id] ?? []}
+          onClose={() => setEngageFor(null)}
         />
       )}
     </div>

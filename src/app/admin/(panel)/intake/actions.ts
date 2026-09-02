@@ -8,6 +8,7 @@ import { requireAdmin, audit } from "@/lib/auth";
 
 const STATUS_LABEL: Record<string, string> = {
   new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred out", "client-declined": "Client declined",
+  "letter-sent": "Engagement letter sent", converted: "Converted",
 };
 
 /**
@@ -29,7 +30,7 @@ async function notifyIntakeChange(id: number, change: string, actorEmail: string
 
 export async function updateIntakeStatus(
   id: number,
-  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined",
+  status: "new" | "contacted" | "scheduled" | "declined" | "referred-out" | "client-declined" | "letter-sent" | "converted",
 ) {
   const session = await requireAdmin();
   if (!db) return { ok: false };

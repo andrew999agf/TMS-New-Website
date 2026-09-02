@@ -553,6 +553,10 @@ export const intakeStatus = pgEnum("intake_status", [
   "declined",
   "referred-out",
   "client-declined",
+  /** Engagement letter sent, waiting on the client's signature. */
+  "letter-sent",
+  /** Signed up — the lead became a client. */
+  "converted",
 ]);
 
 export const intakeSubmissions = pgTable(
@@ -615,6 +619,84 @@ export const referralAttorneys = pgTable("referral_attorneys", {
 });
 
 export type ReferralAttorney = typeof referralAttorneys.$inferSelect;
+
+/* ----------------------------------------------------------------------------
+ * Engagement letters
+ * ------------------------------------------------------------------------- */
+
+export const engagementStatus = pgEnum("engagement_status", [
+  "draft",
+  /** Letter sent to the prospective client — still out and open. */
+  "sent",
+  /** Signed — the lead converted. */
+  "signed",
+  /** Client declined / offer expired. */
+  "declined",
+]);
+
+/** Per-role hourly rates and retainer amounts baked into a letter. All dollars. */
+export type EngagementFees = {
+  attorneyRate: number;
+  associateRate: number;
+  staffRate: number;
+  phase1Retainer: number;
+  litigationRetainer: number;
+  minTrustBalance: number;
+  trialRetainer: number;
+};
+
+/**
+ * One generated engagement letter. The office (Fort Worth vs. Meridian) is
+ * decided ONCE from the client's county — Bosque, Hamilton, Coryell, or
+ * Somervell means Meridian, everything else Fort Worth — and every fee
+ * default, phone number, and signature block flows from that single choice.
+ */
+export const engagementLetters = pgTable(
+  "engagement_letters",
+  {
+    id: serial("id").primaryKey(),
+    /** The intake lead this letter belongs to (null = drafted standalone). */
+    intakeId: integer("intake_id"),
+    clientName: varchar("client_name", { length: 191 }).notNull(),
+    /** Business/entity name when representing a company (blank = individual). */
+    businessName: varchar("business_name", { length: 191 }).notNull().default(""),
+    /** Signer's officer title for entity clients (e.g. "President"). */
+    officerTitle: varchar("officer_title", { length: 128 }).notNull().default(""),
+    /** Entity client also signing individually. */
+    andIndividually: boolean("and_individually").notNull().default(false),
+    email: varchar("email", { length: 255 }).notNull().default(""),
+    street: varchar("street", { length: 255 }).notNull().default(""),
+    city: varchar("city", { length: 128 }).notNull().default(""),
+    state: varchar("state", { length: 64 }).notNull().default("Texas"),
+    zip: varchar("zip", { length: 16 }).notNull().default(""),
+    county: varchar("county", { length: 128 }).notNull().default(""),
+    /** "fort-worth" | "meridian" — decided from the county, drives all defaults. */
+    office: varchar("office", { length: 16 }).notNull().default("fort-worth"),
+    /** "plaintiff" | "defendant" — picks the Phase 1/2 standard language. */
+    side: varchar("side", { length: 16 }).notNull().default("plaintiff"),
+    generalDescription: varchar("general_description", { length: 255 }).notNull().default(""),
+    caseNumber: varchar("case_number", { length: 128 }).notNull().default(""),
+    caseStyling: varchar("case_styling", { length: 255 }).notNull().default(""),
+    /** Case-specific additions typed during the intake workflow (one bullet per line). */
+    phase1Custom: text("phase1_custom").notNull().default(""),
+    phase2Custom: text("phase2_custom").notNull().default(""),
+    fees: jsonb("fees").$type<EngagementFees>().notNull(),
+    /** The letter's "open until" deadline. */
+    openUntil: timestamp("open_until", { withTimezone: true }),
+    status: engagementStatus("status").notNull().default("draft"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    intakeIdx: index("engagement_letters_intake_idx").on(t.intakeId),
+    statusIdx: index("engagement_letters_status_idx").on(t.status),
+  }),
+);
+
+export type EngagementLetter = typeof engagementLetters.$inferSelect;
 
 /* ----------------------------------------------------------------------------
  * Team members (attorneys + staff)

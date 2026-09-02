@@ -4,11 +4,13 @@ import { LeadSources, type LeadPoint } from "@/components/admin/LeadSources";
 import { ReferralSources, type ReferrerPoint } from "@/components/admin/ReferralSources";
 import { OutboundReferrals, type OutboundPoint } from "@/components/admin/OutboundReferrals";
 import { AmountMetrics, type AmountPoint } from "@/components/admin/AmountMetrics";
+import { IntakeOutcomes, type OutcomePoint } from "@/components/admin/IntakeOutcomes";
+import type { LetterRow } from "@/components/admin/EngagementLetterDialog";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
 import { db, hasDb } from "@/db";
-import { intakeSubmissions, referralAttorneys } from "@/db/schema";
+import { intakeSubmissions, referralAttorneys, engagementLetters } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
 import { getIntakeRecipients } from "@/lib/content";
 import { emailConfigured } from "@/lib/email";
@@ -30,6 +32,8 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   let outbound: OutboundPoint[] = [];
   let attorneys: string[] = [];
   let referralRows: ReferralAttorneyRow[] = [];
+  let outcomes: OutcomePoint[] = [];
+  const lettersByIntake: Record<number, LetterRow[]> = {};
   if (db) {
     try {
       // Select only the columns the list needs, so a newly-added column that
@@ -102,6 +106,29 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
     } catch {
       rows = [];
     }
+    outcomes = rows.map((r) => ({ status: r.status }));
+    // Engagement letters, grouped per lead for the builder dialog.
+    try {
+      const ls = await db.select().from(engagementLetters).orderBy(desc(engagementLetters.createdAt));
+      for (const l of ls) {
+        if (l.intakeId == null) continue;
+        (lettersByIntake[l.intakeId] ??= []).push({
+          id: l.id, intakeId: l.intakeId,
+          clientName: l.clientName, businessName: l.businessName, officerTitle: l.officerTitle, andIndividually: l.andIndividually,
+          email: l.email, street: l.street, city: l.city, state: l.state, zip: l.zip, county: l.county,
+          office: l.office as LetterRow["office"], side: l.side as LetterRow["side"],
+          generalDescription: l.generalDescription, caseNumber: l.caseNumber, caseStyling: l.caseStyling,
+          phase1Custom: l.phase1Custom, phase2Custom: l.phase2Custom,
+          fees: l.fees,
+          openUntil: l.openUntil ? l.openUntil.toISOString() : null,
+          status: l.status as LetterRow["status"],
+          sentAt: l.sentAt ? l.sentAt.toISOString() : null,
+          createdAt: l.createdAt.toISOString(),
+        });
+      }
+    } catch {
+      /* engagement_letters may not exist until the next Database Sync */
+    }
     try {
       const a = await db.select().from(referralAttorneys).orderBy(asc(referralAttorneys.sort), asc(referralAttorneys.name));
       attorneys = a.map((x) => x.name);
@@ -129,10 +156,11 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         />
         <ReferralAttorneysManager initial={referralRows} />
         <LeadSources leads={leads} />
+        <IntakeOutcomes points={outcomes} />
         <AmountMetrics points={amounts} />
         <ReferralSources referrers={referrers} />
         <OutboundReferrals referrals={outbound} />
-        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} />
+        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} />
       </div>
     </>
   );
