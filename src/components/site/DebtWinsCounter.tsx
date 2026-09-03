@@ -16,23 +16,33 @@ export async function DebtWinsCounter() {
   const { count, total } = await getDebtDefenseStats();
   if (count === 0) return null;
   const money = "$" + Math.round(total).toLocaleString("en-US");
+  // The case count appears only once it reaches 100, and always as a rounded
+  // "100+", "150+", "200+" figure in 50-case steps — understated, verifiable.
+  const countLabel = count >= 100 ? `${Math.floor(count / 50) * 50}+` : null;
   return (
     <section className="mb-12 rounded-lg border border-[var(--c-accent)]/30 bg-[var(--c-accent)]/[0.05] p-6 lg:p-8">
       <p className="flex items-center gap-2 font-[family-name:var(--font-ui)] text-xs font-semibold uppercase tracking-[0.16em] text-[var(--c-accent)]">
-        <ShieldCheck size={15} /> The scoreboard
+        <ShieldCheck size={15} /> Debt Defense Results
       </p>
-      <div className="mt-4 grid grid-cols-2 gap-6">
-        <div>
-          <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{count}</div>
-          <div className="mt-2 text-sm text-[var(--c-ink-muted)]">collection lawsuit{count === 1 ? "" : "s"} defeated — non-suited or judgment for our client</div>
+      {countLabel ? (
+        <div className="mt-4 grid grid-cols-2 gap-6">
+          <div>
+            <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{countLabel}</div>
+            <div className="mt-2 text-sm text-[var(--c-ink-muted)]">collection lawsuits resolved in our clients&apos; favor</div>
+          </div>
+          <div>
+            <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{money}</div>
+            <div className="mt-2 text-sm text-[var(--c-ink-muted)]">in claimed debt defeated — non-suits, dismissals, and judgments for our clients</div>
+          </div>
         </div>
-        <div>
+      ) : (
+        <div className="mt-4">
           <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{money}</div>
-          <div className="mt-2 text-sm text-[var(--c-ink-muted)]">in claimed debt those suits demanded — and counting</div>
+          <div className="mt-2 text-sm text-[var(--c-ink-muted)]">in claimed debt defeated — non-suits, dismissals, and judgments for our clients</div>
         </div>
-      </div>
+      )}
       <p className="mt-4 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
-        Running totals from the firm&apos;s own case records. Every case is different — past results do not guarantee future outcomes.
+        Figures drawn from the firm&apos;s case records. Every case is different — past results do not guarantee future outcomes.
       </p>
     </section>
   );

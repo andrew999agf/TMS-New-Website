@@ -181,8 +181,8 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
       <div className={`flex flex-wrap items-center gap-3 rounded-lg border p-4 ${publicOn ? "border-green-600/40 bg-green-600/[0.06]" : "border-[var(--c-border)] bg-[var(--c-surface)]"}`}>
         {publicOn ? <Eye size={18} className="text-green-700" /> : <EyeOff size={18} className="text-[var(--c-ink-muted)]" />}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{publicOn ? "The scoreboard is LIVE on the debt-defense page" : "The scoreboard is hidden from the website"}</p>
-          <p className="text-xs text-[var(--c-ink-muted)]">{publicOn ? "Turn it off anytime — entries here are kept either way." : "Log everything first, then flip it on when the numbers are ready to show."}</p>
+          <p className="text-sm font-semibold">{publicOn ? "Debt Defense Results are LIVE on the debt-defense page" : "Debt Defense Results are hidden from the website"}</p>
+          <p className="text-xs text-[var(--c-ink-muted)]">{publicOn ? "Turn it off anytime — entries here are kept either way. The case count shows publicly only at 100+, rounded down in 50s (100+, 150+, …); the dollar figure shows from the first win." : "Log everything first, then flip it on when the numbers are ready to show. The case count shows publicly only at 100+, rounded down in 50s; the dollar figure shows from the first win."}</p>
         </div>
         <button
           onClick={() => start(async () => { await setDebtWinsPublic(!publicOn); router.refresh(); })}
