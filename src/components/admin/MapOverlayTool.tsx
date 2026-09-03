@@ -29,6 +29,11 @@ type Overlay = {
 
 type BaseImg = { url: string; w: number; h: number; name: string };
 
+/** The aerial's own placement inside the output frame (drag/size/rotate it
+ *  too). The frame stays fixed at the aerial's native dimensions, so the
+ *  high-res export never loses pixels. */
+type BaseTx = { x: number; y: number; scale: number; rotation: number };
+
 const card = "rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]";
 
 function loadImage(file: File): Promise<{ url: string; w: number; h: number }> {
@@ -43,6 +48,7 @@ function loadImage(file: File): Promise<{ url: string; w: number; h: number }> {
 
 export function MapOverlayTool() {
   const [base, setBase] = useState<BaseImg | null>(null);
+  const [baseTx, setBaseTx] = useState<BaseTx>({ x: 0, y: 0, scale: 1, rotation: 0 });
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +77,7 @@ export function MapOverlayTool() {
     try {
       const img = await loadImage(file);
       setBase({ ...img, name: file.name });
+      setBaseTx({ x: img.w / 2, y: img.h / 2, scale: 1, rotation: 0 });
     } catch (e) { setError((e as Error).message); }
   }
 
@@ -94,7 +101,10 @@ export function MapOverlayTool() {
   const onPointerMove = useCallback((e: PointerEvent) => {
     const d = drag.current;
     if (!d) return;
-    setOverlays((os) => os.map((o) => (o.id === d.id ? { ...o, x: d.origX + (e.clientX - d.startX) / f, y: d.origY + (e.clientY - d.startY) / f } : o)));
+    const nx = d.origX + (e.clientX - d.startX) / f;
+    const ny = d.origY + (e.clientY - d.startY) / f;
+    if (d.id === 0) setBaseTx((b) => ({ ...b, x: nx, y: ny })); // dragging the aerial itself
+    else setOverlays((os) => os.map((o) => (o.id === d.id ? { ...o, x: nx, y: ny } : o)));
   }, [f]);
   const onPointerUp = useCallback(() => { drag.current = null; }, []);
   useEffect(() => {
@@ -103,10 +113,11 @@ export function MapOverlayTool() {
     return () => { window.removeEventListener("pointermove", onPointerMove); window.removeEventListener("pointerup", onPointerUp); };
   }, [onPointerMove, onPointerUp]);
 
-  function startDrag(e: React.PointerEvent, o: Overlay) {
+  /** id 0 = the aerial base; anything else is an overlay. */
+  function startDrag(e: React.PointerEvent, id: number, origX: number, origY: number) {
     e.preventDefault();
-    setActiveId(o.id);
-    drag.current = { id: o.id, startX: e.clientX, startY: e.clientY, origX: o.x, origY: o.y };
+    setActiveId(id === 0 ? null : id);
+    drag.current = { id, startX: e.clientX, startY: e.clientY, origX, origY };
   }
 
   /** Composite at the aerial's native resolution and download as PNG. */
@@ -121,7 +132,18 @@ export function MapOverlayTool() {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas isn't available in this browser.");
       const draw = (url: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Image failed to load.")); i.src = url; });
-      ctx.drawImage(await draw(base.url), 0, 0, base.w, base.h);
+      // Neutral ground behind a moved/rotated aerial, then the aerial with its
+      // own placement, then the overlays — the same order as the preview.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, base.w, base.h);
+      {
+        const img = await draw(base.url);
+        ctx.save();
+        ctx.translate(baseTx.x, baseTx.y);
+        ctx.rotate((baseTx.rotation * Math.PI) / 180);
+        ctx.drawImage(img, (-base.w * baseTx.scale) / 2, (-base.h * baseTx.scale) / 2, base.w * baseTx.scale, base.h * baseTx.scale);
+        ctx.restore();
+      }
       for (const o of overlays) {
         const img = await draw(o.url);
         ctx.save();
@@ -171,9 +193,23 @@ export function MapOverlayTool() {
           <p className="max-w-md text-xs text-[var(--c-ink-muted)]">Everything stays on this computer — nothing is uploaded. The download comes out at the aerial&apos;s full resolution, so start from the highest-resolution aerial you have.</p>
         </div>
       ) : (
-        <div ref={stageRef} className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-[var(--c-border)] bg-black/5" style={{ aspectRatio: `${base.w} / ${base.h}` }}>
+        <div ref={stageRef} className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-[var(--c-border)] bg-white" style={{ aspectRatio: `${base.w} / ${base.h}` }}>
+          {/* The aerial is a movable layer too — drag it, size it, rotate it. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={base.url} alt="Aerial base" draggable={false} className="absolute inset-0 h-full w-full" />
+          <img
+            src={base.url}
+            alt="Aerial base"
+            draggable={false}
+            onPointerDown={(e) => startDrag(e, 0, baseTx.x, baseTx.y)}
+            className="absolute cursor-move"
+            style={{
+              left: baseTx.x * f,
+              top: baseTx.y * f,
+              width: base.w * baseTx.scale * f,
+              height: base.h * baseTx.scale * f,
+              transform: `translate(-50%, -50%) rotate(${baseTx.rotation}deg)`,
+            }}
+          />
           {overlays.map((o) => (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -181,7 +217,7 @@ export function MapOverlayTool() {
               src={o.url}
               alt={o.name}
               draggable={false}
-              onPointerDown={(e) => startDrag(e, o)}
+              onPointerDown={(e) => startDrag(e, o.id, o.x, o.y)}
               className={`absolute cursor-move ${o.id === activeId ? "outline outline-2 outline-[var(--c-accent)]" : ""}`}
               style={{
                 left: o.x * f,
@@ -196,9 +232,29 @@ export function MapOverlayTool() {
         </div>
       )}
 
-      {/* Layer controls */}
-      {overlays.length > 0 && (
+      {/* Layer controls — the aerial first, then each overlay */}
+      {base && (
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className={`${card} p-4`}>
+            <div className="mb-2 flex items-center gap-2">
+              <MapIcon size={14} className="text-[var(--c-accent)]" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">Aerial (background) — {base.name}</span>
+              <button
+                onClick={() => setBaseTx({ x: base.w / 2, y: base.h / 2, scale: 1, rotation: 0 })}
+                title="Put the aerial back exactly filling the frame"
+                className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+              >
+                Reset
+              </button>
+            </div>
+            <label className="block text-xs text-[var(--c-ink-muted)]">Size — {Math.round(baseTx.scale * 100)}%
+              <input type="range" min={20} max={300} value={Math.round(baseTx.scale * 100)} onChange={(e) => setBaseTx((b) => ({ ...b, scale: Number(e.target.value) / 100 }))} className="w-full accent-[var(--c-accent)]" />
+            </label>
+            <label className="mt-1 block text-xs text-[var(--c-ink-muted)]">Rotation — {baseTx.rotation}°
+              <input type="range" min={-180} max={180} value={baseTx.rotation} onChange={(e) => setBaseTx((b) => ({ ...b, rotation: Number(e.target.value) }))} className="w-full accent-[var(--c-accent)]" />
+            </label>
+            <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Drag the photo itself to move it. The frame (and the download size) stays {base.w}×{base.h}.</p>
+          </div>
           {overlays.map((o) => (
             <div key={o.id} onClick={() => setActiveId(o.id)} className={`${card} cursor-pointer p-4 ${o.id === activeId ? "border-[var(--c-accent)]" : ""}`}>
               <div className="mb-2 flex items-center gap-2">
@@ -221,7 +277,7 @@ export function MapOverlayTool() {
       )}
 
       {base && overlays.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><MousePointer2 size={13} /> Drag the map on the picture to line it up; use the sliders for opacity, size, and a little rotation. The second layer sits on top of the first.</p>
+        <p className="flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><MousePointer2 size={13} /> Drag any layer — the aerial included — to line things up; the sliders handle opacity, size, and rotation. The second overlay sits on top of the first.</p>
       )}
     </div>
   );
