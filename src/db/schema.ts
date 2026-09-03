@@ -621,8 +621,14 @@ export const debtDefenseWins = pgTable("debt_defense_wins", {
   outcome: varchar("outcome", { length: 24 }).notNull().default("nonsuit"),
   /** The day the case was won (YYYY-MM-DD). */
   wonAt: varchar("won_at", { length: 10 }).notNull(),
-  /** Optional internal note (case name/number) — never shown publicly. */
-  note: varchar("note", { length: 255 }).notNull().default(""),
+  /** Court/location (JP, county court at law, district…). Autocompleted from
+   *  prior entries so the same court is always spelled the same way. */
+  court: varchar("court", { length: 191 }).notNull().default(""),
+  caseNumber: varchar("case_number", { length: 128 }).notNull().default(""),
+  /** The creditor/plaintiff who sued — autocompleted the same way. */
+  plaintiff: varchar("plaintiff", { length: 191 }).notNull().default(""),
+  /** Notes from the attorney — internal only, never shown publicly. */
+  note: text("note").notNull().default(""),
   createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

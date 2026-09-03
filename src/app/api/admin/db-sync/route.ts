@@ -288,10 +288,17 @@ const DDL = [
     amount real NOT NULL DEFAULT 0,
     outcome varchar(24) NOT NULL DEFAULT 'nonsuit',
     won_at varchar(10) NOT NULL,
-    note varchar(255) NOT NULL DEFAULT '',
+    court varchar(191) NOT NULL DEFAULT '',
+    case_number varchar(128) NOT NULL DEFAULT '',
+    plaintiff varchar(191) NOT NULL DEFAULT '',
+    note text NOT NULL DEFAULT '',
     created_by varchar(255) NOT NULL DEFAULT '',
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS court varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS case_number varchar(128) NOT NULL DEFAULT ''`,
+  `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS plaintiff varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE debt_defense_wins ALTER COLUMN note TYPE text`,
   `CREATE TABLE IF NOT EXISTS referral_attorneys (
     id serial PRIMARY KEY,
     name varchar(191) NOT NULL UNIQUE,

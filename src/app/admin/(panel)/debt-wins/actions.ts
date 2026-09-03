@@ -21,7 +21,7 @@ const reval = () => {
   revalidatePath("/practice-areas/consumer-debt-defense");
 };
 
-export async function addDebtWin(input: { amount: number; outcome: string; wonAt: string; note: string }) {
+export async function addDebtWin(input: { amount: number; outcome: string; wonAt: string; court: string; caseNumber: string; plaintiff: string; note: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const amount = Math.round((Number(input.amount) || 0) * 100) / 100;
@@ -31,7 +31,14 @@ export async function addDebtWin(input: { amount: number; outcome: string; wonAt
   try {
     const [row] = await db
       .insert(debtDefenseWins)
-      .values({ amount, outcome, wonAt: input.wonAt, note: input.note.trim().slice(0, 255), createdBy: session.email })
+      .values({
+        amount, outcome, wonAt: input.wonAt,
+        court: input.court.trim().slice(0, 191),
+        caseNumber: input.caseNumber.trim().slice(0, 128),
+        plaintiff: input.plaintiff.trim().slice(0, 191),
+        note: input.note.trim(),
+        createdBy: session.email,
+      })
       .returning({ id: debtDefenseWins.id });
     await audit(session.email, "create", "debt-win", String(row.id), `$${amount} ${outcome}`);
     reval();
