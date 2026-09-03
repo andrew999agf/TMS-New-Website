@@ -102,8 +102,8 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($)</span>
-            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${input} w-full`} />
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($){isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
+            <input type="number" step="0.01" min="0" value={isWin(outcome) ? amount : ""} disabled={!isWin(outcome)} onChange={(e) => setAmount(e.target.value)} className={`${input} w-full disabled:cursor-not-allowed disabled:opacity-40`} />
           </label>
           <label className="text-xs">
             <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff (who sued)</span>
@@ -135,7 +135,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
         {error && <p className="mt-3 text-xs text-[var(--c-error)]">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
-          <button onClick={save} disabled={pending || !amount.trim()} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
+          <button onClick={save} disabled={pending || (isWin(outcome) && !amount.trim())} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
             {pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save changes
           </button>
         </div>
@@ -213,8 +213,8 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
         <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck size={15} className="text-[var(--c-accent)]" /> Log a case result</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($)</span>
-            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g., 8500" className={`${input} w-full`} />
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($){isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
+            <input type="number" step="0.01" min="0" value={isWin(outcome) ? amount : ""} disabled={!isWin(outcome)} onChange={(e) => setAmount(e.target.value)} placeholder="e.g., 8500" className={`${input} w-full disabled:cursor-not-allowed disabled:opacity-40`} />
           </label>
           <label className="text-xs">
             <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff (who sued) — reuses past spellings</span>
@@ -244,7 +244,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
           </label>
         </div>
         {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-        <button onClick={add} disabled={pending || !amount.trim()} className="btn btn-accent mt-3 text-sm disabled:opacity-50">
+        <button onClick={add} disabled={pending || (isWin(outcome) && !amount.trim())} className="btn btn-accent mt-3 text-sm disabled:opacity-50">
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add to the counter
         </button>
       </div>
@@ -272,7 +272,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
             {rows.map((r) => (
               <tr key={r.id} className="bg-[var(--c-surface)] align-top">
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.wonAt}</td>
-                <td className="px-3 py-2.5 tabular-nums">{money(r.amount)}</td>
+                <td className="px-3 py-2.5 tabular-nums">{isWin(r.outcome) ? money(r.amount) : "—"}</td>
                 <td className="px-3 py-2.5">{r.plaintiff || "—"}</td>
                 <td className="px-3 py-2.5">{r.court || "—"}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.caseNumber || "—"}</td>

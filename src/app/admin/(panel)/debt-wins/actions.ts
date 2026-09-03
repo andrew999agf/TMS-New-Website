@@ -27,10 +27,11 @@ const reval = () => {
 export async function addDebtWin(input: { amount: number; outcome: string; wonAt: string; court: string; caseNumber: string; plaintiff: string; note: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const amount = Math.round((Number(input.amount) || 0) * 100) / 100;
-  if (!(amount > 0)) return { ok: false as const, error: "Enter the amount the creditor sued for." };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.wonAt)) return { ok: false as const, error: "Pick the date the case was won." };
   const outcome = OUTCOMES.has(input.outcome) ? input.outcome : "nonsuit";
+  // A plaintiff judgment carries no amount — it never joins any calculation.
+  const amount = outcome === "judgment-plaintiff" ? 0 : Math.round((Number(input.amount) || 0) * 100) / 100;
+  if (outcome !== "judgment-plaintiff" && !(amount > 0)) return { ok: false as const, error: "Enter the amount the creditor sued for." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.wonAt)) return { ok: false as const, error: "Pick the date the case was won." };
   try {
     const [row] = await db
       .insert(debtDefenseWins)
@@ -67,10 +68,10 @@ export async function setDebtWinsPublic(on: boolean) {
 export async function updateDebtWin(id: number, input: { amount: number; outcome: string; wonAt: string; court: string; caseNumber: string; plaintiff: string; note: string }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
-  const amount = Math.round((Number(input.amount) || 0) * 100) / 100;
-  if (!(amount > 0)) return { ok: false as const, error: "Enter the amount the creditor sued for." };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.wonAt)) return { ok: false as const, error: "Pick the date the case was won." };
   const outcome = OUTCOMES.has(input.outcome) ? input.outcome : "nonsuit";
+  const amount = outcome === "judgment-plaintiff" ? 0 : Math.round((Number(input.amount) || 0) * 100) / 100;
+  if (outcome !== "judgment-plaintiff" && !(amount > 0)) return { ok: false as const, error: "Enter the amount the creditor sued for." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.wonAt)) return { ok: false as const, error: "Pick the date the case was won." };
   await db
     .update(debtDefenseWins)
     .set({
