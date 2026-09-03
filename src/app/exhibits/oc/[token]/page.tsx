@@ -35,7 +35,7 @@ export default async function OpposingCounselIndex({ params }: { params: Promise
       </header>
 
       {/* namesOnly: number + title only — never Bates, pages, or descriptions. */}
-      <SharedExhibitList docs={ordered} viewBase={`/exhibits/oc/${token}/e`} zipBase={`/exhibits/oc/${token}/zip`} bookBase={`/exhibits/oc/${token}/book`} namesOnly />
+      <SharedExhibitList docs={ordered} viewBase={`/exhibits/oc/${token}/e`} fileBase={`/exhibits/oc/${token}/file`} zipBase={`/exhibits/oc/${token}/zip`} bookBase={`/exhibits/oc/${token}/book`} namesOnly />
 
       <footer className="mt-10 border-t border-[var(--c-border)] pt-5 text-xs text-[var(--c-ink-muted)]">
         Provided by {FIRM.name} for review.

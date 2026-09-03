@@ -34,7 +34,7 @@ export default async function RecipientIndex({ params }: { params: Promise<{ tok
         <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{[ctx.set.causeNumber, ctx.set.court].filter(Boolean).join("  ·  ")}</p>
       </header>
 
-      <SharedExhibitList docs={ordered} viewBase={`/exhibits/r/${token}/e`} zipBase={`/exhibits/r/${token}/zip`} bookBase={`/exhibits/r/${token}/book`} />
+      <SharedExhibitList docs={ordered} viewBase={`/exhibits/r/${token}/e`} fileBase={`/exhibits/r/${token}/file`} zipBase={`/exhibits/r/${token}/zip`} bookBase={`/exhibits/r/${token}/book`} />
 
       <footer className="mt-10 border-t border-[var(--c-border)] pt-5 text-xs text-[var(--c-ink-muted)]">
         Shared privately by {FIRM.name}. This access is specific to you.
