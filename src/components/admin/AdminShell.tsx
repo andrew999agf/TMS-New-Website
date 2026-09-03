@@ -37,6 +37,7 @@ import {
   KeyRound,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
@@ -68,6 +69,7 @@ const NAV = [
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { label: "Website Management", href: "/admin/pages", icon: Globe },
   { label: "Intake", href: "/admin/intake", icon: Inbox },
+  { label: "Debt Defense Wins", href: "/admin/debt-wins", icon: ShieldCheck },
   { label: "Document Generator", href: "/admin/documents", icon: FileSignature },
   { label: "Billing Review", href: "/admin/billing-review", icon: ClipboardCheck },
   { label: "Time Clock", href: "/admin/timeclock", icon: AlarmClock },

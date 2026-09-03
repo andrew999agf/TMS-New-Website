@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { YouTubeEmbed } from "@/components/site/YouTubeEmbed";
+import { DebtWinsCounter } from "@/components/site/DebtWinsCounter";
 import { JsonLd } from "@/components/site/JsonLd";
 import {
   getPracticeArea,
@@ -171,6 +172,9 @@ export default async function PracticeAreaPage({
         <div className="grid gap-12 lg:grid-cols-[1.4fr_0.6fr] lg:gap-16">
           {/* Main copy */}
           <div>
+            {/* Live win counter — debt defense only (shared source of truth,
+                reusable on Results later without a second tally). */}
+            {slug === "consumer-debt-defense" && <DebtWinsCounter />}
             <div className="prose-firm">
               {pa.body.map((para, i) => (
                 <p key={i}>{para}</p>

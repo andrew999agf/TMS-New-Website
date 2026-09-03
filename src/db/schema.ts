@@ -603,6 +603,32 @@ export const intakeSubmissions = pgTable(
   }),
 );
 
+/* ----------------------------------------------------------------------------
+ * Debt-defense win counter
+ * ------------------------------------------------------------------------- */
+
+/**
+ * One won debt-defense case — a non-suit or a judgment for the defendant —
+ * with the amount the creditor sued for. Entered by the debt-defense team in
+ * the admin; the running totals power the marketing counter on the
+ * consumer-debt-defense page (one source of truth, reusable elsewhere).
+ */
+export const debtDefenseWins = pgTable("debt_defense_wins", {
+  id: serial("id").primaryKey(),
+  /** Amount sued on (dollars). */
+  amount: real("amount").notNull().default(0),
+  /** nonsuit | judgment | other */
+  outcome: varchar("outcome", { length: 24 }).notNull().default("nonsuit"),
+  /** The day the case was won (YYYY-MM-DD). */
+  wonAt: varchar("won_at", { length: 10 }).notNull(),
+  /** Optional internal note (case name/number) — never shown publicly. */
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type DebtDefenseWin = typeof debtDefenseWins.$inferSelect;
+
 /** A stable of attorneys cases can be referred to — used for the referral
  *  autocomplete and included in "turn-back" emails to prospective clients. */
 export const referralAttorneys = pgTable("referral_attorneys", {

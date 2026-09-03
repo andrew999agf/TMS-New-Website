@@ -282,6 +282,16 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS engagement_letters_status_idx ON engagement_letters (status)`,
   `ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS phase1 boolean NOT NULL DEFAULT true`,
   `ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS phase2 boolean NOT NULL DEFAULT true`,
+  // Debt-defense win counter (marketing tally on the debt-defense page).
+  `CREATE TABLE IF NOT EXISTS debt_defense_wins (
+    id serial PRIMARY KEY,
+    amount real NOT NULL DEFAULT 0,
+    outcome varchar(24) NOT NULL DEFAULT 'nonsuit',
+    won_at varchar(10) NOT NULL,
+    note varchar(255) NOT NULL DEFAULT '',
+    created_by varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `CREATE TABLE IF NOT EXISTS referral_attorneys (
     id serial PRIMARY KEY,
     name varchar(191) NOT NULL UNIQUE,
