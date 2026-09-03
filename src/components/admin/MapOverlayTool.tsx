@@ -158,11 +158,12 @@ export function MapOverlayTool({ projects }: { projects: SavedProject[] }) {
     return () => { window.removeEventListener("pointermove", onPointerMove); window.removeEventListener("pointerup", onPointerUp); };
   }, [onPointerMove, onPointerUp]);
 
-  /** id 0 = the aerial base; anything else is an overlay. */
+  /** id 0 = the aerial base; anything else is an overlay. Clicking a layer on
+   *  the picture selects it — its control card lights up for editing. */
   function startDrag(e: React.PointerEvent, id: number, origX: number, origY: number) {
     if (cropMode) return; // in trim mode the stage handles the pointer
     e.preventDefault();
-    setActiveId(id === 0 ? null : id);
+    setActiveId(id);
     drag.current = { id, startX: e.clientX, startY: e.clientY, origX, origY };
   }
 
@@ -365,7 +366,7 @@ export function MapOverlayTool({ projects }: { projects: SavedProject[] }) {
             alt="Aerial base"
             draggable={false}
             onPointerDown={(e) => startDrag(e, 0, baseTx.x, baseTx.y)}
-            className={`absolute ${cropMode ? "pointer-events-none" : "cursor-move"}`}
+            className={`absolute ${cropMode ? "pointer-events-none" : "cursor-move"} ${activeId === 0 ? "outline outline-2 outline-dashed outline-[var(--c-accent)]" : ""}`}
             style={{
               left: baseTx.x * f,
               top: baseTx.y * f,
@@ -411,10 +412,11 @@ export function MapOverlayTool({ projects }: { projects: SavedProject[] }) {
       {/* Layer controls — the aerial first, then each overlay */}
       {base && (
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className={`${card} p-4`}>
+          <div onClick={() => setActiveId(0)} className={`${card} cursor-pointer p-4 ${activeId === 0 ? "border-[var(--c-accent)] ring-1 ring-[var(--c-accent)]" : ""}`}>
             <div className="mb-2 flex items-center gap-2">
               <MapIcon size={14} className="text-[var(--c-accent)]" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">Aerial (background) — {base.name}</span>
+              {activeId === 0 && <span className="rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--c-accent)]">Selected</span>}
               <button
                 onClick={() => setBaseTx({ x: base.w / 2, y: base.h / 2, scale: 1, rotation: 0 })}
                 title="Put the aerial back exactly filling the frame"
@@ -432,10 +434,11 @@ export function MapOverlayTool({ projects }: { projects: SavedProject[] }) {
             <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Drag the photo itself to move it. Download size: {outW}×{outH}{crop ? " (trimmed)" : ""}.</p>
           </div>
           {overlays.map((o) => (
-            <div key={o.id} onClick={() => setActiveId(o.id)} className={`${card} cursor-pointer p-4 ${o.id === activeId ? "border-[var(--c-accent)]" : ""}`}>
+            <div key={o.id} onClick={() => setActiveId(o.id)} className={`${card} cursor-pointer p-4 ${o.id === activeId ? "border-[var(--c-accent)] ring-1 ring-[var(--c-accent)]" : ""}`}>
               <div className="mb-2 flex items-center gap-2">
                 <Layers size={14} className="text-[var(--c-accent)]" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{o.name}</span>
+                {o.id === activeId && <span className="rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--c-accent)]">Selected</span>}
                 <button onClick={(e) => { e.stopPropagation(); removeOverlay(o.id); }} title="Remove this layer" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><Trash2 size={14} /></button>
               </div>
               <label className="block text-xs text-[var(--c-ink-muted)]">Opacity — {o.opacity}%
@@ -453,7 +456,7 @@ export function MapOverlayTool({ projects }: { projects: SavedProject[] }) {
       )}
 
       {base && overlays.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><MousePointer2 size={13} /> Drag any layer — the aerial included — to line things up; the sliders handle opacity, size, and rotation. Trim crops the download; Save keeps the whole setup to reopen later.</p>
+        <p className="flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><MousePointer2 size={13} /> Click the map or the aerial on the picture (or its card below) to select it — the selected layer lights up and its sliders are the ones to use. Drag to move; Trim crops the download; Save keeps the whole setup to reopen later.</p>
       )}
     </div>
   );
