@@ -35,6 +35,7 @@ import {
   FolderLock,
   FileSearch,
   KeyRound,
+  Map as MapIcon,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
@@ -90,6 +91,7 @@ const CASE_TOOLS = [
   { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
   { label: "Case Portal", href: "/admin/case-portal", icon: Briefcase },
   { label: "Assistant", href: "/admin/assistant", icon: Bot },
+  { label: "Map Overlay", href: "/admin/map-overlay", icon: MapIcon },
 ];
 
 export function AdminShell({
