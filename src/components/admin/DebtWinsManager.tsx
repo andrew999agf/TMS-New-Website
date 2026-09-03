@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check } from "lucide-react";
-import { addDebtWin, updateDebtWin, deleteDebtWin } from "@/app/admin/(panel)/debt-wins/actions";
+import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check, Eye, EyeOff } from "lucide-react";
+import { addDebtWin, updateDebtWin, deleteDebtWin, setDebtWinsPublic } from "@/app/admin/(panel)/debt-wins/actions";
 
 export type DebtWinRow = {
   id: number; amount: number; outcome: string; wonAt: string;
@@ -138,7 +138,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
 }
 
 /** Log won debt-defense cases and watch the marketing counter climb. */
-export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow[]; courts: string[]; plaintiffs: string[] }) {
+export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: DebtWinRow[]; courts: string[]; plaintiffs: string[]; publicOn: boolean }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
   const [outcome, setOutcome] = useState("nonsuit");
@@ -166,6 +166,22 @@ export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow
 
   return (
     <div className="max-w-4xl space-y-6">
+      {/* Master switch — nothing shows on the website until this is on. */}
+      <div className={`flex flex-wrap items-center gap-3 rounded-lg border p-4 ${publicOn ? "border-green-600/40 bg-green-600/[0.06]" : "border-[var(--c-border)] bg-[var(--c-surface)]"}`}>
+        {publicOn ? <Eye size={18} className="text-green-700" /> : <EyeOff size={18} className="text-[var(--c-ink-muted)]" />}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{publicOn ? "The scoreboard is LIVE on the debt-defense page" : "The scoreboard is hidden from the website"}</p>
+          <p className="text-xs text-[var(--c-ink-muted)]">{publicOn ? "Turn it off anytime — entries here are kept either way." : "Log everything first, then flip it on when the numbers are ready to show."}</p>
+        </div>
+        <button
+          onClick={() => start(async () => { await setDebtWinsPublic(!publicOn); router.refresh(); })}
+          disabled={pending}
+          className={`rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50 ${publicOn ? "border border-[var(--c-border)] text-[var(--c-ink)] hover:border-[var(--c-error)] hover:text-[var(--c-error)]" : "bg-[var(--c-accent)] text-white hover:brightness-110"}`}
+        >
+          {publicOn ? "Turn off" : "Turn on"}
+        </button>
+      </div>
+
       {/* The running tally — the same numbers the website shows. */}
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5 text-center">

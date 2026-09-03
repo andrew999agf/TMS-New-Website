@@ -6,6 +6,8 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
 import { debtDefenseWins } from "@/db/schema";
+import { getSetting } from "@/lib/content";
+import { DEBT_WINS_PUBLIC_KEY } from "@/lib/debt-wins";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,7 @@ export default async function DebtWinsPage() {
   };
   const courts = distinct(rows.map((r) => r.court));
   const plaintiffs = distinct(rows.map((r) => r.plaintiff));
+  const publicOn = await getSetting<boolean>(DEBT_WINS_PUBLIC_KEY, false);
 
   return (
     <>
@@ -43,7 +46,7 @@ export default async function DebtWinsPage() {
         description="Every non-suit and defense judgment goes on the board — the counter on the debt-defense page updates the moment an entry is added."
       />
       <div className="p-8">
-        <DebtWinsManager rows={rows} courts={courts} plaintiffs={plaintiffs} />
+        <DebtWinsManager rows={rows} courts={courts} plaintiffs={plaintiffs} publicOn={publicOn === true} />
       </div>
     </>
   );

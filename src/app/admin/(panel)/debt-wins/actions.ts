@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { debtDefenseWins } from "@/db/schema";
+import { debtDefenseWins, settings } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
+import { DEBT_WINS_PUBLIC_KEY } from "@/lib/debt-wins";
 
 async function guard() {
   const session = await requireAdmin();
@@ -47,6 +48,18 @@ export async function addDebtWin(input: { amount: number; outcome: string; wonAt
     const msg = (err as Error).message;
     return { ok: false as const, error: /does not exist/i.test(msg) ? "Run Settings → Database updates once, then try again." : msg };
   }
+}
+
+export async function setDebtWinsPublic(on: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  await db
+    .insert(settings)
+    .values({ key: DEBT_WINS_PUBLIC_KEY, value: on, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value: on, updatedAt: new Date() } });
+  await audit(session.email, "update", "debt-win", DEBT_WINS_PUBLIC_KEY, on ? "Counter shown on site" : "Counter hidden");
+  reval();
+  return { ok: true as const };
 }
 
 export async function updateDebtWin(id: number, input: { amount: number; outcome: string; wonAt: string; court: string; caseNumber: string; plaintiff: string; note: string }) {

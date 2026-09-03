@@ -11,6 +11,10 @@ import { debtDefenseWins } from "@/db/schema";
  */
 export type DebtWinStats = { count: number; total: number };
 
+/** Master switch (settings key): whether the scoreboard shows on the public
+ *  site at all. Defaults OFF so the numbers can be fully populated first. */
+export const DEBT_WINS_PUBLIC_KEY = "debtWins.public";
+
 export async function getDebtDefenseStats(): Promise<DebtWinStats> {
   if (!db) return { count: 0, total: 0 };
   try {

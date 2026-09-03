@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react";
-import { getDebtDefenseStats } from "@/lib/debt-wins";
+import { getDebtDefenseStats, DEBT_WINS_PUBLIC_KEY } from "@/lib/debt-wins";
+import { getSetting } from "@/lib/content";
 
 /**
  * The debt-defense scoreboard — collection suits beaten and the dollars that
@@ -8,6 +9,10 @@ import { getDebtDefenseStats } from "@/lib/debt-wins";
  * counter. Renders nothing until the first win is logged.
  */
 export async function DebtWinsCounter() {
+  // Master switch — stays hidden until the office turns it on (default off,
+  // so the numbers can be fully populated first).
+  const on = await getSetting<boolean>(DEBT_WINS_PUBLIC_KEY, false);
+  if (!on) return null;
   const { count, total } = await getDebtDefenseStats();
   if (count === 0) return null;
   const money = "$" + Math.round(total).toLocaleString("en-US");
