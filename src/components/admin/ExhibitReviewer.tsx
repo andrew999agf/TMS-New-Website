@@ -734,8 +734,11 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
  * far away) so a set of hundreds of exhibits doesn't try to render every PDF at
  * once. Clicking anywhere on the card opens that exhibit in the reader.
  */
-function GridCard({ d, proxyBase, onOpen }: { d: ReviewerDoc; proxyBase: string; onOpen: (id: number) => void }) {
-  const ref = useRef<HTMLButtonElement>(null);
+function GridCard({ d, proxyBase, onOpen, checked, onCheck }: {
+  d: ReviewerDoc; proxyBase: string; onOpen: (id: number) => void;
+  checked: boolean; onCheck: (id: number, on: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -745,45 +748,87 @@ function GridCard({ d, proxyBase, onOpen }: { d: ReviewerDoc; proxyBase: string;
     return () => io.disconnect();
   }, []);
   return (
-    <button ref={ref} onClick={() => onOpen(d.id)} title={`${d.label || d.number || ""} ${d.title || ""}`.trim() || "Exhibit"} className="group flex flex-col overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] text-left transition-shadow hover:border-[var(--c-accent)] hover:shadow-md">
-      <div className="relative aspect-[3/4] w-full overflow-hidden bg-white">
-        {d.isVideo ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#16130f] text-[#e8e2d6]">
-            <Film size={30} className="opacity-70" />
-            <span className="text-[10px] uppercase tracking-wide opacity-60">Video</span>
-          </div>
-        ) : d.hasFile && near ? (
-          <iframe
-            src={`${proxyBase}/${d.id}?v=${d.fileTag}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
-            title={d.title || d.label || "Exhibit"}
-            className="pointer-events-none absolute inset-0 h-full w-full border-0"
-            loading="lazy"
-            tabIndex={-1}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
-        )}
-        {/* Transparent layer so the click always lands on the card, not the PDF. */}
-        <span className="absolute inset-0" aria-hidden />
-      </div>
-      <div className="flex items-center gap-2 border-t border-[var(--c-border)] px-2.5 py-2">
-        <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
-      </div>
-    </button>
+    <div ref={ref} className={`relative flex flex-col overflow-hidden rounded-lg border bg-[var(--c-surface)] transition-shadow hover:shadow-md ${checked ? "border-[var(--c-accent)] ring-1 ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}>
+      <button onClick={() => onOpen(d.id)} title={`${d.label || d.number || ""} ${d.title || ""}`.trim() || "Exhibit"} className="flex w-full flex-col text-left">
+        <div className="relative aspect-[3/4] w-full overflow-hidden bg-white">
+          {d.isVideo ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#16130f] text-[#e8e2d6]">
+              <Film size={30} className="opacity-70" />
+              <span className="text-[10px] uppercase tracking-wide opacity-60">Video</span>
+            </div>
+          ) : d.hasFile && near ? (
+            <iframe
+              src={`${proxyBase}/${d.id}?v=${d.fileTag}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
+              title={d.title || d.label || "Exhibit"}
+              className="pointer-events-none absolute inset-0 h-full w-full border-0"
+              loading="lazy"
+              tabIndex={-1}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
+          )}
+          {/* Transparent layer so the click always lands on the card, not the PDF. */}
+          <span className="absolute inset-0" aria-hidden />
+        </div>
+        <div className="flex items-center gap-2 border-t border-[var(--c-border)] px-2.5 py-2">
+          <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+        </div>
+      </button>
+      {/* Selection checkbox — floats over the top-right corner of the thumbnail. */}
+      <label
+        onClick={(e) => e.stopPropagation()}
+        title={checked ? "Uncheck" : "Check to include in the download"}
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--c-border)] bg-white/90 shadow-sm backdrop-blur-sm hover:border-[var(--c-accent)]"
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onCheck(d.id, e.target.checked)}
+          className="h-4 w-4 accent-[var(--c-accent)]"
+          aria-label={`Select ${d.label || d.title || "exhibit"}`}
+        />
+      </label>
+    </div>
   );
 }
 
-/** The thumbnail wall for the current side — rows of four on wide screens. */
-function ExhibitGrid({ docs, side, proxyBase, onOpen }: { docs: ReviewerDoc[]; side: Side; proxyBase: string; onOpen: (id: number) => void }) {
+/** The thumbnail wall for the current side — rows of four on wide screens.
+ *  Check exhibits (top-right corner of each card) to download just those. */
+function ExhibitGrid({ setId, docs, side, proxyBase, onOpen }: { setId: number; docs: ReviewerDoc[]; side: Side; proxyBase: string; onOpen: (id: number) => void }) {
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Keep the selection limited to exhibits that still exist.
+  const ids = useMemo(() => new Set(docs.map((d) => d.id)), [docs]);
+  const active = [...selected].filter((id) => ids.has(id));
+  const onCheck = (id: number, on: boolean) => setSelected((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
+
+  function downloadChecked() {
+    if (!active.length) return;
+    const a = document.createElement("a");
+    a.href = `/admin/exhibit-reviewer/${setId}/zip?ids=${active.join(",")}`;
+    a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   if (docs.length === 0) {
     return <p className="rounded-lg border border-dashed border-[var(--c-border)] p-6 text-center text-sm text-[var(--c-ink-muted)]">No {SIDE_LABEL[side].toLowerCase()} to show.</p>;
   }
   return (
     <div>
-      <p className="mb-3 text-xs text-[var(--c-ink-muted)]">Showing {docs.length} {SIDE_LABEL[side].toLowerCase()} in order — click any exhibit to open it. Handy for spotting duplicates or gaps.</p>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <p className="text-xs text-[var(--c-ink-muted)]">Showing {docs.length} {SIDE_LABEL[side].toLowerCase()} in order — click any exhibit to open it, or check the corner box to build a download.</p>
+        {active.length > 0 && (
+          <span className="ml-auto inline-flex items-center gap-2">
+            <span className="text-xs font-medium text-[var(--c-ink)]">{active.length} checked</span>
+            <button onClick={downloadChecked} className="inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-2.5 py-1.5 text-xs font-semibold text-white hover:brightness-110">
+              <Download size={13} /> Download checked (ZIP)
+            </button>
+            <button onClick={() => setSelected(new Set())} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {docs.map((d) => <GridCard key={d.id} d={d} proxyBase={proxyBase} onOpen={onOpen} />)}
+        {docs.map((d) => <GridCard key={d.id} d={d} proxyBase={proxyBase} onOpen={onOpen} checked={selected.has(d.id)} onCheck={onCheck} />)}
       </div>
     </div>
   );
@@ -1342,7 +1387,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
       {/* Grid view: a wall of first-page thumbnails for the current side. */}
       {gridView && (
-        <ExhibitGrid docs={ordered} side={side} proxyBase={proxyBase} onOpen={(id) => { openDoc(id); setGridView(false); }} />
+        <ExhibitGrid setId={setId} docs={ordered} side={side} proxyBase={proxyBase} onOpen={(id) => { openDoc(id); setGridView(false); }} />
       )}
 
       {/* Main: list + viewer — each column is one viewport tall and scrolls
