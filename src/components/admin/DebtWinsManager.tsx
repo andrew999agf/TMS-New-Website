@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Plus, Loader2, Trash2, X } from "lucide-react";
-import { addDebtWin, deleteDebtWin } from "@/app/admin/(panel)/debt-wins/actions";
+import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check } from "lucide-react";
+import { addDebtWin, updateDebtWin, deleteDebtWin } from "@/app/admin/(panel)/debt-wins/actions";
 
 export type DebtWinRow = {
   id: number; amount: number; outcome: string; wonAt: string;
@@ -61,6 +61,82 @@ function SuggestInput({ value, onChange, options, placeholder }: {
   );
 }
 
+/** Edit one logged win — same fields as the add form, in a dialog. */
+function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; courts: string[]; plaintiffs: string[]; onClose: () => void }) {
+  const router = useRouter();
+  const [amount, setAmount] = useState(String(row.amount));
+  const [outcome, setOutcome] = useState(row.outcome);
+  const [wonAt, setWonAt] = useState(row.wonAt);
+  const [court, setCourt] = useState(row.court);
+  const [caseNumber, setCaseNumber] = useState(row.caseNumber);
+  const [plaintiff, setPlaintiff] = useState(row.plaintiff);
+  const [note, setNote] = useState(row.note);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function save() {
+    setError(null);
+    start(async () => {
+      const res = await updateDebtWin(row.id, { amount: parseFloat(amount) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
+      if (!res.ok) { setError(res.error ?? "Couldn't save."); return; }
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Pencil size={16} className="text-[var(--c-accent)]" /> Edit this win</h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($)</span>
+            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${input} w-full`} />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff (who sued)</span>
+            <SuggestInput value={plaintiff} onChange={setPlaintiff} options={plaintiffs} placeholder="e.g., LVNV Funding, LLC" />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span>
+            <SuggestInput value={court} onChange={setCourt} options={courts} placeholder="e.g., JP Precinct 4, Tarrant County" />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span>
+            <input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">How it was won</span>
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className={`${input} w-full`}>
+              <option value="nonsuit">Non-suited</option>
+              <option value="judgment">Judgment for the defendant</option>
+              <option value="other">Other win</option>
+            </select>
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Date won</span>
+            <input type="date" value={wonAt} onChange={(e) => setWonAt(e.target.value)} className={`${input} w-full`} />
+          </label>
+          <label className="text-xs sm:col-span-2">
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Notes from the attorney <span className="opacity-70">(internal only)</span></span>
+            <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} className={`${input} w-full`} />
+          </label>
+        </div>
+        {error && <p className="mt-3 text-xs text-[var(--c-error)]">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={save} disabled={pending || !amount.trim()} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
+            {pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Log won debt-defense cases and watch the marketing counter climb. */
 export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow[]; courts: string[]; plaintiffs: string[] }) {
   const router = useRouter();
@@ -72,6 +148,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow
   const [plaintiff, setPlaintiff] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editFor, setEditFor] = useState<DebtWinRow | null>(null);
   const [pending, start] = useTransition();
 
   const count = rows.length;
@@ -174,7 +251,10 @@ export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow
                 <td className="px-3 py-2.5">{OUTCOME_LABEL[r.outcome] ?? r.outcome}</td>
                 <td className="max-w-[16rem] px-3 py-2.5 text-xs text-[var(--c-ink-muted)]"><span title={r.note}>{r.note ? (r.note.length > 90 ? r.note.slice(0, 90) + "…" : r.note) : "—"}</span></td>
                 <td className="px-3 py-2.5 text-xs text-[var(--c-ink-muted)]">{r.createdBy.split("@")[0]}</td>
-                <td className="px-2 py-2.5">
+                <td className="px-2 py-2.5 whitespace-nowrap">
+                  <button onClick={() => setEditFor(r)} title="Edit this entry" className="mr-2 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+                    <Pencil size={15} />
+                  </button>
                   <button
                     onClick={() => { if (confirm(`Remove this ${money(r.amount)} win from the counter?`)) start(async () => { await deleteDebtWin(r.id); router.refresh(); }); }}
                     title="Remove (adjusts the counter)"
@@ -188,6 +268,8 @@ export function DebtWinsManager({ rows, courts, plaintiffs }: { rows: DebtWinRow
           </tbody>
         </table>
       </div>
+
+      {editFor && <EditWinDialog key={editFor.id} row={editFor} courts={courts} plaintiffs={plaintiffs} onClose={() => setEditFor(null)} />}
     </div>
   );
 }

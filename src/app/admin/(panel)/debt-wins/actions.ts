@@ -49,6 +49,28 @@ export async function addDebtWin(input: { amount: number; outcome: string; wonAt
   }
 }
 
+export async function updateDebtWin(id: number, input: { amount: number; outcome: string; wonAt: string; court: string; caseNumber: string; plaintiff: string; note: string }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const amount = Math.round((Number(input.amount) || 0) * 100) / 100;
+  if (!(amount > 0)) return { ok: false as const, error: "Enter the amount the creditor sued for." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.wonAt)) return { ok: false as const, error: "Pick the date the case was won." };
+  const outcome = OUTCOMES.has(input.outcome) ? input.outcome : "nonsuit";
+  await db
+    .update(debtDefenseWins)
+    .set({
+      amount, outcome, wonAt: input.wonAt,
+      court: input.court.trim().slice(0, 191),
+      caseNumber: input.caseNumber.trim().slice(0, 128),
+      plaintiff: input.plaintiff.trim().slice(0, 191),
+      note: input.note.trim(),
+    })
+    .where(eq(debtDefenseWins.id, id));
+  await audit(session.email, "update", "debt-win", String(id), `$${amount} ${outcome}`);
+  reval();
+  return { ok: true as const };
+}
+
 export async function deleteDebtWin(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const };
