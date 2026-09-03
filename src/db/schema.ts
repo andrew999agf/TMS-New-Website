@@ -635,6 +635,31 @@ export const debtDefenseWins = pgTable("debt_defense_wins", {
 
 export type DebtDefenseWin = typeof debtDefenseWins.$inferSelect;
 
+/* ----------------------------------------------------------------------------
+ * Map-overlay projects (the aerial/map alignment tool)
+ * ------------------------------------------------------------------------- */
+
+/** A saved Map Overlay work-in-progress: image URLs (uploaded to Blob under
+ *  map-overlay/) plus every layer's placement and the trim box, so an
+ *  alignment can be reopened and re-exported at full resolution later. */
+export const mapOverlayProjects = pgTable("map_overlay_projects", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 191 }).notNull(),
+  /** { url, w, h, name } — the aerial. */
+  base: jsonb("base").$type<{ url: string; w: number; h: number; name: string }>().notNull(),
+  /** { x, y, scale, rotation } — the aerial's placement in the frame. */
+  baseTx: jsonb("base_tx").$type<{ x: number; y: number; scale: number; rotation: number }>().notNull(),
+  /** Overlay layers with their placement. */
+  layers: jsonb("layers").$type<{ name: string; url: string; w: number; h: number; x: number; y: number; scale: number; rotation: number; opacity: number }[]>().notNull().default([]),
+  /** Trim box in frame pixels, null = full frame. */
+  crop: jsonb("crop").$type<{ x: number; y: number; w: number; h: number } | null>(),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type MapOverlayProject = typeof mapOverlayProjects.$inferSelect;
+
 /** A stable of attorneys cases can be referred to — used for the referral
  *  autocomplete and included in "turn-back" emails to prospective clients. */
 export const referralAttorneys = pgTable("referral_attorneys", {

@@ -299,6 +299,18 @@ const DDL = [
   `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS case_number varchar(128) NOT NULL DEFAULT ''`,
   `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS plaintiff varchar(191) NOT NULL DEFAULT ''`,
   `ALTER TABLE debt_defense_wins ALTER COLUMN note TYPE text`,
+  // Saved Map Overlay projects (aerial/map alignment tool).
+  `CREATE TABLE IF NOT EXISTS map_overlay_projects (
+    id serial PRIMARY KEY,
+    name varchar(191) NOT NULL,
+    base jsonb NOT NULL,
+    base_tx jsonb NOT NULL,
+    layers jsonb NOT NULL DEFAULT '[]',
+    crop jsonb,
+    created_by varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `CREATE TABLE IF NOT EXISTS referral_attorneys (
     id serial PRIMARY KEY,
     name varchar(191) NOT NULL UNIQUE,
