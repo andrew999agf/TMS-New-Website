@@ -11,7 +11,16 @@ export type DebtWinRow = {
 };
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
-const OUTCOME_LABEL: Record<string, string> = { nonsuit: "Non-suited", judgment: "Judgment for the defendant", other: "Other win" };
+const OUTCOME_LABEL: Record<string, string> = {
+  nonsuit: "Non-suited",
+  judgment: "Judgment for the defendant",
+  "dismissed-wop": "Dismissed without prejudice",
+  "judgment-plaintiff": "Judgment for the plaintiff",
+  other: "Other win",
+};
+/** Everything except a plaintiff judgment counts toward the scoreboard. */
+const isWin = (outcome: string) => outcome !== "judgment-plaintiff";
+const OUTCOME_OPTIONS = ["nonsuit", "judgment", "dismissed-wop", "judgment-plaintiff", "other"] as const;
 const money = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 const todayISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
@@ -109,11 +118,9 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
             <input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} />
           </label>
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">How it was won</span>
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Outcome</span>
             <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className={`${input} w-full`}>
-              <option value="nonsuit">Non-suited</option>
-              <option value="judgment">Judgment for the defendant</option>
-              <option value="other">Other win</option>
+              {OUTCOME_OPTIONS.map((k) => <option key={k} value={k}>{OUTCOME_LABEL[k]}</option>)}
             </select>
           </label>
           <label className="text-xs">
@@ -151,8 +158,12 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
   const [editFor, setEditFor] = useState<DebtWinRow | null>(null);
   const [pending, start] = useTransition();
 
-  const count = rows.length;
-  const total = rows.reduce((s, r) => s + r.amount, 0);
+  // Scoreboard = wins only; a judgment for the plaintiff is logged for the
+  // record but never joins the public totals.
+  const wins = rows.filter((r) => isWin(r.outcome));
+  const losses = rows.length - wins.length;
+  const count = wins.length;
+  const total = wins.reduce((s, r) => s + r.amount, 0);
 
   function add() {
     setError(null);
@@ -193,10 +204,13 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
           <div className="mt-1 text-xs text-[var(--c-ink-muted)]">In claims defeated</div>
         </div>
       </div>
+      {losses > 0 && (
+        <p className="text-xs text-[var(--c-ink-muted)]">{losses} judgment{losses === 1 ? "" : "s"} for the plaintiff logged for the record — never counted in the totals above or shown on the website.</p>
+      )}
 
-      {/* Log a win */}
+      {/* Log a case result */}
       <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
-        <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck size={15} className="text-[var(--c-accent)]" /> Log a win</p>
+        <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck size={15} className="text-[var(--c-accent)]" /> Log a case result</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
             <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($)</span>
@@ -215,11 +229,9 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
             <input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="e.g., JP04-24-SC-00123" className={`${input} w-full`} />
           </label>
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">How it was won</span>
+            <span className="mb-1 block text-[var(--c-ink-muted)]">Outcome</span>
             <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className={`${input} w-full`}>
-              <option value="nonsuit">Non-suited</option>
-              <option value="judgment">Judgment for the defendant</option>
-              <option value="other">Other win</option>
+              {OUTCOME_OPTIONS.map((k) => <option key={k} value={k}>{OUTCOME_LABEL[k]}</option>)}
             </select>
           </label>
           <label className="text-xs">
@@ -264,7 +276,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
                 <td className="px-3 py-2.5">{r.plaintiff || "—"}</td>
                 <td className="px-3 py-2.5">{r.court || "—"}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.caseNumber || "—"}</td>
-                <td className="px-3 py-2.5">{OUTCOME_LABEL[r.outcome] ?? r.outcome}</td>
+                <td className={`px-3 py-2.5 ${isWin(r.outcome) ? "" : "font-medium text-[var(--c-error)]"}`}>{OUTCOME_LABEL[r.outcome] ?? r.outcome}</td>
                 <td className="max-w-[16rem] px-3 py-2.5 text-xs text-[var(--c-ink-muted)]"><span title={r.note}>{r.note ? (r.note.length > 90 ? r.note.slice(0, 90) + "…" : r.note) : "—"}</span></td>
                 <td className="px-3 py-2.5 text-xs text-[var(--c-ink-muted)]">{r.createdBy.split("@")[0]}</td>
                 <td className="px-2 py-2.5 whitespace-nowrap">

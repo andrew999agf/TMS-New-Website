@@ -18,9 +18,11 @@ export const DEBT_WINS_PUBLIC_KEY = "debtWins.public";
 export async function getDebtDefenseStats(): Promise<DebtWinStats> {
   if (!db) return { count: 0, total: 0 };
   try {
+    // Wins only — a logged judgment for the plaintiff never joins the tally.
     const [row] = await db
       .select({ count: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${debtDefenseWins.amount}), 0)::float8` })
-      .from(debtDefenseWins);
+      .from(debtDefenseWins)
+      .where(sql`${debtDefenseWins.outcome} <> 'judgment-plaintiff'`);
     return { count: row?.count ?? 0, total: row?.total ?? 0 };
   } catch {
     return { count: 0, total: 0 }; // table not created yet — run Database updates
