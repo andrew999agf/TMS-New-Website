@@ -18,25 +18,37 @@ export default async function DebtWinsPage() {
   let rows: DebtWinRow[] = [];
   if (db) {
     try {
-      rows = (await db.select().from(debtDefenseWins).orderBy(desc(debtDefenseWins.wonAt), desc(debtDefenseWins.id))).map((r) => ({
-        id: r.id, amount: r.amount, settledPaid: r.settledPaid ?? 0, outcome: r.outcome, wonAt: r.wonAt,
-        court: r.court ?? "", caseNumber: r.caseNumber ?? "", plaintiff: r.plaintiff ?? "",
-        note: r.note, createdBy: r.createdBy,
-      }));
+      rows = (await db.select().from(debtDefenseWins).orderBy(desc(debtDefenseWins.wonAt), desc(debtDefenseWins.id))).map((r) => {
+        // Confidential settlements are REDACTED SERVER-SIDE for everyone but
+        // the owner and whoever logged the entry — the identifying details
+        // never even reach the browser. Only the amounts survive.
+        const confidential = r.confidential ?? false;
+        const redacted = confidential && session.role !== "owner" && r.createdBy !== session.email;
+        return {
+          id: r.id, amount: r.amount, settledPaid: r.settledPaid ?? 0, outcome: r.outcome,
+          wonAt: redacted ? "" : r.wonAt,
+          court: redacted ? "" : (r.court ?? ""),
+          caseNumber: redacted ? "" : (r.caseNumber ?? ""),
+          plaintiff: redacted ? "" : (r.plaintiff ?? ""),
+          note: redacted ? "" : r.note,
+          createdBy: r.createdBy, confidential, redacted,
+        };
+      });
     } catch {
       /* run Settings → Database updates once */
     }
   }
 
   // Every court and plaintiff ever entered, most-used first — the autocomplete
-  // that keeps spellings consistent.
+  // that keeps spellings consistent. Redacted rows contribute nothing.
   const distinct = (vals: string[]) => {
     const freq = new Map<string, number>();
     for (const v of vals) { const t = v.trim(); if (t) freq.set(t, (freq.get(t) ?? 0) + 1); }
     return [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
   };
-  const courts = distinct(rows.map((r) => r.court));
-  const plaintiffs = distinct(rows.map((r) => r.plaintiff));
+  const visible = rows.filter((r) => !r.redacted);
+  const courts = distinct(visible.map((r) => r.court));
+  const plaintiffs = distinct(visible.map((r) => r.plaintiff));
   const publicOn = await getSetting<boolean>(DEBT_WINS_PUBLIC_KEY, false);
 
   return (

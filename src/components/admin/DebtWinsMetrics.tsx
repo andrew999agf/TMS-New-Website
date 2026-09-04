@@ -112,10 +112,10 @@ export function DebtWinsMetrics({ rows }: { rows: DebtWinRow[] }) {
         ))}
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Donut title="Cases by court" slices={bucketize(rows.map((r) => r.court.trim() || "Not specified"))} />
-        <Donut title="Cases by county" slices={bucketize(rows.map((r) => countyOf(r.court)))} />
+        <Donut title="Cases by court" slices={bucketize(rows.map((r) => (r.redacted ? "Confidential" : r.court.trim() || "Not specified")))} />
+        <Donut title="Cases by county" slices={bucketize(rows.map((r) => (r.redacted ? "Confidential" : countyOf(r.court))))} />
         <Donut title="Cases by outcome" slices={bucketize(rows.map((r) => OUTCOME_LABEL[r.outcome] ?? r.outcome))} />
-        <Donut title="Cases by plaintiff" slices={bucketize(rows.map((r) => r.plaintiff.trim() || "Not specified"))} />
+        <Donut title="Cases by plaintiff" slices={bucketize(rows.map((r) => (r.redacted ? "Confidential" : r.plaintiff.trim() || "Not specified")))} />
       </div>
       <p className="flex items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]"><PieChart size={12} /> County is read from the court name (&ldquo;…, Tarrant County&rdquo;). Averages use wins with an amount; win rate counts plaintiff judgments against the record.</p>
     </section>

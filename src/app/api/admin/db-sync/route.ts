@@ -300,6 +300,7 @@ const DDL = [
   `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS plaintiff varchar(191) NOT NULL DEFAULT ''`,
   `ALTER TABLE debt_defense_wins ALTER COLUMN note TYPE text`,
   `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS settled_paid real NOT NULL DEFAULT 0`,
+  `ALTER TABLE debt_defense_wins ADD COLUMN IF NOT EXISTS confidential boolean NOT NULL DEFAULT false`,
   // Saved Map Overlay projects (aerial/map alignment tool).
   `CREATE TABLE IF NOT EXISTS map_overlay_projects (
     id serial PRIMARY KEY,

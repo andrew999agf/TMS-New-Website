@@ -2,14 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check, Eye, EyeOff, Lock } from "lucide-react";
 import { addDebtWin, updateDebtWin, deleteDebtWin, setDebtWinsPublic } from "@/app/admin/(panel)/debt-wins/actions";
 import { DebtWinsMetrics } from "./DebtWinsMetrics";
 
 export type DebtWinRow = {
   id: number; amount: number; settledPaid: number; outcome: string; wonAt: string;
   court: string; caseNumber: string; plaintiff: string; note: string; createdBy: string;
+  /** Confidential settlement; `redacted` = this viewer received masked fields. */
+  confidential: boolean; redacted: boolean;
 };
+
+/** Blurred stand-in for details this viewer isn't allowed to see. */
+const Redacted = () => <span className="select-none blur-[3px] text-[var(--c-ink-muted)]" aria-label="Confidential">Confidential</span>;
 
 /** What the counter may claim: for settlements, only the unpaid difference. */
 export const netAmount = (r: Pick<DebtWinRow, "amount" | "settledPaid" | "outcome">) =>
@@ -83,6 +88,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
   const router = useRouter();
   const [amount, setAmount] = useState(String(row.amount));
   const [paid, setPaid] = useState(row.settledPaid ? String(row.settledPaid) : "");
+  const [confidential, setConfidential] = useState(row.confidential);
   const [outcome, setOutcome] = useState(row.outcome);
   const [wonAt, setWonAt] = useState(row.wonAt);
   const [court, setCourt] = useState(row.court);
@@ -95,7 +101,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
   function save() {
     setError(null);
     start(async () => {
-      const res = await updateDebtWin(row.id, { amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
+      const res = await updateDebtWin(row.id, { amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, confidential, wonAt, court, caseNumber, plaintiff, note });
       if (!res.ok) { setError(res.error ?? "Couldn't save."); return; }
       router.refresh();
       onClose();
@@ -121,6 +127,12 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
               {amount.trim() && paid.trim() && (
                 <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated.</span>
               )}
+            </label>
+          )}
+          {outcome === "settled" && (
+            <label className="flex items-center gap-2 text-xs cursor-pointer sm:col-span-2">
+              <input type="checkbox" className="accent-[var(--c-accent)]" checked={confidential} onChange={(e) => setConfidential(e.target.checked)} />
+              <span className="inline-flex items-center gap-1"><Lock size={12} className="text-[var(--c-accent)]" /> Confidential settlement — details visible only to the owner and whoever logged it; only the amount stays visible to others.</span>
             </label>
           )}
           <label className="text-xs">
@@ -167,6 +179,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
   const router = useRouter();
   const [amount, setAmount] = useState("");
   const [paid, setPaid] = useState("");
+  const [confidential, setConfidential] = useState(false);
   const [outcome, setOutcome] = useState("nonsuit");
   const [wonAt, setWonAt] = useState(todayISO());
   const [court, setCourt] = useState("");
@@ -187,9 +200,9 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
   function add() {
     setError(null);
     start(async () => {
-      const res = await addDebtWin({ amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
+      const res = await addDebtWin({ amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, confidential, wonAt, court, caseNumber, plaintiff, note });
       if (!res.ok) { setError(res.error ?? "Couldn't save."); return; }
-      setAmount(""); setPaid(""); setCourt(""); setCaseNumber(""); setPlaintiff(""); setNote(""); setWonAt(todayISO());
+      setAmount(""); setPaid(""); setConfidential(false); setCourt(""); setCaseNumber(""); setPlaintiff(""); setNote(""); setWonAt(todayISO());
       router.refresh();
     });
   }
@@ -244,6 +257,12 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
               {amount.trim() && paid.trim() && (
                 <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated — only the part the client didn&apos;t pay.</span>
               )}
+            </label>
+          )}
+          {outcome === "settled" && (
+            <label className="flex items-center gap-2 self-end pb-2.5 text-xs cursor-pointer">
+              <input type="checkbox" className="accent-[var(--c-accent)]" checked={confidential} onChange={(e) => setConfidential(e.target.checked)} />
+              <span className="inline-flex items-center gap-1"><Lock size={12} className="text-[var(--c-accent)]" /> Confidential settlement — hide the plaintiff, case number, court, date, and notes from everyone except the owner and whoever logs it. Only the amount stays visible. Never shown on the website.</span>
             </label>
           )}
           <label className="text-xs">
@@ -301,25 +320,32 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
             )}
             {rows.map((r) => (
               <tr key={r.id} className="bg-[var(--c-surface)] align-top">
-                <td className="px-3 py-2.5 whitespace-nowrap">{r.wonAt}</td>
-                <td className="px-3 py-2.5 tabular-nums" title={r.outcome === "settled" ? `Claimed ${money(r.amount)} — paid ${money(r.settledPaid)}` : undefined}>{isWin(r.outcome) ? money(netAmount(r)) : "—"}{r.outcome === "settled" ? <span className="text-[var(--c-ink-muted)]"> net</span> : null}</td>
-                <td className="px-3 py-2.5">{r.plaintiff || "—"}</td>
-                <td className="px-3 py-2.5">{r.court || "—"}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap">{r.caseNumber || "—"}</td>
-                <td className={`px-3 py-2.5 ${isWin(r.outcome) ? "" : "font-medium text-[var(--c-error)]"}`}>{OUTCOME_LABEL[r.outcome] ?? r.outcome}</td>
-                <td className="max-w-[16rem] px-3 py-2.5 text-xs text-[var(--c-ink-muted)]"><span title={r.note}>{r.note ? (r.note.length > 90 ? r.note.slice(0, 90) + "…" : r.note) : "—"}</span></td>
+                <td className="px-3 py-2.5 whitespace-nowrap">{r.redacted ? <Redacted /> : r.wonAt}</td>
+                <td className="px-3 py-2.5 tabular-nums" title={r.outcome === "settled" && !r.redacted ? `Claimed ${money(r.amount)} — paid ${money(r.settledPaid)}` : undefined}>{isWin(r.outcome) ? money(netAmount(r)) : "—"}{r.outcome === "settled" ? <span className="text-[var(--c-ink-muted)]"> net</span> : null}</td>
+                <td className="px-3 py-2.5">{r.redacted ? <Redacted /> : r.plaintiff || "—"}</td>
+                <td className="px-3 py-2.5">{r.redacted ? <Redacted /> : r.court || "—"}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap">{r.redacted ? <Redacted /> : r.caseNumber || "—"}</td>
+                <td className={`px-3 py-2.5 ${isWin(r.outcome) ? "" : "font-medium text-[var(--c-error)]"}`}>
+                  {OUTCOME_LABEL[r.outcome] ?? r.outcome}
+                  {r.confidential && <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--c-accent)]" title="Confidential settlement — details limited to the owner and whoever logged it"><Lock size={9} /> conf.</span>}
+                </td>
+                <td className="max-w-[16rem] px-3 py-2.5 text-xs text-[var(--c-ink-muted)]">{r.redacted ? <Redacted /> : <span title={r.note}>{r.note ? (r.note.length > 90 ? r.note.slice(0, 90) + "…" : r.note) : "—"}</span>}</td>
                 <td className="px-3 py-2.5 text-xs text-[var(--c-ink-muted)]">{r.createdBy.split("@")[0]}</td>
                 <td className="px-2 py-2.5 whitespace-nowrap">
-                  <button onClick={() => setEditFor(r)} title="Edit this entry" className="mr-2 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => { if (confirm(`Remove this ${money(r.amount)} win from the counter?`)) start(async () => { await deleteDebtWin(r.id); router.refresh(); }); }}
-                    title="Remove (adjusts the counter)"
-                    className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {r.redacted ? (
+                    <Lock size={14} className="text-[var(--c-ink-muted)]" aria-label="Only the owner or the person who logged this can change it" />
+                  ) : (<>
+                    <button onClick={() => setEditFor(r)} title="Edit this entry" className="mr-2 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      onClick={() => { if (confirm(`Remove this ${money(r.amount)} win from the counter?`)) start(async () => { await deleteDebtWin(r.id); router.refresh(); }); }}
+                      title="Remove (adjusts the counter)"
+                      className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </>)}
                 </td>
               </tr>
             ))}

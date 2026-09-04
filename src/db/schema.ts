@@ -622,6 +622,11 @@ export const debtDefenseWins = pgTable("debt_defense_wins", {
   settledPaid: real("settled_paid").notNull().default(0),
   /** nonsuit | judgment | dismissed-* | settled | judgment-plaintiff | other */
   outcome: varchar("outcome", { length: 24 }).notNull().default("nonsuit"),
+  /** Confidential settlement: plaintiff, case number, court, date, and notes
+   *  are redacted server-side for everyone except the owner and the person who
+   *  logged it. Only the amount stays visible; nothing identifying ever
+   *  reaches the website regardless. */
+  confidential: boolean("confidential").notNull().default(false),
   /** The day the case was won (YYYY-MM-DD). */
   wonAt: varchar("won_at", { length: 10 }).notNull(),
   /** Court/location (JP, county court at law, district…). Autocompleted from
