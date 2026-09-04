@@ -14,13 +14,14 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 const OUTCOME_LABEL: Record<string, string> = {
   nonsuit: "Non-suited",
   judgment: "Judgment for the defendant",
+  "dismissed-wp": "Dismissed with prejudice",
   "dismissed-wop": "Dismissed without prejudice",
   "judgment-plaintiff": "Judgment for the plaintiff",
   other: "Other win",
 };
-/** Everything except a plaintiff judgment counts toward the scoreboard. */
+/** Everything except a plaintiff judgment counts toward the totals. */
 const isWin = (outcome: string) => outcome !== "judgment-plaintiff";
-const OUTCOME_OPTIONS = ["nonsuit", "judgment", "dismissed-wop", "judgment-plaintiff", "other"] as const;
+const OUTCOME_OPTIONS = ["nonsuit", "judgment", "dismissed-wp", "dismissed-wop", "judgment-plaintiff", "other"] as const;
 const money = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 const todayISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 

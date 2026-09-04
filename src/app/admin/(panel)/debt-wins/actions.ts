@@ -16,7 +16,7 @@ async function guard() {
 
 /** "judgment-plaintiff" is a logged LOSS — kept for the record, never counted
  *  in the public scoreboard totals. */
-const OUTCOMES = new Set(["nonsuit", "judgment", "dismissed-wop", "judgment-plaintiff", "other"]);
+const OUTCOMES = new Set(["nonsuit", "judgment", "dismissed-wp", "dismissed-wop", "judgment-plaintiff", "other"]);
 
 /** Refresh the admin tally and the public counter on the debt-defense page. */
 const reval = () => {
