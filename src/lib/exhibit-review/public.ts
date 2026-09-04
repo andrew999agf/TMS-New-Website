@@ -13,6 +13,10 @@ export type PublicDoc = {
 export type PublicSet = {
   id: number; name: string; causeNumber: string; court: string; token: string;
   docs: PublicDoc[];
+  /** An uploaded "exhibit list" document — offered on the anyone-with-the-link
+   *  page only (the opposing-counsel view stays bare-bones). */
+  hasList: boolean;
+  listName: string | null;
 };
 
 /**
@@ -25,7 +29,7 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
   if (!db || !token) return null;
   try {
     const [set] = await db
-      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, isPublic: exhibitSets.isPublic, token: exhibitSets.publicToken })
+      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, isPublic: exhibitSets.isPublic, token: exhibitSets.publicToken, listUrl: exhibitSets.listUrl, listName: exhibitSets.listName })
       .from(exhibitSets)
       .where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
     if (!set) return null;
@@ -37,7 +41,7 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
     const docs: PublicDoc[] = rows
       .filter((r) => r.url)
       .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType) }));
-    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs };
+    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs, hasList: Boolean(set.listUrl), listName: set.listName };
   } catch {
     return null;
   }
@@ -65,7 +69,8 @@ export async function getOcSet(token: string): Promise<PublicSet | null> {
     const docs: PublicDoc[] = rows
       .filter((r) => r.url)
       .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: "", bates: "", pageCount: null, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType) }));
-    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs };
+    // The OC view never offers the exhibit-list document.
+    return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs, hasList: false, listName: null };
   } catch {
     return null;
   }

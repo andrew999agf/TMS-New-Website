@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, CheckSquare, ChevronDown, BookOpen, List as ListIcon, LayoutGrid, Film, FileText } from "lucide-react";
+import { Download, CheckSquare, ChevronDown, BookOpen, List as ListIcon, LayoutGrid, Film, FileText, Eye, ZoomIn, ZoomOut } from "lucide-react";
 
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
@@ -20,6 +20,14 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [menu, setMenu] = useState<"checked" | "all" | null>(null);
   const [grid, setGrid] = useState(false);
+  // Grid zoom: 0 = rows of four … 3 = one huge exhibit filling the width.
+  const [zoom, setZoom] = useState(0);
+  const GRID_COLS = [
+    "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+    "grid-cols-2 sm:grid-cols-2 lg:grid-cols-3",
+    "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2",
+    "grid-cols-1",
+  ] as const;
   const barRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () => ["plaintiff", "defendant", "joint"].map((s) => ({ side: s, items: docs.filter((d) => d.side === s) })).filter((g) => g.items.length),
@@ -59,6 +67,13 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
           <button onClick={() => setGrid(false)} title="List view" className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium ${!grid ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)]"}`}><ListIcon size={13} /> <span className="hidden sm:inline">List</span></button>
           <button onClick={() => setGrid(true)} title="Grid view — first-page thumbnails" className={`inline-flex items-center gap-1.5 border-l border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium ${grid ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)]"}`}><LayoutGrid size={13} /> <span className="hidden sm:inline">Grid</span></button>
         </div>
+        {/* Grid zoom — make the documents bigger, up to one filling the width. */}
+        {grid && !namesOnly && (
+          <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
+            <button onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} title="Smaller — more exhibits per row" className="px-2.5 py-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)] disabled:opacity-40"><ZoomOut size={14} /></button>
+            <button onClick={() => setZoom((z) => Math.min(3, z + 1))} disabled={zoom === 3} title="Bigger — zoom in on the documents" className="border-l border-[var(--c-border)] px-2.5 py-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)] disabled:opacity-40"><ZoomIn size={14} /></button>
+          </div>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* Download checked — ZIP, with a caret for the single-PDF-book option */}
           <div className="relative inline-flex">
@@ -104,7 +119,7 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
             <section key={g.side}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)]">{SIDE_LABEL[g.side] ?? "Exhibits"}</h2>
               {grid ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <div className={`grid gap-4 ${namesOnly ? GRID_COLS[0] : GRID_COLS[zoom]}`}>
                   {g.items.map((d) => (
                     <SharedGridCard key={d.id} d={d} viewBase={viewBase} fileBase={fileBase} checked={sel.has(d.id)} onToggle={() => toggle(d.id)} />
                   ))}
@@ -124,6 +139,14 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
                           {!namesOnly && (d.bates || d.pageCount || d.isVideo) && <span className="mt-0.5 block text-[11px] text-[var(--c-ink-muted)]">{d.bates}{d.bates && (d.pageCount || d.isVideo) ? " · " : ""}{d.isVideo ? "Video" : d.pageCount ? `${d.pageCount} pp` : ""}</span>}
                         </span>
                       </Link>
+                      {!namesOnly && (
+                        <Link
+                          href={`${viewBase}/${d.id}`}
+                          className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-2.5 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white"
+                        >
+                          <Eye size={13} /> <span className="hidden sm:inline">Review exhibit</span><span className="sm:hidden">View</span>
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>

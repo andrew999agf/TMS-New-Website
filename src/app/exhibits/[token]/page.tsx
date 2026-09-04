@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FileText } from "lucide-react";
 import { getPublicSet, orderPublicDocs } from "@/lib/exhibit-review/public";
 import { SharedExhibitList } from "@/components/site/SharedExhibitList";
 import { FIRM } from "@/lib/firm";
@@ -35,6 +36,16 @@ export default async function PublicExhibitIndex({ params }: { params: Promise<{
         <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
           {[set.causeNumber, set.court].filter(Boolean).join("  ·  ")}
         </p>
+        {set.hasList && (
+          <a
+            href={`/exhibits/${token}/list`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white"
+          >
+            <FileText size={14} /> View the exhibit list{set.listName ? ` — ${set.listName}` : ""}
+          </a>
+        )}
       </header>
 
       <SharedExhibitList docs={ordered} viewBase={`/exhibits/${token}/e`} fileBase={`/exhibits/${token}/file`} zipBase={`/exhibits/${token}/zip`} bookBase={`/exhibits/${token}/book`} />
