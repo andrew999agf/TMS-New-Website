@@ -20,6 +20,16 @@ const Redacted = () => <span className="select-none blur-[3px] text-[var(--c-ink
 export const netAmount = (r: Pick<DebtWinRow, "amount" | "settledPaid" | "outcome">) =>
   r.outcome === "settled" ? Math.max(0, r.amount - r.settledPaid) : r.amount;
 
+/**
+ * Whether an entry counts as a WIN in the totals. Plaintiff judgments never
+ * do; a settlement only qualifies when it settled for MORE than 90% below the
+ * claim (client paid under 10% of what was demanded). Anything else is logged
+ * for the record but kept out of the counter.
+ */
+export const qualifiesAsWin = (r: Pick<DebtWinRow, "amount" | "settledPaid" | "outcome">) =>
+  r.outcome !== "judgment-plaintiff" &&
+  (r.outcome !== "settled" || (r.amount > 0 && r.settledPaid < r.amount * 0.1));
+
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 const OUTCOME_LABEL: Record<string, string> = {
   nonsuit: "Non-suited",
@@ -125,7 +135,9 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
               <span className="mb-1 block text-[var(--c-ink-muted)]">Amount paid at settlement ($)</span>
               <input type="number" step="0.01" min="0" value={paid} onChange={(e) => setPaid(e.target.value)} className={`${input} w-full`} />
               {amount.trim() && paid.trim() && (
-                <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated.</span>
+                (parseFloat(paid) || 0) < (parseFloat(amount) || 0) * 0.1
+                  ? <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated.</span>
+                  : <span className="mt-1 block text-[11px] font-medium text-amber-600">Settled at 10%+ of the claim — logged, but NOT counted as a win (must be more than 90% below the claim).</span>
               )}
             </label>
           )}
@@ -192,8 +204,9 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
 
   // Scoreboard = wins only; a judgment for the plaintiff is logged for the
   // record but never joins the public totals.
-  const wins = rows.filter((r) => isWin(r.outcome));
-  const losses = rows.length - wins.length;
+  const wins = rows.filter(qualifiesAsWin);
+  const losses = rows.filter((r) => r.outcome === "judgment-plaintiff").length;
+  const weakSettlements = rows.length - wins.length - losses;
   const count = wins.length;
   const total = wins.reduce((s, r) => s + netAmount(r), 0);
 
@@ -239,6 +252,9 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
       {losses > 0 && (
         <p className="text-xs text-[var(--c-ink-muted)]">{losses} judgment{losses === 1 ? "" : "s"} for the plaintiff logged for the record — never counted in the totals above or shown on the website.</p>
       )}
+      {weakSettlements > 0 && (
+        <p className="text-xs text-[var(--c-ink-muted)]">{weakSettlements} settlement{weakSettlements === 1 ? "" : "s"} at 10% or more of the claim — logged for the record, but only settlements more than 90% below the claim count as wins.</p>
+      )}
 
       <DebtWinsMetrics rows={rows} />
 
@@ -255,7 +271,9 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
               <span className="mb-1 block text-[var(--c-ink-muted)]">Amount paid at settlement ($)</span>
               <input type="number" step="0.01" min="0" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="e.g., 1500" className={`${input} w-full`} />
               {amount.trim() && paid.trim() && (
-                <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated — only the part the client didn&apos;t pay.</span>
+                (parseFloat(paid) || 0) < (parseFloat(amount) || 0) * 0.1
+                  ? <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated — only the part the client didn&apos;t pay.</span>
+                  : <span className="mt-1 block text-[11px] font-medium text-amber-600">Settled at 10%+ of the claim — logged, but NOT counted as a win (must be more than 90% below the claim).</span>
               )}
             </label>
           )}
@@ -321,7 +339,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
             {rows.map((r) => (
               <tr key={r.id} className="bg-[var(--c-surface)] align-top">
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.redacted ? <Redacted /> : r.wonAt}</td>
-                <td className="px-3 py-2.5 tabular-nums" title={r.outcome === "settled" && !r.redacted ? `Claimed ${money(r.amount)} — paid ${money(r.settledPaid)}` : undefined}>{isWin(r.outcome) ? money(netAmount(r)) : "—"}{r.outcome === "settled" ? <span className="text-[var(--c-ink-muted)]"> net</span> : null}</td>
+                <td className="px-3 py-2.5 tabular-nums" title={r.outcome === "settled" && !r.redacted ? `Claimed ${money(r.amount)} — paid ${money(r.settledPaid)}` : undefined}>{isWin(r.outcome) ? money(netAmount(r)) : "—"}{r.outcome === "settled" ? <span className="text-[var(--c-ink-muted)]"> net</span> : null}{r.outcome === "settled" && !qualifiesAsWin(r) ? <span className="block text-[10px] font-medium text-amber-600">not counted</span> : null}</td>
                 <td className="px-3 py-2.5">{r.redacted ? <Redacted /> : r.plaintiff || "—"}</td>
                 <td className="px-3 py-2.5">{r.redacted ? <Redacted /> : r.court || "—"}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.redacted ? <Redacted /> : r.caseNumber || "—"}</td>

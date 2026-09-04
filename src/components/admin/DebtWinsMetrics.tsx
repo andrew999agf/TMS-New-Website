@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingUp, PieChart } from "lucide-react";
-import { netAmount, type DebtWinRow } from "./DebtWinsManager";
+import { netAmount, qualifiesAsWin, type DebtWinRow } from "./DebtWinsManager";
 
 /**
  * Metrics for the debt-defense log: average/median/largest claim and win
@@ -34,18 +34,22 @@ function countyOf(court: string): string {
   return raw.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Count values, keep the top 5, fold the rest into "Other". */
-function bucketize(values: string[]): { label: string; count: number; color: string }[] {
+type Slice = { label: string; count: number; color: string; detail?: [string, number][] };
+
+/** Count values, keep the top 5, fold the rest into "Other" — remembering what
+ *  "Other" is made of so hovering it shows the full breakdown. */
+function bucketize(values: string[]): Slice[] {
   const freq = new Map<string, number>();
   for (const v of values) freq.set(v, (freq.get(v) ?? 0) + 1);
   const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const top = sorted.slice(0, 5).map(([label, count], i) => ({ label, count, color: PALETTE[i] }));
-  const rest = sorted.slice(5).reduce((s, [, c]) => s + c, 0);
-  if (rest > 0) top.push({ label: "Other", count: rest, color: OTHER_COLOR });
+  const top: Slice[] = sorted.slice(0, 5).map(([label, count], i) => ({ label, count, color: PALETTE[i] }));
+  const rest = sorted.slice(5);
+  const restCount = rest.reduce((s, [, c]) => s + c, 0);
+  if (restCount > 0) top.push({ label: "Other", count: restCount, color: OTHER_COLOR, detail: rest });
   return top;
 }
 
-function Donut({ title, slices }: { title: string; slices: { label: string; count: number; color: string }[] }) {
+function Donut({ title, slices }: { title: string; slices: Slice[] }) {
   const total = slices.reduce((s, x) => s + x.count, 0);
   if (total === 0) return null;
   const R = 40, C = 2 * Math.PI * R;
@@ -63,18 +67,34 @@ function Donut({ title, slices }: { title: string; slices: { label: string; coun
           {arcs.map((s) => (
             <circle key={s.label} cx="50" cy="50" r={R} fill="none" stroke={s.color} strokeWidth="14"
               strokeDasharray={`${s.dash} ${C - s.dash}`} strokeDashoffset={-s.start} transform="rotate(-90 50 50)">
-              <title>{`${s.label}: ${s.count} (${Math.round(s.frac * 100)}%)`}</title>
+              <title>{s.detail
+                ? `Other (${s.count}): ${s.detail.map(([l, c]) => `${l} ${c}`).join(", ")}`
+                : `${s.label}: ${s.count} (${Math.round(s.frac * 100)}%)`}</title>
             </circle>
           ))}
           <text x="50" y="54" textAnchor="middle" fill="var(--c-ink)" style={{ font: "700 15px var(--font-ui, sans-serif)" }}>{total}</text>
         </svg>
         <ul className="min-w-0 flex-1 space-y-1.5">
           {arcs.map((s) => (
-            <li key={s.label} className="flex items-center gap-2 text-xs">
+            <li key={s.label} className="group relative flex items-center gap-2 text-xs">
               <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
-              <span className="min-w-0 flex-1 truncate text-[var(--c-ink)]" title={s.label}>{s.label}</span>
+              <span className={`min-w-0 flex-1 truncate text-[var(--c-ink)] ${s.detail ? "cursor-help underline decoration-dotted underline-offset-2" : ""}`} title={s.detail ? undefined : s.label}>{s.label}</span>
               <span className="tabular-nums font-medium">{s.count}</span>
               <span className="w-9 text-right tabular-nums text-[var(--c-ink-muted)]">{Math.round(s.frac * 100)}%</span>
+              {/* Hovering "Other" expands exactly what it folded together. */}
+              {s.detail && (
+                <div className="pointer-events-none invisible absolute bottom-full left-0 z-30 mb-1.5 w-64 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-2.5 shadow-lg group-hover:visible">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Inside &ldquo;Other&rdquo; ({s.count})</p>
+                  <ul className="max-h-48 space-y-1 overflow-y-auto">
+                    {s.detail.map(([l, c]) => (
+                      <li key={l} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate" title={l}>{l}</span>
+                        <span className="tabular-nums font-medium">{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -85,8 +105,9 @@ function Donut({ title, slices }: { title: string; slices: { label: string; coun
 
 export function DebtWinsMetrics({ rows }: { rows: DebtWinRow[] }) {
   if (rows.length === 0) return null;
-  const wins = rows.filter((r) => r.outcome !== "judgment-plaintiff");
-  // Settlements count only the unpaid part of the claim.
+  // Wins only: no plaintiff judgments, and settlements must be >90% below the
+  // claim. Settlements count only the unpaid part of the claim.
+  const wins = rows.filter(qualifiesAsWin);
   const amounts = wins.map((r) => netAmount(r)).filter((a) => a > 0).sort((a, b) => a - b);
   const avg = amounts.length ? amounts.reduce((s, a) => s + a, 0) / amounts.length : 0;
   const median = amounts.length ? amounts[Math.floor((amounts.length - 1) / 2)] : 0;

@@ -18,12 +18,13 @@ export const DEBT_WINS_PUBLIC_KEY = "debtWins.public";
 export async function getDebtDefenseStats(): Promise<DebtWinStats> {
   if (!db) return { count: 0, total: 0 };
   try {
-    // Wins only — a logged judgment for the plaintiff never joins the tally.
-    // A settlement only claims the part the client did NOT pay (claimed − paid).
+    // Wins only — a logged judgment for the plaintiff never joins the tally,
+    // and a settlement counts ONLY when it settled for more than 90% below the
+    // claim (paid under 10% of the demand), claiming just the unpaid part.
     const [row] = await db
       .select({ count: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${debtDefenseWins.amount} - ${debtDefenseWins.settledPaid}), 0)::float8` })
       .from(debtDefenseWins)
-      .where(sql`${debtDefenseWins.outcome} <> 'judgment-plaintiff'`);
+      .where(sql`${debtDefenseWins.outcome} <> 'judgment-plaintiff' and not (${debtDefenseWins.outcome} = 'settled' and ${debtDefenseWins.settledPaid} >= ${debtDefenseWins.amount} * 0.1)`);
     return { count: row?.count ?? 0, total: row?.total ?? 0 };
   } catch {
     return { count: 0, total: 0 }; // table not created yet — run Database updates
