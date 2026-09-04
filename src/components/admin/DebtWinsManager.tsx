@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Plus, Loader2, Trash2, X, Pencil, Check, Eye, EyeOff } from "lucide-react";
 import { addDebtWin, updateDebtWin, deleteDebtWin, setDebtWinsPublic } from "@/app/admin/(panel)/debt-wins/actions";
+import { DebtWinsMetrics } from "./DebtWinsMetrics";
 
 export type DebtWinRow = {
   id: number; amount: number; outcome: string; wonAt: string;
@@ -208,6 +209,8 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
       {losses > 0 && (
         <p className="text-xs text-[var(--c-ink-muted)]">{losses} judgment{losses === 1 ? "" : "s"} for the plaintiff logged for the record — never counted in the totals above or shown on the website.</p>
       )}
+
+      <DebtWinsMetrics rows={rows} />
 
       {/* Log a case result */}
       <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
