@@ -8,6 +8,36 @@ import { getSetting } from "@/lib/content";
  * this same component can later sit on the Results page too without a second
  * counter. Renders nothing until the first win is logged.
  */
+/** The dollar figure with a slash drawn through it — the debt, crossed out. */
+function SlashedMoney({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="dw-slash relative inline-block">
+      {children}
+      <style>{`
+        .dw-slash::after {
+          content: "";
+          position: absolute;
+          left: -2%;
+          top: 52%;
+          height: 0.075em;
+          width: 104%;
+          background: var(--c-accent);
+          border-radius: 999px;
+          transform: rotate(-6deg) scaleX(0);
+          transform-origin: left center;
+          animation: dw-slash-draw 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .dw-slash::after { animation: none; transform: rotate(-6deg) scaleX(1); }
+        }
+        @keyframes dw-slash-draw {
+          to { transform: rotate(-6deg) scaleX(1); }
+        }
+      `}</style>
+    </span>
+  );
+}
+
 export async function DebtWinsCounter() {
   // Master switch — stays hidden until the office turns it on (default off,
   // so the numbers can be fully populated first).
@@ -31,13 +61,13 @@ export async function DebtWinsCounter() {
             <div className="mt-2 text-sm text-[var(--c-ink-muted)]">collection lawsuits resolved in our clients&apos; favor</div>
           </div>
           <div>
-            <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{money}</div>
+            <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl"><SlashedMoney>{money}</SlashedMoney></div>
             <div className="mt-2 text-sm text-[var(--c-ink-muted)]">in claimed debt defeated — non-suits, dismissals, and judgments for our clients</div>
           </div>
         </div>
       ) : (
         <div className="mt-4">
-          <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl">{money}</div>
+          <div className="font-[family-name:var(--font-display)] text-4xl leading-none text-[var(--c-ink)] lg:text-5xl"><SlashedMoney>{money}</SlashedMoney></div>
           <div className="mt-2 text-sm text-[var(--c-ink-muted)]">in claimed debt defeated — non-suits, dismissals, and judgments for our clients</div>
         </div>
       )}
