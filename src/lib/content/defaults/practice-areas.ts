@@ -139,6 +139,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     body: [
       "Most lawsuits settle. They settle on the terms of the side that was ready to try them. We build every commercial case from the verdict backward — what a jury needs to hear, what the record has to prove, what the other side cannot survive.",
       "We handle contract breaches, business divorces, fraud, fiduciary disputes, and the tangled fights that come when money and trust both run out. The facts are usually complicated. Our job is to make them simple enough for twelve people to decide in your favor.",
+      "We also represent Texas landowners and ranches against industrial neighbors. When a compressor station, pump station, pipeline facility, or similar operation moves in next to a working ranch — the noise, the lights, the emissions, the traffic — Texas private-nuisance law gives the landowner a claim, and we know how to try it. These cases are about the use and enjoyment of land that has often been in a family for generations, and we treat them that way.",
       "Discovery is where cases are won or lost long before trial. We treat it that way — depositions taken to lock in testimony, documents pursued until the story is complete, motions filed to narrow the fight to the ground we want.",
     ],
     approach:
@@ -149,14 +150,20 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "breach of contract",
       "business dispute",
       "partner dispute",
+      "partnership dispute",
       "owed money",
       "fraud",
       "non-compete",
       "litigation",
+      "private nuisance",
+      "nuisance lawsuit",
+      "compressor station",
+      "pump station",
+      "ranch",
     ],
     seoTitle: "Civil & Commercial Litigation Attorney | Fort Worth, Texas",
     seoDescription:
-      "Fort Worth civil and commercial litigation attorney. Contract, fraud, and business disputes prepared for trial from day one.",
+      "Texas civil and commercial litigation attorney. Contract, fraud, partnership, and business disputes — plus private-nuisance suits for ranches and landowners against compressor stations, pump stations, and pipeline facilities. Prepared for trial from day one.",
   },
   {
     slug: "plaintiffs-litigation",
@@ -167,6 +174,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     body: [
       "Being right is not the same as being paid. The law gives you a claim; collecting on it takes pressure, and pressure comes from a credible threat of trial.",
       "We bring claims for people and businesses who were wronged and want a result, not a lecture. We tell you early what your case is worth, what it will take, and where the weak points are — yours and theirs.",
+      "The high-stakes end of this work is where we live: fraud claims against banks and financial institutions, partnership disputes — including large multi-partner and family-partnership breakups where the business itself is the prize — and business torts where the damages justify a real fight.",
       "We do not file cases we are not prepared to finish. That is what makes our demand letters land.",
     ],
     approach:
@@ -179,10 +187,14 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "claim",
       "damages",
       "recover",
+      "bank fraud",
+      "sue a bank",
+      "partnership dispute",
+      "business partner",
     ],
     seoTitle: "Plaintiff's Litigation Attorney | T. Maxwell Smith, PLLC",
     seoDescription:
-      "Texas plaintiff's litigation attorney. We bring claims prepared for trial so the other side has to take your number seriously.",
+      "Texas plaintiff's litigation attorney. Bank fraud, partnership disputes, and high-stakes business claims prepared for trial so the other side has to take your number seriously.",
   },
   {
     slug: "dtpa",
