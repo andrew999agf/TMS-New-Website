@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingUp, PieChart } from "lucide-react";
-import type { DebtWinRow } from "./DebtWinsManager";
+import { netAmount, type DebtWinRow } from "./DebtWinsManager";
 
 /**
  * Metrics for the debt-defense log: average/median/largest claim and win
@@ -18,6 +18,8 @@ const OUTCOME_LABEL: Record<string, string> = {
   judgment: "Judgment for defendant",
   "dismissed-wp": "Dismissed with prejudice",
   "dismissed-wop": "Dismissed without prejudice",
+  "dismissed-smj": "Dismissed — no subject-matter jurisdiction",
+  settled: "Settled",
   "judgment-plaintiff": "Judgment for plaintiff",
   other: "Other win",
 };
@@ -84,7 +86,8 @@ function Donut({ title, slices }: { title: string; slices: { label: string; coun
 export function DebtWinsMetrics({ rows }: { rows: DebtWinRow[] }) {
   if (rows.length === 0) return null;
   const wins = rows.filter((r) => r.outcome !== "judgment-plaintiff");
-  const amounts = wins.map((r) => r.amount).filter((a) => a > 0).sort((a, b) => a - b);
+  // Settlements count only the unpaid part of the claim.
+  const amounts = wins.map((r) => netAmount(r)).filter((a) => a > 0).sort((a, b) => a - b);
   const avg = amounts.length ? amounts.reduce((s, a) => s + a, 0) / amounts.length : 0;
   const median = amounts.length ? amounts[Math.floor((amounts.length - 1) / 2)] : 0;
   const largest = amounts.length ? amounts[amounts.length - 1] : 0;

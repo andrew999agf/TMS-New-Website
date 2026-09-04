@@ -19,8 +19,9 @@ export async function getDebtDefenseStats(): Promise<DebtWinStats> {
   if (!db) return { count: 0, total: 0 };
   try {
     // Wins only — a logged judgment for the plaintiff never joins the tally.
+    // A settlement only claims the part the client did NOT pay (claimed − paid).
     const [row] = await db
-      .select({ count: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${debtDefenseWins.amount}), 0)::float8` })
+      .select({ count: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${debtDefenseWins.amount} - ${debtDefenseWins.settledPaid}), 0)::float8` })
       .from(debtDefenseWins)
       .where(sql`${debtDefenseWins.outcome} <> 'judgment-plaintiff'`);
     return { count: row?.count ?? 0, total: row?.total ?? 0 };

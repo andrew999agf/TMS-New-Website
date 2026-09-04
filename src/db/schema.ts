@@ -615,9 +615,12 @@ export const intakeSubmissions = pgTable(
  */
 export const debtDefenseWins = pgTable("debt_defense_wins", {
   id: serial("id").primaryKey(),
-  /** Amount sued on (dollars). */
+  /** Amount sued on / claimed in the lawsuit (dollars). */
   amount: real("amount").notNull().default(0),
-  /** nonsuit | judgment | other */
+  /** For settled cases: what the client actually paid. The counter may only
+   *  claim the difference (amount − settledPaid) as debt defeated. */
+  settledPaid: real("settled_paid").notNull().default(0),
+  /** nonsuit | judgment | dismissed-* | settled | judgment-plaintiff | other */
   outcome: varchar("outcome", { length: 24 }).notNull().default("nonsuit"),
   /** The day the case was won (YYYY-MM-DD). */
   wonAt: varchar("won_at", { length: 10 }).notNull(),

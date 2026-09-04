@@ -19,7 +19,7 @@ export default async function DebtWinsPage() {
   if (db) {
     try {
       rows = (await db.select().from(debtDefenseWins).orderBy(desc(debtDefenseWins.wonAt), desc(debtDefenseWins.id))).map((r) => ({
-        id: r.id, amount: r.amount, outcome: r.outcome, wonAt: r.wonAt,
+        id: r.id, amount: r.amount, settledPaid: r.settledPaid ?? 0, outcome: r.outcome, wonAt: r.wonAt,
         court: r.court ?? "", caseNumber: r.caseNumber ?? "", plaintiff: r.plaintiff ?? "",
         note: r.note, createdBy: r.createdBy,
       }));

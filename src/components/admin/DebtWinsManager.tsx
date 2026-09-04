@@ -7,9 +7,13 @@ import { addDebtWin, updateDebtWin, deleteDebtWin, setDebtWinsPublic } from "@/a
 import { DebtWinsMetrics } from "./DebtWinsMetrics";
 
 export type DebtWinRow = {
-  id: number; amount: number; outcome: string; wonAt: string;
+  id: number; amount: number; settledPaid: number; outcome: string; wonAt: string;
   court: string; caseNumber: string; plaintiff: string; note: string; createdBy: string;
 };
+
+/** What the counter may claim: for settlements, only the unpaid difference. */
+export const netAmount = (r: Pick<DebtWinRow, "amount" | "settledPaid" | "outcome">) =>
+  r.outcome === "settled" ? Math.max(0, r.amount - r.settledPaid) : r.amount;
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 const OUTCOME_LABEL: Record<string, string> = {
@@ -17,12 +21,14 @@ const OUTCOME_LABEL: Record<string, string> = {
   judgment: "Judgment for the defendant",
   "dismissed-wp": "Dismissed with prejudice",
   "dismissed-wop": "Dismissed without prejudice",
+  "dismissed-smj": "Dismissed — lack of subject-matter jurisdiction",
+  settled: "Settled",
   "judgment-plaintiff": "Judgment for the plaintiff",
   other: "Other win",
 };
 /** Everything except a plaintiff judgment counts toward the totals. */
 const isWin = (outcome: string) => outcome !== "judgment-plaintiff";
-const OUTCOME_OPTIONS = ["nonsuit", "judgment", "dismissed-wp", "dismissed-wop", "judgment-plaintiff", "other"] as const;
+const OUTCOME_OPTIONS = ["nonsuit", "judgment", "dismissed-wp", "dismissed-wop", "dismissed-smj", "settled", "judgment-plaintiff", "other"] as const;
 const money = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 const todayISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
@@ -76,6 +82,7 @@ function SuggestInput({ value, onChange, options, placeholder }: {
 function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; courts: string[]; plaintiffs: string[]; onClose: () => void }) {
   const router = useRouter();
   const [amount, setAmount] = useState(String(row.amount));
+  const [paid, setPaid] = useState(row.settledPaid ? String(row.settledPaid) : "");
   const [outcome, setOutcome] = useState(row.outcome);
   const [wonAt, setWonAt] = useState(row.wonAt);
   const [court, setCourt] = useState(row.court);
@@ -88,7 +95,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
   function save() {
     setError(null);
     start(async () => {
-      const res = await updateDebtWin(row.id, { amount: parseFloat(amount) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
+      const res = await updateDebtWin(row.id, { amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
       if (!res.ok) { setError(res.error ?? "Couldn't save."); return; }
       router.refresh();
       onClose();
@@ -104,9 +111,18 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($){isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
+            <span className="mb-1 block text-[var(--c-ink-muted)]">{outcome === "settled" ? "Amount claimed in the lawsuit ($)" : "Amount sued on ($)"}{isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
             <input type="number" step="0.01" min="0" value={isWin(outcome) ? amount : ""} disabled={!isWin(outcome)} onChange={(e) => setAmount(e.target.value)} className={`${input} w-full disabled:cursor-not-allowed disabled:opacity-40`} />
           </label>
+          {outcome === "settled" && (
+            <label className="text-xs">
+              <span className="mb-1 block text-[var(--c-ink-muted)]">Amount paid at settlement ($)</span>
+              <input type="number" step="0.01" min="0" value={paid} onChange={(e) => setPaid(e.target.value)} className={`${input} w-full`} />
+              {amount.trim() && paid.trim() && (
+                <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated.</span>
+              )}
+            </label>
+          )}
           <label className="text-xs">
             <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff (who sued)</span>
             <SuggestInput value={plaintiff} onChange={setPlaintiff} options={plaintiffs} placeholder="e.g., LVNV Funding, LLC" />
@@ -137,7 +153,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
         {error && <p className="mt-3 text-xs text-[var(--c-error)]">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
-          <button onClick={save} disabled={pending || (isWin(outcome) && !amount.trim())} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
+          <button onClick={save} disabled={pending || (isWin(outcome) && !amount.trim()) || (outcome === "settled" && !paid.trim())} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50">
             {pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save changes
           </button>
         </div>
@@ -150,6 +166,7 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
 export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: DebtWinRow[]; courts: string[]; plaintiffs: string[]; publicOn: boolean }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
+  const [paid, setPaid] = useState("");
   const [outcome, setOutcome] = useState("nonsuit");
   const [wonAt, setWonAt] = useState(todayISO());
   const [court, setCourt] = useState("");
@@ -165,14 +182,14 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
   const wins = rows.filter((r) => isWin(r.outcome));
   const losses = rows.length - wins.length;
   const count = wins.length;
-  const total = wins.reduce((s, r) => s + r.amount, 0);
+  const total = wins.reduce((s, r) => s + netAmount(r), 0);
 
   function add() {
     setError(null);
     start(async () => {
-      const res = await addDebtWin({ amount: parseFloat(amount) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
+      const res = await addDebtWin({ amount: parseFloat(amount) || 0, settledPaid: parseFloat(paid) || 0, outcome, wonAt, court, caseNumber, plaintiff, note });
       if (!res.ok) { setError(res.error ?? "Couldn't save."); return; }
-      setAmount(""); setCourt(""); setCaseNumber(""); setPlaintiff(""); setNote(""); setWonAt(todayISO());
+      setAmount(""); setPaid(""); setCourt(""); setCaseNumber(""); setPlaintiff(""); setNote(""); setWonAt(todayISO());
       router.refresh();
     });
   }
@@ -217,9 +234,18 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
         <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold"><ShieldCheck size={15} className="text-[var(--c-accent)]" /> Log a case result</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
-            <span className="mb-1 block text-[var(--c-ink-muted)]">Amount sued on ($){isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
+            <span className="mb-1 block text-[var(--c-ink-muted)]">{outcome === "settled" ? "Amount claimed in the lawsuit ($)" : "Amount sued on ($)"}{isWin(outcome) ? "" : " — n/a for a plaintiff judgment"}</span>
             <input type="number" step="0.01" min="0" value={isWin(outcome) ? amount : ""} disabled={!isWin(outcome)} onChange={(e) => setAmount(e.target.value)} placeholder="e.g., 8500" className={`${input} w-full disabled:cursor-not-allowed disabled:opacity-40`} />
           </label>
+          {outcome === "settled" && (
+            <label className="text-xs">
+              <span className="mb-1 block text-[var(--c-ink-muted)]">Amount paid at settlement ($)</span>
+              <input type="number" step="0.01" min="0" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="e.g., 1500" className={`${input} w-full`} />
+              {amount.trim() && paid.trim() && (
+                <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Counts as <strong className="text-[var(--c-ink)]">{money(Math.max(0, (parseFloat(amount) || 0) - (parseFloat(paid) || 0)))}</strong> defeated — only the part the client didn&apos;t pay.</span>
+              )}
+            </label>
+          )}
           <label className="text-xs">
             <span className="mb-1 block text-[var(--c-ink-muted)]">Plaintiff (who sued) — reuses past spellings</span>
             <SuggestInput value={plaintiff} onChange={setPlaintiff} options={plaintiffs} placeholder="e.g., LVNV Funding, LLC" />
@@ -248,7 +274,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
           </label>
         </div>
         {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
-        <button onClick={add} disabled={pending || (isWin(outcome) && !amount.trim())} className="btn btn-accent mt-3 text-sm disabled:opacity-50">
+        <button onClick={add} disabled={pending || (isWin(outcome) && !amount.trim()) || (outcome === "settled" && !paid.trim())} className="btn btn-accent mt-3 text-sm disabled:opacity-50">
           {pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add to the counter
         </button>
       </div>
@@ -276,7 +302,7 @@ export function DebtWinsManager({ rows, courts, plaintiffs, publicOn }: { rows: 
             {rows.map((r) => (
               <tr key={r.id} className="bg-[var(--c-surface)] align-top">
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.wonAt}</td>
-                <td className="px-3 py-2.5 tabular-nums">{isWin(r.outcome) ? money(r.amount) : "—"}</td>
+                <td className="px-3 py-2.5 tabular-nums" title={r.outcome === "settled" ? `Claimed ${money(r.amount)} — paid ${money(r.settledPaid)}` : undefined}>{isWin(r.outcome) ? money(netAmount(r)) : "—"}{r.outcome === "settled" ? <span className="text-[var(--c-ink-muted)]"> net</span> : null}</td>
                 <td className="px-3 py-2.5">{r.plaintiff || "—"}</td>
                 <td className="px-3 py-2.5">{r.court || "—"}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">{r.caseNumber || "—"}</td>
