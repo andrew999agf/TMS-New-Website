@@ -122,7 +122,12 @@ function EditWinDialog({ row, courts, plaintiffs, onClose }: { row: DebtWinRow; 
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-lg rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Pencil size={16} className="text-[var(--c-accent)]" /> Edit this win</h3>
+          <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg">
+            <Pencil size={16} className="text-[var(--c-accent)]" /> Edit this win
+            {confidential && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]"><Lock size={11} /> Confidential</span>
+            )}
+          </h3>
           <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
