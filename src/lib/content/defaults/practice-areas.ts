@@ -432,7 +432,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     title: "Consumer Debt Defense",
     group: "defense",
     sort: 12,
-    tagline: "Being sued by a debt buyer is not the same as owing it.",
+    tagline: "A lawsuit is not a judgment. We hold every collector to its proof.",
     body: [
       "Debt buyers file lawsuits in volume and count on people not answering. A default judgment is the easiest money they make. Showing up changes the math.",
       "We have defended clients against the biggest names — Discover, Capital One, Bank of America, Chase, Barclays, LVNV, Midland — and we know what they can actually prove and what they are bluffing.",
