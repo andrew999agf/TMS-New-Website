@@ -322,15 +322,14 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     title: "Attorney Succession Planning",
     group: "counsel",
     sort: 8,
-    tagline: "Every law practice ends someday. Plan the ending, or it gets planned for you.",
+    tagline: "Succession plan consulting for solo and small-firm attorneys.",
     body: [
-      "Lawyers plan everyone else's affairs and too often leave their own practice unprotected. A solo or small-firm practice without a succession plan is a problem waiting for the worst possible moment — and when that moment comes, it lands on a spouse or family member with no license, no map, and a docket full of live deadlines.",
-      "This is not theoretical for us. Our firm assisted in winding down the practice of a solo attorney who died suddenly, leaving an active practice of more than 200 open cases. He had no succession plan and no will. His wife — not an attorney — was left facing active litigation with real deadlines, dispositive-motion deadlines and trial settings among them, and no way to know what had to be done or by when. We helped sort the practice out: identifying the urgent deadlines, getting cases into responsible hands, and bringing an orderly end to a firm that could not simply stop.",
-      "The stakes of doing nothing are real. Under Texas law, claims do not die with the lawyer — neglected cases, missed deadlines, unearned fees, and mishandled client property can all become claims against the estate, payable before anything reaches the family. It is possible for an unattended practice to generate numerous lawsuits and substantial monetary loss for the estate. And absent a plan, a district court can assume jurisdiction over the practice and appoint a custodian under the Texas Rules of Disciplinary Procedure — a court-run wind-down instead of one on your terms.",
-      "We consult with attorneys on doing it right while there is time: a designated successor or cessation attorney, coordination with your will and estate plan, client-notification and file-transition protocols, trust-account and unearned-fee handling, and malpractice tail coverage. And when the plan never got made, we help the family and the estate wind the practice down — deliberately, and with the deadlines in mind.",
+      "Very few firms do this work. We do — because we have done it the hard way.",
+      "Our firm assisted in winding down the practice of a solo attorney who died suddenly, leaving an active practice of more than 200 open cases. He had no succession plan and no will. His wife — not an attorney — was left facing active litigation with live deadlines, dispositive-motion deadlines and trial settings among them, and no way to know what had to be done. We helped bring that practice to an orderly end.",
+      "We consult with solo and small-firm attorneys on planning the succession of their practice before it is ever needed — and when there was no plan, we help the family wind the practice down.",
     ],
     approach:
-      "We approach a law practice the way we approach any estate asset that cannot simply be handed over: identify what is live, what is owed, and what can hurt the estate — then move on the deadlines first.",
+      "Identify what is live, what is owed, and what cannot wait — then move on the deadlines first.",
     keywords: [
       "attorney succession",
       "law firm succession plan",
@@ -344,9 +343,9 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "law practice",
       "solo attorney",
     ],
-    seoTitle: "Attorney Succession Planning & Law Firm Wind-Down | Texas",
+    seoTitle: "Attorney Succession Plan Consulting | Solo & Small-Firm | Texas",
     seoDescription:
-      "Succession planning for Texas attorneys — and help winding down a practice when there was no plan. Our firm assisted in winding down a suddenly deceased solo attorney's 200+ case practice.",
+      "Succession plan consulting for solo and small-firm Texas attorneys — and help winding down a practice when there was no plan. We assisted in winding down a suddenly deceased solo attorney's 200+ case practice.",
   },
   {
     slug: "business-formations-transactions",
