@@ -318,10 +318,41 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "Texas estate planning attorney. Wills, trusts, and succession planning for families, landowners, and business owners.",
   },
   {
+    slug: "attorney-succession-planning",
+    title: "Attorney Succession Planning",
+    group: "counsel",
+    sort: 8,
+    tagline: "Every law practice ends someday. Plan the ending, or it gets planned for you.",
+    body: [
+      "Lawyers plan everyone else's affairs and too often leave their own practice unprotected. A solo or small-firm practice without a succession plan is a problem waiting for the worst possible moment — and when that moment comes, it lands on a spouse or family member with no license, no map, and a docket full of live deadlines.",
+      "This is not theoretical for us. Our firm assisted in winding down the practice of a solo attorney who died suddenly, leaving an active practice of more than 200 open cases. He had no succession plan and no will. His wife — not an attorney — was left facing active litigation with real deadlines, dispositive-motion deadlines and trial settings among them, and no way to know what had to be done or by when. We helped sort the practice out: identifying the urgent deadlines, getting cases into responsible hands, and bringing an orderly end to a firm that could not simply stop.",
+      "The stakes of doing nothing are real. Under Texas law, claims do not die with the lawyer — neglected cases, missed deadlines, unearned fees, and mishandled client property can all become claims against the estate, payable before anything reaches the family. It is possible for an unattended practice to generate numerous lawsuits and substantial monetary loss for the estate. And absent a plan, a district court can assume jurisdiction over the practice and appoint a custodian under the Texas Rules of Disciplinary Procedure — a court-run wind-down instead of one on your terms.",
+      "We consult with attorneys on doing it right while there is time: a designated successor or cessation attorney, coordination with your will and estate plan, client-notification and file-transition protocols, trust-account and unearned-fee handling, and malpractice tail coverage. And when the plan never got made, we help the family and the estate wind the practice down — deliberately, and with the deadlines in mind.",
+    ],
+    approach:
+      "We approach a law practice the way we approach any estate asset that cannot simply be handed over: identify what is live, what is owed, and what can hurt the estate — then move on the deadlines first.",
+    keywords: [
+      "attorney succession",
+      "law firm succession plan",
+      "succession plan",
+      "deceased attorney",
+      "attorney died",
+      "wind down law firm",
+      "winding down",
+      "cessation of practice",
+      "custodian attorney",
+      "law practice",
+      "solo attorney",
+    ],
+    seoTitle: "Attorney Succession Planning & Law Firm Wind-Down | Texas",
+    seoDescription:
+      "Succession planning for Texas attorneys — and help winding down a practice when there was no plan. Our firm assisted in winding down a suddenly deceased solo attorney's 200+ case practice.",
+  },
+  {
     slug: "business-formations-transactions",
     title: "Business Formations & Transactions",
     group: "counsel",
-    sort: 8,
+    sort: 9,
     tagline: "Set it up right so it holds up later.",
     body: [
       "The choices you make when you start — entity type, ownership, who decides what — are the choices that get litigated when things go wrong. We make them deliberately.",
@@ -348,7 +379,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "business-related-matters",
     title: "Business-Related Matters",
     group: "counsel",
-    sort: 9,
+    sort: 10,
     tagline: "Counsel from a lawyer who knows where it ends up.",
     body: [
       "Most business advice is given by people who have never had to defend it in court. We have. That changes the advice.",
@@ -374,7 +405,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "appellate-law",
     title: "Appellate Law",
     group: "appeals",
-    sort: 10,
+    sort: 11,
     tagline: "If you sue and lose, you have to be able to appeal.",
     body: [
       "An appeal is not a second trial. It is a different craft — built on the record, the standard of review, and error that was preserved while the trial was still happening.",
@@ -401,7 +432,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "criminal-defense",
     title: "Criminal Defense",
     group: "appeals",
-    sort: 11,
+    sort: 12,
     tagline: "A charge is an accusation. Make the State prove it.",
     body: [
       "The State has the burden. Our job is to hold them to it — to make every assumption earn its place and every piece of evidence survive scrutiny.",
@@ -431,7 +462,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "consumer-debt-defense",
     title: "Consumer Debt Defense",
     group: "defense",
-    sort: 12,
+    sort: 13,
     tagline: "A lawsuit is not a judgment. We hold every collector to its proof.",
     body: [
       "Debt buyers file lawsuits in volume and count on people not answering. A default judgment is the easiest money they make. Showing up changes the math.",
@@ -461,7 +492,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "commercial-debt-collection-defense",
     title: "Commercial Debt Collection & Defense",
     group: "defense",
-    sort: 13,
+    sort: 14,
     tagline: "Collect what you are owed. Defend what you do not.",
     body: [
       "Business debt runs both directions. We pursue collection for companies owed money on contracts, invoices, and guaranties — and we defend businesses against collection claims that are inflated, disputed, or simply wrong.",
@@ -487,7 +518,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "garnishments",
     title: "Garnishments",
     group: "defense",
-    sort: 14,
+    sort: 15,
     tagline: "A frozen account is not the end of the story.",
     body: [
       "A writ of garnishment can freeze your bank account on the strength of a judgment you may not even have known about. Texas law also gives you ways to fight back.",
@@ -513,7 +544,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "receivership-matters",
     title: "Receivership Matters",
     group: "defense",
-    sort: 15,
+    sort: 16,
     tagline: "When a court puts assets under a receiver, every move counts.",
     body: [
       "Receiverships arise in collection, partnership breakups, and disputes where a court decides someone neutral must control the property. The stakes are high and the rules are unforgiving.",
@@ -537,7 +568,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "foreclosures",
     title: "Foreclosures",
     group: "defense",
-    sort: 16,
+    sort: 17,
     tagline: "A posted sale date is a deadline, not a verdict.",
     body: [
       "Most Texas foreclosures never see a courtroom. A deed of trust gives the lender a power of sale, and the statute lets them use it on a schedule measured in weeks: on a home, written notice of default with at least twenty days to cure, then notice of the sale at least twenty-one days before it happens, then a sale on the first Tuesday of the month at the county courthouse. The speed is the point. It is also the weakness — each of those steps has requirements, and lenders and servicers do not always meet them.",

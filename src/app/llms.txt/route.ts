@@ -33,7 +33,7 @@ These are the matters the firm most wants and is best known for:
 
 ## Additional services
 
-The firm also handles: [consumer debt defense](${p("consumer-debt-defense")}), [commercial debt-collection defense](${p("commercial-debt-collection-defense")}), [garnishments](${p("garnishments")}), [foreclosure defense](${p("foreclosures")}), [receivership matters](${p("receivership-matters")}), [DTPA / consumer protection](${p("dtpa")}), [business formations & transactions](${p("business-formations-transactions")}), [general business matters](${p("business-related-matters")}), [criminal defense](${p("criminal-defense")}), and [appeals](${p("appellate-law")}).
+The firm also handles: [attorney succession planning & law-firm wind-downs](${p("attorney-succession-planning")}) (the firm has wound down a suddenly deceased solo attorney's 200+ case practice), [consumer debt defense](${p("consumer-debt-defense")}), [commercial debt-collection defense](${p("commercial-debt-collection-defense")}), [garnishments](${p("garnishments")}), [foreclosure defense](${p("foreclosures")}), [receivership matters](${p("receivership-matters")}), [DTPA / consumer protection](${p("dtpa")}), [business formations & transactions](${p("business-formations-transactions")}), [general business matters](${p("business-related-matters")}), [criminal defense](${p("criminal-defense")}), and [appeals](${p("appellate-law")}).
 
 ## Key pages
 
