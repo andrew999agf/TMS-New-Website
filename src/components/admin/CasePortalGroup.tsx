@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2, Eye, EyeOff } from "lucide-react";
-import { addPortalCompany, removePortalCompany, createPortalMatter, setMatterHidden, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember } from "@/app/admin/(panel)/case-portal/actions";
+import { addPortalCompany, removePortalCompany, createPortalMatter, setMatterHidden, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember, setClientCanCreateMatters } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { POSTURES } from "@/lib/portal";
 
@@ -24,8 +24,9 @@ const POSTURE_META: Record<string, { label: string; icon: typeof Scale; cls: str
 };
 
 /** A client group's page: its companies, and its matters split Open / Closed. */
-export function CasePortalGroup({ groupId, companies, matters, clioMatters, members }: {
+export function CasePortalGroup({ groupId, companies, matters, clioMatters, members, clientCanCreateMatters = false }: {
   groupId: number; companies: CompanyRow[]; matters: MatterRow[]; clioMatters: MatterOption[]; members: MemberRow[];
+  clientCanCreateMatters?: boolean;
 }) {
   const router = useRouter();
   const [companyName, setCompanyName] = useState("");
@@ -119,7 +120,7 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
         </div>
       )}
 
-      <PortalAccess groupId={groupId} members={members} />
+      <PortalAccess groupId={groupId} members={members} clientCanCreateMatters={clientCanCreateMatters} />
     </div>
   );
 }
@@ -131,7 +132,7 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
  * documents (view + upload), and the correspondence thread. Never the firm
  * checklist, pleadings, discovery, exhibits, or time.
  */
-function PortalAccess({ groupId, members }: { groupId: number; members: MemberRow[] }) {
+function PortalAccess({ groupId, members, clientCanCreateMatters }: { groupId: number; members: MemberRow[]; clientCanCreateMatters: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -167,6 +168,20 @@ function PortalAccess({ groupId, members }: { groupId: number; members: MemberRo
       </div>
       {msg && <p className="mt-2 text-xs text-green-700">{msg}</p>}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+
+      {/* Let the client open matters themselves — the office is emailed each time. */}
+      <label className="mt-3 flex cursor-pointer items-start gap-2 border-t border-[var(--c-border)] pt-3 text-xs">
+        <input
+          type="checkbox"
+          className="mt-0.5 accent-[var(--c-accent)]"
+          checked={clientCanCreateMatters}
+          onChange={(e) => start(async () => { await setClientCanCreateMatters(groupId, e.target.checked); router.refresh(); })}
+        />
+        <span>
+          <span className="font-medium text-[var(--c-ink)]">Allow the client to open new matters</span>
+          <span className="block text-[11px] text-[var(--c-ink-muted)]">Adds an &ldquo;Open a new matter&rdquo; button to their portal. New matters arrive as open transactional matters and the office is emailed immediately — retitle, reposture, or hide them as needed.</span>
+        </span>
+      </label>
 
       {members.length > 0 && (
         <ul className="mt-4 divide-y divide-[var(--c-border)] border-t border-[var(--c-border)]">

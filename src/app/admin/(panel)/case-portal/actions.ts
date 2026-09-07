@@ -312,6 +312,52 @@ async function sendPortalInviteEmail(member: { email: string; name: string; toke
   return sendEmail({ to: member.email, fromName: `${FIRM.name} — Client Portal`, subject: `Your client portal with ${FIRM.name}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
 }
 
+/** Let (or stop letting) this group's portal members open new matters themselves. */
+export async function setClientCanCreateMatters(groupId: number, on: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  await db.update(portalGroups).set({ clientCanCreateMatters: on }).where(eq(portalGroups.id, groupId));
+  await audit(session.email, "update", "portal-group", String(groupId), on ? "Clients may create matters" : "Client matter creation off");
+  reval(groupId);
+  return { ok: true as const };
+}
+
+/**
+ * Email every active portal member that the firm added documents or posted a
+ * message on a matter — each gets their own personal link straight to it.
+ * Called only after the admin confirms the "email the client?" prompt.
+ */
+export async function notifyClientOfUpdate(matterId: number, kind: "docs" | "message") {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured.", sent: 0 };
+  const [m] = await db.select().from(portalMatters).where(eq(portalMatters.id, matterId));
+  if (!m) return { ok: false as const, error: "Matter not found.", sent: 0 };
+  const members = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, m.groupId), eq(portalMembers.revoked, false)));
+  if (!members.length) return { ok: true as const, sent: 0 };
+
+  const base = await portalBaseUrl();
+  const what = kind === "docs" ? "New documents are ready for you" : "You have a new message";
+  let sent = 0;
+  for (const mem of members) {
+    const link = `${base}/portal/${mem.token}/m/${m.id}`;
+    const who = mem.name.trim() ? escHtml(mem.name.trim()) : "there";
+    const html = `
+      <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.6">
+        <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${escHtml(FIRM.name)}</p>
+        <p style="margin:0 0 12px">Hi ${who},</p>
+        <p style="margin:0 0 12px">${kind === "docs" ? "The office added new documents" : "The office posted a new message"} on your matter <strong>${escHtml(m.title)}</strong>.</p>
+        <p style="margin:18px 0">
+          <a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Review it in your portal</a>
+        </p>
+        <p style="margin:0;font-size:12px;color:#888">If the button doesn't work, copy this address into your browser:<br/>${link}</p>
+      </div>`;
+    const r = await sendEmail({ to: mem.email, fromName: `${FIRM.name} — Client Portal`, subject: `${what} — ${m.title}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
+    if (r.sent) sent++;
+  }
+  await audit(session.email, "update", "portal-matter", String(matterId), `Emailed ${sent} member(s): ${kind}`);
+  return { ok: true as const, sent };
+}
+
 /** Invite someone into a group's client portal: creates their personal link and
  *  emails it. Safe to call for an email already invited — it resends instead. */
 export async function addPortalMember(groupId: number, input: { email: string; name: string }) {

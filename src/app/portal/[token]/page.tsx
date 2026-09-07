@@ -6,6 +6,7 @@ import { portalMatters, portalCompanies, portalTasks, portalDocs } from "@/db/sc
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { resolvePortalMember, isVerifiedPortalMember } from "@/lib/portal-access";
 import { PortalGate } from "@/components/portal/PortalGate";
+import { NewMatterForm } from "@/components/portal/NewMatterForm";
 import { FIRM } from "@/lib/firm";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,9 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
         </ul>
       )}
       {closedCount > 0 && <p className="mt-4 text-xs text-[var(--c-ink-muted)]">{closedCount} closed matter{closedCount === 1 ? "" : "s"} not shown.</p>}
+
+      {/* Only when the firm has turned it on for this group. */}
+      {ctx.group.clientCanCreateMatters && <NewMatterForm token={token} />}
 
       <footer className="mt-12 border-t border-[var(--c-border)] pt-5 text-xs leading-relaxed text-[var(--c-ink-muted)]">
         This portal is provided by {FIRM.name} for communication and document exchange on your matters. If something urgent comes up, call the office — the portal is not monitored around the clock.

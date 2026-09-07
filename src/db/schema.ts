@@ -1335,6 +1335,8 @@ export const portalGroups = pgTable("portal_groups", {
   /** Custom display name, e.g. "Jones Enterprise Group". */
   name: varchar("name", { length: 191 }).notNull(),
   notes: text("notes").notNull().default(""),
+  /** Lets portal members open new matters themselves (the firm is emailed). */
+  clientCanCreateMatters: boolean("client_can_create_matters").notNull().default(false),
   archived: boolean("archived").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -6,11 +6,11 @@ import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
   LayoutDashboard, MessageSquare, FolderOpen, Clock, Scale, FileText, Gavel, Search as SearchIcon,
-  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch,
+  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail,
 } from "lucide-react";
 import {
   updatePortalMatter, addPortalTask, togglePortalTask, deletePortalTask,
-  addPortalMessage, registerPortalDoc, deletePortalDoc,
+  addPortalMessage, registerPortalDoc, deletePortalDoc, notifyClientOfUpdate,
 } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { POSTURES, PARTY_ROLES } from "@/lib/portal";
@@ -267,11 +267,47 @@ function TaskList({ matterId, kind, heading, tasks, onChanged }: { matterId: num
 
 /* ----------------------------- correspondence ---------------------------- */
 
+/** After the firm posts something client-visible, offer to email the client a
+ *  link to review it. Only fires on the client-facing surfaces. */
+function AskEmailClientDialog({ matterId, kind, count, onClose }: { matterId: number; kind: "docs" | "message"; count: number; onClose: () => void }) {
+  const [result, setResult] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const what = kind === "docs" ? `${count} document${count === 1 ? " was" : "s were"} added to Client documents` : "Your message was posted";
+  function sendIt() {
+    start(async () => {
+      const r = await notifyClientOfUpdate(matterId, kind);
+      setResult(r.ok ? (r.sent ? `Emailed ${r.sent} portal member${r.sent === 1 ? "" : "s"} with a link to review.` : "No active portal members to email — invite the client from the group page.") : ("error" in r && r.error ? r.error : "Couldn't send."));
+    });
+  }
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
+        <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Mail size={17} className="text-[var(--c-accent)]" /> Email the client?</h3>
+        {result ? (
+          <>
+            <p className="mt-3 text-sm text-[var(--c-ink-muted)]">{result}</p>
+            <div className="mt-5 flex justify-end"><button onClick={onClose} className="btn btn-accent px-4 py-2 text-sm">Done</button></div>
+          </>
+        ) : (
+          <>
+            <p className="mt-3 text-sm text-[var(--c-ink-muted)]">{what}. Send every active portal member an email with a button to review it in their portal?</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={onClose} disabled={pending} className="btn btn-outline px-4 py-2 text-sm">No</button>
+              <button onClick={sendIt} disabled={pending} className="btn btn-accent px-4 py-2 text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Yes, email them</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CorrespondenceTab({ matterId, messages, me }: { matterId: number; messages: MessageRow[]; me: string }) {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [askEmail, setAskEmail] = useState(false);
   const [pending, start] = useTransition();
-  const send = () => { const t = text.trim(); if (!t) return; start(async () => { await addPortalMessage(matterId, t); setText(""); router.refresh(); }); };
+  const send = () => { const t = text.trim(); if (!t) return; start(async () => { await addPortalMessage(matterId, t); setText(""); router.refresh(); setAskEmail(true); }); };
   return (
     <section className={`${card} flex min-h-[420px] flex-col`}>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
@@ -289,6 +325,7 @@ function CorrespondenceTab({ matterId, messages, me }: { matterId: number; messa
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Write a note on this matter…" className={`${input} flex-1 resize-y`} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} />
         <button onClick={send} disabled={pending || !text.trim()} className="btn btn-accent px-3 py-2 text-sm disabled:opacity-40">{pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}</button>
       </div>
+      {askEmail && <AskEmailClientDialog matterId={matterId} kind="message" count={1} onClose={() => setAskEmail(false)} />}
     </section>
   );
 }
@@ -305,12 +342,14 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
   const [party, setParty] = useState<string>("plaintiff");
   const [busy, setBusy] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [askEmail, setAskEmail] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mine = docs.filter((d) => d.tab === tabKey);
 
   async function onFiles(list: FileList | null) {
     if (!list?.length || !blobReady) return;
     setError(null);
+    let okCount = 0;
     for (const file of Array.from(list)) {
       setBusy(file.name);
       try {
@@ -322,13 +361,18 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
           file: { url: blob.url, pathname: blob.pathname, contentType: file.type || blob.contentType, size: file.size },
         });
         if (!r.ok) setError(r.error ?? `Couldn't save ${file.name}.`);
-        else if (tabKey === "exhibit" && r.exhibitSetId) exhibit?.onCreated(r.exhibitSetId);
+        else {
+          okCount++;
+          if (tabKey === "exhibit" && r.exhibitSetId) exhibit?.onCreated(r.exhibitSetId);
+        }
       } catch (e) {
         setError(`Couldn't upload ${file.name}: ${(e as Error).message}`);
       }
     }
     setBusy(null);
     router.refresh();
+    // Only the Client documents tab is client-visible — offer to email them.
+    if (tabKey === "client" && okCount > 0) setAskEmail(okCount);
   }
 
   const partyLabel = (p: string) => PARTY_ROLES.find((r) => r.id === p)?.label ?? p;
@@ -383,6 +427,7 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
           ))}
         </ul>
       )}
+      {askEmail > 0 && <AskEmailClientDialog matterId={matterId} kind="docs" count={askEmail} onClose={() => setAskEmail(0)} />}
     </section>
   );
 }

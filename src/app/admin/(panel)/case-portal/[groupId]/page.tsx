@@ -57,7 +57,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
         <Link href="/admin/case-portal" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All client groups
         </Link>
-        <CasePortalGroup groupId={groupId} companies={companyRows} matters={matterRows} clioMatters={matterOptions} members={memberRows} />
+        <CasePortalGroup groupId={groupId} companies={companyRows} matters={matterRows} clioMatters={matterOptions} members={memberRows} clientCanCreateMatters={group.clientCanCreateMatters ?? false} />
       </div>
     </>
   );
