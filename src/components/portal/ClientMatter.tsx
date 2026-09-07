@@ -23,6 +23,7 @@ export function ClientMatter({ token, matterId, groupId, me, tasks, messages, do
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -85,20 +86,27 @@ export function ClientMatter({ token, matterId, groupId, me, tasks, messages, do
         )}
       </section>
 
-      {/* Documents */}
-      <section className={`${card} p-5`}>
+      {/* Documents — drag files anywhere onto this panel, or use the button. */}
+      <section
+        className={`${card} p-5 transition-shadow ${dragOver ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]/40" : ""}`}
+        onDragOver={(e) => { if (blobReady && e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (blobReady) void onFiles(e.dataTransfer.files); }}
+      >
         <div className="mb-1 flex items-center gap-2">
           <h2 className="flex items-center gap-2 font-[family-name:var(--font-ui)] text-sm font-semibold"><FolderOpen size={15} className="text-[var(--c-accent)]" /> Documents ({docs.length})</h2>
           <button onClick={() => fileRef.current?.click()} disabled={!blobReady || busy != null} className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50">
             {busy ? <><Loader2 size={13} className="animate-spin" /> Uploading…</> : <><Upload size={13} /> Upload documents</>}
           </button>
         </div>
-        <p className="mb-3 text-xs text-[var(--c-ink-muted)]">Drop in anything the office asked for — contracts, records, photos. Files shared by the office also appear here.</p>
+        <p className="mb-3 text-xs text-[var(--c-ink-muted)]">Drag files anywhere onto this box, or use the button — contracts, records, photos, anything the office asked for. Files shared by the office also appear here.</p>
         {uploaded && <p className="mb-3 inline-flex items-center gap-1.5 rounded-md bg-green-600/10 px-2.5 py-1.5 text-xs text-green-700"><Check size={13} /> Received — the office can see it now.</p>}
         {error && <p className="mb-3 text-xs text-red-600">{error}</p>}
         <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { void onFiles(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
         {docs.length === 0 ? (
-          <p className="rounded-md border border-dashed border-[var(--c-border)] p-5 text-center text-xs text-[var(--c-ink-muted)]">No documents yet.</p>
+          <p className={`rounded-md border border-dashed p-5 text-center text-xs ${dragOver ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)]"}`}>
+            {dragOver ? "Drop to upload" : "No documents yet — drag files here or tap “Upload documents.”"}
+          </p>
         ) : (
           <ul className="divide-y divide-[var(--c-border)]">
             {docs.map((d) => (

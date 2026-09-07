@@ -304,6 +304,7 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
   const fileRef = useRef<HTMLInputElement>(null);
   const [party, setParty] = useState<string>("plaintiff");
   const [busy, setBusy] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mine = docs.filter((d) => d.tab === tabKey);
 
@@ -333,7 +334,12 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
   const partyLabel = (p: string) => PARTY_ROLES.find((r) => r.id === p)?.label ?? p;
 
   return (
-    <section className={`${card} p-5`}>
+    <section
+      className={`${card} p-5 transition-shadow ${dragOver ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]/40" : ""}`}
+      onDragOver={(e) => { if (blobReady && e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); if (blobReady) void onFiles(e.dataTransfer.files); }}
+    >
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <h3 className="font-[family-name:var(--font-ui)] text-sm font-semibold">{heading} ({mine.length})</h3>
         <div className="ml-auto flex items-center gap-2">
@@ -349,13 +355,15 @@ function DocsTab({ matterId, tabKey, docs, blobReady, heading, hint, exhibit }: 
           </button>
         </div>
       </div>
-      <p className="mb-4 text-[11px] text-[var(--c-ink-muted)]">{hint}</p>
+      <p className="mb-4 text-[11px] text-[var(--c-ink-muted)]">{hint} Drag &amp; drop files anywhere on this panel, or click &ldquo;Add files.&rdquo;</p>
       {!blobReady && <p className="mb-3 text-xs text-amber-600">Connect a Blob store to enable uploads.</p>}
       {error && <p className="mb-3 text-xs text-red-600">{error}</p>}
       <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { void onFiles(e.target.files); if (fileRef.current) fileRef.current.value = ""; }} />
 
       {mine.length === 0 ? (
-        <p className="rounded-md border border-dashed border-[var(--c-border)] p-6 text-center text-xs text-[var(--c-ink-muted)]">No documents yet.</p>
+        <p className={`rounded-md border border-dashed p-6 text-center text-xs ${dragOver ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)]"}`}>
+          {dragOver ? "Drop to upload" : "No documents yet — drop files here or click “Add files.”"}
+        </p>
       ) : (
         <ul className="divide-y divide-[var(--c-border)]">
           {mine.map((d) => (
