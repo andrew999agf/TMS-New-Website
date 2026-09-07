@@ -16,8 +16,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!Number.isFinite(id)) return new NextResponse("Not found", { status: 404 });
   const [doc] = await db.select().from(portalDocs).where(and(eq(portalDocs.id, id), eq(portalDocs.tab, "client")));
   if (!doc) return new NextResponse("Not found", { status: 404 });
-  const [m] = await db.select({ groupId: portalMatters.groupId }).from(portalMatters).where(eq(portalMatters.id, doc.matterId));
-  if (!m || m.groupId !== ctx.group.id) return new NextResponse("Not found", { status: 404 });
+  const [m] = await db.select({ groupId: portalMatters.groupId, hidden: portalMatters.hidden }).from(portalMatters).where(eq(portalMatters.id, doc.matterId));
+  if (!m || m.groupId !== ctx.group.id || m.hidden) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);

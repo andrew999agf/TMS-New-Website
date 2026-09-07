@@ -1368,8 +1368,9 @@ export const portalMatters = pgTable(
     exhibitSetId: integer("exhibit_set_id"),
     /** Linked share folder, when one exists for this matter. */
     shareFolderId: integer("share_folder_id"),
-    /** Tucked out of sight in the firm's matter list (eye toggle). Firm-side
-     *  only — clients' portal view is unaffected. */
+    /** Tucked out of sight via the eye toggle: gone from the firm's matter
+     *  list AND completely invisible on the client portal (pages, actions,
+     *  and file streaming all refuse it) until unhidden. */
     hidden: boolean("hidden").notNull().default(false),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

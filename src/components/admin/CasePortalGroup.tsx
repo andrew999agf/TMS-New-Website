@@ -226,7 +226,7 @@ function MatterList({ groupId, items, heading, hiddenView }: { groupId: number; 
                   <button
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleHide(m); }}
                     disabled={busyId === m.id}
-                    title={m.hidden ? "Bring this matter back into the list" : "Hide this matter from the list (nothing is deleted — find it under Hidden matters below)"}
+                    title={m.hidden ? "Bring this matter back (visible to you and to the client again)" : "Hide this matter — it disappears from this list AND from the client's portal until you bring it back. Nothing is deleted; find it under Hidden matters below."}
                     className="shrink-0 rounded-md border border-transparent p-1.5 text-[var(--c-ink-muted)] hover:border-[var(--c-border)] hover:text-[var(--c-ink)] disabled:opacity-50"
                   >
                     {busyId === m.id ? <Loader2 size={15} className="animate-spin" /> : m.hidden ? <EyeOff size={15} /> : <Eye size={15} />}

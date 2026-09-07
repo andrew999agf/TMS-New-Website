@@ -13,7 +13,7 @@ async function memberMatter(token: string, matterId: number) {
   const ctx = await verifiedPortalCtx(token);
   if (!ctx || !db) return null;
   const [m] = await db.select().from(portalMatters).where(and(eq(portalMatters.id, matterId), eq(portalMatters.groupId, ctx.group.id)));
-  if (!m || m.status !== "open") return null;
+  if (!m || m.status !== "open" || m.hidden) return null;
   return { ctx, matter: m };
 }
 

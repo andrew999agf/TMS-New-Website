@@ -31,8 +31,10 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
     db.select().from(portalMatters).where(eq(portalMatters.groupId, ctx.group.id)).orderBy(asc(portalMatters.title)),
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, ctx.group.id)),
   ]);
-  const open = matters.filter((m) => m.status === "open");
-  const closedCount = matters.length - open.length;
+  // Hidden matters are invisible to clients entirely — not open, not closed.
+  const visible = matters.filter((m) => !m.hidden);
+  const open = visible.filter((m) => m.status === "open");
+  const closedCount = visible.length - open.length;
   const ids = open.map((m) => m.id);
   const [tasks, docs] = ids.length
     ? await Promise.all([

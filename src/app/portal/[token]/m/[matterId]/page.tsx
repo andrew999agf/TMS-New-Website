@@ -37,7 +37,7 @@ export default async function PortalMatterPage({ params }: { params: Promise<{ t
   const id = Number(matterId);
   if (!Number.isFinite(id)) return <Unavailable />;
   const [m] = await db.select().from(portalMatters).where(and(eq(portalMatters.id, id), eq(portalMatters.groupId, ctx.group.id)));
-  if (!m || m.status !== "open") return <Unavailable />;
+  if (!m || m.status !== "open" || m.hidden) return <Unavailable />;
 
   const [companies, tasks, messages, docs] = await Promise.all([
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, ctx.group.id)),
