@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, portalUsers } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, shareDirLinks, portalUsers } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
@@ -464,6 +464,47 @@ export async function deleteFiles(folderId: number, ids: number[]) {
     console.error("[share] deleteFiles failed:", err);
     return { ok: false as const, error: "Couldn't remove the files — try again." };
   }
+}
+
+/* ---------------------------- directory view links ---------------------------- */
+
+/**
+ * Get (or mint) the public view link for ONE directory of a share folder —
+ * "" for the root. The link opens a read-only list/grid viewer of just that
+ * directory's subtree with per-file viewing and ZIP downloads.
+ */
+export async function getOrCreateDirLink(folderId: number, dir: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const dirPath = cleanDirPath(dir);
+  try {
+    const [folder] = await db.select({ id: shareFolders.id }).from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const [existing] = await db
+      .select()
+      .from(shareDirLinks)
+      .where(and(eq(shareDirLinks.folderId, folderId), eq(shareDirLinks.dirPath, dirPath), eq(shareDirLinks.revoked, false)));
+    if (existing) return { ok: true as const, token: existing.token, fresh: false };
+    const token = randomBytes(24).toString("base64url");
+    await db.insert(shareDirLinks).values({ folderId, dirPath, token, createdBy: session.email });
+    await audit(session.email, "create", "share-folder", String(folderId), `Dir view link: ${dirPath || "(root)"}`);
+    return { ok: true as const, token, fresh: true };
+  } catch {
+    return { ok: false as const, error: "Couldn't create the link. Run Settings → Database updates once, then retry." };
+  }
+}
+
+/** Kill a directory's current view link; the next request mints a new token. */
+export async function revokeDirLink(folderId: number, dir: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const dirPath = cleanDirPath(dir);
+  await db
+    .update(shareDirLinks)
+    .set({ revoked: true })
+    .where(and(eq(shareDirLinks.folderId, folderId), eq(shareDirLinks.dirPath, dirPath)));
+  await audit(session.email, "update", "share-folder", String(folderId), `Revoked dir view link: ${dirPath || "(root)"}`);
+  return { ok: true as const };
 }
 
 /* -------------------------------- recipients ------------------------------- */

@@ -19,7 +19,7 @@ import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, renameFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
-  archiveFolder, deleteFolder, updateFolder, setFolderFileLinks,
+  archiveFolder, deleteFolder, updateFolder, setFolderFileLinks, getOrCreateDirLink, revokeDirLink,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
@@ -266,6 +266,8 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   const [showLinkTree, setShowLinkTree] = useState(false);
   // Table-of-contents dialog: null = closed; "" = whole folder; "A/B" = sub-folder.
   const [tocScope, setTocScope] = useState<string | null>(null);
+  // Per-directory view-link dialog: null = closed; "" = the whole folder.
+  const [dirLinkScope, setDirLinkScope] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewFile | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // After a firm upload finishes, ask whether to notify the recipients.
@@ -467,6 +469,9 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         {files.length > 0 && (
           <button onClick={() => setTocScope("")} title="Table of contents for the whole folder (Word or PDF, pleading style)" className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListOrdered size={13} /> Table of contents</button>
         )}
+        {files.length > 0 && (
+          <button onClick={() => setDirLinkScope("")} title="A shareable link to a viewer page for this whole folder — grid or list view, per-file viewing, and downloads" className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><Link2 size={13} /> View link</button>
+        )}
         {progress && <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin" /> {progress}</span>}
       </div>
       <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Drag files or whole folders straight onto this list — drop them on a folder to add inside it, or on empty space for the top level.</p>
@@ -502,6 +507,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onAddSubdir={(p) => setDialogParent(p)}
         dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
         onDirToc={(p) => setTocScope(p)}
+        onDirLink={(p) => setDirLinkScope(p)}
         // Only offered when per-file links are switched on for this folder.
         copyLinkFor={filePublicToken ? (id) => `${window.location.origin}/share/f/${filePublicToken}/${id}` : undefined}
         onUpload={blobReady ? onUpload : undefined}
@@ -515,6 +521,9 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
       )}
       {tocScope !== null && (
         <TocDialog folderId={folderId} scope={tocScope} onClose={() => setTocScope(null)} />
+      )}
+      {dirLinkScope !== null && (
+        <DirLinkDialog folderId={folderId} folderName={folderName} scope={dirLinkScope} onClose={() => setDirLinkScope(null)} />
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <input ref={fileInput} type="file" multiple className="hidden" onChange={(e) => enqueue("", fromInput(e.target.files))} />
@@ -749,6 +758,86 @@ function RecipientRowItem({ r }: { r: RecipientRow }) {
         {r.revoked ? <RotateCw size={14} /> : <Ban size={14} />}
       </button>
     </li>
+  );
+}
+
+/**
+ * Shareable view link for one directory ("" = the whole folder): fetches or
+ * mints the token, shows the URL with a copy button, and can revoke it —
+ * killing the old link everywhere and minting a fresh one on the spot.
+ */
+function DirLinkDialog({ folderId, folderName, scope, onClose }: { folderId: number; folderName: string; scope: string; onClose: () => void }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const dirName = scope ? scope.split("/").pop()! : folderName;
+
+  useEffect(() => {
+    let live = true;
+    getOrCreateDirLink(folderId, scope).then((res) => {
+      if (!live) return;
+      if (res.ok) setToken(res.token); else setError(res.error);
+    });
+    return () => { live = false; };
+  }, [folderId, scope]);
+
+  const link = token ? `${window.location.origin}/share/d/${token}` : null;
+
+  async function copy() {
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); } catch {
+      const ta = document.createElement("textarea");
+      ta.value = link; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } finally { ta.remove(); }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function rotate() {
+    if (!confirm("Revoke this link? Anyone who has it loses access immediately, and a new link is created.")) return;
+    setRotating(true);
+    setToken(null);
+    const rev = await revokeDirLink(folderId, scope);
+    if (!rev.ok) { setError(rev.error); setRotating(false); return; }
+    const res = await getOrCreateDirLink(folderId, scope);
+    if (res.ok) setToken(res.token); else setError(res.error);
+    setRotating(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+        <h3 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base">
+          <Link2 size={16} className="text-[var(--c-accent)]" /> View link — {dirName}
+        </h3>
+        <p className="mb-3 text-xs text-[var(--c-ink-muted)]">
+          Anyone with this link can open a viewer page for <strong className="text-[var(--c-ink)]">{scope ? `the “${dirName}” folder` : "this whole folder"}</strong>{scope ? " and everything inside it" : ""} — list or grid view, per-document viewing, and check-box or download-all ZIPs. No sign-in, so only share non-confidential material this way.
+        </p>
+        {error ? (
+          <p className="text-sm text-[var(--c-error)]">{error}</p>
+        ) : !link ? (
+          <p className="inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)]"><Loader2 size={14} className="animate-spin" /> Getting the link…</p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <input readOnly value={link} onFocus={(e) => e.target.select()} className={`${input} min-w-0 flex-1 text-xs`} />
+              <button onClick={copy} className="btn btn-accent inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs">
+                {copied ? <Check size={13} /> : <Link2 size={13} />} {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button onClick={rotate} disabled={rotating} className="inline-flex items-center gap-1.5 text-xs text-red-600 hover:underline disabled:opacity-50">
+                <RotateCw size={12} className={rotating ? "animate-spin" : ""} /> Revoke &amp; issue a new link
+              </button>
+              <button onClick={onClose} className="btn btn-outline px-4 py-2 text-xs">Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

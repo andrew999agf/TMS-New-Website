@@ -71,6 +71,9 @@ type Ctx = {
   /** When provided, each folder gets a "table of contents" button (opens the
    *  format dialog in the parent). */
   onDirToc?: (path: string) => void;
+  /** When provided, each folder gets a "copy a view link for this folder"
+   *  button — a public viewer page scoped to just that folder's subtree. */
+  onDirLink?: (path: string) => void;
   /** When provided, each file gets a "Copy link" button. Called on click only,
    *  so it can safely read window.location. */
   copyLinkFor?: (id: number) => string;
@@ -90,7 +93,7 @@ type Ctx = {
   toggleOpen: (path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, copyLinkFor, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, onDirLink, copyLinkFor, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -112,6 +115,9 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   /** When provided, folders show a table-of-contents button for that folder
    *  (and everything under it). */
   onDirToc?: (path: string) => void;
+  /** When provided, folders show a "copy view link" button that shares just
+   *  that folder (and everything under it) through a public viewer page. */
+  onDirLink?: (path: string) => void;
   /** When provided, each file shows a "Copy link" button that puts that file's
    *  own shareable link on the clipboard. */
   copyLinkFor?: (id: number) => string;
@@ -155,7 +161,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, copyLinkFor, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, onDirLink, copyLinkFor, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -251,6 +257,15 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
             title="Table of contents for this folder (Word or PDF, pleading style)"
           >
             <ListOrdered size={13} />
+          </button>
+        )}
+        {ctx.onDirLink && (
+          <button
+            onClick={(e) => { e.stopPropagation(); ctx.onDirLink!(fullPath); }}
+            className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+            title="Copy a view link for this folder — anyone with the link can view and download just this folder"
+          >
+            <Link2 size={13} />
           </button>
         )}
         {ctx.onAddSubdir && (

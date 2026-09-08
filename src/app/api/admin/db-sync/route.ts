@@ -534,6 +534,18 @@ const DDL = [
   )`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS present_ids jsonb NOT NULL DEFAULT '[]'`,
+  // Per-directory share links (view/grid/download for one folder of a share).
+  `CREATE TABLE IF NOT EXISTS share_dir_links (
+    id serial PRIMARY KEY,
+    folder_id integer NOT NULL,
+    dir_path varchar(1024) NOT NULL DEFAULT '',
+    token varchar(64) NOT NULL,
+    revoked boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS share_dir_links_token_idx ON share_dir_links (token)`,
+  `CREATE INDEX IF NOT EXISTS share_dir_links_folder_idx ON share_dir_links (folder_id)`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS priority varchar(8) NOT NULL DEFAULT 'none'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS trial_status varchar(16) NOT NULL DEFAULT 'none'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,

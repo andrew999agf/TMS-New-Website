@@ -491,6 +491,27 @@ export const shareDirs = pgTable(
   (t) => ({ folderIdx: index("share_dirs_folder_idx").on(t.folderId) }),
 );
 
+/**
+ * Public view links scoped to ONE directory of a share folder (or its root,
+ * dirPath ""). The unguessable token opens a read-only viewer of just that
+ * directory's subtree — list/grid, per-file viewing, and ZIP downloads —
+ * without exposing the rest of the share. Revoking kills the link; a new one
+ * gets a fresh token.
+ */
+export const shareDirLinks = pgTable(
+  "share_dir_links",
+  {
+    id: serial("id").primaryKey(),
+    folderId: integer("folder_id").notNull(),
+    dirPath: varchar("dir_path", { length: 1024 }).notNull().default(""),
+    token: varchar("token", { length: 64 }).notNull(),
+    revoked: boolean("revoked").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ tokenIdx: index("share_dir_links_token_idx").on(t.token), folderIdx: index("share_dir_links_folder_idx").on(t.folderId) }),
+);
+
 export const shareAccessLog = pgTable("share_access_log", {
   id: serial("id").primaryKey(),
   folderId: integer("folder_id"),
