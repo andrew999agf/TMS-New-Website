@@ -52,6 +52,88 @@ export function QuestionnairesPanel() {
   );
 }
 
+/**
+ * Row-level version for an intake lead: name/email prefilled, pick the
+ * questionnaire(s) by checkbox, one branded email per checked form.
+ */
+export function QuestionnairePickerDialog({ presetName, presetEmail, onClose }: { presetName: string; presetEmail: string; onClose: () => void }) {
+  const [name, setName] = useState(presetName);
+  const [email, setEmail] = useState(presetEmail);
+  const [note, setNote] = useState("");
+  const [checked, setChecked] = useState<string[]>(CLIENT_QUESTIONNAIRES.length === 1 ? [CLIENT_QUESTIONNAIRES[0].id] : []);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const toggle = (id: string) => setChecked((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+
+  function send() {
+    setError(null);
+    start(async () => {
+      let sent = 0;
+      for (const id of checked) {
+        const r = await sendQuestionnaire({ name, email, questionnaireId: id, note });
+        if (!r.ok) { setError(r.error ?? "Couldn't send."); return; }
+        sent++;
+      }
+      setDone(`Sent ${sent} questionnaire${sent === 1 ? "" : "s"} to ${email.trim()}.`);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><ClipboardList size={17} className="text-[var(--c-accent)]" /> Send a questionnaire</h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
+        </div>
+        {done ? (
+          <>
+            <p className="flex items-center gap-2 text-sm text-[var(--c-success)]"><Check size={16} /> {done}</p>
+            <div className="mt-5 flex justify-end"><button onClick={onClose} className="btn btn-accent px-4 py-2 text-sm">Done</button></div>
+          </>
+        ) : (
+          <>
+            <p className="mb-2 text-xs font-medium">Which form(s)?</p>
+            <ul className="space-y-1.5">
+              {CLIENT_QUESTIONNAIRES.map((q) => (
+                <li key={q.id}>
+                  <label className={`flex cursor-pointer items-start gap-2.5 rounded-md border p-3 ${checked.includes(q.id) ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`}>
+                    <input type="checkbox" checked={checked.includes(q.id)} onChange={() => toggle(q.id)} className="mt-0.5 accent-[var(--c-accent)]" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[var(--c-ink)]">{q.label}</span>
+                      <span className="block text-[11px] text-[var(--c-ink-muted)]">~{q.minutes} min · fill-out-and-return, runs in their browser</span>
+                    </span>
+                    <a href={q.path} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Preview the form" className="ml-auto shrink-0 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><ExternalLink size={14} /></a>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block text-xs font-medium">Name
+                <input value={name} onChange={(e) => setName(e.target.value)} className={`${input} mt-1 w-full`} />
+              </label>
+              <label className="block text-xs font-medium">Email
+                <input value={email} onChange={(e) => setEmail(e.target.value)} className={`${input} mt-1 w-full`} />
+              </label>
+            </div>
+            <label className="mt-3 block text-xs font-medium">Personal note <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={`${input} mt-1 w-full`} />
+            </label>
+            {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={onClose} className="btn btn-outline px-4 py-2 text-sm">Cancel</button>
+              <button onClick={send} disabled={pending || !email.trim() || checked.length === 0} className="btn btn-accent px-4 py-2 text-sm disabled:opacity-50">
+                {pending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Send
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SendQuestionnaireDialog({ q, onClose }: { q: ClientQuestionnaire; onClose: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
