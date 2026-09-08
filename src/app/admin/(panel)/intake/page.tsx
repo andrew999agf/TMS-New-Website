@@ -9,6 +9,7 @@ import type { LetterRow } from "@/components/admin/EngagementLetterDialog";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
+import { QuestionnairesPanel } from "@/components/admin/QuestionnairesPanel";
 import { db, hasDb } from "@/db";
 import { intakeSubmissions, referralAttorneys, engagementLetters } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
@@ -156,6 +157,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
           senderFrom={senderFrom}
         />
         <ReferralAttorneysManager initial={referralRows} />
+        <QuestionnairesPanel />
         <LeadSources leads={leads} />
         <IntakeOutcomes points={outcomes} />
         <AmountMetrics points={amounts} />

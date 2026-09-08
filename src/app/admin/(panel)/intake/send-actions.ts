@@ -10,6 +10,58 @@ import { brandedEmailHtml } from "@/lib/email-template";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+import { getQuestionnaire } from "@/lib/intake/questionnaires";
+
+/**
+ * Email a client one of the standalone questionnaires (single-file HTML forms
+ * under /forms) with the firm's branded cover note: what it's for, how long it
+ * takes, and how to return it. Same styling as the intake-request email.
+ */
+export async function sendQuestionnaire(input: { name?: string; email: string; questionnaireId: string; note?: string }) {
+  const session = await requireAdmin();
+  const email = (input.email || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter a valid email address." };
+  const q = getQuestionnaire(input.questionnaireId);
+  if (!q) return { ok: false as const, error: "Unknown questionnaire." };
+
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
+  const href = `${baseUrl}${q.path}`;
+
+  const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
+  const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
+  const fontPalette = getFontPalette(theme.fontPaletteId);
+  const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
+  const firmName = globals["global.firmName"] || FIRM.name;
+  const greeting = input.name?.trim() ? esc(input.name.trim()) : "there";
+  const note = input.note?.trim();
+
+  const body = `
+    <p style="margin:0 0 14px">Dear ${greeting},</p>
+    <p style="margin:0 0 16px">To move your matter forward, please complete the questionnaire below. It takes about <strong>${q.minutes} minutes</strong>, works on a phone or computer, and you can stop and come back &mdash; it saves a draft on your device as you go.</p>
+    ${note ? `<p style="margin:0 0 16px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}">${esc(note)}</p>` : ""}
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 12px"><tr>
+      <td align="center" bgcolor="${colors.accent}" style="background-color:${colors.accent};border-radius:8px">
+        <a href="${href}" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:${colors.onAccent};text-decoration:none">Open the questionnaire: ${esc(q.label)} &rarr;</a>
+      </td></tr></table>
+    <p style="margin:0 0 16px">When you finish, the last page gives you two easy options: <strong>Print / Save as PDF</strong>, or <strong>Download summary file</strong>. Either way, please send the result back to our office by reply email. Your answers stay on your own device until you do &mdash; nothing is submitted automatically.</p>
+    <p style="margin:0 0 16px;font-size:13px;color:${colors.inkMuted}">If the button doesn&rsquo;t work, copy and paste this link into your browser:<br/>${href}</p>
+    <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This does not create an attorney-client relationship.</strong> The questionnaire gathers information only and is not legal advice. Our firm does not represent you until you have signed a representation agreement issued by our firm and paid the applicable retainer fee.</p>
+    <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
+
+  const html = brandedEmailHtml({
+    colors, fonts,
+    logoLight: globals["global.logoLight"] || undefined,
+    logoDark: globals["global.logoDark"] || undefined,
+    firmName,
+    bodyHtml: body,
+  });
+
+  const res = await sendEmail({ to: email, fromName: firmName, subject: `${firmName}: please complete your ${q.label} questionnaire`, html });
+  if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed. Check email settings." };
+  await audit(session.email, "send", "intake-request", email, `Sent questionnaire (${q.label}) to ${email}`);
+  return { ok: true as const };
+}
+
 /**
  * Send a prospective client a branded "please complete your intake" email with
  * a big, clear button that deep-links to the right intake (by practice area).
