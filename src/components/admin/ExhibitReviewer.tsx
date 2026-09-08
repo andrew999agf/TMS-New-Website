@@ -6,7 +6,7 @@ import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
   Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer, Flag,
-  LayoutGrid, List as ListIcon, Film,
+  LayoutGrid, List as ListIcon, Film, Plus,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
@@ -22,7 +22,7 @@ import {
 
 export type ReviewerDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string; batesEnd: string;
-  witnessIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
+  witnessIds: number[]; presentIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   /** Soft "taken off the exhibit list" flag. */
   omitted: boolean;
   /** Video exhibit (body cam, dash cam, depo clip, …) — played, not paged. */
@@ -734,8 +734,10 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
  * far away) so a set of hundreds of exhibits doesn't try to render every PDF at
  * once. Clicking anywhere on the card opens that exhibit in the reader.
  */
-function GridCard({ d, proxyBase, onOpen, checked, onCheck }: {
-  d: ReviewerDoc; proxyBase: string; onOpen: (id: number) => void;
+function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onCheck }: {
+  d: ReviewerDoc; proxyBase: string; setId: number; witnesses: WitnessLite[];
+  onSave: (id: number, patch: { witnessIds?: number[]; presentIds?: number[] }) => void;
+  onOpen: (id: number) => void;
   checked: boolean; onCheck: (id: number, on: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -775,6 +777,10 @@ function GridCard({ d, proxyBase, onOpen, checked, onCheck }: {
           <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
         </div>
       </button>
+      {/* Who it comes in through / who else may see it — same quick pickers as the list. */}
+      <div className="border-t border-[var(--c-border)] px-1 pb-1.5 pt-1">
+        <WitnessQuickBlock setId={setId} d={d} witnesses={witnesses} onSave={(patch) => onSave(d.id, patch)} />
+      </div>
       {/* Selection checkbox — floats over the top-right corner of the thumbnail. */}
       <label
         onClick={(e) => e.stopPropagation()}
@@ -795,7 +801,11 @@ function GridCard({ d, proxyBase, onOpen, checked, onCheck }: {
 
 /** The thumbnail wall for the current side — rows of four on wide screens.
  *  Check exhibits (top-right corner of each card) to download just those. */
-function ExhibitGrid({ setId, docs, side, proxyBase, onOpen }: { setId: number; docs: ReviewerDoc[]; side: Side; proxyBase: string; onOpen: (id: number) => void }) {
+function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onOpen }: {
+  setId: number; docs: ReviewerDoc[]; side: Side; proxyBase: string; witnesses: WitnessLite[];
+  onSaveDoc: (id: number, patch: { witnessIds?: number[]; presentIds?: number[] }) => void;
+  onOpen: (id: number) => void;
+}) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // Keep the selection limited to exhibits that still exist.
   const ids = useMemo(() => new Set(docs.map((d) => d.id)), [docs]);
@@ -828,7 +838,7 @@ function ExhibitGrid({ setId, docs, side, proxyBase, onOpen }: { setId: number; 
         )}
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {docs.map((d) => <GridCard key={d.id} d={d} proxyBase={proxyBase} onOpen={onOpen} checked={selected.has(d.id)} onCheck={onCheck} />)}
+        {docs.map((d) => <GridCard key={d.id} d={d} proxyBase={proxyBase} setId={setId} witnesses={witnesses} onSave={onSaveDoc} onOpen={onOpen} checked={selected.has(d.id)} onCheck={onCheck} />)}
       </div>
     </div>
   );
@@ -1387,7 +1397,17 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
       {/* Grid view: a wall of first-page thumbnails for the current side. */}
       {gridView && (
-        <ExhibitGrid setId={setId} docs={ordered} side={side} proxyBase={proxyBase} onOpen={(id) => { openDoc(id); setGridView(false); }} />
+        <ExhibitGrid
+          setId={setId} docs={ordered} side={side} proxyBase={proxyBase} witnesses={witnesses}
+          onSaveDoc={(id, patch) => run(() => updateExhibitDoc(id, patch))}
+          onOpen={(id) => {
+            openDoc(id);
+            setGridView(false);
+            // Land the reader in view — otherwise the page can be left scrolled
+            // to where the grid was and the viewer seems unscrollable.
+            requestAnimationFrame(() => splitRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+          }}
+        />
       )}
 
       {/* Main: list + viewer — each column is one viewport tall and scrolls
@@ -1430,7 +1450,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           ) : (
             <ul className="space-y-1 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-0">
               {ordered.map((d, i) => (
-                <ExhibitRow key={d.id} d={d} active={d.id === currentId} index={i}
+                <ExhibitRow key={d.id} d={d} active={d.id === currentId} index={i} setId={setId} witnesses={witnesses}
                   onOpen={() => openDoc(d.id, 1)}
                   onSave={(patch) => run(() => updateExhibitDoc(d.id, patch))}
                   onToggleOmit={() => run(() => setExhibitOmitted(d.id, !d.omitted))}
@@ -1753,9 +1773,9 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 }
 
 /* ------------------------------ list row ------------------------------ */
-function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
-  d: ReviewerDoc; active: boolean; index: number;
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
+function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onToggleOmit, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
+  d: ReviewerDoc; active: boolean; index: number; setId: number; witnesses: WitnessLite[];
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string; witnessIds?: number[]; presentIds?: number[] }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
   onHiResUpload: () => void; onViewHiRes: () => void; hiResPct: number | null;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
@@ -1799,6 +1819,11 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, on
           </span>
         </button>
 
+        {/* Who it comes in through, and who else may see it — quick pickers. */}
+        <div className="mt-1">
+          <WitnessQuickBlock setId={setId} d={d} witnesses={witnesses} onSave={onSave} />
+        </div>
+
         {/* Bottom: one control bar. Priority + status + actions run along the
             left; the notepad is pushed to the far right. Wraps on narrow widths
             (phones) instead of overflowing. */}
@@ -1833,6 +1858,92 @@ function ExhibitRow({ d, active, index, onOpen, onSave, onToggleOmit, onEdit, on
   );
 }
 
+/* --------------------- quick witness lines (row + grid) --------------------- */
+/**
+ * One compact "Admit through: …" / "Also present to: …" line. The whole line
+ * is a click target that pops a picker: check existing witnesses on or off, or
+ * type a new name — built for running down the list fast. Saves on every
+ * change.
+ */
+function WitnessQuickLine({ setId, label, ids, witnesses, onChange }: {
+  setId: number; label: string; ids: number[]; witnesses: WitnessLite[]; onChange: (ids: number[]) => void;
+}) {
+  const [local, setLocal] = useState<number[]>(ids);
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+  useEffect(() => { setLocal(ids); }, [ids]);
+  const nameOf = (id: number) => witnesses.find((w) => w.id === id)?.name ?? "…";
+  const names = local.map(nameOf).filter(Boolean).join(", ");
+
+  const toggle = (id: number) => {
+    const next = local.includes(id) ? local.filter((x) => x !== id) : [...local, id];
+    setLocal(next);
+    onChange(next);
+  };
+  async function addNew() {
+    const name = newName.trim();
+    if (!name || adding) return;
+    setAdding(true);
+    const r = await addExhibitWitness(setId, name);
+    if (r.ok && r.id) { const next = [...local, r.id]; setLocal(next); onChange(next); setNewName(""); }
+    setAdding(false);
+  }
+
+  return (
+    <PopMenu
+      width={250}
+      title={`${label} — click to change`}
+      className="flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-[var(--c-surface2)]"
+      label={
+        <>
+          <span className="shrink-0 font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">{label}:</span>
+          <span className={`min-w-0 flex-1 truncate ${names ? "text-[var(--c-ink)]" : "italic text-[var(--c-ink-muted)]"}`}>{names || "none yet"}</span>
+          <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-[var(--c-accent)] text-[var(--c-accent)]"><Plus size={9} /></span>
+        </>
+      }
+    >
+      {() => (
+        <div className="p-2">
+          <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">{label}</p>
+          {witnesses.length === 0 && <p className="px-1 pb-1 text-[11px] text-[var(--c-ink-muted)]">No witnesses on this set yet — add one below.</p>}
+          <div className="max-h-44 overflow-y-auto">
+            {witnesses.map((w) => (
+              <label key={w.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1.5 text-xs hover:bg-[var(--c-surface2)]">
+                <input type="checkbox" checked={local.includes(w.id)} onChange={() => toggle(w.id)} className="accent-[var(--c-accent)]" />
+                <span className="min-w-0 flex-1 truncate">{w.name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-1.5 flex items-center gap-1.5 border-t border-[var(--c-border)] pt-2">
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addNew(); } }}
+              placeholder="New witness name…"
+              className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1.5 text-xs outline-none focus:border-[var(--c-accent)]"
+            />
+            <button onClick={() => void addNew()} disabled={adding || !newName.trim()} className="shrink-0 rounded bg-[var(--c-accent)] p-1.5 text-white disabled:opacity-40" title="Add and check">
+              {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+            </button>
+          </div>
+        </div>
+      )}
+    </PopMenu>
+  );
+}
+
+/** The pair of lines: sponsoring witness on top, also-present-to below. */
+function WitnessQuickBlock({ setId, d, witnesses, onSave }: {
+  setId: number; d: ReviewerDoc; witnesses: WitnessLite[]; onSave: (patch: { witnessIds?: number[]; presentIds?: number[] }) => void;
+}) {
+  return (
+    <div className={`px-1.5 ${d.omitted ? "opacity-55" : ""}`}>
+      <WitnessQuickLine setId={setId} label="Admit through" ids={d.witnessIds} witnesses={witnesses} onChange={(ids) => onSave({ witnessIds: ids })} />
+      <WitnessQuickLine setId={setId} label="Also present to" ids={d.presentIds} witnesses={witnesses} onChange={(ids) => onSave({ presentIds: ids })} />
+    </div>
+  );
+}
+
 /* --------------------------- edit dialog --------------------------- */
 /**
  * The full editor behind the pencil: the exhibit's own fields, plus the two
@@ -1850,13 +1961,13 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
   const [f, setF] = useState({
     side: doc.side, number: doc.number, label: doc.label, title: doc.title, description: doc.description, bates: doc.bates, batesEnd: doc.batesEnd,
     priority: doc.priority, trialStatus: doc.trialStatus,
-    witnessIds: doc.witnessIds, foundation: doc.foundation, elementIds: doc.elementIds,
+    witnessIds: doc.witnessIds, presentIds: doc.presentIds, foundation: doc.foundation, elementIds: doc.elementIds,
   });
   const [newWitness, setNewWitness] = useState("");
   const [newClaim, setNewClaim] = useState("");
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => start(async () => { await fn(); router.refresh(); });
-  const toggleId = (key: "witnessIds" | "elementIds", id: number) =>
+  const toggleId = (key: "witnessIds" | "presentIds" | "elementIds", id: number) =>
     setF((s) => ({ ...s, [key]: s[key].includes(id) ? s[key].filter((x) => x !== id) : [...s[key], id] }));
   const toggleFoundation = (id: string) =>
     setF((s) => ({ ...s, foundation: s.foundation.includes(id) ? s.foundation.filter((x) => x !== id) : [...s.foundation, id] }));
@@ -1946,6 +2057,18 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
             <div className="mt-1.5 flex gap-1.5">
               <input value={newWitness} onChange={(e) => setNewWitness(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addWitness(); } }} placeholder="Add a witness…" className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1 text-xs" />
               <button onClick={addWitness} className="rounded border border-[var(--c-border)] px-2 text-xs hover:bg-[var(--c-surface2)]">Add</button>
+            </div>
+            <div className="mt-2 border-t border-[var(--c-border)] pt-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">May also be presented to</div>
+              {witnesses.length === 0 && <p className="text-[11px] text-[var(--c-ink-muted)]">Add witnesses above first.</p>}
+              <div className="space-y-1">
+                {witnesses.map((w) => (
+                  <label key={w.id} className="flex items-center gap-2 text-xs">
+                    <input type="checkbox" checked={f.presentIds.includes(w.id)} onChange={() => toggleId("presentIds", w.id)} className="accent-[var(--c-accent)]" />
+                    <span className="flex-1 text-[var(--c-ink)]">{w.name}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="mt-2 border-t border-[var(--c-border)] pt-2">
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Or a foundation shortcut</div>

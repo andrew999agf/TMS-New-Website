@@ -533,6 +533,7 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS present_ids jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS priority varchar(8) NOT NULL DEFAULT 'none'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS trial_status varchar(16) NOT NULL DEFAULT 'none'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS witness_ids jsonb NOT NULL DEFAULT '[]'::jsonb`,

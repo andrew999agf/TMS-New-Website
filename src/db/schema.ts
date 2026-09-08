@@ -1152,6 +1152,8 @@ export const exhibitDocs = pgTable(
     batesEnd: varchar("bates_end", { length: 128 }).notNull().default(""),
     /** Sponsoring witnesses this exhibit comes in through (exhibit_witnesses ids). */
     witnessIds: jsonb("witness_ids").notNull().default([]),
+    /** Other witnesses the exhibit may also be presented to (exhibit_witnesses ids). */
+    presentIds: jsonb("present_ids").notNull().default([]),
     /** Foundation shortcuts: business-records-affidavit | certified-record | self-authenticating | stipulated. */
     foundation: jsonb("foundation").notNull().default([]),
     /** Elements this exhibit helps prove (exhibit_elements ids). */
