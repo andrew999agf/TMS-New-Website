@@ -343,7 +343,7 @@ export async function addExhibitDoc(setId: number, input: DocInput) {
   }
 }
 
-export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; bates?: string; batesEnd?: string; witnessIds?: number[]; presentIds?: number[]; foundation?: string[]; elementIds?: number[]; notes?: string }) {
+export async function updateExhibitDoc(id: number, patch: { side?: string; number?: number | null; label?: string; title?: string; description?: string; priority?: string; trialStatus?: string; offerStatus?: string; bates?: string; batesEnd?: string; witnessIds?: number[]; presentIds?: number[]; foundation?: string[]; elementIds?: number[]; notes?: string }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -355,6 +355,7 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     if (patch.description !== undefined) set.description = str(patch.description, 2000);
     if (patch.priority !== undefined) set.priority = priority(patch.priority);
     if (patch.trialStatus !== undefined) set.trialStatus = trialStatus(patch.trialStatus);
+    if (patch.offerStatus !== undefined) set.offerStatus = ["expect", "need", "omit"].includes(patch.offerStatus) ? patch.offerStatus : "";
     if (patch.bates !== undefined) set.bates = str(patch.bates, 128);
     if (patch.batesEnd !== undefined) set.batesEnd = str(patch.batesEnd, 128);
     if (patch.witnessIds !== undefined) set.witnessIds = ids(patch.witnessIds);

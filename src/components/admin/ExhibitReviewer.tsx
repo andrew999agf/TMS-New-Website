@@ -25,6 +25,8 @@ export type ReviewerDoc = {
   witnessIds: number[]; presentIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   /** Soft "taken off the exhibit list" flag. */
   omitted: boolean;
+  /** Offer plan: "" (undecided) | expect | need | omit (marked to omit, still on the list). */
+  offerStatus: string;
   /** Video exhibit (body cam, dash cam, depo clip, …) — played, not paged. */
   isVideo: boolean;
   hasFile: boolean; pageCount: number | null; sizeBytes: number | null; sort: number;
@@ -78,6 +80,90 @@ function SlashDot({ size = 12 }: { size?: number }) {
     <span className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface)]" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden><line x1="3.5" y1="10.5" x2="10.5" y2="3.5" stroke="var(--c-ink-muted)" strokeWidth="1.5" /></svg>
     </span>
+  );
+}
+
+/**
+ * The team's OFFER PLAN for an exhibit — separate from priority (prep value)
+ * and trial status (the court's ruling). Pale fills so it reads as a plan:
+ * green "expect to offer", yellow "offer if the need arises", red "omit
+ * exhibit" (a marker only — the exhibit stays on the list; actually taking it
+ * off is the separate Omitted strip). Blank starts white and invites a click.
+ */
+const OFFER_META: Record<string, { label: string; short: string; chip: string; swatch: string }> = {
+  expect: {
+    label: "Expect to offer", short: "Expect to offer",
+    chip: "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200",
+    swatch: "border-emerald-400 bg-emerald-200 dark:bg-emerald-500/40",
+  },
+  need: {
+    label: "Offer if the need arises", short: "If the need arises",
+    chip: "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200",
+    swatch: "border-amber-400 bg-amber-200 dark:bg-amber-500/40",
+  },
+  omit: {
+    label: "Omit exhibit", short: "Omit exhibit",
+    chip: "border-red-300 bg-red-100 text-red-800 dark:border-red-500/40 dark:bg-red-500/20 dark:text-red-200",
+    swatch: "border-red-400 bg-red-200 dark:bg-red-500/40",
+  },
+};
+const OFFER_BLANK_CHIP = "border-[var(--c-border)] bg-white text-[var(--c-ink-muted)] dark:bg-white/90 dark:text-gray-500";
+const OFFER_BLANK_SWATCH = "border-[var(--c-border)] bg-white dark:bg-white/90";
+
+/** Which review set an exhibit belongs to. Off-the-list omitted trumps the
+ *  offer plan; everything else buckets by plan, blank = "none" (not decided). */
+type OfferCat = "none" | "expect" | "need" | "omit" | "omitted";
+function offerCat(d: ReviewerDoc): OfferCat {
+  if (d.omitted) return "omitted";
+  return d.offerStatus === "expect" || d.offerStatus === "need" || d.offerStatus === "omit" ? d.offerStatus : "none";
+}
+
+/**
+ * The clickable offer-status bar: a colored pill with the words on it and a
+ * chevron so it clearly invites a click; the menu offers the three states plus
+ * blank. `size="lg"` is the reader-header version.
+ */
+function OfferChip({ value, onChange, size = "sm" }: { value: string; onChange: (v: string) => void; size?: "sm" | "lg" }) {
+  const m = OFFER_META[value];
+  const pad = size === "lg" ? "px-2.5 py-1 text-xs" : "px-1.5 py-0.5 text-[10px]";
+  return (
+    <PopMenu
+      width={250}
+      title={`Offer plan: ${m ? m.label : "not decided"} — click to change`}
+      className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border font-semibold shadow-sm transition hover:ring-2 hover:ring-[var(--c-accent)]/40 ${pad} ${m ? m.chip : OFFER_BLANK_CHIP}`}
+      label={
+        <>
+          <span className="truncate">{m ? m.short : size === "lg" ? "Offer plan — click to set" : "Offer plan?"}</span>
+          <ChevronDown size={size === "lg" ? 13 : 11} className="shrink-0 opacity-70" />
+        </>
+      }
+    >
+      {(close) => (
+        <div className="p-1.5">
+          <p className="mb-1 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Offer plan</p>
+          {(["expect", "need", "omit"] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => { close(); onChange(k); }}
+              className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-xs hover:bg-[var(--c-surface2)]"
+            >
+              <span className={`inline-block h-3.5 w-3.5 shrink-0 rounded-sm border ${OFFER_META[k].swatch}`} />
+              <span className="min-w-0 flex-1">{OFFER_META[k].label}</span>
+              {value === k && <Check size={13} className="shrink-0 text-[var(--c-accent)]" />}
+            </button>
+          ))}
+          <p className="px-1.5 pb-1 text-[10px] leading-snug text-[var(--c-ink-muted)]">“Omit exhibit” is a marker — the exhibit stays on the list. Use the red Omitted strip to actually take it off.</p>
+          <button
+            onClick={() => { close(); onChange(""); }}
+            className="flex w-full items-center gap-2 rounded border-t border-[var(--c-border)] px-1.5 py-1.5 text-left text-xs text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"
+          >
+            <span className={`inline-block h-3.5 w-3.5 shrink-0 rounded-sm border ${OFFER_BLANK_SWATCH}`} />
+            <span className="min-w-0 flex-1">Clear — not decided yet</span>
+            {!value && <Check size={13} className="shrink-0 text-[var(--c-accent)]" />}
+          </button>
+        </div>
+      )}
+    </PopMenu>
   );
 }
 
@@ -736,7 +822,7 @@ function numberingReport(items: Staged[], existing: Record<Side, Set<number>>) {
  */
 function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onCheck }: {
   d: ReviewerDoc; proxyBase: string; setId: number; witnesses: WitnessLite[];
-  onSave: (id: number, patch: { witnessIds?: number[]; presentIds?: number[] }) => void;
+  onSave: (id: number, patch: { witnessIds?: number[]; presentIds?: number[]; offerStatus?: string }) => void;
   onOpen: (id: number) => void;
   checked: boolean; onCheck: (id: number, on: boolean) => void;
 }) {
@@ -772,11 +858,29 @@ function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onC
           {/* Transparent layer so the click always lands on the card, not the PDF. */}
           <span className="absolute inset-0" aria-hidden />
         </div>
-        <div className="flex items-center gap-2 border-t border-[var(--c-border)] px-2.5 py-2">
-          <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
-          <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
-        </div>
       </button>
+      {/* Name row: number + title open the exhibit; the offer-plan status bar
+          sits in the top-right corner next to the name (its own click target,
+          so it can't be inside the open button). */}
+      <div className="border-t border-[var(--c-border)] px-2.5 py-2">
+        <div className="flex items-start gap-2">
+          <button onClick={() => onOpen(d.id)} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+            <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
+            <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-[var(--c-ink)] line-clamp-2">{d.title || "Exhibit"}</span>
+          </button>
+          <OfferChip value={d.offerStatus} onChange={(v) => onSave(d.id, { offerStatus: v })} />
+        </div>
+        {d.description && (
+          <button onClick={() => onOpen(d.id)} className="mt-1 block w-full text-left text-[10px] leading-snug text-[var(--c-ink-muted)] line-clamp-2" title={d.description}>
+            {d.description}
+          </button>
+        )}
+        {(d.bates || d.batesEnd || d.pageCount || d.isVideo || d.sizeBytes) && (
+          <p className="mt-0.5 truncate text-[10px] text-[var(--c-ink-muted)]">
+            {[batesRange(d.bates, d.batesEnd), d.isVideo ? "Video" : d.pageCount ? `${d.pageCount} page${d.pageCount === 1 ? "" : "s"}` : "", fmtSize(d.sizeBytes)].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </div>
       {/* Who it comes in through / who else may see it — same quick pickers as the list. */}
       <div className="border-t border-[var(--c-border)] px-1 pb-1.5 pt-1">
         <WitnessQuickBlock setId={setId} d={d} witnesses={witnesses} onSave={(patch) => onSave(d.id, patch)} />
@@ -803,7 +907,7 @@ function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onC
  *  Check exhibits (top-right corner of each card) to download just those. */
 function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onOpen }: {
   setId: number; docs: ReviewerDoc[]; side: Side; proxyBase: string; witnesses: WitnessLite[];
-  onSaveDoc: (id: number, patch: { witnessIds?: number[]; presentIds?: number[] }) => void;
+  onSaveDoc: (id: number, patch: { witnessIds?: number[]; presentIds?: number[]; offerStatus?: string }) => void;
   onOpen: (id: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -1019,20 +1123,26 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   }, [docs]);
   const [side, setSide] = useState<Side>("plaintiff");
 
-  // "Include omitted" toggle: when off, exhibits taken off the list drop out of
-  // the reviewer (and, via the download param, out of the ZIP/print downloads).
-  const [showOmitted, setShowOmitted] = useState(true);
-  const omittedCount = useMemo(() => docs.filter((d) => d.side === side && d.omitted).length, [docs, side]);
-
+  // Which review sets show: the offer-plan categories plus the exhibits already
+  // off the list (omitted). All checked = show everything; uncheck boxes to
+  // review one set at a time. Unchecking "omitted" also drops those exhibits
+  // from the ZIP/print downloads (via the download param), as before.
+  const [offerFilter, setOfferFilter] = useState<Record<OfferCat, boolean>>({ none: true, expect: true, need: true, omit: true, omitted: true });
+  const showOmitted = offerFilter.omitted;
+  const filterCounts = useMemo(() => {
+    const c: Record<OfferCat, number> = { none: 0, expect: 0, need: 0, omit: 0, omitted: 0 };
+    for (const d of docs) if (d.side === side) c[offerCat(d)]++;
+    return c;
+  }, [docs, side]);
   const ordered = useMemo(() => {
-    const inSide = docs.filter((d) => d.side === side && (showOmitted || !d.omitted));
+    const inSide = docs.filter((d) => d.side === side && offerFilter[offerCat(d)]);
     return inSide.slice().sort((a, b) => {
       const an = a.number ?? Infinity, bn = b.number ?? Infinity;
       if (an !== bn) return an - bn;
       if (a.sort !== b.sort) return a.sort - b.sort;
       return a.id - b.id;
     });
-  }, [docs, side, showOmitted]);
+  }, [docs, side, offerFilter]);
 
   const [currentId, setCurrentId] = useState<number | null>(null);
   // Keep a valid selection as the side/list changes.
@@ -1393,6 +1503,41 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           </div>
         </div>
       </div>
+
+      {/* Review-set filters: check boxes for each offer-plan set, plus the
+          exhibits already off the list. All checked = everything; uncheck to
+          review one set. Blank/undecided has its own box so nothing hides
+          silently. Lives up here with the ZIP / Print / Share controls. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+        <span className="font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Show:</span>
+        {([
+          ["none", "Not decided", OFFER_BLANK_SWATCH],
+          ["expect", "Expect to offer", OFFER_META.expect.swatch],
+          ["need", "If the need arises", OFFER_META.need.swatch],
+          ["omit", "Marked omit", OFFER_META.omit.swatch],
+          ["omitted", "Omitted — off the list", "border-[var(--c-border)] bg-[var(--c-surface2)]"],
+        ] as const).map(([key, label, swatch]) => (
+          <label
+            key={key}
+            className="inline-flex cursor-pointer items-center gap-1.5 text-[var(--c-ink)]"
+            title={key === "omitted" ? "Exhibits taken off the list. When unchecked they're hidden here and left out of the ZIP/print downloads." : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={offerFilter[key]}
+              onChange={(e) => setOfferFilter((f) => ({ ...f, [key]: e.target.checked }))}
+              className="h-3.5 w-3.5 accent-[var(--c-accent)]"
+            />
+            <span className={`inline-block h-2.5 w-2.5 rounded-sm border ${swatch}`} aria-hidden />
+            {label} <span className="text-[var(--c-ink-muted)]">({filterCounts[key]})</span>
+          </label>
+        ))}
+        {Object.values(offerFilter).some((v) => !v) && (
+          <button onClick={() => setOfferFilter({ none: true, expect: true, need: true, omit: true, omitted: true })} className="text-[var(--c-accent)] hover:underline">
+            Show all
+          </button>
+        )}
+      </div>
       </div>
 
       {/* Grid view: a wall of first-page thumbnails for the current side. */}
@@ -1433,19 +1578,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
             onUpload={doUpload}
           />
 
-          {/* Include-omitted toggle — appears once anything on this side is
-              omitted. Off hides them here and from the ZIP/print downloads. */}
-          {omittedCount > 0 && (
-            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-xs text-[var(--c-ink)]">
-              <input type="checkbox" checked={showOmitted} onChange={(e) => setShowOmitted(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--c-accent)]" />
-              <span>Include omitted exhibits <span className="text-[var(--c-ink-muted)]">({omittedCount})</span></span>
-              <span className="ml-auto text-[10px] text-[var(--c-ink-muted)]">{showOmitted ? "showing" : "hidden — downloads exclude them"}</span>
-            </label>
-          )}
-
           {ordered.length === 0 ? (
             <p className="rounded-lg border border-dashed border-[var(--c-border)] p-4 text-center text-xs text-[var(--c-ink-muted)]">
-              No {SIDE_LABEL[side].toLowerCase()} {omittedCount > 0 && !showOmitted ? "on the list" : "yet. Drop exhibit PDFs above."}
+              {docs.some((d) => d.side === side) ? `All ${SIDE_LABEL[side].toLowerCase()} are hidden by the Show filters above.` : `No ${SIDE_LABEL[side].toLowerCase()} yet. Drop exhibit PDFs above.`}
             </p>
           ) : (
             <ul className="space-y-1 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-0">
@@ -1542,6 +1677,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                 <button onClick={() => askReplace(current.id)} disabled={replacing} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-50" title="Replace this exhibit's file">{replacing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}</button>
                 <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
                 <a href={`${proxyBase}/${current.id}?v=${current.fileTag}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
+                {/* Offer plan — the colored status bar, pinned in the top-right
+                    corner of the reader. Click it to choose. */}
+                <OfferChip size="lg" value={current.offerStatus} onChange={(v) => run(() => updateExhibitDoc(current.id, { offerStatus: v }))} />
               </div>
 
               {/* How it comes in, and what it proves — the trial-facing detail. */}
@@ -1775,7 +1913,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onToggleOmit, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
   d: ReviewerDoc; active: boolean; index: number; setId: number; witnesses: WitnessLite[];
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; notes?: string; witnessIds?: number[]; presentIds?: number[] }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; offerStatus?: string; notes?: string; witnessIds?: number[]; presentIds?: number[] }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
   onHiResUpload: () => void; onViewHiRes: () => void; hiResPct: number | null;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
@@ -1828,6 +1966,7 @@ function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onTogg
             left; the notepad is pushed to the far right. Wraps on narrow widths
             (phones) instead of overflowing. */}
         <div className={`mt-1 flex flex-wrap items-center gap-0.5 px-1.5 pb-1.5 ${d.omitted ? "opacity-55" : ""}`}>
+          <OfferChip value={d.offerStatus} onChange={(v) => onSave({ offerStatus: v })} />
           <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
           <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
           {onCopyLink && <button onClick={onCopyLink} className={iconBtn} title="Copy this exhibit's share link"><LinkIcon size={13} /></button>}
@@ -1893,11 +2032,12 @@ function WitnessQuickLine({ setId, label, ids, witnesses, onChange }: {
     <PopMenu
       width={250}
       title={`${label} — click to change`}
-      className="flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-[var(--c-surface2)]"
+      className="flex w-full min-w-0 items-start gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-[var(--c-surface2)]"
       label={
         <>
           <span className="shrink-0 font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">{label}:</span>
-          <span className={`min-w-0 flex-1 truncate ${names ? "text-[var(--c-ink)]" : "italic text-[var(--c-ink-muted)]"}`}>{names || "none yet"}</span>
+          {/* Names wrap onto as many lines as they need — never "…". */}
+          <span className={`min-w-0 flex-1 break-words ${names ? "text-[var(--c-ink)]" : "italic text-[var(--c-ink-muted)]"}`}>{names || "none yet"}</span>
           <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-[var(--c-accent)] text-[var(--c-accent)]"><Plus size={9} /></span>
         </>
       }

@@ -534,6 +534,7 @@ const DDL = [
   )`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS present_ids jsonb NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS offer_status varchar(16) NOT NULL DEFAULT ''`,
   // Per-directory share links (view/grid/download for one folder of a share).
   `CREATE TABLE IF NOT EXISTS share_dir_links (
     id serial PRIMARY KEY,

@@ -1167,6 +1167,10 @@ export const exhibitDocs = pgTable(
     priority: varchar("priority", { length: 8 }).notNull().default("none"),
     /** Trial ruling: none (default) | admitted | pending (offered) | excluded. */
     trialStatus: varchar("trial_status", { length: 16 }).notNull().default("none"),
+    /** The team's offer plan: "" (undecided) | expect (expect to offer) |
+     *  need (offer if the need arises) | omit (marked to omit — still on the
+     *  list, unlike the `omitted` flag below which takes it off). */
+    offerStatus: varchar("offer_status", { length: 16 }).notNull().default(""),
     /** Bates range start (e.g. RES_000260). Single-page exhibits leave end blank. */
     bates: varchar("bates", { length: 128 }).notNull().default(""),
     /** Bates range end (e.g. RES_000275). */
