@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail, FileSignature, ClipboardList } from "lucide-react";
+import { Download, ChevronsRight, Archive, ArchiveRestore, ArrowLeft, Pencil, X, Check, Send, Mail, FileSignature } from "lucide-react";
 import { updateIntakeStatus, setIntakeArchived, setIntakeReferral } from "@/app/admin/(panel)/intake/actions";
 import { SendIntakeDialog } from "@/components/admin/SendIntakeRequest";
 import { LeadDetailDrawer, TurnbackDialog } from "@/components/admin/IntakeLeadPanels";
 import { EngagementLetterDialog, type LetterRow } from "@/components/admin/EngagementLetterDialog";
-import { QuestionnairePickerDialog } from "@/components/admin/QuestionnairesPanel";
 import type { ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 
 export type IntakeRow = {
@@ -55,7 +54,6 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
   const [referralFor, setReferralFor] = useState<IntakeRow | null>(null);
   const [sendFor, setSendFor] = useState<IntakeRow | null>(null);
   const [engageFor, setEngageFor] = useState<IntakeRow | null>(null);
-  const [questFor, setQuestFor] = useState<IntakeRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Deep-link from the intake notification email: open that lead's drawer.
@@ -192,17 +190,10 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setSendFor(r); }}
-                        title={`Send an estate-planning intake to ${r.email}`}
+                        title={`Send ${r.name ?? "this person"} forms — questionnaires (e.g., Small Estate Affidavit) or an estate-planning intake`}
                         className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
                       >
-                        <Send size={13} /> Send intake
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setQuestFor(r); }}
-                        title="Email this person a fill-out-and-return questionnaire (e.g., Small Estate Affidavit)"
-                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
-                      >
-                        <ClipboardList size={13} /> Questionnaire
+                        <Send size={13} /> Send forms
                       </button>
                     </>)}
                     <button
@@ -277,15 +268,6 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
           presetName={sendFor.name ?? ""}
           presetEmail={sendFor.email ?? ""}
           onClose={() => setSendFor(null)}
-        />
-      )}
-
-      {questFor && (
-        <QuestionnairePickerDialog
-          key={questFor.id}
-          presetName={questFor.name ?? ""}
-          presetEmail={questFor.email ?? ""}
-          onClose={() => setQuestFor(null)}
         />
       )}
 
