@@ -1557,11 +1557,19 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
               <button
                 onClick={() => {
                   const n = filterCounts.omit;
+                  // Two-step confirm: a bulk omit is a big move, so a plain
+                  // yes/no and then one last warning before anything changes.
+                  const doIt = () => run(() => setExhibitOmittedBulk(docs.filter((d) => d.side === side && !d.omitted && d.offerStatus === "omit").map((d) => d.id), true));
                   setConfirmState({
-                    title: "Take these exhibits off the list?",
-                    message: `The ${n} marked-omit ${SIDE_LABEL[side].toLowerCase()} become Omitted — off the list. They're kept (not deleted), left out of every share and download when hidden, and each one can be put back with its red side strip. The red "omit" marker stays, so anything put back returns to this set.`,
-                    confirmLabel: `Confirm omit (${n})`,
-                    onConfirm: () => run(() => setExhibitOmittedBulk(docs.filter((d) => d.side === side && !d.omitted && d.offerStatus === "omit").map((d) => d.id), true)),
+                    title: `Omit ${n} exhibit${n === 1 ? "" : "s"}?`,
+                    message: `All ${n} marked-omit ${SIDE_LABEL[side].toLowerCase()} become Omitted — off the list. They're kept (not deleted), left out of every share and download when hidden, and each one can be put back with its red side strip. The red "omit" marker stays, so anything put back returns to this set.`,
+                    confirmLabel: `Yes — continue`,
+                    onConfirm: () => setConfirmState({
+                      title: "Last check",
+                      message: `This takes ${n} exhibit${n === 1 ? "" : "s"} off the exhibit list in one move. Ready?`,
+                      confirmLabel: `Yes — omit ${n}`,
+                      onConfirm: doIt,
+                    }),
                   });
                 }}
                 title={`Move all ${filterCounts.omit} marked-omit exhibits to Omitted — off the list`}
