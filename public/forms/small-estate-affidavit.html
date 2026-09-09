@@ -92,7 +92,7 @@
     <div class="warn" id="warn30">A Small Estate Affidavit cannot be filed until <b>30 days after the date of death</b>. Based on the date entered, 30 days have not yet passed. You can still complete this questionnaire — filing will simply have to wait.</div>
     <label>Marital status at the time of death</label>
     <div class="radios" id="dMarital">
-      <label class="chip"><input type="radio" name="marital" value="Single"> Single</label>
+      <label class="chip"><input type="radio" name="marital" value="Single"> Single (not married at death)</label>
       <label class="chip"><input type="radio" name="marital" value="Married"> Married</label>
       <label class="chip"><input type="radio" name="marital" value="Divorced"> Divorced</label>
       <label class="chip"><input type="radio" name="marital" value="Widowed"> Widowed</label>
@@ -131,9 +131,16 @@
     <h2>3. Family history</h2>
     <p class="hint">Texas law decides who inherits when there is no will, so we need the full family picture — every marriage and every child, in any relationship, living or deceased.</p>
 
-    <label>Marriages <span class="opt">(list every marriage the decedent ever had)</span></label>
-    <div id="marriages"></div>
-    <button type="button" class="add" onclick="addMarriage()">+ Add a marriage</button>
+    <div id="everMarriedQ" hidden>
+      <label>Was the decedent <b>ever</b> married &mdash; at any time, even long ago or briefly? <span class="opt">(includes marriages that ended in divorce or a spouse&rsquo;s death, and common-law marriages)</span></label>
+      <div class="radios" data-yn="qEverMarried"></div>
+    </div>
+    <div id="marriagesWrap" hidden>
+      <label>Marriages <span class="opt">(list every marriage the decedent ever had, including any that ended)</span></label>
+      <div id="marriages"></div>
+      <button type="button" class="add" onclick="addMarriage()">+ Add a marriage</button>
+    </div>
+    <p class="notice" id="neverMarriedNote" hidden>Never married &mdash; understood. No spouse questions needed; continue to the children below.</p>
 
     <label style="margin-top:22px">Did the decedent have any children — biological or adopted, from any relationship, living or deceased?</label>
     <div class="radios" data-yn="qHasKids"></div>
@@ -366,9 +373,17 @@ function refresh(){
 
   $("homesteadWrap").hidden = val("qHomestead") !== "Yes";
 
-  // married more than once → nothing special beyond listing; but seed one marriage row when married/divorced/widowed
+  // Marriage questions only when a marriage is (or may be) in the picture:
+  // Married/Divorced/Widowed imply one, so the list shows straight away.
+  // "Single (not married at death)" could still mean previously married, so it
+  // asks "ever married?" first and only opens the list on Yes.
   var mar = val("marital");
-  if (mar && mar !== "Single" && !$("marriages").children.length) addMarriage();
+  var knownMarried = mar && mar !== "Single";
+  $("everMarriedQ").hidden = mar !== "Single";
+  var showMarriages = knownMarried || (mar === "Single" && val("qEverMarried") === "Yes");
+  $("marriagesWrap").hidden = !showMarriages;
+  $("neverMarriedNote").hidden = !(mar === "Single" && val("qEverMarried") === "No");
+  if (showMarriages && !$("marriages").children.length) addMarriage();
 
   // per-child: deceased description + minor guardian
   els("#children .rep").forEach(function(rep){
@@ -458,7 +473,9 @@ function showSummary(){
   h += row("Real estate besides homestead?", val("qOtherRealty"), val("qOtherRealty")==="Yes");
 
   h += "<h2>3. Family history</h2>";
-  repData("marriages").forEach(function(m,i){
+  if (val("marital")==="Single") h += row("Ever married?", val("qEverMarried"));
+  var listedMarriages = (val("marital") && val("marital") !== "Single") || val("qEverMarried") === "Yes";
+  (listedMarriages ? repData("marriages") : []).forEach(function(m,i){
     h += row("Marriage "+(i+1), [m.spouse, m.start && ("married "+m.start), m.end, m.endDate && ("ended "+m.endDate)].filter(Boolean).join(" — "));
   });
   h += row("Had children?", val("qHasKids"));
