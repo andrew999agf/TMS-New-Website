@@ -226,17 +226,19 @@
   <!-- REVIEW -->
   <section class="card" id="summary" style="display:none">
     <h1 style="font-size:22px">Review &amp; Export — Small Estate Affidavit Questionnaire</h1>
-    <p class="sub">Please check every answer, then print to PDF or download the summary and send it to our office.</p>
-    <div class="toolbar noprint">
-      <button type="button" class="btn primary" onclick="window.print()">Print / Save as PDF</button>
+    <p class="sub">Please check every answer, then press <b>Submit to the firm</b> &mdash; your answers go straight to our office and you&rsquo;ll get a confirmation email with a PDF copy for your records. You can also print or download a copy for yourself.</p>
+    <div class="toolbar noprint" id="sumToolbar">
+      <button type="button" class="btn primary" id="submitBtn" onclick="submitToFirm()">Submit to the firm</button>
+      <button type="button" class="btn" onclick="window.print()">Print / Save as PDF</button>
       <button type="button" class="btn" onclick="downloadSummary()">Download summary file</button>
       <button type="button" class="btn" onclick="backToForm()">&larr; Edit answers</button>
     </div>
+    <div id="submitMsg" class="noprint"></div>
     <div id="sumBody"></div>
   </section>
 
   <p class="disclaimer">
-    This questionnaire is for <b>information gathering only</b>. It is not legal advice, it does not determine whether a Small Estate Affidavit is available in your situation, and completing it does not create an attorney-client relationship with T. Maxwell Smith, PLLC. No representation exists until you have signed a representation agreement issued by the firm and paid the applicable retainer. Your answers are not transmitted anywhere — they remain in this browser until you print or export them yourself.
+    This questionnaire is for <b>information gathering only</b>. It is not legal advice, it does not determine whether a Small Estate Affidavit is available in your situation, and completing it does not create an attorney-client relationship with T. Maxwell Smith, PLLC. No representation exists until you have signed a representation agreement issued by the firm and paid the applicable retainer. Your answers stay in this browser while you work; nothing is sent to the firm until you press <b>Submit to the firm</b> on the review page (or export a copy yourself).
   </p>
 </div>
 
@@ -511,6 +513,69 @@ function showSummary(){
   $("form").style.display="none"; document.querySelector(".nav").style.display="none"; $("steps").style.display="none";
   $("summary").style.display="block";
   window.scrollTo({top:0});
+}
+function collectSummary(){
+  // The on-screen review is the single source of truth: walk it into
+  // sections of label/value rows plus the attorney-review flags.
+  var sections=[], cur=null, warnings=[];
+  var kids = $("sumBody").children;
+  for (var i=0;i<kids.length;i++){
+    var el = kids[i];
+    if (el.classList.contains("dqbanner")){
+      var parts = el.innerHTML.split(/\u2022|&bull;/).slice(1);
+      for (var j=0;j<parts.length;j++){
+        var t = parts[j].replace(/<br[^>]*>/g," ").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
+        var cutAt = t.indexOf("A Small Estate Affidavit may not be");
+        if (cutAt > 0) t = t.slice(0, cutAt).trim();
+        if (t) warnings.push(t);
+      }
+    } else if (el.tagName==="H2"){
+      cur = { title: el.textContent.trim(), items: [] };
+      sections.push(cur);
+    } else if (el.classList.contains("sumrow")){
+      var b = el.querySelector("b"), sp = el.querySelector("span");
+      if (!cur){ cur = { title: "Responses", items: [] }; sections.push(cur); }
+      cur.items.push({ label: b?b.textContent.trim():"", value: sp?sp.textContent.trim():"", flag: el.classList.contains("dq") });
+    }
+  }
+  return { sections: sections, warnings: warnings };
+}
+function submitToFirm(){
+  var btn = $("submitBtn"), msg = $("submitMsg");
+  var email = $("cEmail").value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    msg.innerHTML = '<div class="dqbanner">Please go back and enter a valid email address in step 7 so we can send your confirmation and copy.</div>';
+    return;
+  }
+  var data = collectSummary();
+  btn.disabled = true; btn.textContent = "Submitting\u2026";
+  msg.innerHTML = "";
+  fetch("/api/questionnaire", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      questionnaireId: "small-estate-affidavit",
+      name: $("cName").value.trim(),
+      email: email,
+      phone: $("cPhone").value.trim(),
+      sections: data.sections,
+      warnings: data.warnings
+    })
+  }).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok && j && j.ok !== false, body: j }; }); })
+  .then(function(res){
+    if (!res.ok) throw new Error((res.body && res.body.error) || "submit failed");
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    $("sumToolbar").innerHTML = '<button type="button" class="btn" onclick="window.print()">Print / Save as PDF</button>'
+      + '<button type="button" class="btn" onclick="downloadSummary()">Download summary file</button>';
+    msg.innerHTML = '<div style="background:#eefaf0;border-left:5px solid #1b7f3b;padding:14px 18px;margin:0 0 14px;color:#14522a">'
+      + '<b>Submitted \u2014 thank you.</b> Your questionnaire went to our office, and a confirmation email with a PDF copy of your answers is on its way to <b>'+esc(email)+'</b> (check spam if you don\u2019t see it). We\u2019ll review everything and follow up. '
+      + 'Please remember: submitting this questionnaire does <b>not</b> create an attorney-client relationship.</div>';
+    window.scrollTo({top:0});
+  })
+  .catch(function(){
+    btn.disabled = false; btn.textContent = "Submit to the firm";
+    msg.innerHTML = '<div class="dqbanner"><b>We couldn\u2019t submit your answers just now.</b> Please try again in a moment \u2014 or use <b>Download summary file</b> and email the file to our office, and we\u2019ll take it from there.</div>';
+  });
 }
 function downloadSummary(){
   var html = '<!doctype html><meta charset="utf-8"><title>SEA Questionnaire — '+esc($("dName").value)+'</title><body style="font-family:Georgia,serif;max-width:720px;margin:24px auto;padding:0 16px">'
