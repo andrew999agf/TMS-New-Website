@@ -177,7 +177,7 @@
     <div id="homesteadWrap" hidden>
       <label>Homestead address</label><input type="text" id="hsAddr">
       <label>Legal description <span class="opt">(from the deed, if you have it — otherwise leave blank)</span></label><textarea id="hsLegal" rows="2"></textarea>
-      <label>Who lives there now, and how are they related to the decedent?</label><input type="text" id="hsOccupant" placeholder="e.g., Jane Smith — surviving spouse">
+      <label>Who lives there now, and how are they related to the decedent?</label><input type="text" id="hsOccupant" placeholder="e.g., Jane Smith — daughter of the decedent">
     </div>
   </section>
 
@@ -265,8 +265,10 @@
     <div><label>Date of birth</label><input type="date" data-f="dob"></div>
     <div><label>Address <span class="opt">(city/state is fine)</span></label><input type="text" data-f="addr"></div>
   </div>
-  <label>This child is…</label>
-  <select data-f="of"><option value="">Choose…</option><option>A child of the decedent and the surviving spouse</option><option>From a prior relationship / different parent</option></select>
+  <div data-spouseonly hidden>
+    <label>This child is…</label>
+    <select data-f="of"><option value="">Choose…</option><option>A child of the decedent and the surviving spouse</option><option>From a prior relationship / different parent</option></select>
+  </div>
   <div class="radios" style="margin-top:10px">
     <label class="chip"><input type="checkbox" data-f="adopted"> Adopted</label>
     <label class="chip"><input type="checkbox" data-f="outside"> Born outside a marriage</label>
@@ -342,6 +344,7 @@ function addRow(tpl, host){
   var div = node.querySelector(".rep");
   div.querySelector(".rm").onclick = function(){ div.remove(); refresh(); save(); };
   $(host).appendChild(div);
+  refresh();
   return div;
 }
 function addMarriage(){ return addRow("tMarriage","marriages") }
@@ -384,6 +387,10 @@ function refresh(){
   $("marriagesWrap").hidden = !showMarriages;
   $("neverMarriedNote").hidden = !(mar === "Single" && val("qEverMarried") === "No");
   if (showMarriages && !$("marriages").children.length) addMarriage();
+
+  // The "child of the surviving spouse" question exists only when the decedent
+  // was married at death — otherwise there's no surviving spouse to speak of.
+  els("#children [data-spouseonly]").forEach(function(el){ el.hidden = mar !== "Married"; });
 
   // per-child: deceased description + minor guardian
   els("#children .rep").forEach(function(rep){
@@ -456,6 +463,10 @@ function showSummary(){
   var dod=$("dDod").value, early = dod && (Date.now()-new Date(dod+"T00:00:00").getTime())<30*86400000;
   if (early) dq.push("Fewer than 30 days have passed since the date of death — filing must wait.");
   if (val("qOtherRealty")==="Yes") dq.push("Decedent owned real estate other than the homestead — it generally cannot pass by SEA.");
+  if (val("qHomestead")==="Yes" && val("marital")!=="Married"){
+    var anyMinor = repData("children").some(function(c){ if(!c.dob) return false; return (Date.now()-new Date(c.dob+"T00:00:00").getTime())/31557600000 < 18; });
+    if (!anyMinor) dq.push("Homestead owned, but no surviving spouse and no minor children listed — the homestead may not pass by Small Estate Affidavit in this situation.");
+  }
 
   var h = "";
   if (dq.length) h += '<div class="dqbanner"><b>Attorney review flags:</b><br>&bull; '+dq.map(esc).join("<br>&bull; ")+'<br><br>A Small Estate Affidavit may not be available — a different probate procedure may be needed. The firm will advise after review.</div>';
@@ -480,7 +491,7 @@ function showSummary(){
   });
   h += row("Had children?", val("qHasKids"));
   repData("children").forEach(function(c,i){
-    var bits = [c.name, c.dob && ("DOB "+c.dob), c.addr, c.of];
+    var bits = [c.name, c.dob && ("DOB "+c.dob), c.addr, val("marital")==="Married" ? c.of : ""];
     if (c.adopted) bits.push("ADOPTED");
     if (c.outside) bits.push("born outside marriage");
     if (c.deceased) bits.push("DECEASED" + (c.descendants ? " — descendants: "+c.descendants : ""));
