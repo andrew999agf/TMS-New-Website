@@ -165,6 +165,50 @@ export function IntakeWizard({
     setResumeOffer(null);
   }
 
+  /* ---- Shared contact prefill ----
+   * The consultation request and every intake are the same wizard, so contact
+   * details entered once (name, address, phone, email, county, preference)
+   * are kept in this browser and pre-filled — still fully editable — the next
+   * time any intake opens. Nothing else carries over. */
+  const CONTACT_KEY = "tms_intake_contact_v1";
+  const CONTACT_FIELDS = ["name", "phone", "email", "address", "county", "preferredContact"] as const;
+  const contactEmpty = (v: unknown) =>
+    v == null
+    || (typeof v === "string" && !v.trim())
+    || (typeof v === "object" && !Array.isArray(v) && !Object.values(v as Record<string, unknown>).some((x) => String(x ?? "").trim()));
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CONTACT_KEY);
+      if (!raw) return;
+      const rec = JSON.parse(raw) as { savedAt?: string; values?: Answers };
+      if (!rec?.values) return;
+      if (rec.savedAt && Date.now() - new Date(rec.savedAt).getTime() > 365 * 86_400_000) { localStorage.removeItem(CONTACT_KEY); return; }
+      setAnswers((a) => {
+        const next = { ...a };
+        for (const k of CONTACT_FIELDS) {
+          if (contactEmpty(next[k]) && rec.values![k] != null) next[k] = rec.values![k];
+        }
+        return next;
+      });
+    } catch { /* corrupt / blocked storage — start blank */ }
+    // Once, on mount — after that the visitor's own edits win.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const values: Answers = {};
+      let any = false;
+      for (const k of CONTACT_FIELDS) {
+        const v = answers[k];
+        if (!contactEmpty(v)) { values[k] = v; any = true; }
+      }
+      if (!any) return;
+      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ savedAt: new Date().toISOString(), values })); } catch { /* fine */ }
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers]);
+
   const savingEligible = branch?.id === "estate" && answers.estateDepth === ESTATE_DEPTH.FULL;
   useEffect(() => {
     if (!savingEligible || done || stepIndex === 0) return;

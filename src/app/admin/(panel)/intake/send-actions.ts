@@ -84,6 +84,9 @@ export async function sendIntakeRequest(input: {
   }
 
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
+  // Carry what we already know into the link, so the client lands with their
+  // name and email pre-filled (editable) instead of retyping them.
+  const prefill = `${input.name?.trim() ? `&name=${encodeURIComponent(input.name.trim())}` : ""}&email=${encodeURIComponent(email)}`;
 
   // Build the call-to-action: either one estate intake pre-loaded with the
   // chosen documents, or one link per selected practice area.
@@ -92,13 +95,13 @@ export async function sendIntakeRequest(input: {
   if (input.estateDocs && input.estateDocs.length > 0) {
     const docs = ESTATE_DOCS.filter((d) => input.estateDocs!.includes(d.id));
     if (docs.length === 0) return { ok: false as const, error: "Choose at least one document to send." };
-    const href = `${baseUrl}/consultation?practice=${encodeURIComponent(ESTATE_PRACTICE_SLUG)}&docs=${docs.map((d) => d.id).join(",")}`;
+    const href = `${baseUrl}/consultation?practice=${encodeURIComponent(ESTATE_PRACTICE_SLUG)}&docs=${docs.map((d) => d.id).join(",")}${prefill}`;
     cta = [{ label: "Complete your estate-planning intake", href }];
     matterList = docs.map((d) => d.label).join(", ");
   } else {
     const branches = (input.branchIds || []).map(getBranch).filter((b): b is NonNullable<typeof b> => Boolean(b));
     if (branches.length === 0) return { ok: false as const, error: "Choose at least one intake to send." };
-    cta = branches.map((b) => ({ label: `Start the ${b.label} intake`, href: `${baseUrl}/consultation?practice=${encodeURIComponent(b.practiceSlug)}` }));
+    cta = branches.map((b) => ({ label: `Start the ${b.label} intake`, href: `${baseUrl}/consultation?practice=${encodeURIComponent(b.practiceSlug)}${prefill}` }));
     matterList = branches.map((b) => b.label).join(", ");
   }
 

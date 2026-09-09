@@ -13,14 +13,21 @@ export const metadata: Metadata = {
 export default async function ConsultationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ practice?: string; docs?: string }>;
+  searchParams: Promise<{ practice?: string; docs?: string; name?: string; email?: string; phone?: string }>;
 }) {
-  const { practice, docs } = await searchParams;
+  const { practice, docs, name, email, phone } = await searchParams;
   const blocks = await getBlocks("consultation");
 
   // A staff-sent link can pre-check specific estate-planning documents
-  // (?docs=will,financial-poa) so the client lands ready to fill in details.
-  const initialAnswers = docs ? estateDocsToAnswers(docs.split(",").map((s) => s.trim()).filter(Boolean)) : undefined;
+  // (?docs=will,financial-poa) so the client lands ready to fill in details —
+  // and pre-fill the contact details we already have (?name=&email=), so the
+  // client never retypes what they've told us. Everything stays editable.
+  const contactSeed: Record<string, unknown> = {};
+  if (name?.trim()) contactSeed.name = name.trim().slice(0, 191);
+  if (email?.trim()) contactSeed.email = email.trim().slice(0, 255);
+  if (phone?.trim()) contactSeed.phone = phone.trim().slice(0, 64);
+  const docAnswers = docs ? estateDocsToAnswers(docs.split(",").map((s) => s.trim()).filter(Boolean)) : undefined;
+  const initialAnswers = docAnswers || Object.keys(contactSeed).length ? { ...(docAnswers ?? {}), ...contactSeed } : undefined;
 
   return (
     <>
