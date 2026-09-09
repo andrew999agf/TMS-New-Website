@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { asc, eq, max } from "drizzle-orm";
+import { asc, eq, inArray, max } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { del, put } from "@vercel/blob";
@@ -369,6 +369,22 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
     return { ok: true as const };
   } catch {
     return { ok: false as const, error: "Couldn't save the exhibit." };
+  }
+}
+
+/** Set the offer plan on many exhibits at once (the checked set in grid view). */
+export async function setExhibitOfferStatusBulk(idsIn: number[], status: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const list = ids(idsIn);
+  if (list.length === 0) return { ok: true as const };
+  try {
+    const v = ["expect", "need", "omit"].includes(status) ? status : "";
+    const rows = await db.update(exhibitDocs).set({ offerStatus: v }).where(inArray(exhibitDocs.id, list)).returning({ setId: exhibitDocs.setId });
+    if (rows[0]) revalidatePath(`/admin/exhibit-reviewer/${rows[0].setId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the checked exhibits." };
   }
 }
 

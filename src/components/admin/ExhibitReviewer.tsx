@@ -16,7 +16,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -905,9 +905,10 @@ function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onC
 
 /** The thumbnail wall for the current side — rows of four on wide screens.
  *  Check exhibits (top-right corner of each card) to download just those. */
-function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onOpen }: {
+function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onBulkOffer, onOpen }: {
   setId: number; docs: ReviewerDoc[]; side: Side; proxyBase: string; witnesses: WitnessLite[];
   onSaveDoc: (id: number, patch: { witnessIds?: number[]; presentIds?: number[]; offerStatus?: string }) => void;
+  onBulkOffer: (ids: number[], status: string) => void;
   onOpen: (id: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -932,11 +933,30 @@ function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onOpe
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <p className="text-xs text-[var(--c-ink-muted)]">Showing {docs.length} {SIDE_LABEL[side].toLowerCase()} in order — click any exhibit to open it, or check the corner box to build a download.</p>
         {active.length > 0 && (
-          <span className="ml-auto inline-flex items-center gap-2">
+          <span className="ml-auto inline-flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-[var(--c-ink)]">{active.length} checked</span>
             <button onClick={downloadChecked} className="inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-2.5 py-1.5 text-xs font-semibold text-white hover:brightness-110">
               <Download size={13} /> Download checked (ZIP)
             </button>
+            {/* Mark every checked exhibit's offer plan in one click — the same
+                white / green / yellow / red states as the per-exhibit bar. */}
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Mark checked:</span>
+              {([
+                ["", "Not decided", OFFER_BLANK_SWATCH],
+                ["expect", OFFER_META.expect.label, OFFER_META.expect.swatch],
+                ["need", OFFER_META.need.label, OFFER_META.need.swatch],
+                ["omit", OFFER_META.omit.label, OFFER_META.omit.swatch],
+              ] as const).map(([status, label, swatch]) => (
+                <button
+                  key={status || "none"}
+                  onClick={() => onBulkOffer(active, status)}
+                  title={`Mark all ${active.length} checked as “${label}”`}
+                  className={`h-5 w-5 rounded-sm border ${swatch} transition hover:scale-110 hover:ring-2 hover:ring-[var(--c-accent)]/40`}
+                  aria-label={`Mark checked exhibits as ${label}`}
+                />
+              ))}
+            </span>
             <button onClick={() => setSelected(new Set())} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>
           </span>
         )}
@@ -1545,6 +1565,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
         <ExhibitGrid
           setId={setId} docs={ordered} side={side} proxyBase={proxyBase} witnesses={witnesses}
           onSaveDoc={(id, patch) => run(() => updateExhibitDoc(id, patch))}
+          onBulkOffer={(ids, status) => run(() => setExhibitOfferStatusBulk(ids, status))}
           onOpen={(id) => {
             openDoc(id);
             setGridView(false);
