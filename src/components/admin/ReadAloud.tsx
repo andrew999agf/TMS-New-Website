@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Square, Volume2 } from "lucide-react";
+import { Check, Loader2, Square, Volume2 } from "lucide-react";
 
 /**
  * Low-profile "read this exhibit aloud" button for the exhibit reviewer.
@@ -13,9 +13,17 @@ import { Loader2, Square, Volume2 } from "lucide-react";
  * Edge/macOS/iOS first, then Google's, then the named good ones, then any
  * US-English default. Text is read verbatim, page by page, chunked into
  * sentence-sized utterances so long exhibits don't get cut off mid-read.
+ *
+ * Controls: click reads / stops. Double-click (computer) or press-and-hold
+ * (tablet / phone) opens a small speed picker; a change mid-read resumes
+ * from the same spot at the new speed, and the choice is remembered.
  */
 
 type Chunk = { text: string; page: number };
+
+const RATE_KEY = "tms-readaloud-rate";
+const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+const rateLabel = (r: number) => `${r}×`;
 
 function chunksFromPages(pages: string[]): Chunk[] {
   const out: Chunk[] = [];
@@ -59,10 +67,23 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
   const [speaking, setSpeaking] = useState(false);
   const [page, setPage] = useState(0);
   const [starting, setStarting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rate, setRate] = useState(1);
   const runId = useRef(0);
+  const rateRef = useRef(1);
+  const chunksRef = useRef<Chunk[]>([]);
+  const posRef = useRef(0);
+  const clickTimer = useRef<number | null>(null);
+  const holdTimer = useRef<number | null>(null);
+  const holdFired = useRef(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     setSupported(typeof window !== "undefined" && "speechSynthesis" in window);
+    try {
+      const saved = Number(localStorage.getItem(RATE_KEY));
+      if (RATES.includes(saved as (typeof RATES)[number])) { setRate(saved); rateRef.current = saved; }
+    } catch { /* per-viewer convenience only */ }
     // Some browsers only populate the voice list after this event fires once.
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       const warm = () => {};
@@ -72,19 +93,30 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
     }
   }, []);
 
+  // Close the speed menu on any outside press.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent | TouchEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("touchstart", onDoc); };
+  }, [menuOpen]);
+
   const stop = useCallback(() => {
     runId.current++;
     try { window.speechSynthesis.cancel(); } catch { /* not supported */ }
     setSpeaking(false);
     setStarting(false);
     setPage(0);
+    posRef.current = 0;
   }, []);
 
   // Switching exhibits (or leaving the page) stops the reading.
   useEffect(() => () => stop(), [docKey, stop]);
 
-  function start() {
-    const chunks = chunksFromPages(pages);
+  const start = useCallback((fromChunk = 0) => {
+    const chunks = fromChunk > 0 && chunksRef.current.length ? chunksRef.current : chunksFromPages(pages);
+    chunksRef.current = chunks;
     if (!chunks.length) return;
     const my = ++runId.current;
     setStarting(true);
@@ -99,31 +131,93 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
       const speakAt = (i: number) => {
         if (runId.current !== my) return;
         if (i >= chunks.length) { stop(); return; }
+        posRef.current = i;
         setPage(chunks[i].page);
         const u = new SpeechSynthesisUtterance(chunks[i].text);
         if (voice) u.voice = voice;
-        u.rate = 1;
+        u.rate = rateRef.current;
         u.onend = () => speakAt(i + 1);
         u.onerror = () => { if (runId.current === my) stop(); };
         window.speechSynthesis.speak(u);
       };
       try { window.speechSynthesis.cancel(); } catch { /* fresh start */ }
-      speakAt(0);
+      speakAt(fromChunk);
     };
     begin();
+  }, [pages, stop]);
+
+  function chooseRate(r: number) {
+    setRate(r);
+    rateRef.current = r;
+    try { localStorage.setItem(RATE_KEY, String(r)); } catch { /* fine */ }
+    setMenuOpen(false);
+    // Mid-read: pick back up at the current chunk at the new speed.
+    if (speaking) {
+      const at = posRef.current;
+      try { window.speechSynthesis.cancel(); } catch { /* restart below */ }
+      start(at);
+    }
+  }
+
+  const toggle = () => (speaking || starting ? stop() : start(0));
+
+  // Click vs double-click: hold the single click briefly so a double-click
+  // opens the speed menu instead of toggling twice.
+  function onClick() {
+    if (holdFired.current) { holdFired.current = false; return; } // long-press already handled
+    if (clickTimer.current != null) return;
+    clickTimer.current = window.setTimeout(() => { clickTimer.current = null; toggle(); }, 260);
+  }
+  function onDoubleClick() {
+    if (clickTimer.current != null) { window.clearTimeout(clickTimer.current); clickTimer.current = null; }
+    setMenuOpen((v) => !v);
+  }
+  // Press-and-hold on touch opens the speed menu.
+  function onTouchStart() {
+    holdFired.current = false;
+    holdTimer.current = window.setTimeout(() => { holdFired.current = true; setMenuOpen(true); }, 450);
+  }
+  function onTouchEndOrMove() {
+    if (holdTimer.current != null) { window.clearTimeout(holdTimer.current); holdTimer.current = null; }
   }
 
   if (!supported) return null;
   const hasText = pages.some((p) => (p ?? "").trim());
   return (
-    <button
-      onClick={() => (speaking || starting ? stop() : start())}
-      disabled={!hasText}
-      title={!hasText ? "This PDF has no text layer to read (it may be scanned images)." : speaking ? `Reading page ${page} — click to stop` : "Read this exhibit aloud"}
-      className={`inline-flex items-center gap-1 rounded-md border p-1.5 text-xs transition-colors disabled:opacity-40 ${speaking || starting ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"}`}
-    >
-      {starting ? <Loader2 size={15} className="animate-spin" /> : speaking ? <Square size={15} /> : <Volume2 size={15} />}
-      {speaking && page > 0 && <span className="tabular-nums">p. {page}</span>}
-    </button>
+    <span ref={wrapRef} className="relative inline-flex">
+      <button
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEndOrMove}
+        onTouchMove={onTouchEndOrMove}
+        onTouchCancel={onTouchEndOrMove}
+        onContextMenu={(e) => { if (holdFired.current) e.preventDefault(); }}
+        disabled={!hasText}
+        title={!hasText ? "This PDF has no text layer to read (it may be scanned images)." : speaking ? `Reading page ${page} at ${rateLabel(rate)} — click to stop` : `Read this exhibit aloud (${rateLabel(rate)}). Double-click — or press and hold on a tablet/phone — for speed.`}
+        className={`inline-flex select-none items-center gap-1 rounded-md border p-1.5 text-xs transition-colors disabled:opacity-40 ${speaking || starting ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"}`}
+        style={{ WebkitTouchCallout: "none" }}
+      >
+        {starting ? <Loader2 size={15} className="animate-spin" /> : speaking ? <Square size={15} /> : <Volume2 size={15} />}
+        {speaking && page > 0 && <span className="tabular-nums">p. {page}</span>}
+        {rate !== 1 && !speaking && <span className="text-[10px] font-semibold">{rateLabel(rate)}</span>}
+      </button>
+      {menuOpen && (
+        <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-lg">
+          <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Reading speed</p>
+          {RATES.map((r) => (
+            <button
+              key={r}
+              onClick={(e) => { e.stopPropagation(); chooseRate(r); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10"
+            >
+              <span className="w-9 font-semibold tabular-nums">{rateLabel(r)}</span>
+              <span className="flex-1 text-[var(--c-ink-muted)]">{r === 1 ? "Normal" : r < 1 ? "Slower" : r <= 1.5 ? "Faster" : "Fastest"}</span>
+              {rate === r && <Check size={12} className="text-[var(--c-accent)]" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
