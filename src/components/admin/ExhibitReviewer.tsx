@@ -13,6 +13,7 @@ import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIO
 import { isPdfFile, isVideoFile, EXHIBIT_ACCEPT } from "@/lib/exhibit-review/media";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
+import { PdfThumb } from "@/components/site/PdfThumb";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
@@ -838,13 +839,7 @@ function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onC
               <span className="text-[10px] uppercase tracking-wide opacity-60">Video</span>
             </div>
           ) : d.hasFile && near ? (
-            <iframe
-              src={`${proxyBase}/${d.id}?v=${d.fileTag}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
-              title={d.title || d.label || "Exhibit"}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0"
-              loading="lazy"
-              tabIndex={-1}
-            />
+            <PdfThumb src={`${proxyBase}/${d.id}?v=${d.fileTag}`} title={d.title || d.label || "Exhibit"} />
           ) : (
             <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
           )}
@@ -1472,6 +1467,32 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           <button onClick={() => listInputRef.current?.click()} disabled={listBusy != null} title={hasList ? "Replace the exhibit list" : "Upload an exhibit list"} className="border-l border-[var(--c-border)] px-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)] disabled:opacity-50">
             {listBusy != null ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
           </button>
+          {/* Generate a formatted exhibit list from what's in the reviewer —
+              a court-filing-style Word doc (case caption + trial table) or a
+              CSV for Excel / pasting into a Word table. */}
+          <PopMenu
+            width={280}
+            title="Download a formatted exhibit list (Word, court-filing style, or CSV)"
+            className="border-l border-[var(--c-border)] px-1.5 text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)]"
+            label={<Download size={13} />}
+          >
+            {(close) => {
+              const go = (fmt: string, s: string) => { close(); const a = document.createElement("a"); a.href = `/admin/exhibit-reviewer/${setId}/list-export?fmt=${fmt}&side=${s}`; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+              const item = "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10";
+              const sideName = SIDE_LABEL[side].toLowerCase();
+              return (
+                <div className="p-1.5">
+                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Word — court filing style</p>
+                  <button onClick={() => go("docx", side)} className={item}><FileText size={13} className="text-[var(--c-accent)]" /> {SIDE_LABEL[side]} (caption + trial columns)</button>
+                  <button onClick={() => go("docx", "all")} className={item}><FileText size={13} className="text-[var(--c-accent)]" /> All sides in one document</button>
+                  <p className="mb-1 mt-2 border-t border-[var(--c-border)] px-2 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Spreadsheet (CSV)</p>
+                  <button onClick={() => go("csv", side)} className={item}><Download size={13} className="text-[var(--c-accent)]" /> {SIDE_LABEL[side]} — opens in Excel</button>
+                  <button onClick={() => go("csv", "all")} className={item}><Download size={13} className="text-[var(--c-accent)]" /> All sides — opens in Excel</button>
+                  <p className="px-2 pt-1.5 text-[10px] leading-snug text-[var(--c-ink-muted)]">CSV pastes cleanly from Excel into a Word exhibit-list table. Only the {sideName} currently on the list are included — omitted exhibits stay off.</p>
+                </div>
+              );
+            }}
+          </PopMenu>
         </span>
 
         <div className="ml-auto flex min-w-[260px] flex-1 items-center gap-2 lg:max-w-2xl">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { PdfThumb } from "./PdfThumb";
 import { Download, CheckSquare, ChevronDown, BookOpen, List as ListIcon, LayoutGrid, Film, FileText, Eye, ZoomIn, ZoomOut } from "lucide-react";
 
 export type SharedDoc = {
@@ -208,13 +209,7 @@ function SharedGridCard({ d, viewBase, fileBase, checked, onToggle }: {
               <span className="text-[10px] uppercase tracking-wide opacity-60">Video</span>
             </div>
           ) : near ? (
-            <iframe
-              src={`${fileBase}/${d.id}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`}
-              title={d.title || d.label || "Exhibit"}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0"
-              loading="lazy"
-              tabIndex={-1}
-            />
+            <PdfThumb src={`${fileBase}/${d.id}`} title={d.title || d.label || "Exhibit"} />
           ) : (
             <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
           )}

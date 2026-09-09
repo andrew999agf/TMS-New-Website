@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PdfThumb } from "./PdfThumb";
 import { Download, CheckSquare, List as ListIcon, LayoutGrid, FileText, Eye, Film, ImageIcon, ZoomIn, ZoomOut } from "lucide-react";
 
 export type DirFile = {
@@ -147,7 +148,7 @@ function DirGridCard({ f, fileBase, checked, onToggle }: { f: DirFile; fileBase:
           {!near ? (
             <div className="flex h-full items-center justify-center text-[var(--c-ink-muted)]"><FileText size={28} className="opacity-40" /></div>
           ) : f.kind === "pdf" ? (
-            <iframe src={`${href}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&view=FitH&page=1`} title={baseName(f.rel)} className="pointer-events-none absolute inset-0 h-full w-full border-0" loading="lazy" tabIndex={-1} />
+            <PdfThumb src={href} title={baseName(f.rel)} />
           ) : f.kind === "image" ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={href} alt={baseName(f.rel)} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
