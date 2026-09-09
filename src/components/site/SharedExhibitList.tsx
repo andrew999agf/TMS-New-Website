@@ -36,14 +36,13 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [menu, setMenu] = useState<"checked" | "all" | null>(null);
   const [grid, setGrid] = useState(false);
-  // Grid zoom: 0 = rows of four … 3 = one huge exhibit filling the width.
+  // Grid zoom sets a minimum card width; auto-fill then measures the real
+  // viewport (desktop, tablet, phone) and packs as many columns as fit, so no
+  // width goes to waste. min(…, 100%) keeps one full-width column on narrow
+  // phones instead of overflowing.
   const [zoom, setZoom] = useState(0);
-  const GRID_COLS = [
-    "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
-    "grid-cols-2 sm:grid-cols-2 lg:grid-cols-3",
-    "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2",
-    "grid-cols-1",
-  ] as const;
+  const GRID_MIN = [170, 250, 370, 620] as const;
+  const gridCols = (minPx: number) => ({ gridTemplateColumns: `repeat(auto-fill, minmax(min(${minPx}px, 100%), 1fr))` });
   const barRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () => ["plaintiff", "defendant", "joint"].map((s) => ({ side: s, items: docs.filter((d) => d.side === s) })).filter((g) => g.items.length),
@@ -135,7 +134,7 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
             <section key={g.side}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)]">{SIDE_LABEL[g.side] ?? "Exhibits"}</h2>
               {grid ? (
-                <div className={`grid gap-4 ${namesOnly ? GRID_COLS[0] : GRID_COLS[zoom]}`}>
+                <div className="grid gap-3" style={gridCols(namesOnly ? GRID_MIN[0] : GRID_MIN[zoom])}>
                   {g.items.map((d) => (
                     <SharedGridCard key={d.id} d={d} viewBase={viewBase} fileBase={fileBase} checked={sel.has(d.id)} onToggle={() => toggle(d.id)} />
                   ))}

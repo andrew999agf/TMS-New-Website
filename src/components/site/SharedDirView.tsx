@@ -25,13 +25,12 @@ const subDir = (rel: string) => (rel.includes("/") ? rel.slice(0, rel.lastIndexO
 export function SharedDirView({ files, fileBase, zipBase }: { files: DirFile[]; fileBase: string; zipBase: string }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(false);
+  // Grid zoom sets a minimum card width; auto-fill measures the real screen
+  // (desktop, tablet, phone) and packs as many columns as fit, so the full
+  // width is always used. min(…, 100%) keeps narrow phones at one column.
   const [zoom, setZoom] = useState(0);
-  const GRID_COLS = [
-    "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
-    "grid-cols-2 sm:grid-cols-2 lg:grid-cols-3",
-    "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2",
-    "grid-cols-1",
-  ] as const;
+  const GRID_MIN = [170, 250, 370, 620] as const;
+  const gridCols = { gridTemplateColumns: `repeat(auto-fill, minmax(min(${GRID_MIN[zoom]}px, 100%), 1fr))` };
 
   const groups = useMemo(() => {
     const m = new Map<string, DirFile[]>();
@@ -101,7 +100,7 @@ export function SharedDirView({ files, fileBase, zipBase }: { files: DirFile[]; 
                 <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)]">{g || "Top level"}</h2>
               )}
               {grid ? (
-                <div className={`grid gap-4 ${GRID_COLS[zoom]}`}>
+                <div className="grid gap-3" style={gridCols}>
                   {items.map((f) => <DirGridCard key={f.id} f={f} fileBase={fileBase} checked={sel.has(f.id)} onToggle={() => toggle(f.id)} />)}
                 </div>
               ) : (

@@ -27,7 +27,7 @@ export default async function RecipientIndex({ params }: { params: Promise<{ tok
   const ordered = orderPublicDocs(await recipientDocs(ctx.set.id));
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-10">
+    <main className="mx-auto w-full max-w-[1800px] px-5 py-10 lg:px-8">
       <header className="border-b border-[var(--c-border)] pb-5">
         <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--c-accent)]"><ShieldCheck size={13} /> Exhibits · shared with {ctx.rec.email}</p>
         <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl leading-tight text-[var(--c-ink)]">{ctx.set.name}</h1>

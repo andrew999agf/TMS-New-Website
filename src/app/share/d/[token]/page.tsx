@@ -21,7 +21,7 @@ function classify(filename: string, contentType: string | null): DirFile["kind"]
 function Shell({ children, logo }: { children: React.ReactNode; logo?: string }) {
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
-      <div className="mx-auto max-w-5xl px-5 py-10">
+      <div className="mx-auto w-full max-w-[1800px] px-5 py-10 lg:px-8">
         <div className="mb-6 border-b border-[var(--c-border)] pb-4">
           {logo ? (
             // eslint-disable-next-line @next/next/no-img-element
