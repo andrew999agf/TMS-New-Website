@@ -857,6 +857,7 @@ function GridCard({ d, proxyBase, setId, witnesses, onSave, onOpen, checked, onC
             <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
             <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-[var(--c-ink)] line-clamp-2">{d.title || "Exhibit"}</span>
           </button>
+          {!d.isVideo && d.hasFile && <ReadAloudButton compact docKey={d.id} loadPages={() => getDocPages(d.id)} />}
           <OfferChip value={d.offerStatus} onChange={(v) => onSave(d.id, { offerStatus: v })} />
         </div>
         {d.description && (
@@ -2040,6 +2041,7 @@ function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onTogg
           {onCopyLink && <button onClick={onCopyLink} className={iconBtn} title="Copy this exhibit's share link"><LinkIcon size={13} /></button>}
           <button onClick={onReplace} className={iconBtn} title="Replace this exhibit's file"><RefreshCw size={13} /></button>
           <button onClick={onEdit} className={iconBtn} title="Edit details, sponsors & elements"><Pencil size={13} /></button>
+          {!d.isVideo && d.hasFile && <ReadAloudButton compact docKey={d.id} loadPages={() => getDocPages(d.id)} />}
           <button onClick={onDelete} className="rounded p-1.5 text-[var(--c-ink-muted)] hover:bg-red-500/10 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
 
           {/* High Res: the label opens the high-res version; the icon uploads it. */}

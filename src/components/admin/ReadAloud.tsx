@@ -62,13 +62,26 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return voices[0];
 }
 
-export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: string | number }) {
+/** Only one reader speaks at a time — starting any button silences the rest. */
+let globalRun = 0;
+
+export function ReadAloudButton({ pages, loadPages, docKey, compact = false }: {
+  /** Page text, when the caller already has it (the reader view). */
+  pages?: string[];
+  /** Lazy loader for list rows / grid cards — fetched once on first play. */
+  loadPages?: () => Promise<string[]>;
+  docKey: string | number;
+  /** Borderless small variant that sits with the row/card icon buttons. */
+  compact?: boolean;
+}) {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [page, setPage] = useState(0);
   const [starting, setStarting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [rate, setRate] = useState(1);
+  const [noText, setNoText] = useState(false);
+  const loadedRef = useRef<{ key: string | number; pages: string[] } | null>(null);
   const runId = useRef(0);
   const rateRef = useRef(1);
   const chunksRef = useRef<Chunk[]>([]);
@@ -114,22 +127,36 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
   // Switching exhibits (or leaving the page) stops the reading.
   useEffect(() => () => stop(), [docKey, stop]);
 
-  const start = useCallback((fromChunk = 0) => {
-    const chunks = fromChunk > 0 && chunksRef.current.length ? chunksRef.current : chunksFromPages(pages);
-    chunksRef.current = chunks;
-    if (!chunks.length) return;
+  const start = useCallback(async (fromChunk = 0) => {
     const my = ++runId.current;
+    const g = ++globalRun;
     setStarting(true);
+    // Resolve the text: given directly, cached from a prior play, or lazily
+    // fetched (list rows / grid cards) the first time.
+    let source = pages;
+    if (!source) {
+      if (loadedRef.current?.key === docKey) source = loadedRef.current.pages;
+      else if (loadPages) {
+        try { source = await loadPages(); } catch { source = []; }
+        loadedRef.current = { key: docKey, pages: source ?? [] };
+      }
+    }
+    if (runId.current !== my || g !== globalRun) return;
+    const chunks = fromChunk > 0 && chunksRef.current.length ? chunksRef.current : chunksFromPages(source ?? []);
+    chunksRef.current = chunks;
+    if (!chunks.length) { setNoText(true); setStarting(false); return; }
     // getVoices can be empty on the very first call; a tiny retry loop covers it.
     let tries = 0;
     const begin = () => {
-      if (runId.current !== my) return;
+      if (runId.current !== my || g !== globalRun) return;
       const voice = pickVoice();
       if (!voice && tries++ < 5) { setTimeout(begin, 120); return; }
       setStarting(false);
       setSpeaking(true);
       const speakAt = (i: number) => {
+        // A different button (or a newer run of this one) took over — go quiet.
         if (runId.current !== my) return;
+        if (g !== globalRun) { stop(); return; }
         if (i >= chunks.length) { stop(); return; }
         posRef.current = i;
         setPage(chunks[i].page);
@@ -144,7 +171,7 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
       speakAt(fromChunk);
     };
     begin();
-  }, [pages, stop]);
+  }, [pages, loadPages, docKey, stop]);
 
   function chooseRate(r: number) {
     setRate(r);
@@ -182,7 +209,13 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
   }
 
   if (!supported) return null;
-  const hasText = pages.some((p) => (p ?? "").trim());
+  // With the text in hand we know up front; lazy mode assumes yes until a
+  // fetch comes back empty.
+  const hasText = pages ? pages.some((p) => (p ?? "").trim()) : !noText;
+  const iconSize = compact ? 13 : 15;
+  const btnCls = compact
+    ? `inline-flex select-none items-center gap-1 rounded p-1.5 text-[10px] transition-colors disabled:opacity-40 ${speaking || starting ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)] hover:text-[var(--c-accent)]"}`
+    : `inline-flex select-none items-center gap-1 rounded-md border p-1.5 text-xs transition-colors disabled:opacity-40 ${speaking || starting ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"}`;
   return (
     <span ref={wrapRef} className="relative inline-flex">
       <button
@@ -195,10 +228,10 @@ export function ReadAloudButton({ pages, docKey }: { pages: string[]; docKey: st
         onContextMenu={(e) => { if (holdFired.current) e.preventDefault(); }}
         disabled={!hasText}
         title={!hasText ? "This PDF has no text layer to read (it may be scanned images)." : speaking ? `Reading page ${page} at ${rateLabel(rate)} — click to stop` : `Read this exhibit aloud (${rateLabel(rate)}). Double-click — or press and hold on a tablet/phone — for speed.`}
-        className={`inline-flex select-none items-center gap-1 rounded-md border p-1.5 text-xs transition-colors disabled:opacity-40 ${speaking || starting ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"}`}
+        className={btnCls}
         style={{ WebkitTouchCallout: "none" }}
       >
-        {starting ? <Loader2 size={15} className="animate-spin" /> : speaking ? <Square size={15} /> : <Volume2 size={15} />}
+        {starting ? <Loader2 size={iconSize} className="animate-spin" /> : speaking ? <Square size={iconSize} /> : <Volume2 size={iconSize} />}
         {speaking && page > 0 && <span className="tabular-nums">p. {page}</span>}
         {rate !== 1 && !speaking && <span className="text-[10px] font-semibold">{rateLabel(rate)}</span>}
       </button>
