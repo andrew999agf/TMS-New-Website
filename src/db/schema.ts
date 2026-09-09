@@ -498,6 +498,32 @@ export const shareDirs = pgTable(
  * without exposing the rest of the share. Revoking kills the link; a new one
  * gets a fresh token.
  */
+/**
+ * Outbound emails held for quiet hours. A prospective-client email queued
+ * after 9:30 p.m. Central (or before 7 a.m.) lands here with send_at = the
+ * next 7:00 a.m. Central; the email-queue cron flushes anything due.
+ */
+export const scheduledEmails = pgTable(
+  "scheduled_emails",
+  {
+    id: serial("id").primaryKey(),
+    /** Recipient list (string[]). */
+    to: jsonb("to").notNull().default([]),
+    cc: jsonb("cc").notNull().default([]),
+    subject: text("subject").notNull(),
+    html: text("html").notNull(),
+    fromName: varchar("from_name", { length: 191 }),
+    headers: jsonb("headers").notNull().default({}),
+    sendAt: timestamp("send_at", { withTimezone: true }).notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error").notNull().default(""),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ dueIdx: index("scheduled_emails_due_idx").on(t.sendAt) }),
+);
+
 export const shareDirLinks = pgTable(
   "share_dir_links",
   {

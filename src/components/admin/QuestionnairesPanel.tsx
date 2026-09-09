@@ -71,12 +71,14 @@ export function QuestionnairePickerDialog({ presetName, presetEmail, onClose }: 
     setError(null);
     start(async () => {
       let sent = 0;
+      let wasScheduled: string | null = null;
       for (const id of checked) {
         const r = await sendQuestionnaire({ name, email, questionnaireId: id, note });
         if (!r.ok) { setError(r.error ?? "Couldn't send."); return; }
+        if (r.scheduled) wasScheduled = r.sendLabel ?? "7:00 a.m.";
         sent++;
       }
-      setDone(`Sent ${sent} questionnaire${sent === 1 ? "" : "s"} to ${email.trim()}.`);
+      setDone(`${wasScheduled ? "Scheduled" : "Sent"} ${sent} questionnaire${sent === 1 ? "" : "s"} ${wasScheduled ? "for" : "to"} ${email.trim()}.${wasScheduled ? ` It's after 9:30 p.m. — going out at ${wasScheduled}.` : ""}`);
     });
   }
 
@@ -138,7 +140,7 @@ function SendQuestionnaireDialog({ q, onClose }: { q: ClientQuestionnaire; onClo
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<false | string>(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -147,7 +149,7 @@ function SendQuestionnaireDialog({ q, onClose }: { q: ClientQuestionnaire; onClo
     start(async () => {
       const r = await sendQuestionnaire({ name, email, questionnaireId: q.id, note });
       if (!r.ok) { setError(r.error ?? "Couldn't send."); return; }
-      setDone(true);
+      setDone(r.scheduled ? `Scheduled for ${r.sendLabel ?? "7:00 a.m."} (it's after 9:30 p.m.) — going to` : "Sent to");
     });
   }
 
@@ -160,7 +162,7 @@ function SendQuestionnaireDialog({ q, onClose }: { q: ClientQuestionnaire; onClo
         </div>
         {done ? (
           <>
-            <p className="flex items-center gap-2 text-sm text-[var(--c-success)]"><Check size={16} /> Sent to {email.trim()}.</p>
+            <p className="flex items-center gap-2 text-sm text-[var(--c-success)]"><Check size={16} /> {done} {email.trim()}.</p>
             <div className="mt-5 flex justify-end"><button onClick={onClose} className="btn btn-accent px-4 py-2 text-sm">Done</button></div>
           </>
         ) : (

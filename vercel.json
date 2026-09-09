@@ -58,6 +58,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/email-queue",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/dst-check",
       "schedule": "0 9 1 1 *"
     }

@@ -113,6 +113,8 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   const [loading, startPreview] = useTransition();
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Quiet hours: set when the server held the email for the next 7 a.m.
+  const [scheduledLabel, setScheduledLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
@@ -231,7 +233,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
     setSending(true); setError(null);
     const addr = to.trim();
     sendTurnback(row.id, selected, { note, customAttorneys: customList, to: addr, cc, saveEmail: saveEmail && emailChanged, notifyAttorneys })
-      .then((res) => { if (res.ok) { setDone(res.to ?? addr); } else setError(res.error ?? "Send failed."); })
+      .then((res) => { if (res.ok) { setDone(res.to ?? addr); setScheduledLabel(res.scheduled ? (res.sendLabel ?? "7:00 a.m.") : null); } else setError(res.error ?? "Send failed."); })
       .finally(() => setSending(false));
   }
 
@@ -247,7 +249,8 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
           <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-600/10"><Check size={26} className="text-green-600" /></div>
             <p className="text-sm text-[var(--c-ink)]">
-              Turn-back email sent to <strong>{done}</strong>{cc.length ? <>, copied to <strong>{cc.length}</strong> other{cc.length === 1 ? "" : "s"}</> : ""}.
+              Turn-back email {scheduledLabel ? "scheduled for" : "sent to"} <strong>{done}</strong>{cc.length ? <>, copied to <strong>{cc.length}</strong> other{cc.length === 1 ? "" : "s"}</> : ""}.
+              {scheduledLabel && <><br /><span className="text-xs font-medium text-amber-700 dark:text-amber-300">It&apos;s after 9:30 p.m. — the email goes out at {scheduledLabel}.</span></>}
               {saveEmail && emailChanged && <><br /><span className="text-xs text-[var(--c-ink-muted)]">The corrected address was saved to this lead.</span></>}
               {notifiable > 0 && <><br /><span className="text-xs text-[var(--c-ink-muted)]">{notifyAttorneys ? `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} notified.` : `Referral ${notifiable === 1 ? "attorney was" : "attorneys were"} not contacted.`}</span></>}
             </p>

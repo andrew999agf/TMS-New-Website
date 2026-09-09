@@ -76,26 +76,33 @@ export function SendIntakeDialog({
       return;
     }
     start(async () => {
+      // After 9:30 p.m. Central the server holds client emails for the next
+      // 7:00 a.m. — echo that back so nobody wonders why nothing arrived.
+      const scheduledNote = (r: { scheduled?: boolean; sendLabel?: string }) =>
+        r.scheduled ? ` It's after 9:30 p.m., so it's scheduled to go out at ${r.sendLabel ?? "7:00 a.m."}.` : "";
       if (!isEstate) {
         const res = await sendIntakeRequest({ name, email, branchIds: selected, note });
-        if (res.ok) setSent("Intake request sent.");
+        if (res.ok) setSent(res.scheduled ? `Intake request scheduled.${scheduledNote(res)}` : "Intake request sent.");
         else setError(res.error ?? "Something went wrong.");
         return;
       }
       const docIds = selected.filter((s) => s.startsWith("d:")).map((s) => s.slice(2));
       const questIds = selected.filter((s) => s.startsWith("q:")).map((s) => s.slice(2));
       const doneBits: string[] = [];
+      let anyScheduled: { scheduled?: boolean; sendLabel?: string } = {};
       if (docIds.length) {
         const res = await sendIntakeRequest({ name, email, estateDocs: docIds, note });
         if (!res.ok) { setError(res.error ?? "Couldn't send the estate intake."); return; }
+        if (res.scheduled) anyScheduled = res;
         doneBits.push(`the estate-planning intake (${docIds.length} document${docIds.length === 1 ? "" : "s"})`);
       }
       for (const id of questIds) {
         const res = await sendQuestionnaire({ name, email, questionnaireId: id, note });
         if (!res.ok) { setError(res.error ?? "Couldn't send the questionnaire."); return; }
+        if (res.scheduled) anyScheduled = res;
       }
       if (questIds.length) doneBits.push(`${questIds.length} questionnaire${questIds.length === 1 ? "" : "s"}`);
-      setSent(`Sent ${doneBits.join(" and ")}.`);
+      setSent(`${anyScheduled.scheduled ? "Scheduled" : "Sent"} ${doneBits.join(" and ")}.${scheduledNote(anyScheduled)}`);
     });
   }
 

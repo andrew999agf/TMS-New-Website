@@ -3,7 +3,7 @@
 import { FIRM } from "@/lib/firm";
 import { getBranch, ESTATE_DOCS, ESTATE_PRACTICE_SLUG } from "@/lib/intake/config";
 import { requireAdmin, audit } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
+import { sendOrScheduleClientEmail } from "@/lib/email-quiet";
 import { getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -56,10 +56,10 @@ export async function sendQuestionnaire(input: { name?: string; email: string; q
     bodyHtml: body,
   });
 
-  const res = await sendEmail({ to: email, fromName: firmName, subject: `${firmName}: please complete your ${q.label} questionnaire`, html });
+  const res = await sendOrScheduleClientEmail({ to: email, fromName: firmName, subject: `${firmName}: please complete your ${q.label} questionnaire`, html, createdBy: session.email });
   if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed. Check email settings." };
-  await audit(session.email, "send", "intake-request", email, `Sent questionnaire (${q.label}) to ${email}`);
-  return { ok: true as const };
+  await audit(session.email, "send", "intake-request", email, `${res.scheduled ? `Scheduled questionnaire (${q.label}) for ${res.sendLabel}` : `Sent questionnaire (${q.label})`} to ${email}`);
+  return { ok: true as const, scheduled: res.scheduled ?? false, sendLabel: res.sendLabel };
 }
 
 /**
@@ -149,10 +149,10 @@ export async function sendIntakeRequest(input: {
       ? `${firmName}: please complete your intake`
       : `${firmName}: please complete your intake`;
 
-  const res = await sendEmail({ to: email, fromName: firmName, subject, html });
+  const res = await sendOrScheduleClientEmail({ to: email, fromName: firmName, subject, html, createdBy: session.email });
   if (!res.sent) {
     return { ok: false as const, error: "Email isn't configured yet, or sending failed. Check email settings." };
   }
-  await audit(session.email, "send", "intake-request", email, `Sent intake request (${matterList}) to ${email}`);
-  return { ok: true as const };
+  await audit(session.email, "send", "intake-request", email, `${res.scheduled ? `Scheduled intake request (${matterList}) for ${res.sendLabel}` : `Sent intake request (${matterList})`} to ${email}`);
+  return { ok: true as const, scheduled: res.scheduled ?? false, sendLabel: res.sendLabel };
 }

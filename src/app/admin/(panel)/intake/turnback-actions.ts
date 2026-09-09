@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { intakeSubmissions, referralAttorneys } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
+import { sendOrScheduleClientEmail } from "@/lib/email-quiet";
 import { recipientsForBranch } from "@/lib/content";
 import { getBranch, turnbackAreaForBranch } from "@/lib/intake/config";
 import { FIRM } from "@/lib/firm";
@@ -111,7 +111,7 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[], extr
     const cc = extras?.cc === undefined ? await recipientsForBranch(ctx.row.branch) : cleanEmails(extras.cc);
 
     const { subject, html } = await buildTurnbackEmail({ name: ctx.row.name, attorneys: ctx.attorneys, referralArea: turnbackAreaForBranch(ctx.row.branch), note: ctx.note });
-    const res = await sendEmail({ to, cc, fromName: FIRM.name, subject, html });
+    const res = await sendOrScheduleClientEmail({ to, cc, fromName: FIRM.name, subject, html, createdBy: session.email });
     if (!res.sent) return { ok: false as const, error: "Email isn't configured yet, or sending failed." };
 
     // Write the corrected address back onto the lead so future emails use it.
@@ -136,7 +136,7 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[], extr
         if (!isEmail(addr)) continue;
         try {
           const note = await buildAttorneyReferralNotice({ attorneyName: a.name, practiceArea, lastName });
-          const sent = await sendEmail({ to: addr, fromName: FIRM.name, subject: note.subject, html: note.html });
+          const sent = await sendOrScheduleClientEmail({ to: addr, fromName: FIRM.name, subject: note.subject, html: note.html, createdBy: session.email });
           if (sent.sent) notified++;
         } catch { /* best-effort */ }
       }
@@ -144,10 +144,10 @@ export async function sendTurnback(intakeId: number, attorneyIds: number[], extr
 
     // The status change is offered to the admin after sending (referred-out vs
     // declined), so this action no longer changes it automatically.
-    await audit(session.email, "send", "intake-turnback", String(intakeId), `Turn-back email sent to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}${ctx.attorneys.length ? ` (${ctx.attorneys.length} referrals, ${extras?.notifyAttorneys ? `${notified} attorney notices` : "attorneys not notified"})` : ""}`);
+    await audit(session.email, "send", "intake-turnback", String(intakeId), `Turn-back email ${res.scheduled ? `scheduled (${res.sendLabel}) for` : "sent to"} ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""}${ctx.attorneys.length ? ` (${ctx.attorneys.length} referrals, ${extras?.notifyAttorneys ? `${notified} attorney notices` : "attorneys not notified"})` : ""}`);
     revalidatePath("/admin/intake");
     // Echo back the selected attorney names so the dialog can offer to mark it referred out.
-    return { ok: true as const, to, cc, emailFixed, notified, attorneyNames: ctx.attorneys.map((a) => a.name) };
+    return { ok: true as const, to, cc, emailFixed, notified, attorneyNames: ctx.attorneys.map((a) => a.name), scheduled: res.scheduled ?? false, sendLabel: res.sendLabel };
   } catch (err) {
     console.error("[turnback] send failed:", err);
     return { ok: false as const, error: "Couldn't send the email." };

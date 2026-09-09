@@ -537,6 +537,23 @@ const DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS offer_status varchar(16) NOT NULL DEFAULT ''`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS public_sides varchar(16) NOT NULL DEFAULT 'both'`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS oc_sides varchar(16) NOT NULL DEFAULT 'both'`,
+  // Quiet-hours email queue: prospective-client emails held until 7 a.m. Central.
+  `CREATE TABLE IF NOT EXISTS scheduled_emails (
+    id serial PRIMARY KEY,
+    "to" jsonb NOT NULL DEFAULT '[]',
+    cc jsonb NOT NULL DEFAULT '[]',
+    subject text NOT NULL,
+    html text NOT NULL,
+    from_name varchar(191),
+    headers jsonb NOT NULL DEFAULT '{}',
+    send_at timestamptz NOT NULL,
+    sent_at timestamptz,
+    attempts integer NOT NULL DEFAULT 0,
+    last_error text NOT NULL DEFAULT '',
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS scheduled_emails_due_idx ON scheduled_emails (send_at)`,
   // Per-directory share links (view/grid/download for one folder of a share).
   `CREATE TABLE IF NOT EXISTS share_dir_links (
     id serial PRIMARY KEY,
