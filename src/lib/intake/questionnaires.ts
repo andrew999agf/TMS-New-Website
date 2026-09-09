@@ -26,7 +26,7 @@ export const CLIENT_QUESTIONNAIRES: ClientQuestionnaire[] = [
     blurb:
       "Gathers everything needed to evaluate and prepare a Texas Small Estate Affidavit: decedent details, eligibility screening (will, administration, $75,000 limit), full family history for heirship, assets, debts, and two disinterested witnesses. Flags disqualifiers for attorney review.",
     path: "/forms/small-estate-affidavit.html",
-    minutes: "20–30",
+    minutes: "5–10",
     notifyBranch: "estate-succession-planning",
   },
 ];

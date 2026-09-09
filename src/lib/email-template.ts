@@ -45,15 +45,21 @@ export function brandedEmailHtml({
   // the dark-mode blocks below force them back if a client tries to invert.
   const PAGE = colors.bg;       // warm bone
   const CARD = colors.surface;  // white
+  // The logo bands get a slightly off-cream tone (never pure white): the navy
+  // logo reads on it in any mode, and it's a color dark-mode inverters are far
+  // less aggressive about than #fff.
+  const CREAM = colors.bg;
   const INK = colors.ink;
   const MUTED = colors.inkMuted;
   const RULE = colors.border;
 
   // Logo that's small on phones, large on desktop — and reliably large in
   // Outlook too (it ignores media queries, so it gets an MSO-only fixed size).
+  // The image carries its OWN cream backing (padding + radius) so even a mail
+  // client that repaints the band leaves the navy logo on a light chip.
   const logoImg = (src: string) =>
-    `<!--[if mso]><img src="${src}" alt="${esc(firmName)}" width="430" style="display:inline-block;border:0" /><![endif]-->` +
-    `<!--[if !mso]><!--><img src="${src}" alt="${esc(firmName)}" class="tms-logo" width="220" style="width:220px;max-width:88%;height:auto;display:inline-block;border:0" /><!--<![endif]-->`;
+    `<!--[if mso]><img src="${src}" alt="${esc(firmName)}" width="430" style="display:inline-block;border:0;background-color:${CREAM}" /><![endif]-->` +
+    `<!--[if !mso]><!--><img src="${src}" alt="${esc(firmName)}" class="tms-logo" width="220" style="width:220px;max-width:88%;height:auto;display:inline-block;border:0;background-color:${CREAM};padding:10px 14px;border-radius:8px" /><!--<![endif]-->`;
 
   // Dark band wrapped in its own bgcolor table (most reliable across clients,
   // incl. mobile and dark mode) rather than a bgcolor on a single cell.
@@ -68,8 +74,8 @@ export function brandedEmailHtml({
   // logo. A single light treatment, defended below, is predictable everywhere.
   const primaryLogo = logoDark || logoLight;
   const header = primaryLogo
-    ? band(CARD, logoImg(primaryLogo), "28px 32px")
-    : band(CARD, `<div style="font-family:${SERIF};color:${colors.ink};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
+    ? band(CREAM, logoImg(primaryLogo), "28px 32px")
+    : band(CREAM, `<div style="font-family:${SERIF};color:${colors.ink};font-size:26px;letter-spacing:.02em">${esc(firmName)}</div>`, "34px 32px");
 
   const accent = `<tr><td style="padding:0;font-size:0;line-height:0"><div style="height:3px;background-color:${colors.darkAccent}">&nbsp;</div><div style="height:4px;background-color:${colors.accent}">&nbsp;</div></td></tr>`;
 
@@ -93,7 +99,7 @@ export function brandedEmailHtml({
   // The footer is painted on the SAME locked white as the logo band, and flips
   // to the same dark band in dark mode — so the two ends of the email always
   // match each other instead of the footer reading as a separate pale card.
-  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="${CARD}" style="background-color:${CARD};background:${CARD}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
+  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="${CREAM}" style="background-color:${CREAM};background:${CREAM}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
 
   return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -117,10 +123,11 @@ export function brandedEmailHtml({
       @media (prefers-color-scheme: dark) {
         .tms-page, .tms-page > tbody > tr > td { background-color:${PAGE} !important; }
         .tms-card { background-color:${CARD} !important; }
-        .tms-band, .tms-band table, .tms-band td { background-color:${CARD} !important; }
+        .tms-band, .tms-band table, .tms-band td { background-color:${CREAM} !important; }
+        img.tms-logo { background-color:${CREAM} !important; }
         .tms-body, .tms-body * { color:${INK} !important; }
         .tms-muted, .tms-muted * { color:${MUTED} !important; }
-        .tms-ftr, .tms-ftr table, .tms-ftr td { background-color:${CARD} !important; }
+        .tms-ftr, .tms-ftr table, .tms-ftr td { background-color:${CREAM} !important; }
         .tms-ftr .tms-ftr-strong { color:${INK} !important; }
         .tms-ftr .tms-ftr-text, .tms-ftr .tms-ftr-muted-link { color:${MUTED} !important; }
         .tms-ftr .tms-ftr-rule { border-top-color:${RULE} !important; }
@@ -130,11 +137,12 @@ export function brandedEmailHtml({
       [data-ogsc] .tms-page, [data-ogsb] .tms-page { background-color:${PAGE} !important; }
       [data-ogsc] .tms-card, [data-ogsb] .tms-card { background-color:${CARD} !important; }
       [data-ogsc] .tms-band, [data-ogsb] .tms-band,
-      [data-ogsc] .tms-band td, [data-ogsb] .tms-band td { background-color:${CARD} !important; }
+      [data-ogsc] .tms-band td, [data-ogsb] .tms-band td { background-color:${CREAM} !important; }
+      [data-ogsc] img.tms-logo, [data-ogsb] img.tms-logo { background-color:${CREAM} !important; }
       [data-ogsc] .tms-body, [data-ogsc] .tms-body * { color:${INK} !important; }
       [data-ogsc] .tms-muted, [data-ogsc] .tms-muted * { color:${MUTED} !important; }
       [data-ogsc] .tms-ftr, [data-ogsb] .tms-ftr,
-      [data-ogsc] .tms-ftr td, [data-ogsb] .tms-ftr td { background-color:${CARD} !important; }
+      [data-ogsc] .tms-ftr td, [data-ogsb] .tms-ftr td { background-color:${CREAM} !important; }
       [data-ogsc] .tms-ftr .tms-ftr-strong { color:${INK} !important; }
       [data-ogsc] .tms-ftr .tms-ftr-text, [data-ogsc] .tms-ftr .tms-ftr-muted-link { color:${MUTED} !important; }
       [data-ogsc] .tms-ftr .tms-ftr-rule { border-top-color:${RULE} !important; }
