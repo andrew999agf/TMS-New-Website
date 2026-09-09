@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { exhibitSets, exhibitDocs } from "@/db/schema";
+import { sideAllowed } from "@/lib/exhibit-review/public";
 
 export const runtime = "nodejs";
 
@@ -17,11 +18,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const did = Number(docId);
   if (!token || !Number.isFinite(did)) return new NextResponse("Not found", { status: 404 });
 
-  const [set] = await db.select({ id: exhibitSets.id }).from(exhibitSets).where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
+  const [set] = await db.select({ id: exhibitSets.id, sides: exhibitSets.publicSides }).from(exhibitSets).where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
   if (!set) return new NextResponse("This link is not available.", { status: 404 });
 
   const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)));
-  if (!doc || !doc.url) return new NextResponse("Not found", { status: 404 });
+  if (!doc || !doc.url || !sideAllowed(doc.side, set.sides)) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);

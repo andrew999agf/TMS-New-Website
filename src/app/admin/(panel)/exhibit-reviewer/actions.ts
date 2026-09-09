@@ -146,6 +146,23 @@ export async function setOcShare(id: number, enabled: boolean) {
   }
 }
 
+/** Which sides a share link exposes: both (default), or just one side —
+ *  joint exhibits always ride along. Applies to the anyone link ("public")
+ *  or the opposing-counsel link ("oc"). */
+export async function setShareSides(id: number, target: "public" | "oc", sides: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const v = sides === "plaintiff" || sides === "defendant" ? sides : "both";
+  try {
+    await db.update(exhibitSets).set(target === "oc" ? { ocSides: v, updatedAt: new Date() } : { publicSides: v, updatedAt: new Date() }).where(eq(exhibitSets.id, id));
+    await audit(session.email, "update", "exhibit-set", String(id), `${target === "oc" ? "Opposing-counsel" : "Anyone"} link now shares: ${v}`);
+    revalidatePath(`/admin/exhibit-reviewer/${id}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the link. Run Settings → Database updates once, then retry." };
+  }
+}
+
 async function sendExhibitInvite(rec: { email: string; name: string; token: string }, setName: string) {
   const link = `${await baseUrl()}/exhibits/r/${rec.token}`;
   const who = rec.name?.trim() ? esc(rec.name.trim()) : "there";

@@ -32,7 +32,7 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
   if (!db || !token) return null;
   try {
     const [set] = await db
-      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, isPublic: exhibitSets.isPublic, token: exhibitSets.publicToken, listUrl: exhibitSets.listUrl, listName: exhibitSets.listName })
+      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, isPublic: exhibitSets.isPublic, token: exhibitSets.publicToken, listUrl: exhibitSets.listUrl, listName: exhibitSets.listName, sides: exhibitSets.publicSides })
       .from(exhibitSets)
       .where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
     if (!set) return null;
@@ -42,7 +42,7 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
       .where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)))
       .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
     const docs: PublicDoc[] = rows
-      .filter((r) => r.url)
+      .filter((r) => r.url && sideAllowed(r.side, set.sides))
       // Only the two outward-facing offer states go out; the internal
       // marked-omit consideration is stripped to blank.
       .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType), offerStatus: r.offerStatus === "expect" || r.offerStatus === "need" ? r.offerStatus : "" }));
@@ -62,7 +62,7 @@ export async function getOcSet(token: string): Promise<PublicSet | null> {
   if (!db || !token) return null;
   try {
     const [set] = await db
-      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, ocEnabled: exhibitSets.ocEnabled, token: exhibitSets.ocToken })
+      .select({ id: exhibitSets.id, name: exhibitSets.name, causeNumber: exhibitSets.causeNumber, court: exhibitSets.court, ocEnabled: exhibitSets.ocEnabled, token: exhibitSets.ocToken, sides: exhibitSets.ocSides })
       .from(exhibitSets)
       .where(and(eq(exhibitSets.ocToken, token), eq(exhibitSets.ocEnabled, true)));
     if (!set) return null;
@@ -72,7 +72,7 @@ export async function getOcSet(token: string): Promise<PublicSet | null> {
       .where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)))
       .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
     const docs: PublicDoc[] = rows
-      .filter((r) => r.url)
+      .filter((r) => r.url && sideAllowed(r.side, set.sides))
       .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: "", bates: "", pageCount: null, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType) }));
     // The OC view never offers the exhibit-list document.
     return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs, hasList: false, listName: null };
@@ -81,12 +81,18 @@ export async function getOcSet(token: string): Promise<PublicSet | null> {
   }
 }
 
+/** Whether a share link scoped to `sides` ("both" | "plaintiff" | "defendant")
+ *  exposes an exhibit on `side`. Joint exhibits ride along with either side. */
+export function sideAllowed(side: string, sides: string): boolean {
+  return sides !== "plaintiff" && sides !== "defendant" ? true : side === sides || side === "joint";
+}
+
 /** The set id for an enabled opposing-counsel token (used by the OC file/zip/book
  *  routes, which serve the actual PDFs). Null when the link is off or unknown. */
-export async function ocSetForToken(token: string): Promise<{ id: number; name: string } | null> {
+export async function ocSetForToken(token: string): Promise<{ id: number; name: string; sides: string } | null> {
   if (!db || !token) return null;
   try {
-    const [set] = await db.select({ id: exhibitSets.id, name: exhibitSets.name }).from(exhibitSets).where(and(eq(exhibitSets.ocToken, token), eq(exhibitSets.ocEnabled, true)));
+    const [set] = await db.select({ id: exhibitSets.id, name: exhibitSets.name, sides: exhibitSets.ocSides }).from(exhibitSets).where(and(eq(exhibitSets.ocToken, token), eq(exhibitSets.ocEnabled, true)));
     return set ?? null;
   } catch {
     return null;

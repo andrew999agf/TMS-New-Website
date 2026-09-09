@@ -1135,6 +1135,11 @@ export const exhibitSets = pgTable(
      *  exhibit names + the files — never Bates, pages, or descriptions. */
     ocToken: varchar("oc_token", { length: 64 }),
     ocEnabled: boolean("oc_enabled").notNull().default(false),
+    /** Which sides the public (anyone) link shows: both | plaintiff | defendant.
+     *  Joint exhibits ride along with either single side. */
+    publicSides: varchar("public_sides", { length: 16 }).notNull().default("both"),
+    /** Same choice for the opposing-counsel link. */
+    ocSides: varchar("oc_sides", { length: 16 }).notNull().default("both"),
     /** Optional "exhibit list" document for the set — viewed like an exhibit. */
     listUrl: text("list_url"),
     listPathname: text("list_pathname"),

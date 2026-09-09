@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { exhibitDocs } from "@/db/schema";
-import { ocSetForToken } from "@/lib/exhibit-review/public";
+import { ocSetForToken, sideAllowed } from "@/lib/exhibit-review/public";
 
 export const runtime = "nodejs";
 
@@ -19,7 +19,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!set) return new NextResponse("This link is not available.", { status: 404 });
 
   const [doc] = await db.select().from(exhibitDocs).where(and(eq(exhibitDocs.id, did), eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)));
-  if (!doc || !doc.url) return new NextResponse("Not found", { status: 404 });
+  if (!doc || !doc.url || !sideAllowed(doc.side, set.sides)) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);

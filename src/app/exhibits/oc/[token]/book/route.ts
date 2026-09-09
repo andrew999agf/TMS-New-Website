@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { exhibitDocs } from "@/db/schema";
 import { parseFileIds } from "@/lib/share/zip";
 import { mergeExhibits } from "@/lib/exhibit-review/book";
-import { ocSetForToken } from "@/lib/exhibit-review/public";
+import { ocSetForToken, sideAllowed } from "@/lib/exhibit-review/public";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,8 +19,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const rows = await db
     .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url })
     .from(exhibitDocs).where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false))).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+  const shared = rows.filter((r) => sideAllowed(r.side, set.sides));
 
   const ids = parseFileIds(new URL(req.url).searchParams.get("ids"));
-  const book = await mergeExhibits(rows, ids, `${set.name || "exhibits"} — exhibit book${ids ? " (selected)" : ""}.pdf`);
+  const book = await mergeExhibits(shared, ids, `${set.name || "exhibits"} — exhibit book${ids ? " (selected)" : ""}.pdf`);
   return book ?? new NextResponse("No exhibits to combine.", { status: 404 });
 }

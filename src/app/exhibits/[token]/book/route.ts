@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { exhibitSets, exhibitDocs } from "@/db/schema";
 import { parseFileIds } from "@/lib/share/zip";
 import { mergeExhibits } from "@/lib/exhibit-review/book";
+import { sideAllowed } from "@/lib/exhibit-review/public";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,14 +14,15 @@ export const maxDuration = 300;
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   if (!db) return new NextResponse("Unavailable", { status: 503 });
   const { token } = await params;
-  const [set] = await db.select({ id: exhibitSets.id, name: exhibitSets.name }).from(exhibitSets).where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
+  const [set] = await db.select({ id: exhibitSets.id, name: exhibitSets.name, sides: exhibitSets.publicSides }).from(exhibitSets).where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
   if (!set) return new NextResponse("This link is not available.", { status: 404 });
 
   const rows = await db
     .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url })
     .from(exhibitDocs).where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false))).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+  const shared = rows.filter((r) => sideAllowed(r.side, set.sides));
 
   const ids = parseFileIds(new URL(req.url).searchParams.get("ids"));
-  const book = await mergeExhibits(rows, ids, `${set.name || "exhibits"} — exhibit book${ids ? " (selected)" : ""}.pdf`);
+  const book = await mergeExhibits(shared, ids, `${set.name || "exhibits"} — exhibit book${ids ? " (selected)" : ""}.pdf`);
   return book ?? new NextResponse("No exhibits to combine.", { status: 404 });
 }

@@ -16,7 +16,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk, setExhibitOmittedBulk,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk, setExhibitOmittedBulk, setShareSides,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -244,9 +244,36 @@ function NoteButton({ notes, onSave }: { notes: string; onSave: (v: string) => v
  *                A forwarded link won't let anyone else in. (Default when sharing.)
  *   Public     — anyone with the link can view (no sign-in), plus a link tree.
  */
-function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToken, onCopy, onFlash, onClose }: {
+/** Radio pills for which side's exhibits a share link exposes. Saves on click. */
+function SharedSidesPicker({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const OPTS = [
+    ["plaintiff", "Plaintiff's exhibits"],
+    ["defendant", "Defendant's exhibits"],
+    ["both", "Both"],
+  ] as const;
+  return (
+    <div className="mt-2">
+      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">What this link shares</span>
+      <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
+        {OPTS.map(([v, label], i) => (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            disabled={disabled}
+            className={`px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-50 ${i > 0 ? "border-l border-[var(--c-border)]" : ""} ${(value === v || (v === "both" && value !== "plaintiff" && value !== "defendant")) ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] text-[var(--c-ink-muted)]">Joint exhibits are always included. The link updates instantly — nothing to re-send.</p>
+    </div>
+  );
+}
+
+function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToken, publicSides, ocSides, onCopy, onFlash, onClose }: {
   setId: number; access: string; token: string | null; recipients: RecipientLite[]; docs: ReviewerDoc[];
-  ocEnabled: boolean; ocToken: string | null;
+  ocEnabled: boolean; ocToken: string | null; publicSides: string; ocSides: string;
   onCopy: (text: string, label: string) => void; onFlash: (m: string) => void; onClose: () => void;
 }) {
   const router = useRouter();
@@ -260,7 +287,14 @@ function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToke
   const [error, setError] = useState<string | null>(null);
   const [oc, setOc] = useState(ocEnabled);
   const [ocTok, setOcTok] = useState(ocToken);
-  useEffect(() => { setMode(access); setTok(token); setOc(ocEnabled); setOcTok(ocToken); }, [access, token, ocEnabled, ocToken]);
+  const [pubSides, setPubSides] = useState(publicSides);
+  const [ocSidesLocal, setOcSidesLocal] = useState(ocSides);
+  useEffect(() => { setMode(access); setTok(token); setOc(ocEnabled); setOcTok(ocToken); setPubSides(publicSides); setOcSidesLocal(ocSides); }, [access, token, ocEnabled, ocToken, publicSides, ocSides]);
+
+  function chooseSides(target: "public" | "oc", v: string) {
+    if (target === "public") setPubSides(v); else setOcSidesLocal(v);
+    start(async () => { const r = await setShareSides(setId, target, v); if (!r.ok) setError(r.error ?? "Couldn't update the link."); router.refresh(); });
+  }
 
   function toggleOc(next: boolean) {
     setOc(next);
@@ -310,7 +344,7 @@ function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToke
   const MODES: { id: string; label: string; hint: string; icon: React.ReactNode }[] = [
     { id: "off", label: "Off — firm only", hint: "Nothing is shared. No links work.", icon: <Lock size={15} /> },
     { id: "restricted", label: "Named people (verified by email)", hint: "Each person gets their own link and must enter a one-time code emailed to them. A forwarded link won't work for anyone else.", icon: <ShieldCheck size={15} /> },
-    { id: "public", label: "Anyone with the link", hint: "No sign-in. Anyone who has a link can view — use only when there's no protective order.", icon: <Globe size={15} /> },
+    { id: "public", label: "Anyone with the link — friendly parties ONLY", hint: "No sign-in. For your client, co-counsel, experts, and witnesses. NEVER for the other side — opposing counsel gets its own separate link below.", icon: <Globe size={15} /> },
   ];
   const btn = "rounded border border-[var(--c-border)] px-2 py-1 text-[11px] hover:bg-[var(--c-surface2)]";
 
@@ -364,33 +398,41 @@ function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToke
 
         {mode === "public" && tok && (
           <div className="mt-4 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Link tree — all exhibits</div>
+            {/* Unmissable: this link is for YOUR side of the aisle only. */}
+            <div className="mb-3 rounded-md border-2 border-red-600 bg-red-600/10 p-3 text-center">
+              <p className="text-sm font-extrabold uppercase tracking-wide text-red-700 dark:text-red-300">⚠ Do NOT send this link to opposing counsel</p>
+              <p className="mt-1 text-xs font-medium text-red-700/90 dark:text-red-300/90">Friendly parties only — your client, co-counsel, experts, witnesses. It shows descriptions, Bates, and your offer plan. The other side gets the separate Opposing Counsel link below.</p>
+            </div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Link tree</div>
             <div className="mt-1 truncate text-[11px] text-[var(--c-ink)]" title={treeUrl}>{treeUrl}</div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <button onClick={() => onCopy(treeUrl, "Link tree copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
               <a href={treeUrl} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Open</a>
               <button onClick={downloadTree} className={btn}><Download size={11} className="mr-1 inline" />Download</button>
             </div>
+            <SharedSidesPicker value={pubSides} onChange={(v) => chooseSides("public", v)} />
             <p className="mt-2 text-[10px] leading-relaxed text-[var(--c-ink-muted)]">Each exhibit also has its own link — the link icon on a row (or in the viewer) copies it.</p>
           </div>
         )}
 
-        {/* Opposing counsel — a completely separate, names-only link. */}
-        <div className="mt-4 rounded-md border border-[var(--c-border)] p-3">
-          <label className="flex cursor-pointer items-start gap-2.5">
-            <input type="checkbox" checked={oc} onChange={(e) => toggleOc(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
-            <span className="min-w-0">
-              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--c-ink)]"><Scale size={15} /> Opposing-counsel link (names only)</span>
-              <span className="mt-0.5 block text-xs text-[var(--c-ink-muted)]">A separate link that shows only the exhibit numbers and names and the files themselves — never the Bates, page counts, or descriptions. Safe to send the other side.</span>
-            </span>
+        {/* Opposing counsel — its own clearly separate, deliberately bare link. */}
+        <div className={`mt-4 rounded-md border-2 p-3 ${oc ? "border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
+          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded bg-[var(--c-accent)]/10 px-2 py-1 text-sm font-bold uppercase tracking-wide text-[var(--c-accent)]"><Scale size={15} /> Opposing Counsel link</div>
+          <p className="mb-2 text-xs text-[var(--c-ink-muted)]">
+            This — and only this — is the link for the other side. It's deliberately bare-bones: a simple list of exhibit numbers, names, and the files themselves. No grid, no descriptions, no Bates ranges, no page counts, and never your offer plan.
+          </p>
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input type="checkbox" checked={oc} onChange={(e) => toggleOc(e.target.checked)} className="accent-[var(--c-accent)]" />
+            <span className="text-sm font-semibold text-[var(--c-ink)]">{oc ? "Opposing Counsel link is ON" : "Turn on the Opposing Counsel link"}</span>
           </label>
           {oc && ocTok && (
             <div className="mt-2 rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-2">
               <div className="truncate text-[11px] text-[var(--c-ink)]" title={`${origin}/exhibits/oc/${ocTok}`}>{origin}/exhibits/oc/{ocTok}</div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <button onClick={() => onCopy(`${origin}/exhibits/oc/${ocTok}`, "Opposing-counsel link copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
+                <button onClick={() => onCopy(`${origin}/exhibits/oc/${ocTok}`, "Opposing Counsel link copied")} className={btn}><LinkIcon size={11} className="mr-1 inline" />Copy Opposing Counsel link</button>
                 <a href={`${origin}/exhibits/oc/${ocTok}`} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={11} className="mr-1 inline" />Preview</a>
               </div>
+              <SharedSidesPicker value={ocSidesLocal} onChange={(v) => chooseSides("oc", v)} />
             </div>
           )}
         </div>
@@ -919,9 +961,10 @@ function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onBul
   );
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, hasList, listName, listTag }: {
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, publicSides, ocSides, hasList, listName, listTag }: {
   setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
   access: string; publicToken: string | null; recipients: RecipientLite[]; ocEnabled: boolean; ocToken: string | null;
+  publicSides: string; ocSides: string;
   hasList: boolean; listName: string | null; listTag: string;
 }) {
   const router = useRouter();
@@ -1758,7 +1801,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
       })()}
 
       {shareOpen && (
-        <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} ocEnabled={ocEnabled} ocToken={ocToken} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
+        <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} ocEnabled={ocEnabled} ocToken={ocToken} publicSides={publicSides} ocSides={ocSides} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
       )}
 
       {confirmState && (

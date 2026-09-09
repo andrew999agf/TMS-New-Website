@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { exhibitDocs } from "@/db/schema";
 import { parseFileIds } from "@/lib/share/zip";
 import { zipExhibits } from "@/lib/exhibit-review/zipdocs";
-import { ocSetForToken } from "@/lib/exhibit-review/public";
+import { ocSetForToken, sideAllowed } from "@/lib/exhibit-review/public";
 
 export const runtime = "nodejs";
 
@@ -18,8 +18,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const rows = await db
     .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, url: exhibitDocs.url })
     .from(exhibitDocs).where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false))).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+  const shared = rows.filter((r) => sideAllowed(r.side, set.sides));
 
   const ids = parseFileIds(new URL(req.url).searchParams.get("ids"));
-  const zip = zipExhibits(rows, ids, `${set.name || "exhibits"} exhibits${ids ? " (selected)" : ""}.zip`);
+  const zip = zipExhibits(shared, ids, `${set.name || "exhibits"} exhibits${ids ? " (selected)" : ""}.zip`);
   return zip ?? new NextResponse("No exhibits to download.", { status: 404 });
 }
