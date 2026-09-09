@@ -13,6 +13,7 @@ import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIO
 import { isPdfFile, isVideoFile, EXHIBIT_ACCEPT } from "@/lib/exhibit-review/media";
 import { filesFromDrop, countDropItems, fromInput, type PickedFile } from "@/lib/share/drop";
 import { PopMenu } from "./PopMenu";
+import { ReadAloudButton } from "./ReadAloud";
 import { PdfThumb } from "@/components/site/PdfThumb";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
@@ -1728,6 +1729,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <button onClick={() => stepMatch(-1)} disabled={!docMatches.length} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-30" title="Previous match"><ChevronUp size={14} /></button>
                   <button onClick={() => stepMatch(1)} disabled={!docMatches.length} className="rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-30" title="Next match"><ChevronDown size={14} /></button>
                 </div>
+
+                {/* Read the exhibit's text aloud — the browser's own speech
+                    engine, best available voice; stops on exhibit change. */}
+                <ReadAloudButton pages={docPages} docKey={current.id} />
 
                 {current.hasHiRes && (
                   <span className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)] text-[11px]">
