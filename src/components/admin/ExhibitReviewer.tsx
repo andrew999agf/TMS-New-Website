@@ -21,7 +21,7 @@ import {
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type ReviewerDoc = {
-  id: number; side: string; number: number | null; label: string; title: string; description: string; priority: string; trialStatus: string; bates: string; batesEnd: string;
+  id: number; side: string; number: number | null; label: string; title: string; description: string; trialStatus: string; bates: string; batesEnd: string;
   witnessIds: number[]; presentIds: number[]; foundation: string[]; elementIds: number[]; notes: string;
   /** Soft "taken off the exhibit list" flag. */
   omitted: boolean;
@@ -47,26 +47,15 @@ export type ClaimLite = { id: number; name: string };
 export type ElementLite = { id: number; claimId: number; text: string };
 export type RecipientLite = { id: number; email: string; name: string; token: string; revoked: boolean };
 
-/** The review flags, in the order they read on the light. */
 /**
  * Two independent flags per exhibit, kept visually distinct on purpose:
  *
- *  - PRIORITY is the team's own prep judgment, shown as a FADED pill that spells
- *    the word out (Priority / Neutral / Low). Soft colour = a subjective call.
+ *  - OFFER PLAN (the pale status bar, defined below) is the team's own
+ *    judgment about whether the exhibit will be offered.
  *  - TRIAL STATUS is the court's actual ruling, shown as a SOLID dot (Admitted /
  *    Offered–pending / Excluded). Solid colour = a hard fact. The words show in
  *    its picker, its tooltip, and the admitted-exhibits summary.
- *
- * Same green/amber/red family for both so the meaning reads instantly; faded vs
- * solid (and word-pill vs dot) is what tells the two apart.
  */
-const PRIORITY_META: Record<string, { label: string; short: string; dot: string; pill: string }> = {
-  green: { label: "Priority", short: "Priority", dot: "#16a34a", pill: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" },
-  yellow: { label: "Neutral", short: "Neutral", dot: "#ca8a04", pill: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" },
-  red: { label: "Low priority / bad", short: "Low", dot: "#dc2626", pill: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" },
-};
-const PRIORITY_ORDER = ["green", "yellow", "red", "none"];
-
 const STATUS_META: Record<string, { label: string; short: string; color: string }> = {
   admitted: { label: "Admitted", short: "Admitted", color: "#16a34a" },
   pending: { label: "Offered — ruling pending", short: "Pending", color: "#eab308" },
@@ -161,44 +150,6 @@ function OfferChip({ value, onChange, size = "sm" }: { value: string; onChange: 
             <span className="min-w-0 flex-1">Clear — not decided yet</span>
             {!value && <Check size={13} className="shrink-0 text-[var(--c-accent)]" />}
           </button>
-        </div>
-      )}
-    </PopMenu>
-  );
-}
-
-/** Priority: a faded pill that says the word, or a slash circle when unset. */
-function PriorityChip({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const m = PRIORITY_META[value];
-  const current = m ? `Priority: ${m.label}` : "Set priority";
-  return (
-    <PopMenu
-      width={200}
-      title={`${current} — click to change`}
-      className="mt-0.5 inline-flex shrink-0 items-center rounded-full transition hover:ring-2 hover:ring-[var(--c-accent)]/30"
-      label={
-        m ? (
-          <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${m.pill}`}>
-            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: m.dot }} /> {m.short}
-          </span>
-        ) : (
-          <SlashDot />
-        )
-      }
-    >
-      {(close) => (
-        <div className="py-0.5">
-          <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Priority (prep)</div>
-          {PRIORITY_ORDER.map((id) => {
-            const pm = PRIORITY_META[id];
-            return (
-              <button key={id} onMouseDown={(e) => { e.preventDefault(); close(); onChange(id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--c-accent)]/10">
-                {pm ? <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: pm.dot }} /> : <SlashDot size={12} />}
-                <span className="flex-1 text-[var(--c-ink)]">{pm?.label ?? "None"}</span>
-                {value === id && <Check size={12} className="text-[var(--c-accent)]" />}
-              </button>
-            );
-          })}
         </div>
       )}
     </PopMenu>
@@ -1962,7 +1913,7 @@ function AddExhibits({ blobReady, dragOver, uploading, items, numMode, onSetMode
 /* ------------------------------ list row ------------------------------ */
 function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onToggleOmit, onEdit, onReplace, onCopyLink, onDelete, onHiResUpload, onViewHiRes, hiResPct }: {
   d: ReviewerDoc; active: boolean; index: number; setId: number; witnesses: WitnessLite[];
-  onOpen: () => void; onSave: (patch: { priority?: string; trialStatus?: string; offerStatus?: string; notes?: string; witnessIds?: number[]; presentIds?: number[] }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
+  onOpen: () => void; onSave: (patch: { trialStatus?: string; offerStatus?: string; notes?: string; witnessIds?: number[]; presentIds?: number[] }) => void; onToggleOmit: () => void; onEdit: () => void; onReplace: () => void; onCopyLink?: () => void; onDelete: () => void;
   onHiResUpload: () => void; onViewHiRes: () => void; hiResPct: number | null;
 }) {
   // Keep the selected exhibit visible in the list when you page with the arrows.
@@ -2016,7 +1967,6 @@ function ExhibitRow({ d, active, index, setId, witnesses, onOpen, onSave, onTogg
             (phones) instead of overflowing. */}
         <div className={`mt-1 flex flex-wrap items-center gap-0.5 px-1.5 pb-1.5 ${d.omitted ? "opacity-55" : ""}`}>
           <OfferChip value={d.offerStatus} onChange={(v) => onSave({ offerStatus: v })} />
-          <PriorityChip value={d.priority} onChange={(v) => onSave({ priority: v })} />
           <StatusBubble value={d.trialStatus} onChange={(v) => onSave({ trialStatus: v })} />
           {onCopyLink && <button onClick={onCopyLink} className={iconBtn} title="Copy this exhibit's share link"><LinkIcon size={13} /></button>}
           <button onClick={onReplace} className={iconBtn} title="Replace this exhibit's file"><RefreshCw size={13} /></button>
@@ -2149,7 +2099,7 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
   const [saving, setSaving] = useState(false);
   const [f, setF] = useState({
     side: doc.side, number: doc.number, label: doc.label, title: doc.title, description: doc.description, bates: doc.bates, batesEnd: doc.batesEnd,
-    priority: doc.priority, trialStatus: doc.trialStatus,
+    offerStatus: doc.offerStatus, trialStatus: doc.trialStatus,
     witnessIds: doc.witnessIds, presentIds: doc.presentIds, foundation: doc.foundation, elementIds: doc.elementIds,
   });
   const [newWitness, setNewWitness] = useState("");
@@ -2226,7 +2176,7 @@ function ExhibitEditDialog({ setId, doc, witnesses, claims, elements, onClose }:
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Priority</span><PriorityChip value={f.priority} onChange={(v) => setF({ ...f, priority: v })} /></div>
+            <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Offer plan</span><OfferChip value={f.offerStatus} onChange={(v) => setF({ ...f, offerStatus: v })} /></div>
             <div className="flex items-center gap-2"><span className="text-[11px] font-semibold">Trial status</span><StatusBubble value={f.trialStatus} onChange={(v) => setF({ ...f, trialStatus: v })} /></div>
           </div>
 

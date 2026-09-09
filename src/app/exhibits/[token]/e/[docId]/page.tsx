@@ -40,8 +40,15 @@ export default async function PublicExhibitView({ params }: { params: Promise<{ 
           <List size={14} /> All exhibits
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-[var(--c-ink)]">
-            <span className="text-[var(--c-accent)]">{d.label || (d.number ?? "")}</span>{d.label || d.number != null ? " — " : ""}{d.title || "Exhibit"}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-semibold text-[var(--c-ink)]">
+              <span className="text-[var(--c-accent)]">{d.label || (d.number ?? "")}</span>{d.label || d.number != null ? " — " : ""}{d.title || "Exhibit"}
+            </span>
+            {(d.offerStatus === "expect" || d.offerStatus === "need") && (
+              <span className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold ${d.offerStatus === "expect" ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200" : "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200"}`}>
+                {d.offerStatus === "expect" ? "Expect to offer" : "May offer if the need arises"}
+              </span>
+            )}
           </div>
           {d.bates && <div className="truncate text-[11px] text-[var(--c-ink-muted)]">{d.bates}</div>}
         </div>

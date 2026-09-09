@@ -9,6 +9,9 @@ export type PublicDoc = {
   pageCount: number | null;
   /** Video exhibit — the share viewers play it instead of framing a PDF. */
   isVideo: boolean;
+  /** Offer plan shown on the anyone-link only: "expect" | "need" | "". The
+   *  marked-omit state is internal and never sent out; the OC view sends "". */
+  offerStatus?: string;
 };
 export type PublicSet = {
   id: number; name: string; causeNumber: string; court: string; token: string;
@@ -34,13 +37,15 @@ export async function getPublicSet(token: string): Promise<PublicSet | null> {
       .where(and(eq(exhibitSets.publicToken, token), eq(exhibitSets.isPublic, true)));
     if (!set) return null;
     const rows = await db
-      .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
+      .select({ id: exhibitDocs.id, side: exhibitDocs.side, number: exhibitDocs.number, label: exhibitDocs.label, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, offerStatus: exhibitDocs.offerStatus, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, pageCount: exhibitDocs.pageCount, sort: exhibitDocs.sort })
       .from(exhibitDocs)
       .where(and(eq(exhibitDocs.setId, set.id), eq(exhibitDocs.omitted, false)))
       .orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
     const docs: PublicDoc[] = rows
       .filter((r) => r.url)
-      .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType) }));
+      // Only the two outward-facing offer states go out; the internal
+      // marked-omit consideration is stripped to blank.
+      .map((r) => ({ id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, bates: r.bates, pageCount: r.pageCount, isVideo: isVideoFile(r.pathname ?? r.url, r.contentType), offerStatus: r.offerStatus === "expect" || r.offerStatus === "need" ? r.offerStatus : "" }));
     return { id: set.id, name: set.name, causeNumber: set.causeNumber, court: set.court, token: set.token || token, docs, hasList: Boolean(set.listUrl), listName: set.listName };
   } catch {
     return null;

@@ -7,9 +7,25 @@ import { Download, CheckSquare, ChevronDown, BookOpen, List as ListIcon, LayoutG
 export type SharedDoc = {
   id: number; side: string; number: number | null; label: string; title: string; description: string; bates: string; pageCount: number | null;
   isVideo?: boolean;
+  /** Offer plan (anyone-link only): "expect" | "need" | "" / undefined for none. */
+  offerStatus?: string;
 };
 
 const SIDE_LABEL: Record<string, string> = { plaintiff: "Plaintiff's Exhibits", defendant: "Defendant's Exhibits", joint: "Joint Exhibits" };
+
+/** Pale green / pale yellow offer-plan pill, matching the reviewer's colors.
+ *  Renders nothing unless the doc carries one of the two shared states. */
+function OfferBadge({ status, small = false }: { status?: string; small?: boolean }) {
+  if (status !== "expect" && status !== "need") return null;
+  const cls = status === "expect"
+    ? "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200"
+    : "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200";
+  return (
+    <span className={`inline-flex max-w-full items-center rounded-md border font-semibold ${cls} ${small ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"}`}>
+      <span className="truncate">{status === "expect" ? "Expect to offer" : "May offer if the need arises"}</span>
+    </span>
+  );
+}
 
 /**
  * The exhibit list on a share link: view any exhibit, or select some (or all)
@@ -132,7 +148,10 @@ export function SharedExhibitList({ docs, viewBase, fileBase, zipBase, bookBase,
                       <Link href={`${viewBase}/${d.id}`} className="flex min-w-0 flex-1 items-start gap-3">
                         <span className="mt-0.5 inline-flex min-w-[3rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-1 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+                            {!namesOnly && <OfferBadge status={d.offerStatus} />}
+                          </span>
                           {/* In opposing-counsel view show nothing but the name — no
                               description, Bates, or page count. */}
                           {!namesOnly && d.description && <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--c-ink-muted)]">{d.description}</span>}
@@ -200,9 +219,12 @@ function SharedGridCard({ d, viewBase, fileBase, checked, onToggle }: {
           {/* Transparent layer so the click always lands on the card, not the PDF. */}
           <span className="absolute inset-0" aria-hidden />
         </div>
-        <div className="flex items-center gap-2 border-t border-[var(--c-border)] px-2.5 py-2">
-          <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
-          <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+        <div className="border-t border-[var(--c-border)] px-2.5 py-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex min-w-[2.75rem] shrink-0 items-center justify-center rounded bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-xs font-bold text-[var(--c-accent)]">{d.label || (d.number ?? "—")}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-[var(--c-ink)]">{d.title || "Exhibit"}</span>
+            <OfferBadge status={d.offerStatus} small />
+          </div>
         </div>
       </Link>
       {/* Selection checkbox — floats over the top-right corner of the thumbnail. */}
