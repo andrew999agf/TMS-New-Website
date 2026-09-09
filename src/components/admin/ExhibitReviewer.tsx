@@ -16,7 +16,7 @@ import { PopMenu } from "./PopMenu";
 import {
   addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
-  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk,
+  addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk, setExhibitOmittedBulk,
   type SetSearchHit,
 } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
@@ -1537,20 +1537,40 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           ["omit", "Marked omit", OFFER_META.omit.swatch],
           ["omitted", "Omitted — off the list", "border-[var(--c-border)] bg-[var(--c-surface2)]"],
         ] as const).map(([key, label, swatch]) => (
-          <label
-            key={key}
-            className="inline-flex cursor-pointer items-center gap-1.5 text-[var(--c-ink)]"
-            title={key === "omitted" ? "Exhibits taken off the list. When unchecked they're hidden here and left out of the ZIP/print downloads." : undefined}
-          >
-            <input
-              type="checkbox"
-              checked={offerFilter[key]}
-              onChange={(e) => setOfferFilter((f) => ({ ...f, [key]: e.target.checked }))}
-              className="h-3.5 w-3.5 accent-[var(--c-accent)]"
-            />
-            <span className={`inline-block h-2.5 w-2.5 rounded-sm border ${swatch}`} aria-hidden />
-            {label} <span className="text-[var(--c-ink-muted)]">({filterCounts[key]})</span>
-          </label>
+          <span key={key} className="inline-flex items-center gap-1.5">
+            <label
+              className="inline-flex cursor-pointer items-center gap-1.5 text-[var(--c-ink)]"
+              title={key === "omitted" ? "Exhibits taken off the list. When unchecked they're hidden here and left out of the ZIP/print downloads." : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={offerFilter[key]}
+                onChange={(e) => setOfferFilter((f) => ({ ...f, [key]: e.target.checked }))}
+                className="h-3.5 w-3.5 accent-[var(--c-accent)]"
+              />
+              <span className={`inline-block h-2.5 w-2.5 rounded-sm border ${swatch}`} aria-hidden />
+              {label} <span className="text-[var(--c-ink-muted)]">({filterCounts[key]})</span>
+            </label>
+            {/* One-click conversion: everything marked pale-red "omit" on this
+                side actually comes off the list (behind a confirm). */}
+            {key === "omit" && filterCounts.omit > 0 && (
+              <button
+                onClick={() => {
+                  const n = filterCounts.omit;
+                  setConfirmState({
+                    title: "Take these exhibits off the list?",
+                    message: `The ${n} marked-omit ${SIDE_LABEL[side].toLowerCase()} become Omitted — off the list. They're kept (not deleted), left out of every share and download when hidden, and each one can be put back with its red side strip. The red "omit" marker stays, so anything put back returns to this set.`,
+                    confirmLabel: `Confirm omit (${n})`,
+                    onConfirm: () => run(() => setExhibitOmittedBulk(docs.filter((d) => d.side === side && !d.omitted && d.offerStatus === "omit").map((d) => d.id), true)),
+                  });
+                }}
+                title={`Move all ${filterCounts.omit} marked-omit exhibits to Omitted — off the list`}
+                className="rounded-md border border-red-500/50 bg-red-500/10 px-2 py-0.5 font-semibold text-red-700 hover:bg-red-500/20 dark:text-red-300"
+              >
+                Confirm omit ({filterCounts.omit})
+              </button>
+            )}
+          </span>
         ))}
         {Object.values(offerFilter).some((v) => !v) && (
           <button onClick={() => setOfferFilter({ none: true, expect: true, need: true, omit: true, omitted: true })} className="text-[var(--c-accent)] hover:underline">

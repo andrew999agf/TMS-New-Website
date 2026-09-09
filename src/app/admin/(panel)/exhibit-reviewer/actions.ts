@@ -372,6 +372,24 @@ export async function updateExhibitDoc(id: number, patch: { side?: string; numbe
   }
 }
 
+/** Take many exhibits off the list at once — the "Confirm omit" button that
+ *  converts everything marked pale-red "omit" into actually omitted. The
+ *  offer-plan marker is kept, so putting one back on the list restores it to
+ *  the marked-omit set rather than losing the decision. */
+export async function setExhibitOmittedBulk(idsIn: number[], omitted: boolean) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const list = ids(idsIn);
+  if (list.length === 0) return { ok: true as const };
+  try {
+    const rows = await db.update(exhibitDocs).set({ omitted }).where(inArray(exhibitDocs.id, list)).returning({ setId: exhibitDocs.setId });
+    if (rows[0]) revalidatePath(`/admin/exhibit-reviewer/${rows[0].setId}`);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, error: "Couldn't update the exhibits." };
+  }
+}
+
 /** Set the offer plan on many exhibits at once (the checked set in grid view). */
 export async function setExhibitOfferStatusBulk(idsIn: number[], status: string) {
   await guard();
