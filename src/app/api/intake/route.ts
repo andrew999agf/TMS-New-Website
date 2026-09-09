@@ -13,6 +13,7 @@ import { FIRM } from "@/lib/firm";
 import { LEGAL_DOCS } from "@/lib/documents/legal-specs";
 import { renderDoc, wrapForWord } from "@/lib/documents/legal";
 import { answersPdf } from "@/lib/intake/answers-pdf";
+import { answersDocx } from "@/lib/intake/answers-docx";
 
 export const runtime = "nodejs";
 
@@ -309,6 +310,39 @@ export async function POST(req: Request) {
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 
+  // Every answered field, labeled, in the order asked — shared by the intake
+  // team's Word document and the client's PDF copy.
+  const answerItems: { label: string; value: string }[] = (() => {
+    const seen = new Set<string>();
+    const items: { label: string; value: string }[] = [];
+    const pushKey = (key: string) => {
+      if (seen.has(key) || internalKeys.has(key)) return;
+      seen.add(key);
+      const val = formatAnswerValue(a[key]);
+      if (val.trim()) items.push({ label: fieldLabel(key), value: val });
+    };
+    INTAKE_FIELDS.forEach((f) => pushKey(f.name));
+    Object.keys(a).forEach(pushKey);
+    return items;
+  })();
+
+  // The intake team's formatted copy: a clean law-firm-style Word document
+  // (Times New Roman 12 pt). Team only — the client gets a PDF instead.
+  const teamDocx: { filename: string; content: Buffer; contentType?: string }[] = [];
+  try {
+    const buf = await answersDocx({
+      firmName: FIRM.name,
+      formTitle: `${branchLabel} — Intake Submission`,
+      submittedAt: new Date(),
+      clientName: clientName !== "A prospective client" ? clientName : undefined,
+      contact: { email: email || undefined, phone: phone || undefined },
+      sections: [{ title: "Responses", items: answerItems }],
+    });
+    teamDocx.push({ filename: `Intake — ${(clientName || "client").replace(/[\\/:*?"<>|]/g, "-")}.docx`, content: buf, contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  } catch (err) {
+    console.error("[intake] team docx failed:", err);
+  }
+
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
   const combinedHtml = `${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
   const emailResult = await sendEmail({
@@ -316,7 +350,7 @@ export async function POST(req: Request) {
     fromName: `${FIRM.name} — Intake`,
     subject: `${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
     html: combinedHtml,
-    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
+    attachments: [...teamDocx, { filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
   });
 
   // Acknowledgment email to the prospective client — a branded HTML email that
@@ -334,16 +368,7 @@ export async function POST(req: Request) {
     // best-effort — a PDF hiccup never blocks the acknowledgment itself.
     let ackAttachments: { filename: string; content: Buffer; contentType?: string }[] | undefined;
     try {
-      const seen = new Set<string>();
-      const items: { label: string; value: string }[] = [];
-      const pushKey = (key: string) => {
-        if (seen.has(key) || internalKeys.has(key)) return;
-        seen.add(key);
-        const val = formatAnswerValue(a[key]);
-        if (val.trim()) items.push({ label: fieldLabel(key), value: val });
-      };
-      INTAKE_FIELDS.forEach((f) => pushKey(f.name));
-      Object.keys(a).forEach(pushKey);
+      const items = answerItems;
       const pdfBytes = await answersPdf({
         firmName,
         formTitle: `${branchLabel} — Intake Submission`,

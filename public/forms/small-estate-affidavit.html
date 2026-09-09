@@ -226,11 +226,9 @@
   <!-- REVIEW -->
   <section class="card" id="summary" style="display:none">
     <h1 style="font-size:22px">Review &amp; Export — Small Estate Affidavit Questionnaire</h1>
-    <p class="sub">Please check every answer, then press <b>Submit to the firm</b> &mdash; your answers go straight to our office and you&rsquo;ll get a confirmation email with a PDF copy for your records. You can also print or download a copy for yourself.</p>
+    <p class="sub">Please check every answer, then press <b>Submit</b>. We&rsquo;ll take it from there and get back with you.</p>
     <div class="toolbar noprint" id="sumToolbar">
-      <button type="button" class="btn primary" id="submitBtn" onclick="submitToFirm()">Submit to the firm</button>
-      <button type="button" class="btn" onclick="window.print()">Print / Save as PDF</button>
-      <button type="button" class="btn" onclick="downloadSummary()">Download summary file</button>
+      <button type="button" class="btn primary" id="submitBtn" onclick="submitToFirm()">Submit</button>
       <button type="button" class="btn" onclick="backToForm()">&larr; Edit answers</button>
     </div>
     <div id="submitMsg" class="noprint"></div>
@@ -565,16 +563,16 @@ function submitToFirm(){
   .then(function(res){
     if (!res.ok) throw new Error((res.body && res.body.error) || "submit failed");
     try{ localStorage.removeItem(KEY); }catch(e){}
-    $("sumToolbar").innerHTML = '<button type="button" class="btn" onclick="window.print()">Print / Save as PDF</button>'
-      + '<button type="button" class="btn" onclick="downloadSummary()">Download summary file</button>';
+    $("sumToolbar").innerHTML = "";
     msg.innerHTML = '<div style="background:#eefaf0;border-left:5px solid #1b7f3b;padding:14px 18px;margin:0 0 14px;color:#14522a">'
-      + '<b>Submitted \u2014 thank you.</b> Your questionnaire went to our office, and a confirmation email with a PDF copy of your answers is on its way to <b>'+esc(email)+'</b> (check spam if you don\u2019t see it). We\u2019ll review everything and follow up. '
+      + '<b>Submitted \u2014 we\u2019ve got it.</b> A confirmation is on its way to <b>'+esc(email)+'</b> (check spam if you don\u2019t see it), and our office will get back with you. '
       + 'Please remember: submitting this questionnaire does <b>not</b> create an attorney-client relationship.</div>';
     window.scrollTo({top:0});
   })
   .catch(function(){
     btn.disabled = false; btn.textContent = "Submit to the firm";
-    msg.innerHTML = '<div class="dqbanner"><b>We couldn\u2019t submit your answers just now.</b> Please try again in a moment \u2014 or use <b>Download summary file</b> and email the file to our office, and we\u2019ll take it from there.</div>';
+    msg.innerHTML = '<div class="dqbanner"><b>We couldn\u2019t submit your answers just now.</b> Please try again in a moment \u2014 or download your answers and email the file to our office, and we\u2019ll take it from there.<br><br>'
+      + '<button type="button" class="btn" onclick="downloadSummary()">Download my answers</button></div>';
   });
 }
 function downloadSummary(){

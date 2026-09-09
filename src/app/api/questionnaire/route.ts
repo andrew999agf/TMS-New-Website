@@ -3,6 +3,7 @@ import { FIRM } from "@/lib/firm";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getQuestionnaire } from "@/lib/intake/questionnaires";
 import { answersPdf, type AnswerSection } from "@/lib/intake/answers-pdf";
+import { answersDocx } from "@/lib/intake/answers-docx";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -75,7 +76,20 @@ export async function POST(req: Request) {
     sections,
   });
   const cleanName = (name || "client").replace(/[^\w \-'.]+/g, "").trim() || "client";
-  const pdfAttachment = { filename: `${q.label.replace(/[\\/:*?"<>|]/g, "-")} — ${cleanName}.pdf`, content: Buffer.from(pdfBytes), contentType: "application/pdf" };
+  const baseFile = `${q.label.replace(/[\\/:*?"<>|]/g, "-")} — ${cleanName}`;
+  const pdfAttachment = { filename: `${baseFile}.pdf`, content: Buffer.from(pdfBytes), contentType: "application/pdf" };
+  // The intake team's copy is a clean law-firm-style Word document (Times New
+  // Roman 12 pt) — team only, never sent to the client.
+  const docxBuf = await answersDocx({
+    firmName,
+    formTitle: q.label,
+    submittedAt: new Date(),
+    clientName: name || undefined,
+    contact: { email, phone: phone || undefined },
+    warnings,
+    sections,
+  });
+  const docxAttachment = { filename: `${baseFile}.docx`, content: docxBuf, contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
 
   // ---- Intake team: summary + every answer + the PDF. ----
   const managed = await recipientsForBranch(q.notifyBranch);
@@ -96,14 +110,14 @@ export async function POST(req: Request) {
       </table>
       ${warnings.length ? `<div style="margin:0 0 14px;padding:10px 14px;background:#fdecec;border-left:4px solid #b3261e;color:#7d1d17"><strong>Attorney-review flags:</strong><br/>${warnings.map((w) => `&bull; ${esc(w)}`).join("<br/>")}</div>` : ""}
       ${rowsHtml}
-      <p style="margin:18px 0 0;color:#999;font-size:12px">A formatted PDF of the full submission is attached. The client received a confirmation email with the same PDF.</p>
+      <p style="margin:18px 0 0;color:#999;font-size:12px">The full submission is attached as a formatted Word document. The client received a confirmation email with a PDF copy.</p>
     </div>`;
   const teamResult = await sendEmail({
     to,
     fromName: `${firmName} — Intake`,
     subject: `New questionnaire — ${q.label} — ${name || email}`,
     html: teamHtml,
-    attachments: [pdfAttachment],
+    attachments: [docxAttachment],
   });
 
   // ---- Client confirmation: branded receipt + disclaimer + their PDF copy. ----

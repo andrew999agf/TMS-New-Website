@@ -43,7 +43,7 @@ export async function sendQuestionnaire(input: { name?: string; email: string; q
       <td align="center" bgcolor="${colors.accent}" style="background-color:${colors.accent};border-radius:8px">
         <a href="${href}" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:${colors.onAccent};text-decoration:none">Open the questionnaire: ${esc(q.label)} &rarr;</a>
       </td></tr></table>
-    <p style="margin:0 0 16px">When you finish, press <strong>Submit to the firm</strong> on the review page &mdash; your answers come straight to our office, and you&rsquo;ll receive a confirmation email with a PDF copy for your records. Your answers stay on your own device until you press Submit.</p>
+    <p style="margin:0 0 16px">When you finish, just press <strong>Submit</strong> &mdash; we&rsquo;ll have it right away and will get back with you.</p>
     <p style="margin:0 0 16px;font-size:13px;color:${colors.inkMuted}">If the button doesn&rsquo;t work, copy and paste this link into your browser:<br/>${href}</p>
     <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This does not create an attorney-client relationship.</strong> The questionnaire gathers information only and is not legal advice. Our firm does not represent you until you have signed a representation agreement issued by our firm and paid the applicable retainer fee.</p>
     <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
