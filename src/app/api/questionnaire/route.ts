@@ -25,7 +25,19 @@ const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice
  * Both emails go immediately: this is a receipt for something the client just
  * did, not an outbound solicitation, so quiet hours don't hold it.
  */
+// Small per-instance rate limiter — same first-line defense as /api/intake.
+const hits = new Map<string, { count: number; ts: number }>();
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const rec = hits.get(ip);
+  if (!rec || now - rec.ts > 60_000) { hits.set(ip, { count: 1, ts: now }); return false; }
+  rec.count += 1;
+  return rec.count > 6;
+}
+
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip") ?? "unknown";
+  if (rateLimited(ip)) return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429 });
   let payload: unknown;
   try {
     payload = await req.json();
@@ -33,6 +45,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
   }
   const p = (payload ?? {}) as Record<string, unknown>;
+
+  // Honeypot: the form always sends website: "" — a filled value is a bot.
+  if (typeof p.website === "string" && p.website.trim()) return NextResponse.json({ ok: true });
 
   const q = getQuestionnaire(str(p.questionnaireId, 64));
   if (!q) return NextResponse.json({ ok: false, error: "Unknown questionnaire." }, { status: 400 });
@@ -90,6 +105,9 @@ export async function POST(req: Request) {
       console.error("[questionnaire] lead persist failed:", err);
     }
   }
+  const notSavedBanner = leadId == null
+    ? `<div style="margin:0 0 16px;padding:12px 16px;background:#fdecec;border:1px solid #e7b3af;border-left:6px solid #b3261e;color:#7d1d17;font-family:Arial,Helvetica,sans-serif;font-size:14px"><strong>⚠ NOT SAVED TO THE INTAKE TAB.</strong> This submission could not be written to the database — it exists ONLY in this email. Handle it from here, then check the error logs.</div>`
+    : "";
 
   const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
   const firmName = globals["global.firmName"] || FIRM.name;
@@ -128,6 +146,7 @@ export async function POST(req: Request) {
   const teamHtml = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:640px;line-height:1.5">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 14px">${esc(firmName)}</p>
+      ${notSavedBanner}
       <p style="margin:0 0 12px"><strong>${esc(name || "A prospective client")}</strong> completed the <strong>${esc(q.label)}</strong> questionnaire.</p>
       <table style="border-collapse:collapse;font-size:13.5px;margin:0 0 12px">
         ${name ? `<tr><td style="padding:2px 16px 2px 0;color:#777">Name</td><td>${esc(name)}</td></tr>` : ""}
@@ -142,7 +161,7 @@ export async function POST(req: Request) {
   const teamResult = await sendEmail({
     to,
     fromName: `${firmName} — Intake`,
-    subject: `New questionnaire — ${q.label} — ${name || email}`,
+    subject: `${leadId == null ? "[NOT IN INTAKE TAB] " : ""}New questionnaire — ${q.label} — ${name || email}`,
     html: teamHtml,
     attachments: teamAttachments,
   });

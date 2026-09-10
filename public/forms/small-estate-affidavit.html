@@ -606,7 +606,8 @@ function submitToFirm(){
       phone: $("cPhone").value.trim(),
       sections: data.sections,
       warnings: data.warnings,
-      data: collectRaw()
+      data: collectRaw(),
+      website: ""
     })
   }).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok && j && j.ok !== false, body: j }; }); })
   .then(function(res){

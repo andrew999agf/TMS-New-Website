@@ -117,8 +117,10 @@ export async function POST(req: Request) {
   const branchDef = getBranch(branch);
   const branchLabel = branchDef?.label ?? branch;
 
-  // Persist (best-effort).
+  // Persist. A failure here must never be silent — the team email gets a
+  // loud banner and a subject flag so a lead can't quietly miss the tab.
   let id: number | null = null;
+  let persistError: string | null = null;
   if (db) {
     try {
       // A saved-progress questionnaire completes its existing row rather than
@@ -177,7 +179,22 @@ export async function POST(req: Request) {
       }
     } catch (err) {
       console.error("[intake] persist failed:", err);
+      persistError = (err as Error).message?.slice(0, 300) || "unknown error";
+      // Fallback: a minimal insert with only the core columns, so a missing
+      // newer column (Database updates not run) can't lose the lead.
+      try {
+        const [row] = await db
+          .insert(intakeSubmissions)
+          .values({ branch, answers: a, name: str("name"), email: str("email"), phone: str("phone"), message: str("message") || str("description") })
+          .returning({ id: intakeSubmissions.id });
+        id = row?.id ?? null;
+        if (id != null) persistError = null;
+      } catch (err2) {
+        console.error("[intake] minimal persist also failed:", err2);
+      }
     }
+  } else {
+    persistError = "database not configured";
   }
 
   // Email notification with CSV attachment (best-effort).
@@ -326,11 +343,14 @@ export async function POST(req: Request) {
   })();
 
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
-  const combinedHtml = `${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
+  const notSavedBanner = id == null
+    ? `<div style="max-width:640px;margin:0 0 16px;padding:12px 16px;background:#fdecec;border:1px solid #e7b3af;border-left:6px solid #b3261e;color:#7d1d17;font-family:Arial,Helvetica,sans-serif;font-size:14px"><strong>⚠ NOT SAVED TO THE INTAKE TAB.</strong> This submission could not be written to the database${persistError ? ` (${esc(persistError)})` : ""} — it exists ONLY in this email. Handle it from here, and run Settings → Database updates, then check the error logs.</div>`
+    : "";
+  const combinedHtml = `${notSavedBanner}${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
   const emailResult = await sendEmail({
     to,
     fromName: `${FIRM.name} — Intake`,
-    subject: `${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
+    subject: `${id == null ? "[NOT IN INTAKE TAB] " : ""}${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
     html: combinedHtml,
     attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
   });
