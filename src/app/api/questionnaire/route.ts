@@ -3,8 +3,9 @@ import { FIRM } from "@/lib/firm";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getQuestionnaire } from "@/lib/intake/questionnaires";
 import { answersPdf, type AnswerSection } from "@/lib/intake/answers-pdf";
-import { answersDocx } from "@/lib/intake/answers-docx";
 import { seaDraftDocx } from "@/lib/intake/sea-draft";
+import { db } from "@/db";
+import { intakeSubmissions } from "@/db/schema";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
@@ -66,6 +67,30 @@ export async function POST(req: Request) {
   if (itemCount === 0) return NextResponse.json({ ok: false, error: "No answers were included." }, { status: 400 });
   const warnings = (Array.isArray(p.warnings) ? p.warnings : []).map((w) => str(w, 400)).filter(Boolean).slice(0, 20);
 
+  let leadId: number | null = null;
+  if (db) {
+    try {
+      const leadAnswers: Record<string, unknown> = { questionnaire: q.label };
+      for (const sec of sections) for (const it of sec.items) if (it.label && !(it.label in leadAnswers)) leadAnswers[it.label] = it.value;
+      if (warnings.length) leadAnswers["Attorney-review flags"] = warnings.join(" | ");
+      const rawData = (p.data && typeof p.data === "object" ? p.data : {}) as Record<string, unknown>;
+      const county = typeof rawData.filingCounty === "string" ? rawData.filingCounty.trim().slice(0, 128) : "";
+      const [row] = await db.insert(intakeSubmissions).values({
+        branch: q.leadBranch,
+        practiceSlug: q.notifyBranch,
+        answers: leadAnswers,
+        name: name || null,
+        email,
+        phone: phone || null,
+        county: county || null,
+        message: `Completed the ${q.label} questionnaire.`,
+      }).returning({ id: intakeSubmissions.id });
+      leadId = row?.id ?? null;
+    } catch (err) {
+      console.error("[questionnaire] lead persist failed:", err);
+    }
+  }
+
   const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
   const firmName = globals["global.firmName"] || FIRM.name;
   const pdfBytes = await answersPdf({
@@ -79,23 +104,10 @@ export async function POST(req: Request) {
   const cleanName = (name || "client").replace(/[^\w \-'.]+/g, "").trim() || "client";
   const baseFile = `${q.label.replace(/[\\/:*?"<>|]/g, "-")} — ${cleanName}`;
   const pdfAttachment = { filename: `${baseFile}.pdf`, content: Buffer.from(pdfBytes), contentType: "application/pdf" };
-  // The intake team's copy is a clean law-firm-style Word document (Times New
-  // Roman 12 pt) — team only, never sent to the client.
-  const docxBuf = await answersDocx({
-    firmName,
-    formTitle: q.label,
-    submittedAt: new Date(),
-    clientName: name || undefined,
-    contact: { email, phone: phone || undefined },
-    warnings,
-    sections,
-  });
-  const docxAttachment = { filename: `Intake — ${baseFile}.docx`, content: docxBuf, contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
-
-  // For the Small Estate Affidavit questionnaire, also generate an initial
+  // For the Small Estate Affidavit questionnaire, the team also gets an initial
   // DRAFT of the affidavit itself in proper form from the raw answers —
-  // intake team only, clearly marked draft / attorney review required.
-  const teamAttachments = [docxAttachment];
+  // team only, clearly marked draft / attorney review required.
+  const teamAttachments: { filename: string; content: Buffer; contentType?: string }[] = [pdfAttachment];
   if (q.id === "small-estate-affidavit" && p.data && typeof p.data === "object") {
     try {
       const draft = await seaDraftDocx(p.data as Record<string, unknown>, firmName, new Date());
@@ -123,8 +135,9 @@ export async function POST(req: Request) {
         ${phone ? `<tr><td style="padding:2px 16px 2px 0;color:#777">Phone</td><td>${esc(phone)}</td></tr>` : ""}
       </table>
       ${warnings.length ? `<div style="margin:0 0 14px;padding:10px 14px;background:#fdecec;border-left:4px solid #b3261e;color:#7d1d17"><strong>Attorney-review flags:</strong><br/>${warnings.map((w) => `&bull; ${esc(w)}`).join("<br/>")}</div>` : ""}
+      ${leadId != null ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px"><tr><td align="center" bgcolor="#7a1f2b" style="background-color:#7a1f2b;border-radius:6px"><a href="${(process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "")}/admin/intake?lead=${leadId}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Open this lead in the admin portal &rarr;</a></td></tr></table>` : ""}
       ${rowsHtml}
-      <p style="margin:18px 0 0;color:#999;font-size:12px">Attached: the intake sheet (Word)${teamAttachments.length > 1 ? " and an initial DRAFT Small Estate Affidavit in proper form (Word) — attorney review required before any use" : ""}. The client received a confirmation email with a PDF copy of their answers.</p>
+      <p style="margin:18px 0 0;color:#999;font-size:12px">Attached: the submission (PDF)${teamAttachments.length > 1 ? " and an initial DRAFT Small Estate Affidavit in proper form (Word) — attorney review required before any use" : ""}. The client received a confirmation email with the same PDF.</p>
     </div>`;
   const teamResult = await sendEmail({
     to,

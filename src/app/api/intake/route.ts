@@ -13,7 +13,6 @@ import { FIRM } from "@/lib/firm";
 import { LEGAL_DOCS } from "@/lib/documents/legal-specs";
 import { renderDoc, wrapForWord } from "@/lib/documents/legal";
 import { answersPdf } from "@/lib/intake/answers-pdf";
-import { answersDocx } from "@/lib/intake/answers-docx";
 
 export const runtime = "nodejs";
 
@@ -326,23 +325,6 @@ export async function POST(req: Request) {
     return items;
   })();
 
-  // The intake team's formatted copy: a clean law-firm-style Word document
-  // (Times New Roman 12 pt). Team only — the client gets a PDF instead.
-  const teamDocx: { filename: string; content: Buffer; contentType?: string }[] = [];
-  try {
-    const buf = await answersDocx({
-      firmName: FIRM.name,
-      formTitle: `${branchLabel} — Intake Submission`,
-      submittedAt: new Date(),
-      clientName: clientName !== "A prospective client" ? clientName : undefined,
-      contact: { email: email || undefined, phone: phone || undefined },
-      sections: [{ title: "Responses", items: answerItems }],
-    });
-    teamDocx.push({ filename: `Intake — ${(clientName || "client").replace(/[\\/:*?"<>|]/g, "-")}.docx`, content: buf, contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-  } catch (err) {
-    console.error("[intake] team docx failed:", err);
-  }
-
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
   const combinedHtml = `${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
   const emailResult = await sendEmail({
@@ -350,7 +332,7 @@ export async function POST(req: Request) {
     fromName: `${FIRM.name} — Intake`,
     subject: `${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
     html: combinedHtml,
-    attachments: [...teamDocx, { filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
+    attachments: [{ filename: `intake-${id ?? Date.now()}.csv`, content: csv }, ...draftDocs],
   });
 
   // Acknowledgment email to the prospective client — a branded HTML email that

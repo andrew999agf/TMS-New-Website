@@ -17,6 +17,8 @@ export type ClientQuestionnaire = {
   minutes: string;
   /** Intake branch whose managed recipient list gets the submission email. */
   notifyBranch: string;
+  /** Branch id used when recording the submission as a lead in the intake tab. */
+  leadBranch: string;
 };
 
 export const CLIENT_QUESTIONNAIRES: ClientQuestionnaire[] = [
@@ -28,6 +30,7 @@ export const CLIENT_QUESTIONNAIRES: ClientQuestionnaire[] = [
     path: "/forms/small-estate-affidavit.html",
     minutes: "5–10",
     notifyBranch: "estate-succession-planning",
+    leadBranch: "estate",
   },
 ];
 
