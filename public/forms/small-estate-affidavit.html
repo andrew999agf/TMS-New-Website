@@ -566,6 +566,26 @@ function collectSummary(){
   }
   return { sections: sections, warnings: warnings };
 }
+function collectRaw(){
+  return {
+    decedent: { name: $("dName").value, aka: $("dAka").value, dod: $("dDod").value, county: $("dCounty").value, state: $("dState").value, marital: val("marital"), everMarried: val("qEverMarried") },
+    eligibility: { will: val("qWill"), admin: val("qAdmin"), under75: val("qUnder75"), solvent: val("qSolvent"), otherRealty: val("qOtherRealty") },
+    marriages: repData("marriages"),
+    hasKids: val("qHasKids"),
+    children: repData("children"),
+    father: $("hFather").value, mother: $("hMother").value, siblings: $("hSiblings").value,
+    incap: val("qIncap"),
+    assets: repData("assets"),
+    homestead: { owned: val("qHomestead"), addr: $("hsAddr").value, legal: $("hsLegal").value, occupant: $("hsOccupant").value },
+    debts: repData("debts"),
+    witnesses: [
+      { name: $("w1Name").value, contact: $("w1Contact").value, rel: $("w1Rel").value },
+      { name: $("w2Name").value, contact: $("w2Contact").value, rel: $("w2Rel").value }
+    ],
+    filingCounty: $("fCounty").value,
+    contact: { name: $("cName").value, rel: $("cRel").value, phone: $("cPhone").value, email: $("cEmail").value, notes: $("cNotes").value }
+  };
+}
 function submitToFirm(){
   var btn = $("submitBtn"), msg = $("submitMsg");
   var email = $("cEmail").value.trim();
@@ -585,7 +605,8 @@ function submitToFirm(){
       email: email,
       phone: $("cPhone").value.trim(),
       sections: data.sections,
-      warnings: data.warnings
+      warnings: data.warnings,
+      data: collectRaw()
     })
   }).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok && j && j.ok !== false, body: j }; }); })
   .then(function(res){
