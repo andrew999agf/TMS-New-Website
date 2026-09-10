@@ -1255,6 +1255,9 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   // The "organic read": right after upload we analyze each new exhibit's color
   // so the print-optimized copy is ready and any unsure pages get flagged.
   const [autoRead, setAutoRead] = useState<{ done: number; total: number } | null>(null);
+  // The color scan is optional now — this holds the "identify color?" dialog's
+  // resolver while the user decides.
+  const [colorAsk, setColorAsk] = useState<((v: boolean) => void) | null>(null);
   const [numMode, setNumMode] = useState<NumMode>("keep");
 
   // Any upload in flight (batch add, replace, or hi-res). While true we warn the
@@ -1329,6 +1332,11 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   async function doUpload() {
     if (!staged.length || !blobReady) return;
     setError(null);
+    // Ask up front whether to run the color / black-and-white identification
+    // after the upload — it prepares cheaper-to-print copies but takes time.
+    const anyPdf = staged.some((it) => !isVideoFile(it.file.name, it.file.type));
+    const wantColor = anyPdf ? await new Promise<boolean>((resolve) => setColorAsk(() => resolve)) : false;
+    setColorAsk(null);
     const finalItems = computeNumbers(staged, numMode, startAt);
     setUploading({ done: 0, total: finalItems.length });
     let done = 0;
@@ -1358,10 +1366,10 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     setUploading(null);
     router.refresh();
 
-    // Organic color read: analyze each new exhibit now. Effectively-B&W pages
-    // become grayscale for cheaper printing; anything the detector is unsure of
-    // is flagged for review (the Print menu turns amber). Best-effort per file.
-    if (newIds.length) {
+    // Optional color read (user said yes): analyze each new exhibit now.
+    // Effectively-B&W pages become grayscale for cheaper printing; anything the
+    // detector is unsure of is flagged for review (the Print menu turns amber).
+    if (newIds.length && wantColor) {
       setAutoRead({ done: 0, total: newIds.length });
       for (let i = 0; i < newIds.length; i++) {
         try { await buildPrintCopy(newIds[i]); } catch { /* leave unprepared; user can Prepare later */ }
@@ -1829,6 +1837,24 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
 
       {shareOpen && (
         <ShareDialog setId={setId} access={access} token={publicToken} recipients={recipients} docs={docs} ocEnabled={ocEnabled} ocToken={ocToken} publicSides={publicSides} ocSides={ocSides} onCopy={copy} onFlash={flash} onClose={() => setShareOpen(false)} />
+      )}
+
+      {colorAsk && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
+            <h3 className="mb-2 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base"><Printer size={16} className="text-[var(--c-accent)]" /> Identify color vs. black-and-white?</h3>
+            <p className="mb-2 text-sm text-[var(--c-ink-muted)]">
+              After the upload, each exhibit can be scanned to prepare a cheaper-to-print copy — pages that are effectively black-and-white go grayscale, real color stays color, and anything uncertain is flagged for a quick review in the Print menu.
+            </p>
+            <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              Heads-up: identifying color can make the upload take noticeably longer, especially on large exhibits. Skipping is fine — you can run it any time later from the Print menu (&ldquo;Prepare&rdquo;).
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { colorAsk(false); setColorAsk(null); }} className="btn btn-outline text-sm py-2 px-4">Skip — just upload</button>
+              <button onClick={() => { colorAsk(true); setColorAsk(null); }} className="btn btn-accent text-sm py-2 px-4">Yes — identify color</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmState && (

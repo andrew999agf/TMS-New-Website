@@ -19,12 +19,15 @@ export type FolderRow = {
   defendant: string;
   type: string;
   archived: boolean;
+  createdAt: string;
+  /** Last modification — the later of the record's update and the newest file. */
   updatedAt: string;
   fileCount: number;
   recipientCount: number;
 };
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
+const fmtD = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 /** Canonical bucket for a folder (legacy type keys fold into their successors). */
 const bucketOf = (f: FolderRow) => shareType(f.type).key;
@@ -116,7 +119,7 @@ export function ShareFoldersList({ folders, matters }: { folders: FolderRow[]; m
       {/* Landing: one bucket per category */}
       {!bucket && !searching ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {SHARE_TYPES.map((t) => {
               const n = counts.get(t.key) ?? 0;
               const s = audienceStyle(t.audience);
@@ -124,16 +127,16 @@ export function ShareFoldersList({ folders, matters }: { folders: FolderRow[]; m
                 <button
                   key={t.key}
                   onClick={() => { setBucket(t.key); setQ(""); }}
-                  className={`group flex flex-col rounded-lg border ${n ? s.ring : "border-[var(--c-border)]"} bg-[var(--c-surface)] p-4 text-left transition-shadow hover:shadow-md ${n ? "" : "opacity-60"}`}
+                  className={`group flex flex-col rounded border ${n ? s.ring : "border-[var(--c-border)]"} bg-[var(--c-surface)] px-3 py-2.5 text-left transition-colors hover:border-[var(--c-accent)] ${n ? "" : "opacity-60"}`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className={`rounded px-2 py-1 text-[10px] font-bold tracking-wide ${s.badge}`}>{t.short}</span>
-                    <span className="ml-auto inline-flex items-center gap-1 text-sm font-semibold tabular-nums">
+                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${s.badge}`}>{t.short}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--c-ink)]">{t.label.replace(/\s*\(.*\)$/, "")}</span>
+                    <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm font-semibold tabular-nums">
                       {n} <ChevronRight size={14} className="text-[var(--c-ink-muted)] transition-transform group-hover:translate-x-0.5" />
                     </span>
                   </span>
-                  <span className="mt-2 text-sm font-semibold leading-snug text-[var(--c-ink)]">{t.label.replace(/\s*\(.*\)$/, "")}</span>
-                  <span className="mt-1 text-xs leading-relaxed text-[var(--c-ink-muted)]">{t.blurb}</span>
+                  <span className="mt-1 text-[11px] leading-snug text-[var(--c-ink-muted)] line-clamp-2">{t.blurb}</span>
                 </button>
               );
             })}
@@ -157,7 +160,7 @@ export function ShareFoldersList({ folders, matters }: { folders: FolderRow[]; m
               {searching ? "Nothing matches that search." : showArchived ? "No archived folders in this category." : "No folders in this category yet. Click “New folder” to create one."}
             </div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {list.map((f) => (
                 <FolderCard key={f.id} f={f} onOpen={() => setOpenFor(f)} onArchive={() => setArchiveFor(f)} />
               ))}
@@ -177,18 +180,20 @@ function FolderCard({ f, onOpen, onArchive }: { f: FolderRow; onOpen: () => void
   const s = audienceStyle(t.audience);
   const [pending, start] = useTransition();
   return (
-    <li className={`flex items-center gap-3 rounded-lg border ${s.ring} bg-[var(--c-surface)] p-3`}>
-      <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-bold tracking-wide ${s.badge}`}>{t.short}</span>
+    <li className={`flex items-center gap-2.5 rounded border ${s.ring} bg-[var(--c-surface)] px-3 py-2`}>
+      <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${s.badge}`}>{t.short}</span>
       <button onClick={onOpen} className="min-w-0 flex-1 text-left" title="Open (you'll confirm the case first)">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span className="font-semibold text-[var(--c-ink)]">{f.name}</span>
           {f.caseNumber && <span className="text-xs text-[var(--c-ink-muted)]">· {f.caseNumber}</span>}
+          {(f.matter || f.court) && <span className="truncate text-xs text-[var(--c-ink-muted)]">· {[f.matter, f.court].filter(Boolean).join("  ·  ")}</span>}
         </div>
-        {(f.matter || f.court) && <div className="mt-0.5 truncate text-xs text-[var(--c-ink-muted)]">{[f.matter, f.court].filter(Boolean).join("  ·  ")}</div>}
-        <div className="mt-0.5 flex items-center gap-3 text-[11px] text-[var(--c-ink-muted)]">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--c-ink-muted)]">
           <span className="inline-flex items-center gap-1"><FileText size={12} /> {f.fileCount} file{f.fileCount === 1 ? "" : "s"}</span>
           <span className="inline-flex items-center gap-1"><Users size={12} /> {f.recipientCount} recipient{f.recipientCount === 1 ? "" : "s"}</span>
           <span>{t.audience === "adversary" ? "→ other side" : t.audience === "client" ? "client" : t.audience === "ally" ? "your side" : "general"}</span>
+          <span className="tabular-nums">Created {fmtD(f.createdAt)}</span>
+          <span className="tabular-nums">Modified {fmtD(f.updatedAt)}</span>
         </div>
       </button>
       {f.archived ? (
@@ -196,17 +201,17 @@ function FolderCard({ f, onOpen, onArchive }: { f: FolderRow; onOpen: () => void
           onClick={() => start(async () => { await archiveFolder(f.id, false); })}
           disabled={pending}
           title="Restore to the main list"
-          className="shrink-0 rounded-md border border-[var(--c-border)] p-2 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-50"
+          className="shrink-0 rounded border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] disabled:opacity-50"
         >
-          {pending ? <Loader2 size={15} className="animate-spin" /> : <ArchiveRestore size={15} />}
+          {pending ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />}
         </button>
       ) : (
         <button
           onClick={onArchive}
           title="Archive (asks first — hides from the main list)"
-          className="shrink-0 rounded-md border border-[var(--c-border)] p-2 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"
+          className="shrink-0 rounded border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"
         >
-          <Archive size={15} />
+          <Archive size={14} />
         </button>
       )}
     </li>
@@ -227,6 +232,8 @@ function OpenConfirmDialog({ f, onClose, onGo }: { f: FolderRow; onClose: () => 
     ["Plaintiff(s)", f.plaintiff],
     ["Defendant(s)", f.defendant],
     ["Contents", `${f.fileCount} file${f.fileCount === 1 ? "" : "s"} · ${f.recipientCount} recipient${f.recipientCount === 1 ? "" : "s"}`],
+    ["Created", fmtD(f.createdAt)],
+    ["Last modified", fmtD(f.updatedAt)],
   ];
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>

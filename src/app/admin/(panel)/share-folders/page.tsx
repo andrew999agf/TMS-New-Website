@@ -24,16 +24,17 @@ export default async function ShareFoldersPage() {
       // Select only the columns the list needs, so newer columns that haven't
       // been created yet (before a Database Sync) can't make the list go blank.
       const rows = await db
-        .select({ id: shareFolders.id, caseNumber: shareFolders.caseNumber, name: shareFolders.name, matter: shareFolders.matter, court: shareFolders.court, county: shareFolders.county, plaintiff: shareFolders.plaintiff, defendant: shareFolders.defendant, type: shareFolders.type, archived: shareFolders.archived, updatedAt: shareFolders.updatedAt })
+        .select({ id: shareFolders.id, caseNumber: shareFolders.caseNumber, name: shareFolders.name, matter: shareFolders.matter, court: shareFolders.court, county: shareFolders.county, plaintiff: shareFolders.plaintiff, defendant: shareFolders.defendant, type: shareFolders.type, archived: shareFolders.archived, createdAt: shareFolders.createdAt, updatedAt: shareFolders.updatedAt })
         .from(shareFolders)
         .orderBy(desc(shareFolders.updatedAt));
-      const fc = await db.select({ fid: shareFiles.folderId, n: sql<number>`count(*)::int` }).from(shareFiles).groupBy(shareFiles.folderId);
+      const fc = await db.select({ fid: shareFiles.folderId, n: sql<number>`count(*)::int`, last: sql<string | null>`to_char(max(${shareFiles.createdAt}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')` }).from(shareFiles).groupBy(shareFiles.folderId);
       const rc = await db
         .select({ fid: shareRecipients.folderId, n: sql<number>`count(*)::int` })
         .from(shareRecipients)
         .where(eq(shareRecipients.revoked, false))
         .groupBy(shareRecipients.folderId);
       const files = new Map(fc.map((x) => [x.fid, x.n]));
+      const lastFile = new Map(fc.map((x) => [x.fid, x.last ? new Date(x.last) : null]));
       const recs = new Map(rc.map((x) => [x.fid, x.n]));
       folders = rows.map((f) => ({
         id: f.id,
@@ -46,7 +47,10 @@ export default async function ShareFoldersPage() {
         defendant: f.defendant ?? "",
         type: f.type,
         archived: f.archived,
-        updatedAt: f.updatedAt.toISOString(),
+        createdAt: f.createdAt.toISOString(),
+        // "Last modified" = the later of the folder record's own update and the
+        // most recent file added to it.
+        updatedAt: (() => { const lf = lastFile.get(f.id); return (lf && lf > f.updatedAt ? lf : f.updatedAt).toISOString(); })(),
         fileCount: files.get(f.id) ?? 0,
         recipientCount: recs.get(f.id) ?? 0,
       }));
