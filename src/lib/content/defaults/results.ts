@@ -38,6 +38,20 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     sort: 1,
   },
   {
+    category: "marquee",
+    title: "Plaintiff's verdict after a four-day jury trial",
+    stat: "Jury Verdict",
+    statLabel: "Plaintiff's verdict returned by the jury",
+    year: "2026",
+    summary:
+      "Four-day jury trial in Bosque County. The jury returned a verdict in favor of our client.",
+    detail:
+      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial; the jury returned a verdict in favor of our client on September 18, 2026. Post-trial proceedings pending.",
+    cite: "Cause No. CV24-162, 220th Judicial District Court, Bosque County",
+    practiceSlug: "civil-commercial-litigation",
+    sort: 2,
+  },
+  {
     category: "appellate",
     title: "Two Appeals Defended for the Property Owner",
     stat: "Both Affirmed",
@@ -50,7 +64,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     cite: "Nos. 05-24-01265-CV; 05-25-00536-CV; Tex. No. 26-0119",
     practiceSlug: "appellate-law",
     featuredHome: true,
-    sort: 2,
+    sort: 3,
   },
   {
     category: "appellate",
@@ -65,7 +79,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     cite: "Second Court of Appeals, Fort Worth, No. 02-23-00138-CV",
     practiceSlug: "garnishments",
     featuredHome: true,
-    sort: 3,
+    sort: 4,
   },
   {
     category: "appellate",
@@ -77,7 +91,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
       "Fifth Court of Appeals, No. 05-25-00712-CV (2025). Appellate counsel for the appellant in a dispute with a national bank; prosecuted the appeal until the matter was resolved.",
     cite: "Fifth Court of Appeals, No. 05-25-00712-CV",
     practiceSlug: "appellate-law",
-    sort: 4,
+    sort: 5,
   },
   {
     category: "appellate",
@@ -90,7 +104,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     cite: "Seventh Court of Appeals, No. 07-23-00209-CV",
     link: "https://www.youtube.com/watch?v=prwS1L_KLPo",
     practiceSlug: "appellate-law",
-    sort: 5,
+    sort: 6,
   },
   // Settlements & recoveries (no party names)
   {
@@ -99,7 +113,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     stat: "$100,000+",
     year: "2026",
     practiceSlug: "civil-commercial-litigation",
-    sort: 6,
+    sort: 7,
   },
   {
     category: "settlement",
@@ -107,7 +121,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     stat: "$100,000+",
     year: "2026",
     practiceSlug: "personal-injury",
-    sort: 7,
+    sort: 8,
   },
   {
     category: "settlement",
@@ -115,7 +129,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     stat: "$100,000+",
     year: "2025",
     practiceSlug: "personal-injury",
-    sort: 8,
+    sort: 9,
   },
   {
     category: "settlement",
@@ -123,7 +137,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     stat: "$10,000+",
     year: "2025",
     practiceSlug: "civil-commercial-litigation",
-    sort: 9,
+    sort: 10,
   },
   {
     category: "settlement",
@@ -131,13 +145,13 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     stat: "$10,000+",
     year: "2026",
     practiceSlug: "civil-commercial-litigation",
-    sort: 10,
+    sort: 11,
   },
   {
     category: "settlement",
     title: "Numerous additional five-figure personal-injury settlements",
     practiceSlug: "personal-injury",
-    sort: 11,
+    sort: 12,
   },
   // Jury-trial record
   {
@@ -146,7 +160,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2019",
     detail: "Tarrant County (Nov. 4–5, 2019). Acquittal.",
     practiceSlug: "criminal-defense",
-    sort: 12,
+    sort: 13,
   },
   {
     category: "jury",
@@ -154,7 +168,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2019",
     detail: "Tarrant County (Nov. 21–22, 2019).",
     practiceSlug: "criminal-defense",
-    sort: 13,
+    sort: 14,
   },
   {
     category: "jury",
@@ -162,7 +176,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2019",
     detail: "Tarrant County (Dec. 16–17, 2019). Hung jury.",
     practiceSlug: "criminal-defense",
-    sort: 14,
+    sort: 15,
   },
   {
     category: "jury",
@@ -170,7 +184,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2020",
     detail: "Tarrant County (Jan. 13, 2020).",
     practiceSlug: "criminal-defense",
-    sort: 15,
+    sort: 16,
   },
   {
     category: "jury",
@@ -178,7 +192,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2020",
     detail: "Tarrant County (Feb. 4, 2020).",
     practiceSlug: "criminal-defense",
-    sort: 16,
+    sort: 17,
   },
   {
     category: "jury",
@@ -186,7 +200,15 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     year: "2022",
     detail: "Tarrant County (2022). Lead trial counsel. Acquittal.",
     practiceSlug: "criminal-defense",
-    sort: 17,
+    sort: 18,
+  },
+  {
+    category: "jury",
+    title: "Civil jury trial — plaintiff's verdict",
+    year: "2026",
+    detail: "Bosque County (verdict Sept. 18, 2026). Four-day jury trial; verdict in favor of our client.",
+    practiceSlug: "civil-commercial-litigation",
+    sort: 19,
   },
   {
     category: "jury",
@@ -194,7 +216,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     summary:
       "A small case tried like a big one, because it was connected to a big one. The verdict materially strengthened a client's ongoing personal-injury case — the seamless web in action.",
     practiceSlug: "personal-injury",
-    sort: 18,
+    sort: 20,
   },
   {
     category: "appellate",
@@ -208,7 +230,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
       "Diaz v. Capital One Bank (USA), N.A., No. 02-23-00481-CV (Second Court of Appeals, Fort Worth, from the 96th District Court, Tarrant County, 2023); Smegner v. Discover Bank, No. 05-25-00189-CV (Fifth Court of Appeals, restricted appeal from the 101st Judicial District Court, Dallas County, 2025); Anderson v. Discover Bank, No. 05-26-00818-CV (Fifth Court of Appeals, from Grayson County Court at Law No. 1, 2026).",
     cite: "Nos. 02-23-00481-CV; 05-25-00189-CV; 05-26-00818-CV",
     practiceSlug: "consumer-debt-defense",
-    sort: 19,
+    sort: 21,
   },
   {
     category: "appellate",
@@ -220,7 +242,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
       "Cox v. The State of Texas, No. 02-24-00045-CR (Second Court of Appeals, Fort Worth, from the 43rd District Court, Parker County); petition for discretionary review, No. PD-0128-25 (Tex. Crim. App. 2025).",
     cite: "No. 02-24-00045-CR; Tex. Crim. App. No. PD-0128-25",
     practiceSlug: "criminal-defense",
-    sort: 20,
+    sort: 22,
   },
   {
     category: "appellate",
@@ -234,7 +256,7 @@ export const CASE_RESULTS: CaseResultSeed[] = [
       "M.D.H. Oilfield Services LLC v. De Lage Landen Financial Services, Inc., No. 23-0531 (2023, from No. 02-22-00139-CV, Tarrant County); Nelson v. City of Lubbock, No. 25-0453 (2025, from No. 07-23-00209-CV, Lubbock County); Fofanah v. Rockwall Rental Properties, LP, No. 26-0119 (2026, from No. 05-24-01265-CV, Kaufman County).",
     cite: "Tex. Nos. 23-0531; 25-0453; 26-0119",
     practiceSlug: "appellate-law",
-    sort: 21,
+    sort: 23,
   },
   {
     category: "appellate",
@@ -248,6 +270,6 @@ export const CASE_RESULTS: CaseResultSeed[] = [
       "Posey v. Crocker, No. 12-26-00107-CV (Twelfth Court of Appeals, Tyler, mem. op. July 22, 2026), affirming a take-nothing no-evidence summary judgment from the 173rd District Court, Henderson County (Tr. Ct. No. CV23-0171-392). The court held the appellants presented nothing for review on the merits of the summary judgment and that their response evidence suffered substantive defects — unauthenticated exhibits and untimely-disclosed witnesses — that were not curable by continuance under Rule 166a(f). Judgment affirmed; all appellate costs taxed against the appellants.",
     cite: "Twelfth Court of Appeals, No. 12-26-00107-CV",
     practiceSlug: "appellate-law",
-    sort: 22,
+    sort: 24,
   },
 ];
