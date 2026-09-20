@@ -10,6 +10,8 @@ export type TickerItem = {
   summary?: string;
   detail?: string;
   cite?: string;
+  /** Stable id for deep links: /results#result-<slug> opens this card. */
+  slug?: string;
 };
 
 /**
@@ -21,16 +23,31 @@ export type TickerItem = {
 export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[]; intervalMs?: number }) {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
+  // Set when a visitor arrives on /results#result-<slug>: that card is shown
+  // with its citation already expanded, and the carousel stops advancing so the
+  // result they clicked through for does not slide away while they read it.
+  const [pinned, setPinned] = useState(false);
   const reduced = useReducedMotion();
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (reduced || paused || items.length <= 1) return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash.startsWith("result-")) return;
+    const slug = hash.slice("result-".length);
+    const i = items.findIndex((it) => it.slug === slug);
+    if (i >= 0) {
+      setActive(i);
+      setPinned(true);
+    }
+  }, [items]);
+
+  useEffect(() => {
+    if (reduced || paused || pinned || items.length <= 1) return;
     timer.current = setInterval(() => setActive((i) => (i + 1) % items.length), intervalMs);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [reduced, paused, items.length, intervalMs]);
+  }, [reduced, paused, pinned, items.length, intervalMs]);
 
   if (items.length === 0) return null;
   const item = items[active];
@@ -45,11 +62,21 @@ export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[
 
   return (
     <section
-      className="bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] p-10 lg:p-16"
+      className="relative bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] p-10 lg:p-16"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       aria-roledescription="carousel"
     >
+      {/* Scroll targets for /results#result-<slug>. The browser jumps here on
+          load; the effect above then brings that card to the front. Pinned to
+          the section's top edge with room for the sticky header, so the whole
+          card clears the nav rather than starting under it. */}
+      {items.map((it) =>
+        it.slug ? (
+          <span key={it.slug} id={`result-${it.slug}`} className="absolute left-0 top-0 scroll-mt-40" />
+        ) : null,
+      )}
+
       <div key={active} className="fade-up">
         <p className="eyebrow text-[var(--c-dark-accent)]">{item.practiceTitle ?? "Result"}</p>
         <div className="mt-6 grid gap-8 lg:grid-cols-[auto_1fr] lg:gap-16 lg:items-center">
@@ -64,7 +91,7 @@ export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[
               <p className="mt-4 text-[var(--c-dark-ink-muted)] leading-relaxed max-w-2xl">{item.summary}</p>
             )}
             {item.detail && (
-              <details className="mt-5">
+              <details className="mt-5" open={pinned}>
                 <summary className="cursor-pointer text-sm text-[var(--c-dark-accent)] font-[family-name:var(--font-ui)] list-none">
                   Case detail &amp; citation →
                 </summary>

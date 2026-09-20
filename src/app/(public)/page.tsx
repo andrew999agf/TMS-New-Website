@@ -4,7 +4,9 @@ import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
 import { BadgeBar } from "@/components/site/BadgeBar";
 import { TeamTeaser } from "@/components/site/TeamTeaser";
 import { HomeIntro } from "@/components/site/HomeIntro";
+import { NewResultBadge } from "@/components/site/NewResultBadge";
 import { media } from "@/lib/media";
+import { slugify } from "@/lib/utils";
 
 /** First sentence (or a short truncation) of a bio, for the hover popover. */
 function shortSummary(bio?: string): string | undefined {
@@ -372,6 +374,15 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Announcement pill for the latest result. Update the label and href
+          when a newer result should take the spot, or delete this block to
+          retire it. */}
+      <NewResultBadge
+        label="New jury verdict — click for details"
+        href={`/results#result-${slugify("Plaintiff's verdict after a four-day jury trial")}`}
+        storageKey="badge-bosque-verdict-2026"
+      />
     </>
   );
 }

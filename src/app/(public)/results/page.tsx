@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { PageHero } from "@/components/site/PageHero";
 import { MarqueeTicker, type TickerItem } from "@/components/site/MarqueeTicker";
 import { getResults, getBlocks, getPracticeAreas } from "@/lib/content";
+import { slugify } from "@/lib/utils";
 import {
   LITIGATION_COUNTIES,
   FEDERAL_COURTS,
@@ -55,6 +56,7 @@ export default async function ResultsPage() {
       summary: r.summary,
       detail: r.detail,
       cite: r.cite,
+      slug: slugify(r.title),
     }));
 
   return (
