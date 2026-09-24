@@ -107,6 +107,8 @@ const DDL = [
     sort integer NOT NULL DEFAULT 0
   )`,
   `ALTER TYPE admin_role ADD VALUE IF NOT EXISTS 'timekeeper'`,
+  `ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_token varchar(128)`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS reset_expires timestamptz`,

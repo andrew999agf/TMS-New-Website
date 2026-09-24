@@ -2,6 +2,7 @@ import { AdminHeader } from "@/components/admin/AdminShell";
 import { ResultsManager } from "@/components/admin/ResultsManager";
 import { getResults, getPracticeAreas } from "@/lib/content";
 import { db, hasDb } from "@/db";
+import { ensureResultsPageColumns } from "@/db/ensure";
 import { caseResults } from "@/db/schema";
 import { asc } from "drizzle-orm";
 
@@ -23,10 +24,13 @@ export default async function ResultsAdmin() {
     link?: string;
     practiceSlug?: string;
     featuredHome: boolean;
+    hasPage?: boolean;
+    pageBody?: string;
   }> = [];
 
   if (db) {
     try {
+      await ensureResultsPageColumns();
       const rows = await db.select().from(caseResults).orderBy(asc(caseResults.sort));
       results = rows.map((r) => ({
         id: r.id,
@@ -41,6 +45,8 @@ export default async function ResultsAdmin() {
         link: r.link ?? undefined,
         practiceSlug: r.practiceSlug ?? undefined,
         featuredHome: r.featuredHome,
+        hasPage: r.hasPage,
+        pageBody: r.pageBody ?? undefined,
       }));
     } catch {
       results = [];
@@ -61,6 +67,8 @@ export default async function ResultsAdmin() {
       link: r.link,
       practiceSlug: r.practiceSlug,
       featuredHome: r.featuredHome ?? false,
+      hasPage: r.hasPage ?? false,
+      pageBody: r.pageBody,
     }));
   }
 

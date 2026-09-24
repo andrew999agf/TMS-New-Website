@@ -5,6 +5,8 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { caseResults } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
+import { ensureResultsPageColumns } from "@/db/ensure";
+import { slugify } from "@/lib/utils";
 
 export type ResultInput = {
   id?: number;
@@ -19,12 +21,15 @@ export type ResultInput = {
   link?: string;
   practiceSlug?: string;
   featuredHome: boolean;
+  hasPage?: boolean;
+  pageBody?: string;
 };
 
 export async function saveResult(input: ResultInput) {
   const session = await requireAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
   if (!input.title.trim()) return { ok: false, error: "Title is required." };
+  await ensureResultsPageColumns();
 
   const values = {
     category: input.category,
@@ -38,6 +43,8 @@ export async function saveResult(input: ResultInput) {
     link: input.link || null,
     practiceSlug: input.practiceSlug || null,
     featuredHome: input.featuredHome,
+    hasPage: input.hasPage ?? false,
+    pageBody: input.pageBody || null,
     updatedAt: new Date(),
   };
 
@@ -52,6 +59,7 @@ export async function saveResult(input: ResultInput) {
     revalidatePath("/results");
     revalidatePath("/");
     revalidatePath("/admin/results");
+    if (values.hasPage) revalidatePath(`/results/${slugify(input.title)}`);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };

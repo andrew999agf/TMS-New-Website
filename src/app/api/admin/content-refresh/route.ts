@@ -46,13 +46,25 @@ export async function POST() {
     }
     applied.push(`Refreshed ${blockCount} text fields`);
 
-    // 2) Case results — full replace (no media involved).
+    // 2) Case results — full replace (no media involved). Detail-page settings
+    //    are made in the admin panel, not the seed file, so carry them across
+    //    the replace by title — otherwise every refresh would silently unpublish
+    //    the owner's result pages and discard their write-ups.
+    await db.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`);
+    const pageSettings = new Map<string, { hasPage: boolean; pageBody: string | null }>();
+    for (const r of await db.select().from(caseResults)) {
+      if (r.hasPage || r.pageBody) pageSettings.set(r.title, { hasPage: r.hasPage, pageBody: r.pageBody });
+    }
     await db.delete(caseResults);
     for (const r of CASE_RESULTS) {
+      const page = pageSettings.get(r.title);
       await db.insert(caseResults).values({
         category: r.category, title: r.title, stat: r.stat, statLabel: r.statLabel, year: r.year,
         summary: r.summary, detail: r.detail, cite: r.cite, link: r.link,
         practiceSlug: r.practiceSlug, featuredHome: r.featuredHome ?? false, sort: r.sort,
+        hasPage: page?.hasPage ?? r.hasPage ?? false,
+        pageBody: page?.pageBody ?? r.pageBody ?? null,
       });
     }
     applied.push(`Refreshed ${CASE_RESULTS.length} results`);

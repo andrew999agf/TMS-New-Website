@@ -57,6 +57,7 @@ export default async function ResultsPage() {
       detail: r.detail,
       cite: r.cite,
       slug: slugify(r.title),
+      href: r.hasPage ? `/results/${slugify(r.title)}` : undefined,
     }));
 
   return (
@@ -106,6 +107,14 @@ export default async function ResultsPage() {
                       Watch the argument <ArrowRight size={14} />
                     </Link>
                   )}
+                  {r.hasPage && (
+                    <Link
+                      href={`/results/${slugify(r.title)}`}
+                      className="mt-3 inline-flex items-center gap-1.5 text-sm text-[var(--c-accent)]"
+                    >
+                      Full result <ArrowRight size={14} />
+                    </Link>
+                  )}
                 </article>
               ))}
             </div>
@@ -119,7 +128,15 @@ export default async function ResultsPage() {
             <ul className="mt-6 divide-y divide-[var(--c-border)]">
               {settlements.map((r, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-6 py-4">
-                  <span className="leading-snug">{r.title}</span>
+                  <span className="leading-snug">
+                    {r.hasPage ? (
+                      <Link href={`/results/${slugify(r.title)}`} className="hover:text-[var(--c-accent)] transition-colors">
+                        {r.title} <ArrowRight size={13} className="inline-block align-baseline text-[var(--c-accent)]" />
+                      </Link>
+                    ) : (
+                      r.title
+                    )}
+                  </span>
                   {r.year && (
                     <span className="text-sm text-[var(--c-ink-muted)] whitespace-nowrap font-[family-name:var(--font-ui)]">
                       {r.year}
@@ -143,7 +160,15 @@ export default async function ResultsPage() {
               {jury.map((r, i) => (
                 <li key={i} className="py-4">
                   <div className="flex items-baseline justify-between gap-6">
-                    <span className="leading-snug">{r.title}</span>
+                    <span className="leading-snug">
+                      {r.hasPage ? (
+                        <Link href={`/results/${slugify(r.title)}`} className="hover:text-[var(--c-accent)] transition-colors">
+                          {r.title} <ArrowRight size={13} className="inline-block align-baseline text-[var(--c-accent)]" />
+                        </Link>
+                      ) : (
+                        r.title
+                      )}
+                    </span>
                     {r.year && (
                       <span className="text-sm text-[var(--c-ink-muted)] whitespace-nowrap font-[family-name:var(--font-ui)]">
                         {r.year}

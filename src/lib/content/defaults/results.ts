@@ -18,6 +18,10 @@ export type CaseResultSeed = {
   link?: string;
   practiceSlug?: string;
   featuredHome?: boolean;
+  /** Give this result its own page at /results/<slugified title>. */
+  hasPage?: boolean;
+  /** Longer write-up for that page; blank lines separate paragraphs. */
+  pageBody?: string;
   sort: number;
 };
 

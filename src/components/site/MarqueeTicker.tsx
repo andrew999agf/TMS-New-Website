@@ -12,6 +12,8 @@ export type TickerItem = {
   cite?: string;
   /** Stable id for deep links: /results#result-<slug> opens this card. */
   slug?: string;
+  /** Link to the result's own page, when the admin has published one. */
+  href?: string;
 };
 
 /**
@@ -97,6 +99,11 @@ export function MarqueeTicker({ items, intervalMs = 6000 }: { items: TickerItem[
                 </summary>
                 <p className="mt-3 text-sm text-[var(--c-dark-ink-muted)] leading-relaxed">{item.detail}</p>
               </details>
+            )}
+            {item.href && (
+              <a href={item.href} className="mt-4 inline-block text-sm text-[var(--c-dark-accent)] font-[family-name:var(--font-ui)]">
+                Full result →
+              </a>
             )}
           </div>
         </div>

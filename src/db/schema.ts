@@ -196,6 +196,10 @@ export const caseResults = pgTable("case_results", {
   link: text("link"),
   practiceSlug: varchar("practice_slug", { length: 128 }),
   featuredHome: boolean("featured_home").notNull().default(false),
+  /** When set, the result gets its own page at /results/<slugified title>. */
+  hasPage: boolean("has_page").notNull().default(false),
+  /** Longer write-up shown only on the result's own page. */
+  pageBody: text("page_body"),
   visible: boolean("visible").notNull().default(true),
   sort: integer("sort").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

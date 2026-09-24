@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/db";
+import { ensureResultsPageColumns } from "@/db/ensure";
 import {
   contentBlocks,
   practiceAreas as paTable,
@@ -149,11 +150,14 @@ function normalizeResult(r: CaseResult): CaseResultSeed {
     link: r.link ?? undefined,
     practiceSlug: r.practiceSlug ?? undefined,
     featuredHome: r.featuredHome,
+    hasPage: r.hasPage,
+    pageBody: r.pageBody ?? undefined,
     sort: r.sort,
   };
 }
 
 export async function getResults(): Promise<CaseResultSeed[]> {
+  await ensureResultsPageColumns();
   const rows = await safe(
     () =>
       db!

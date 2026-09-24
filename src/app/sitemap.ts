@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { getPracticeAreas, getPublishedPosts, getGlossaryTerms, getTeam } from "@/lib/content";
+import { getPracticeAreas, getPublishedPosts, getGlossaryTerms, getTeam, getResults } from "@/lib/content";
+import { slugify } from "@/lib/utils";
 import { FIRM } from "@/lib/firm";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -18,11 +19,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/disclaimer",
   ];
 
-  const [practices, posts, terms, team] = await Promise.all([
+  const [practices, posts, terms, team, results] = await Promise.all([
     getPracticeAreas(),
     getPublishedPosts(),
     getGlossaryTerms(),
     getTeam(),
+    getResults(),
   ]);
 
   const now = new Date();
@@ -57,6 +59,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly" as const,
       priority: 0.5,
     })),
+    ...results
+      .filter((r) => r.hasPage)
+      .map((r) => ({
+        url: `${base}/results/${slugify(r.title)}`,
+        lastModified: now,
+        changeFrequency: "yearly" as const,
+        priority: 0.6,
+      })),
   ];
   return entries;
 }
