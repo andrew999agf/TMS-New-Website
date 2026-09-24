@@ -3,8 +3,8 @@ import { ExhibitSets, type SetRow } from "@/components/admin/ExhibitSets";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, timeMatters } from "@/db/schema";
-import { asc } from "drizzle-orm";
+import { exhibitSets, exhibitDocs, timeMatters, discoverySets } from "@/db/schema";
+import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
@@ -16,6 +16,7 @@ export default async function ExhibitReviewerPage() {
 
   let sets: SetRow[] = [];
   let matters: MatterOption[] = [];
+  let discoveryMatters: string[] = [];
   let needsSync = false;
 
   if (db) {
@@ -41,6 +42,12 @@ export default async function ExhibitReviewerPage() {
     } catch {
       needsSync = true;
     }
+    try {
+      discoveryMatters = (await db.select({ matter: discoverySets.matter }).from(discoverySets).where(eq(discoverySets.archived, false)))
+        .map((r) => r.matter).filter(Boolean);
+    } catch {
+      /* discovery tables not created yet */
+    }
   }
 
   return (
@@ -55,7 +62,7 @@ export default async function ExhibitReviewerPage() {
             This feature needs its database tables. Go to <strong>Settings → Database updates</strong> and run it once, then reload this page.
           </p>
         )}
-        <ExhibitSets sets={sets} matters={matters} />
+        <ExhibitSets sets={sets} matters={matters} discoveryMatters={discoveryMatters} />
       </div>
     </>
   );

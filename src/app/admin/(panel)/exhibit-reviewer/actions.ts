@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { asc, eq, inArray, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { del, put } from "@vercel/blob";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients } from "@/db/schema";
+import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients, discoverySets } from "@/db/schema";
+import { ensureDiscoveryTables } from "@/db/ensure";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -40,23 +41,42 @@ const num = (v: unknown): number | null => {
 
 export type SetInput = { name: string; matter?: string; causeNumber?: string; court?: string; notes?: string };
 
-export async function createExhibitSet(input: SetInput) {
+export async function createExhibitSet(input: SetInput, alsoDiscovery?: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const name = str(input.name);
   if (!name) return { ok: false as const, error: "Enter a case name." };
   try {
+    const matter = str(input.matter, 500);
     const [row] = await db
       .insert(exhibitSets)
       .values({
         name,
-        matter: str(input.matter, 500),
+        matter,
         causeNumber: str(input.causeNumber, 128),
         court: str(input.court),
         notes: str(input.notes, 4000),
         createdBy: session.email,
       })
       .returning({ id: exhibitSets.id });
+    // The symbiotic half: a new exhibit set can bring its discovery case along,
+    // linked through the same Time Tracker matter number. Never duplicates an
+    // existing case for the matter.
+    if (alsoDiscovery && matter) {
+      try {
+        await ensureDiscoveryTables();
+        const existing = await db.select({ id: discoverySets.id }).from(discoverySets)
+          .where(and(eq(discoverySets.matter, matter), eq(discoverySets.archived, false)));
+        if (existing.length === 0) {
+          await db.insert(discoverySets).values({
+            name, matter, causeNumber: str(input.causeNumber, 128), court: str(input.court), createdBy: session.email,
+          });
+          revalidatePath("/admin/discovery-reviewer");
+        }
+      } catch (err) {
+        console.error("[exhibit-reviewer] companion discovery case failed:", err);
+      }
+    }
     await audit(session.email, "create", "exhibit-set", String(row.id), `Created exhibit set "${name}"`);
     revalidatePath("/admin/exhibit-reviewer");
     return { ok: true as const, id: row.id };

@@ -1316,6 +1316,81 @@ export const exhibitRecipients = pgTable(
   (t) => ({ setIdx: index("exhibit_recipients_set_idx").on(t.setId), tokenIdx: index("exhibit_recipients_token_idx").on(t.token) }),
 );
 
+/* ----------------------------------------------------------------------------
+ * Discovery Reviewer — the raw Bates-stamped productions, reviewed page by
+ * page. A discovery set is one case's productions; it links to the case's
+ * exhibit set through the Clio / Time Tracker matter number (the display
+ * number like "00042-Nelson", never the description). Page selections become
+ * exhibits: a mark records which pages were designated, the party (P/D), and
+ * the exhibit_docs row the assembled PDF was filed under.
+ * ------------------------------------------------------------------------- */
+
+export const discoverySets = pgTable(
+  "discovery_sets",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 191 }).notNull(),
+    /** Clio / Time Tracker matter display number — the cross-tool case key. */
+    matter: text("matter").notNull().default(""),
+    causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
+    court: varchar("court", { length: 191 }).notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ archivedIdx: index("discovery_sets_archived_idx").on(t.archived) }),
+);
+
+/** One produced document (usually a multi-page Bates PDF) in a discovery set. */
+export const discoveryDocs = pgTable(
+  "discovery_docs",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    name: varchar("name", { length: 255 }).notNull().default(""),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    /** True page count (may be filled in client-side for very large files). */
+    pageCount: integer("page_count"),
+    /** Per-page extracted text (truncated) for future search. */
+    pageText: jsonb("page_text").notNull().default([]),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("discovery_docs_set_idx").on(t.setId) }),
+);
+
+/** An exhibit designation built from discovery pages. */
+export const discoveryMarks = pgTable(
+  "discovery_marks",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    /** P (ours / plaintiff, green) | D (opposing / defendant, red). */
+    party: varchar("party", { length: 2 }).notNull().default("P"),
+    number: integer("number").notNull(),
+    /** Display designation, e.g. "P-1". */
+    label: varchar("label", { length: 32 }).notNull().default(""),
+    title: varchar("title", { length: 255 }).notNull().default(""),
+    /** The designated pages, in exhibit order: [{ docId, page }] (1-based). */
+    pages: jsonb("pages").notNull().default([]),
+    /** Where the assembled PDF was filed in the Exhibit Reviewer. */
+    exhibitSetId: integer("exhibit_set_id"),
+    exhibitDocId: integer("exhibit_doc_id"),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("discovery_marks_set_idx").on(t.setId) }),
+);
+
+export type DiscoverySet = typeof discoverySets.$inferSelect;
+export type DiscoveryDoc = typeof discoveryDocs.$inferSelect;
+export type DiscoveryMark = typeof discoveryMarks.$inferSelect;
+
 export type ExhibitSet = typeof exhibitSets.$inferSelect;
 export type ExhibitDoc = typeof exhibitDocs.$inferSelect;
 export type ExhibitRecipient = typeof exhibitRecipients.$inferSelect;

@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { db } from "@/db";
 import { teamMembers, badges, testimonials, intakeRecipients, timeActivityUsers, timeCategories, admins, settings } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { DISCOVERY_DDL } from "@/db/ensure";
 import { TEAM } from "@/lib/content/defaults/team";
 import { BADGES } from "@/lib/content/defaults/badges";
 import { TESTIMONIALS } from "@/lib/content/defaults/testimonials";
@@ -107,6 +108,7 @@ const DDL = [
     sort integer NOT NULL DEFAULT 0
   )`,
   `ALTER TYPE admin_role ADD VALUE IF NOT EXISTS 'timekeeper'`,
+  ...DISCOVERY_DDL,
   `ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`,
   `ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`,
   `ALTER TABLE admins ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`,

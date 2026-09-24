@@ -42,6 +42,7 @@
     "nodemailer": "^9.0.0",
     "onnxruntime-web": "^1.26.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "postgres": "^3.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
