@@ -20,7 +20,7 @@ export function cleanParties(v: unknown): CaseParty[] {
     .slice(0, 50);
 }
 
-export type CaseSeed = { matter: string; name?: string; causeNumber?: string; court?: string; county?: string; notes?: string };
+export type CaseSeed = { matter: string; name?: string; causeNumber?: string; court?: string; county?: string; notes?: string; plaintiffName?: string; defendantName?: string };
 
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -41,6 +41,14 @@ export async function getOrCreateCaseForMatter(seed: CaseSeed, createdBy?: strin
     if (!existing.name && seed.name) patch.name = str(seed.name, 255);
     if (!existing.causeNumber && seed.causeNumber) patch.causeNumber = str(seed.causeNumber, 128);
     if (!existing.court && seed.court) patch.court = str(seed.court);
+    if (!existing.county && seed.county) patch.county = str(seed.county, 96);
+    // Upgrade placeholder parties ("Plaintiff"/"Defendant") to real names when
+    // a tool learns them, without touching real names already on file.
+    const upgraded = cleanParties(existing.parties).map((party) => {
+      const real = party.role === "Plaintiff" ? str(seed.plaintiffName, 191) : party.role === "Defendant" ? str(seed.defendantName, 191) : "";
+      return real && party.name === party.role ? { ...party, name: real } : party;
+    });
+    if (JSON.stringify(upgraded) !== JSON.stringify(cleanParties(existing.parties))) patch.parties = upgraded;
     if (Object.keys(patch).length) {
       await db.update(caseHub).set({ ...patch, updatedAt: new Date() }).where(eq(caseHub.id, existing.id));
       return { ...existing, ...patch };
@@ -56,7 +64,10 @@ export async function getOrCreateCaseForMatter(seed: CaseSeed, createdBy?: strin
       court: str(seed.court),
       county: str(seed.county, 96),
       notes: str(seed.notes, 4000),
-      parties: DEFAULT_PARTIES,
+      parties: [
+        { name: str(seed.plaintiffName, 191) || "Plaintiff", role: "Plaintiff" },
+        { name: str(seed.defendantName, 191) || "Defendant", role: "Defendant" },
+      ],
       createdBy,
     })
     .onConflictDoNothing({ target: caseHub.matter })

@@ -7,6 +7,7 @@ import { SHARE_TYPES, shareType, audienceStyle, FOLDER_SORTS, type FolderSort } 
 import { compareNatural } from "@/lib/share/sort";
 import { createFolder, archiveFolder } from "@/app/admin/(panel)/share-folders/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 
 export type FolderRow = {
   id: number;
@@ -302,6 +303,16 @@ function NewFolderForm({ matters, presetType, onDone }: { matters: MatterOption[
   const [type, setType] = useState(presetType ?? SHARE_TYPES[0].key);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Matters/Cases lookup: a known matter fills the empty fields from the
+  // central record; a new one gets saved back on create for next time.
+  const lookup = useCaseLookup(matter, (c) => {
+    setCaseNumber((v) => v || c.causeNumber);
+    setCourt((v) => v || c.court);
+    setCounty((v) => v || c.county);
+    setPlaintiff((v) => v || c.plaintiff);
+    setDefendant((v) => v || c.defendant);
+  });
+  const note = lookupNote(lookup);
   const t = shareType(type);
   const s = audienceStyle(t.audience);
 
@@ -329,6 +340,9 @@ function NewFolderForm({ matters, presetType, onDone }: { matters: MatterOption[
         <label className="text-xs">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(from your Clio list)</span></span>
           <MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter by number or client…" />
+          {note && (
+            <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>
+          )}
         </label>
         <label className="text-xs">
           <span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span>

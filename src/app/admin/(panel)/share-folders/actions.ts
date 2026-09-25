@@ -1,5 +1,7 @@
 "use server";
 
+import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { ensureDiscoveryTables } from "@/db/ensure";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -65,6 +67,20 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
         createdBy: session.email,
       })
       .returning({ id: shareFolders.id });
+    const matter = (input.matter ?? "").trim();
+    if (matter) {
+      // Register / enrich the central case record so the next tool auto-fills.
+      const plaintiff = (input.plaintiff ?? "").trim();
+      const defendant = (input.defendant ?? "").trim();
+      await ensureDiscoveryTables();
+      await getOrCreateCaseForMatter({
+        matter,
+        name: plaintiff && defendant ? `${plaintiff} v. ${defendant}` : "",
+        causeNumber: input.caseNumber, court: input.court, county: input.county,
+        plaintiffName: plaintiff, defendantName: defendant,
+      }, session.email).catch(() => null);
+      revalidatePath("/admin/cases");
+    }
     await audit(session.email, "create", "share-folder", String(row.id), `${input.type} folder: ${name}`);
     revalidatePath("/admin/share-folders");
     return { ok: true as const, id: row.id };

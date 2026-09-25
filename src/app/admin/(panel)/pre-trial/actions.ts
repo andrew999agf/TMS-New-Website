@@ -1,5 +1,7 @@
 "use server";
 
+import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { ensureDiscoveryTables } from "@/db/ensure";
 import { revalidatePath } from "next/cache";
 import { eq, max } from "drizzle-orm";
 import { db } from "@/db";
@@ -55,6 +57,12 @@ export async function createTrialCase(input: CaseInput) {
         createdBy: session.email,
       })
       .returning({ id: trialCases.id });
+
+    if (str(input.matter, 500)) {
+      await ensureDiscoveryTables();
+      await getOrCreateCaseForMatter({ matter: input.matter!, name, causeNumber: input.causeNumber, court: input.court }, session.email).catch(() => null);
+      revalidatePath("/admin/cases");
+    }
 
     let seeded = 0;
     const tpl = getTemplate(str(input.templateId, 64));

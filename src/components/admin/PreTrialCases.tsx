@@ -7,6 +7,7 @@ import { Plus, Loader2, Archive, ArchiveRestore, Gavel, ChevronRight, Search } f
 import { TEMPLATES, urgencyOf, duePhrase, fmtDate, URGENCY_CLASS, URGENCY_LABEL, URGENCY_RANK, type Urgency } from "@/lib/pretrial/template";
 import { createTrialCase, setTrialCaseArchived } from "@/app/admin/(panel)/pre-trial/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 
 export type CaseRow = {
   id: number;
@@ -33,6 +34,10 @@ export function PreTrialCases({ cases, matters }: { cases: CaseRow[]; matters: M
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", matter: "", causeNumber: "", court: "", trialDate: "", templateId: TEMPLATES[0].id });
+  const lookup = useCaseLookup(form.matter, (c) => {
+    setForm((f) => ({ ...f, name: f.name || c.name, causeNumber: f.causeNumber || c.causeNumber, court: f.court || c.court }));
+  });
+  const lookupMsg = lookupNote(lookup);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -90,6 +95,9 @@ export function PreTrialCases({ cases, matters }: { cases: CaseRow[]; matters: M
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Matter</label>
               <MatterCombobox value={form.matter} onChange={(v) => setForm({ ...form, matter: v })} matters={matters} />
+              {lookupMsg && (
+                <span className={`mt-1 block text-[11px] ${lookupMsg.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{lookupMsg.text}</span>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</label>

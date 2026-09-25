@@ -18,6 +18,30 @@ async function guard() {
 
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
+/**
+ * "Do we already have this case?" — the shared lookup behind every tool's
+ * create form. Readable by any signed-in admin (guarding on the Cases section
+ * would wrongly lock out someone allowed only into, say, Share Folders).
+ */
+export async function lookupCaseForMatter(matterIn: string) {
+  await requireAdmin();
+  if (!db) return { found: false as const };
+  await ensureDiscoveryTables();
+  const matter = str(matterIn, 500);
+  if (!matter) return { found: false as const };
+  const [row] = await db.select().from(caseHub).where(eq(caseHub.matter, matter));
+  if (!row) return { found: false as const };
+  const parties = cleanParties(row.parties);
+  // Placeholder entries (name === role) aren't real names; don't offer them
+  // for pleading captions.
+  const named = (role: string) => parties.filter((p) => p.role === role && p.name !== p.role).map((p) => p.name).join("; ");
+  return {
+    found: true as const,
+    name: row.name, causeNumber: row.causeNumber, court: row.court, county: row.county,
+    plaintiff: named("Plaintiff"), defendant: named("Defendant"),
+  };
+}
+
 export type CaseInput = { matter: string; name?: string; causeNumber?: string; court?: string; county?: string; notes?: string };
 
 export async function createCase(input: CaseInput) {
