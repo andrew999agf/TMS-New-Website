@@ -9,7 +9,7 @@ import { admins, settings } from "@/db/schema";
 import { requireFullAdmin, audit } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
-import { TOGGLEABLE_SECTIONS } from "@/lib/admin-sections";
+import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFeaturePermission } from "@/lib/admin-sections";
 
 /** Per-admin default Time Tracker activity user, keyed by admin id. */
 const TT_USER_DEFAULTS_KEY = "tt.userDefaults";
@@ -83,8 +83,16 @@ export async function updateLoginRole(id: number, role: Role) {
 export async function updateLoginPermissions(id: number, permissions: string[]) {
   const session = await requireFullAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
-  const allowed = new Set(TOGGLEABLE_SECTIONS.map((s) => s.key));
-  const clean = [...new Set(permissions.filter((p) => allowed.has(p)))];
+  const allowed = new Set([...TOGGLEABLE_SECTIONS.map((s) => s.key), ...FEATURE_PERMISSIONS.map((f) => f.key)]);
+  let clean = [...new Set(permissions.filter((p) => allowed.has(p)))];
+  // Owner-only feature grants (e.g. the Assistant's Coding tool) can only be
+  // changed by an owner — anyone else's save keeps them exactly as they are.
+  if (session.role !== "owner") {
+    const [row] = await db.select({ permissions: admins.permissions }).from(admins).where(eq(admins.id, id));
+    const existing = new Set(((row?.permissions as string[]) ?? []).filter((p) => isFeaturePermission(p)));
+    const lockedKeys = new Set(FEATURE_PERMISSIONS.filter((f) => f.ownerOnly).map((f) => f.key));
+    clean = [...new Set([...clean.filter((p) => !lockedKeys.has(p)), ...[...existing].filter((p) => lockedKeys.has(p))])];
+  }
   await db.update(admins).set({ permissions: clean }).where(eq(admins.id, id));
   await audit(session.email, "update", "login", String(id), `Permissions: ${clean.join(", ") || "none"}`);
   revalidatePath("/admin/logins");

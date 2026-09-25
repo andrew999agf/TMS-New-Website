@@ -46,6 +46,7 @@ export default async function LoginsPage() {
         <LoginsManager
           initial={rows}
           selfId={Number(session.sub)}
+          selfRole={session.role}
           activityUsers={activityUsers}
           ttDefaults={ttDefaults ?? {}}
         />

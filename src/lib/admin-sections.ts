@@ -47,6 +47,34 @@ export const ADMIN_SECTIONS: AdminSection[] = [
 /** Sections an admin can grant to a non-full-admin account. */
 export const TOGGLEABLE_SECTIONS = ADMIN_SECTIONS.filter((s) => s.toggleable);
 
+/**
+ * Fine-grained feature grants — abilities inside a section, not sections
+ * themselves. They live in the same per-user permissions array as section
+ * keys (the keys never collide with section keys), toggled in User
+ * Management. `ownerOnly: true` means only an owner may grant or revoke it.
+ */
+export type FeaturePermission = { key: string; label: string; hint: string; ownerOnly: boolean };
+export const FEATURE_PERMISSIONS: FeaturePermission[] = [
+  {
+    key: "assistant-code",
+    label: "Assistant — Coding tool",
+    hint: "The Assistant's Coding tab (writes and debugs code). Owners always have it; everyone else — editors included — needs this checked, and only an owner can change it.",
+    ownerOnly: true,
+  },
+];
+const FEATURE_KEYS = new Set(FEATURE_PERMISSIONS.map((f) => f.key));
+
+/** Is a permissions-array key a feature grant (vs. a section key)? */
+export function isFeaturePermission(key: string): boolean {
+  return FEATURE_KEYS.has(key);
+}
+
+/** Who may use the Assistant's Coding tool: owners always; everyone else
+ *  (editors included) only with the explicit per-user grant. */
+export function canUseAssistantCode(role?: string, permissions?: string[]): boolean {
+  return role === "owner" || (permissions ?? []).includes("assistant-code");
+}
+
 export function isFullAdminRole(role?: string): boolean {
   return role === "owner" || role === "editor";
 }

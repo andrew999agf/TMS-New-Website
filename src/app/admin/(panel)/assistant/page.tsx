@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { Assistant } from "@/components/admin/Assistant";
 import { requireAdmin } from "@/lib/auth";
-import { canAccessPath } from "@/lib/admin-sections";
+import { canAccessPath, canUseAssistantCode } from "@/lib/admin-sections";
 import { aiPublicInfo } from "@/lib/ai/config";
 import { db } from "@/db";
-import { assistantThreads } from "@/db/schema";
+import { assistantThreads, caseHub } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import type { ThreadRow } from "./actions";
 
@@ -36,6 +36,24 @@ export default async function AssistantPage() {
     }
   }
 
+  // Matter numbers for the attach-a-case picker (most recently touched first).
+  let matters: string[] = [];
+  if (db) {
+    try {
+      const rows = await db
+        .select({ matter: caseHub.matter })
+        .from(caseHub)
+        .where(eq(caseHub.archived, false))
+        .orderBy(desc(caseHub.updatedAt))
+        .limit(200);
+      matters = rows.map((r) => r.matter).filter(Boolean);
+    } catch { /* hub table pending */ }
+  }
+
+  // The Coding tool is a separately granted ability (owners always have it;
+  // everyone else needs the checkbox in User Management).
+  const codeAllowed = canUseAssistantCode(session.role, session.permissions);
+
   return (
     <>
       <AdminHeader
@@ -43,7 +61,7 @@ export default async function AssistantPage() {
         description="The firm's in-house AI — general conversation, document drafting, and coding, with saved conversations and voice. Admin-only, kept off the public site."
       />
       <div className="p-6">
-        <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} />
+        <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />
       </div>
     </>
   );

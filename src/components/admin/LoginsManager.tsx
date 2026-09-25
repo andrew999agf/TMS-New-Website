@@ -6,7 +6,7 @@ import {
   createLogin, resetLoginPassword, updateLoginRole, updateLoginHourly, deleteLogin,
   updateLoginPermissions, sendSetupLink, setUserActivityDefault,
 } from "@/app/admin/(panel)/logins/actions";
-import { TOGGLEABLE_SECTIONS, isFullAdminRole } from "@/lib/admin-sections";
+import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFullAdminRole } from "@/lib/admin-sections";
 import { UserTrainingPanel } from "@/components/admin/training/UserTrainingPanel";
 
 type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null; hourly: boolean };
@@ -14,7 +14,7 @@ type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["timekeeper", "editor", "owner"];
 const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (full access)", owner: "Owner (full access)" };
 
-export function LoginsManager({ initial, selfId, activityUsers = [], ttDefaults = {} }: { initial: Login[]; selfId: number; activityUsers?: string[]; ttDefaults?: Record<string, string> }) {
+export function LoginsManager({ initial, selfId, selfRole = "", activityUsers = [], ttDefaults = {} }: { initial: Login[]; selfId: number; selfRole?: string; activityUsers?: string[]; ttDefaults?: Record<string, string> }) {
   const [ttMap, setTtMap] = useState<Record<string, string>>(ttDefaults);
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -143,9 +143,7 @@ export function LoginsManager({ initial, selfId, activityUsers = [], ttDefaults 
                   >
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
-                  {!fullAdmin && (
-                    <button onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)} className={`text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] ${openAccess === u.id ? "text-[var(--c-accent)]" : ""}`} title="Access toggles"><SlidersHorizontal size={16} /></button>
-                  )}
+                  <button onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)} className={`text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] ${openAccess === u.id ? "text-[var(--c-accent)]" : ""}`} title="Access toggles"><SlidersHorizontal size={16} /></button>
                   <button onClick={() => sendLink(u.id)} disabled={pending} className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Send password setup link"><Mail size={16} /></button>
                   <button onClick={() => reset(u.id)} disabled={pending} className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Set password directly"><KeyRound size={16} /></button>
                   <button
@@ -159,17 +157,50 @@ export function LoginsManager({ initial, selfId, activityUsers = [], ttDefaults 
                 </div>
               </div>
 
-              {!fullAdmin && openAccess === u.id && (
+              {openAccess === u.id && (
                 <div className="px-4 pb-4 -mt-1">
                   <div className="rounded-md bg-[var(--c-surface2)] p-3">
-                    <p className="text-xs text-[var(--c-ink-muted)] mb-2">Time Tracker and Training are always on. Toggle any extra sections this person can access:</p>
-                    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
-                      {TOGGLEABLE_SECTIONS.map((s) => (
-                        <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" className="accent-[var(--c-accent)]" checked={u.permissions.includes(s.key)} disabled={pending} onChange={(e) => togglePerm(u, s.key, e.target.checked)} />
-                          {s.label}
-                        </label>
-                      ))}
+                    {!fullAdmin ? (
+                      <>
+                        <p className="text-xs text-[var(--c-ink-muted)] mb-2">Time Tracker and Training are always on. Toggle any extra sections this person can access:</p>
+                        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                          {TOGGLEABLE_SECTIONS.map((s) => (
+                            <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input type="checkbox" className="accent-[var(--c-accent)]" checked={u.permissions.includes(s.key)} disabled={pending} onChange={(e) => togglePerm(u, s.key, e.target.checked)} />
+                              {s.label}
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-[var(--c-ink-muted)]">Full-access role — every section is already on. Special abilities below are granted person by person:</p>
+                    )}
+                    {/* Special abilities: fine-grained grants inside a section.
+                        Owners always hold them; owner-only ones can only be
+                        changed by an owner. */}
+                    <div className="mt-3 border-t border-[var(--c-border)] pt-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)] mb-1.5">Special abilities</p>
+                      {FEATURE_PERMISSIONS.map((f) => {
+                        const isOwnerRow = u.role === "owner";
+                        const canEdit = !isOwnerRow && (!f.ownerOnly || selfRole === "owner");
+                        return (
+                          <label key={f.key} className={`flex items-start gap-2 text-sm ${canEdit ? "cursor-pointer" : "opacity-70"}`} title={f.hint}>
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 accent-[var(--c-accent)]"
+                              checked={isOwnerRow || u.permissions.includes(f.key)}
+                              disabled={pending || !canEdit}
+                              onChange={(e) => togglePerm(u, f.key, e.target.checked)}
+                            />
+                            <span>
+                              {f.label}
+                              <span className="block text-[11px] text-[var(--c-ink-muted)]">
+                                {isOwnerRow ? "Owners always have this." : f.ownerOnly && selfRole !== "owner" ? "Only an owner can change this." : f.hint}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                     <p className="text-[11px] text-[var(--c-ink-muted)] mt-2">Changes take effect the next time they sign in.</p>
                   </div>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
-  Plus, Pencil, Square, RefreshCw, X,
+  Plus, Pencil, Square, RefreshCw, X, Scale,
 } from "lucide-react";
 import {
   listAssistantThreads, getAssistantThread, renameAssistantThread, deleteAssistantThread,
@@ -18,21 +18,21 @@ const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint:
   general: {
     label: "General", icon: MessageSquare,
     hint: "Ask anything…  (Enter to send, Shift+Enter for a new line)",
-    empty: "A balanced, all-purpose conversation. Ask questions, think through problems, summarize, explain.",
+    empty: "A balanced, all-purpose conversation — and it can read the firm's own systems: cases, discovery, exhibits, deadlines, intake.",
     starters: [
+      "Give me a status report on a case — I'll give you the matter number",
+      "What deadlines does the firm have coming up in the next 30 days?",
       "Summarize the key points of the text I'm about to paste",
-      "Help me think through the pros and cons of a decision",
-      "Explain a concept to me in plain English",
     ],
   },
   draft: {
     label: "Drafting", icon: FileText,
     hint: "Describe the document you need, or paste text to edit…",
-    empty: "Letters, memos, clauses, emails, edits. You get a complete document back — copy it out or download it.",
+    empty: "Letters, memos, clauses, emails, edits. You get a complete document back — copy it out or download it. Attach a case and it pulls the real style, court, and parties.",
     starters: [
       "Draft a professional letter — I'll give you the details",
+      "Draft a letter to opposing counsel in one of our cases — I'll give the matter number",
       "Tighten and polish the paragraph I'm about to paste",
-      "Write a firm memo announcing a policy change",
     ],
   },
   code: {
@@ -173,10 +173,18 @@ function AssistantBody({ content, mode }: { content: string; mode: Mode }) {
  * listens, sends, speaks the reply, and listens again. Browser speech engines
  * only. Admin-only; never on the public site.
  */
-export function Assistant({ configured, label, initialThreads, saveable }: {
+export function Assistant({ configured, label, initialThreads, saveable, codeAllowed = true, matters = [] }: {
   configured: boolean; label: string | null; initialThreads: ThreadRow[]; saveable: boolean;
+  /** Whether this account holds the Coding-tool grant (owners always do). */
+  codeAllowed?: boolean;
+  /** Matter numbers from the Matters/Cases hub, for the attach-a-case picker. */
+  matters?: string[];
 }) {
   const [mode, setMode] = useState<Mode>("general");
+  // A case attached to the conversation: the model treats "the case" as this
+  // matter and pulls its real details through the firm-data tools.
+  const [caseMatter, setCaseMatter] = useState("");
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [threads, setThreads] = useState<Record<Mode, Msg[]>>({ general: [], draft: [], code: [] });
   const [threadIds, setThreadIds] = useState<Record<Mode, number | null>>({ general: null, draft: null, code: null });
   const [history, setHistory] = useState<ThreadRow[]>(initialThreads);
@@ -243,7 +251,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
       const res = await fetch("/api/admin/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, mode: m, threadId: threadIds[m], regen }),
+        body: JSON.stringify({ messages: next, mode: m, threadId: threadIds[m], regen, matter: caseMatter.trim() || undefined }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -269,8 +277,12 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
           if (data === "[DONE]") continue;
           try {
             const json = JSON.parse(data);
+            // Firm-data lookups in progress ("Reading the exhibit list…").
+            if (typeof json.tool_status === "string") { setToolStatus(json.tool_status || null); continue; }
+            if (typeof json.stream_error === "string") { setError(json.stream_error); continue; }
             const delta = json.choices?.[0]?.delta?.content;
             if (delta) {
+              setToolStatus(null);
               acc += delta;
               const snapshot = acc;
               setThreads((th) => { const copy = th[m].slice(); copy[copy.length - 1] = { role: "assistant", content: snapshot }; return { ...th, [m]: copy }; });
@@ -289,6 +301,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
       }
     } finally {
       setBusy(false);
+      setToolStatus(null);
       abortRef.current = null;
     }
     if (saveable) void refreshHistory();
@@ -296,7 +309,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
     // own speaking so it can chain back into listening.
     if (acc && speakRef.current && !voiceChatRef.current) speak(acc);
     return acc;
-  }, [threadIds, saveable, refreshHistory, speak]);
+  }, [threadIds, saveable, refreshHistory, speak, caseMatter]);
 
   const send = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
@@ -319,6 +332,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
 
   async function openThread(t: ThreadRow) {
     const m: Mode = t.mode === "draft" || t.mode === "code" ? (t.mode as Mode) : "general";
+    if (m === "code" && !codeAllowed) { setError("That's a Coding conversation — the Coding tool hasn't been turned on for your account."); return; }
     const r = await getAssistantThread(t.id);
     if (!r.ok) { setError("Couldn't load that conversation."); return; }
     setMode(m);
@@ -445,7 +459,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                 <p className="text-xs leading-relaxed text-[var(--c-ink-muted)]">Conversations save here automatically as you work.</p>
               </div>
             )}
-            {history.map((t) => {
+            {history.filter((t) => codeAllowed || t.mode !== "code").map((t) => {
               const Icon = MODE_ICON[t.mode] ?? MessageSquare;
               const active = threadIds[mode] === t.id;
               return (
@@ -488,7 +502,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
             </button>
           )}
           <div className="inline-flex rounded-lg bg-[var(--c-surface-2)] p-0.5">
-            {(Object.keys(MODE_META) as Mode[]).map((m) => {
+            {(Object.keys(MODE_META) as Mode[]).filter((m) => m !== "code" || codeAllowed).map((m) => {
               const Icon = MODE_META[m].icon;
               return (
                 <button
@@ -501,6 +515,26 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                 </button>
               );
             })}
+          </div>
+
+          {/* Attach a case: the model treats "the case" as this matter and
+              pulls its real details (parties, court, discovery, exhibits)
+              through the firm-data tools. */}
+          <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${caseMatter.trim() ? "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`} title="Attach a case — the assistant will pull this matter's details from Matters/Cases, Discovery, Exhibits, and Pre-Trial">
+            <Scale size={12} className={caseMatter.trim() ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"} />
+            <input
+              value={caseMatter}
+              onChange={(e) => setCaseMatter(e.target.value)}
+              list="assistant-matter-list"
+              placeholder="Attach case (matter no.)"
+              className="w-44 bg-transparent text-xs text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70"
+            />
+            {caseMatter && (
+              <button onClick={() => setCaseMatter("")} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" title="Detach the case"><X size={12} /></button>
+            )}
+            <datalist id="assistant-matter-list">
+              {matters.map((mt) => <option key={mt} value={mt} />)}
+            </datalist>
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
@@ -562,6 +596,9 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                   ? (m.content
                       ? <>
                           <AssistantBody content={m.content} mode={mode} />
+                          {busy && i === messages.length - 1 && toolStatus && (
+                            <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin text-[var(--c-accent)]" /> {toolStatus}</span>
+                          )}
                           {i === messages.length - 1 && !busy && (
                             <button onClick={regenerate} className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Regenerate this reply">
                               <RefreshCw size={11} /> Regenerate
@@ -569,7 +606,7 @@ export function Assistant({ configured, label, initialThreads, saveable }: {
                           )}
                         </>
                       : (busy && i === messages.length - 1
-                          ? <span className="inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin text-[var(--c-accent)]" /> Thinking…</span>
+                          ? <span className="inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin text-[var(--c-accent)]" /> {toolStatus ?? "Thinking…"}</span>
                           : null))
                   : m.content}
               </div>
