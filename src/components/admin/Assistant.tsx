@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
-  Plus, Pencil, Square, RefreshCw, X, Scale,
+  Plus, Pencil, Square, RefreshCw, X, Scale, Activity,
 } from "lucide-react";
 import {
   listAssistantThreads, getAssistantThread, renameAssistantThread, deleteAssistantThread,
@@ -185,6 +185,27 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   // matter and pulls its real details through the firm-data tools.
   const [caseMatter, setCaseMatter] = useState("");
   const [toolStatus, setToolStatus] = useState<string | null>(null);
+  // "Test connection": pings the configured AI endpoint and reports back —
+  // reachability, speed, and whether firm-data tool calling is supported.
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [health, setHealth] = useState<{
+    configured: boolean; reachable: boolean; latencyMs?: number | null; model?: string;
+    baseUrlHost?: string; toolSupport?: boolean | null; firmDataReady?: boolean;
+    dbConfigured?: boolean; errorDetail?: string; note?: string;
+  } | null>(null);
+
+  const testConnection = useCallback(async () => {
+    setHealthBusy(true);
+    setHealth(null);
+    try {
+      const res = await fetch("/api/admin/assistant/health", { method: "POST" });
+      setHealth(await res.json());
+    } catch {
+      setHealth({ configured: true, reachable: false, errorDetail: "The test request itself failed — check your connection and try again." });
+    } finally {
+      setHealthBusy(false);
+    }
+  }, []);
   const [threads, setThreads] = useState<Record<Mode, Msg[]>>({ general: [], draft: [], code: [] });
   const [threadIds, setThreadIds] = useState<Record<Mode, number | null>>({ general: null, draft: null, code: null });
   const [history, setHistory] = useState<ThreadRow[]>(initialThreads);
@@ -555,6 +576,14 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               {speakReplies ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </button>
             {label && <span className="hidden rounded bg-[var(--c-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] sm:inline">{label}</span>}
+            <button
+              onClick={() => void testConnection()}
+              disabled={healthBusy}
+              title="Test the AI connection — reachability, speed, and firm-data tool support"
+              className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] disabled:opacity-50"
+            >
+              {healthBusy ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
+            </button>
             {messages.length > 0 && (
               <button onClick={newConversation} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-[var(--c-ink-muted)] hover:text-red-600" title={`Clear and start a new ${meta.label} conversation`}>
                 <Trash2 size={13} />
@@ -562,6 +591,32 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
             )}
           </div>
         </div>
+
+        {(health || healthBusy) && (
+          <div className="border-b border-[var(--c-border)] bg-[var(--c-surface-2)] px-4 py-2.5 text-xs">
+            {healthBusy ? (
+              <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Testing the AI connection…</span>
+            ) : health && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                {!health.configured ? (
+                  <span className="text-amber-700 dark:text-amber-300">Not configured yet — {health.note}</span>
+                ) : health.reachable ? (
+                  <>
+                    <span className="font-medium text-green-700 dark:text-green-400">✓ Connected to {health.baseUrlHost}</span>
+                    <span className="text-[var(--c-ink-muted)]">Model: {health.model}</span>
+                    {typeof health.latencyMs === "number" && <span className="text-[var(--c-ink-muted)]">First reply in {(health.latencyMs / 1000).toFixed(1)}s</span>}
+                    {health.toolSupport === true && health.dbConfigured && <span className="text-green-700 dark:text-green-400">✓ Firm-data lookups supported</span>}
+                    {health.toolSupport === false && <span className="text-amber-700 dark:text-amber-300">⚠ This provider doesn&apos;t support tool calling — chat works, but case-file lookups are off</span>}
+                    {health.toolSupport == null && <span className="text-[var(--c-ink-muted)]">Tool-support check was inconclusive — try again</span>}
+                  </>
+                ) : (
+                  <span className="text-red-700 dark:text-red-400">✗ Can&apos;t reach the AI server{health.errorDetail ? ` — ${health.errorDetail}` : ""}</span>
+                )}
+                <button onClick={() => setHealth(null)} className="ml-auto rounded p-0.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" title="Dismiss"><X size={12} /></button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.length === 0 && (
