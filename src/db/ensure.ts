@@ -54,6 +54,23 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS discovery_marks_set_idx ON discovery_marks (set_id)`,
+  `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_at varchar(32) NOT NULL DEFAULT ''`,
+  `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_by varchar(191) NOT NULL DEFAULT ''`,
+  `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_to varchar(191) NOT NULL DEFAULT ''`,
+  `CREATE TABLE IF NOT EXISTS case_hub (
+    id serial PRIMARY KEY,
+    matter text NOT NULL UNIQUE,
+    name varchar(255) NOT NULL DEFAULT '',
+    cause_number varchar(128) NOT NULL DEFAULT '',
+    court varchar(191) NOT NULL DEFAULT '',
+    county varchar(96) NOT NULL DEFAULT '',
+    notes text NOT NULL DEFAULT '',
+    parties jsonb NOT NULL DEFAULT '[]'::jsonb,
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;

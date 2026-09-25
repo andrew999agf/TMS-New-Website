@@ -3,7 +3,7 @@ import { ExhibitSets, type SetRow } from "@/components/admin/ExhibitSets";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, timeMatters, discoverySets } from "@/db/schema";
+import { exhibitSets, exhibitDocs, timeMatters, discoverySets, caseHub } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
@@ -17,6 +17,7 @@ export default async function ExhibitReviewerPage() {
   let sets: SetRow[] = [];
   let matters: MatterOption[] = [];
   let discoveryMatters: string[] = [];
+  let hub: Record<string, { name: string; causeNumber: string; court: string }> = {};
   let needsSync = false;
 
   if (db) {
@@ -48,6 +49,9 @@ export default async function ExhibitReviewerPage() {
     } catch {
       /* discovery tables not created yet */
     }
+    try {
+      hub = Object.fromEntries((await db.select().from(caseHub)).map((c) => [c.matter, { name: c.name, causeNumber: c.causeNumber, court: c.court }]));
+    } catch { /* hub table pending */ }
   }
 
   return (
@@ -62,7 +66,7 @@ export default async function ExhibitReviewerPage() {
             This feature needs its database tables. Go to <strong>Settings → Database updates</strong> and run it once, then reload this page.
           </p>
         )}
-        <ExhibitSets sets={sets} matters={matters} discoveryMatters={discoveryMatters} />
+        <ExhibitSets sets={sets} matters={matters} discoveryMatters={discoveryMatters} hub={hub} />
       </div>
     </>
   );

@@ -8,6 +8,7 @@ import { del, put } from "@vercel/blob";
 import { db } from "@/db";
 import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients, discoverySets } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
+import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -59,6 +60,11 @@ export async function createExhibitSet(input: SetInput, alsoDiscovery?: boolean)
         createdBy: session.email,
       })
       .returning({ id: exhibitSets.id });
+    if (matter) {
+      await ensureDiscoveryTables();
+      await getOrCreateCaseForMatter({ matter, name, causeNumber: input.causeNumber, court: input.court }, session.email).catch(() => null);
+      revalidatePath("/admin/cases");
+    }
     // The symbiotic half: a new exhibit set can bring its discovery case along,
     // linked through the same Time Tracker matter number. Never duplicates an
     // existing case for the matter.

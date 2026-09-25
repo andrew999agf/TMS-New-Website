@@ -14,7 +14,7 @@ export type SetRow = {
 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export function ExhibitSets({ sets, matters, discoveryMatters = [] }: { sets: SetRow[]; matters: MatterOption[]; discoveryMatters?: string[] }) {
+export function ExhibitSets({ sets, matters, discoveryMatters = [], hub = {} }: { sets: SetRow[]; matters: MatterOption[]; discoveryMatters?: string[]; hub?: Record<string, { name: string; causeNumber: string; court: string }> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -62,7 +62,15 @@ export function ExhibitSets({ sets, matters, discoveryMatters = [] }: { sets: Se
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Case code (matter)</span>
-              <MatterPicker matters={matters} value={f.matter} onChange={(v) => setF({ ...f, matter: v })} placeholder="Search by code, client, or description…" inputClass={input} />
+              <MatterPicker matters={matters} value={f.matter} onChange={(v) => {
+                const known = hub[v.trim()];
+                setF((prev) => ({
+                  ...prev, matter: v,
+                  name: prev.name || known?.name || prev.name,
+                  causeNumber: prev.causeNumber || known?.causeNumber || prev.causeNumber,
+                  court: prev.court || known?.court || prev.court,
+                }));
+              }} placeholder="Search by code, client, or description…" inputClass={input} />
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</span>

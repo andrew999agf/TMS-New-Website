@@ -5,7 +5,7 @@ import { DiscoveryReviewer } from "@/components/admin/DiscoveryReviewer";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, type CaseParty } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -24,6 +24,15 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
 
   const docs = await db.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId)).orderBy(asc(discoveryDocs.sort), asc(discoveryDocs.id));
   const marks = await db.select().from(discoveryMarks).where(eq(discoveryMarks.setId, setId)).orderBy(asc(discoveryMarks.id));
+
+  // The case's parties from the central record, for the service-info dialog.
+  let parties: CaseParty[] = [];
+  if (set.matter) {
+    try {
+      const [hubRow] = await db.select({ parties: caseHub.parties }).from(caseHub).where(eq(caseHub.matter, set.matter));
+      parties = ((hubRow?.parties as CaseParty[]) ?? []).filter((party) => party?.name);
+    } catch { /* hub table pending */ }
+  }
 
   // The linked exhibit set (same matter, not archived, oldest first) and its
   // current numbering, so the save dialog can offer the next free number.
@@ -66,9 +75,10 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       </div>
       <DiscoveryReviewer
         setId={setId}
-        docs={docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes }))}
+        docs={docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo }))}
         marks={marks.map((m) => ({ id: m.id, party: m.party as "P" | "D", number: m.number, label: m.label, title: m.title, pages: (m.pages as { docId: number; page: number }[]) ?? [], exhibitSetId: m.exhibitSetId }))}
         usedNumbers={usedNumbers}
+        parties={parties}
         caseName={set.name}
         matter={set.matter}
       />

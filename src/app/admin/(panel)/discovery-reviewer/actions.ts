@@ -10,6 +10,7 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { getOrCreateCaseForMatter } from "@/lib/cases";
 
 async function guard() {
   const session = await requireAdmin();
@@ -46,6 +47,11 @@ export async function createDiscoverySet(input: DiscoverySetInput, alsoExhibit: 
       .values({ name, matter, causeNumber: str(input.causeNumber, 128), court: str(input.court), createdBy: session.email })
       .returning({ id: discoverySets.id });
 
+    if (matter) {
+      // Register / enrich the central case record so its info is on file once.
+      await getOrCreateCaseForMatter({ matter, name, causeNumber: input.causeNumber, court: input.court }, session.email).catch(() => null);
+      revalidatePath("/admin/cases");
+    }
     let exhibitCreated = false;
     if (alsoExhibit && matter) {
       const existing = await db.select({ id: exhibitSets.id }).from(exhibitSets)
@@ -100,7 +106,7 @@ export async function deleteDiscoverySet(id: number) {
 
 /* -------------------------------- docs --------------------------------- */
 
-export async function addDiscoveryDoc(setId: number, input: { name?: string; file: { url: string; pathname: string; contentType?: string; size?: number } }) {
+export async function addDiscoveryDoc(setId: number, input: { name?: string; file: { url: string; pathname: string; contentType?: string; size?: number }; service?: { servedAt?: string; servedBy?: string; servedTo?: string } }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -121,7 +127,11 @@ export async function addDiscoveryDoc(setId: number, input: { name?: string; fil
         name: str(input.name, 255) || input.file.pathname.split("/").pop() || "document",
         url: input.file.url, pathname: input.file.pathname,
         contentType: input.file.contentType ?? null, sizeBytes: input.file.size ?? null,
-        pageCount, pageText, sort: Number(maxSort) + 1,
+        pageCount, pageText,
+        servedAt: str(input.service?.servedAt, 32),
+        servedBy: str(input.service?.servedBy, 191),
+        servedTo: str(input.service?.servedTo, 191),
+        sort: Number(maxSort) + 1,
       })
       .returning({ id: discoveryDocs.id });
     revalidatePath(`/admin/discovery-reviewer/${setId}`);

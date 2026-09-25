@@ -11,9 +11,10 @@ import {
   addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation,
   type PageRef,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
+import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null };
+type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string };
 type Mark = { id: number; party: "P" | "D"; number: number; label: string; title: string; pages: PageRef[]; exhibitSetId: number | null };
 
 const key = (docId: number, page: number) => `${docId}:${page}`;
@@ -35,13 +36,16 @@ function loadPdfjs(): Promise<PdfLib> {
   return pdfLibPromise;
 }
 
+type Party = { name: string; role: string };
+
 export function DiscoveryReviewer({
-  setId, docs, marks, usedNumbers, caseName, matter,
+  setId, docs, marks, usedNumbers, parties: partiesProp, caseName, matter,
 }: {
   setId: number;
   docs: DocMeta[];
   marks: Mark[];
   usedNumbers: { plaintiff: number[]; defendant: number[] };
+  parties: Party[];
   caseName: string;
   matter: string;
 }) {
@@ -72,6 +76,9 @@ export function DiscoveryReviewer({
   const [promptCreate, setPromptCreate] = useState<{ name: string } | null>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number; current: string } | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  /** Files picked but not yet uploaded — the service-info dialog is showing. */
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [parties, setParties] = useState<Party[]>(partiesProp.length ? partiesProp : [{ name: "Plaintiff", role: "Plaintiff" }, { name: "Defendant", role: "Defendant" }]);
 
   /** Resolved page counts (server value, corrected client-side for big files). */
   const [pageCounts, setPageCounts] = useState<Record<number, number>>(() =>
@@ -216,10 +223,17 @@ export function DiscoveryReviewer({
 
   /* -------------------------------- upload ------------------------------- */
 
-  async function uploadFiles(files: File[]) {
+  /** Step 1: stage the picked PDFs and ask when/by whom/to whom they were served. */
+  function uploadFiles(files: File[]) {
     const pdfs = files.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
     if (pdfs.length === 0) { setError("Drop PDF files (the Bates-stamped productions)."); return; }
     setError(null);
+    setPendingFiles(pdfs);
+  }
+
+  /** Step 2: upload with the service record attached to every file in the batch. */
+  async function doUpload(pdfs: File[], service: { servedAt: string; servedBy: string; servedTo: string } | null) {
+    setPendingFiles(null);
     setUploading({ done: 0, total: pdfs.length, current: pdfs[0].name });
     for (let i = 0; i < pdfs.length; i++) {
       const file = pdfs[i];
@@ -229,7 +243,7 @@ export function DiscoveryReviewer({
           access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
           contentType: "application/pdf",
         });
-        const r = await addDiscoveryDoc(setId, { name: file.name, file: { url: blob.url, pathname: blob.pathname, contentType: "application/pdf", size: file.size } });
+        const r = await addDiscoveryDoc(setId, { name: file.name, file: { url: blob.url, pathname: blob.pathname, contentType: "application/pdf", size: file.size }, service: service ?? undefined });
         if (!r.ok) setError(r.error ?? `Couldn't save "${file.name}".`);
       } catch (err) {
         setError(`Upload failed for "${file.name}": ${(err as Error).message}`);
@@ -388,6 +402,23 @@ export function DiscoveryReviewer({
         )}
       </div>
 
+      {/* ---- service-info dialog for a staged upload ---- */}
+      {pendingFiles && (
+        <ServiceInfoDialog
+          files={pendingFiles}
+          parties={parties}
+          matter={matter}
+          onAddParty={async (name, role) => {
+            const r = await addCaseParty(matter, name, role);
+            if (r.ok && "parties" in r && r.parties) setParties(r.parties);
+            return r.ok;
+          }}
+          onCancel={() => setPendingFiles(null)}
+          onConfirm={(service) => void doUpload(pendingFiles, service)}
+          onSkip={() => void doUpload(pendingFiles, null)}
+        />
+      )}
+
       {/* ---- "create the linked exhibit set" prompt ---- */}
       {promptCreate && (
         <CreateExhibitSetDialog
@@ -426,6 +457,11 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, getDoc,
             <div className="mb-2 flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold">{d.name}</h3>
               <span className="text-xs text-[var(--c-ink-muted)]">{n ? `${n} page${n === 1 ? "" : "s"}` : "counting pages…"}</span>
+              {(d.servedAt || d.servedBy || d.servedTo) && (
+                <span className="text-xs text-[var(--c-ink-muted)]">
+                  Served{d.servedAt ? ` ${d.servedAt}` : ""}{d.servedBy ? ` by ${d.servedBy}` : ""}{d.servedTo ? ` to ${d.servedTo}` : ""}
+                </span>
+              )}
               <a href={`/admin/discovery-reviewer/${setIdForLinks}/doc/${d.id}`} target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline" title="Open the untouched original PDF in a new tab">
                 <ExternalLink size={12} /> original
@@ -514,7 +550,7 @@ function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle
 
   return (
     <div ref={holder}
-      className={`group relative aspect-[8.5/11] cursor-pointer overflow-hidden rounded-md border bg-white shadow-sm ${checked ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"}`}
+      className={`group relative aspect-[8.5/11] cursor-pointer overflow-hidden rounded-md border bg-white shadow-sm ${checked ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:ring-1 hover:ring-[var(--c-accent)]/50"}`}
       onClick={(e) => onToggle(idx, e.shiftKey)}
       onDoubleClick={() => onOpen(idx)}
       title="Click to check · Shift-click to check a range · Double-click to read"
@@ -522,11 +558,6 @@ function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle
       <canvas ref={canvasRef} className="h-full w-full object-contain" />
       {state === "idle" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
       {state === "error" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)] text-xs text-[var(--c-ink-muted)]">page {page}</div>}
-
-      {/* checkbox */}
-      <span className={`absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded border bg-white shadow ${checked ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : "border-[var(--c-border)] text-transparent group-hover:border-[var(--c-accent)]"}`}>
-        <Check size={13} strokeWidth={3} className={checked ? "text-white" : ""} />
-      </span>
 
       {/* designation half-bubbles, hugging the right edge */}
       {badges && badges.length > 0 && (
@@ -630,6 +661,106 @@ function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
         )}
       </div>
       <p className="mt-2 text-center text-xs text-[var(--c-ink-muted)]">← → to turn pages · X checks a page · Shift extends the range</p>
+    </div>
+  );
+}
+
+/* ------------------------- service-info dialog --------------------------- */
+
+const PARTY_ROLES = ["Plaintiff", "Defendant", "Intervenor", "Third-Party Plaintiff", "Third-Party Defendant", "Counter-Plaintiff", "Counter-Defendant", "Other"];
+
+/** Asks when the staged production was served, by whom, and on whom. Party
+ *  lists come from the central case record; "+ add party" writes back to it,
+ *  so an intervenor added here shows up in every other tool too. */
+function ServiceInfoDialog({ files, parties, matter, onAddParty, onCancel, onConfirm, onSkip }: {
+  files: File[];
+  parties: { name: string; role: string }[];
+  matter: string;
+  onAddParty: (name: string, role: string) => Promise<boolean>;
+  onCancel: () => void;
+  onConfirm: (service: { servedAt: string; servedBy: string; servedTo: string }) => void;
+  onSkip: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [servedAt, setServedAt] = useState(today);
+  // Discovery in this tool is usually the other side's production, so default
+  // to the second party (Defendant) serving the first (Plaintiff) — one click
+  // to flip when it's the other way around.
+  const [servedBy, setServedBy] = useState(parties[1]?.name ?? "");
+  const [servedTo, setServedTo] = useState(parties[0]?.name ?? "");
+  const [addingParty, setAddingParty] = useState(false);
+  const [pName, setPName] = useState("");
+  const [pRole, setPRole] = useState("Third-Party Defendant");
+  const [busy, setBusy] = useState(false);
+  const sel = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
+
+  async function submitParty() {
+    if (!pName.trim()) return;
+    setBusy(true);
+    const ok = await onAddParty(pName.trim(), pRole);
+    setBusy(false);
+    if (ok) { setPName(""); setAddingParty(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="w-full max-w-lg rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5">
+        <h3 className="font-[family-name:var(--font-display)] text-lg">Service information</h3>
+        <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
+          {files.length === 1 ? `"${files[0].name}"` : `${files.length} PDFs`} — when was this discovery served, and between whom? Applies to every file in this batch{matter ? ` (matter ${matter})` : ""}.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold">Date served</span>
+            <input type="date" value={servedAt} onChange={(e) => setServedAt(e.target.value)} className={sel} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold">Served by</span>
+            <select value={servedBy} onChange={(e) => setServedBy(e.target.value)} className={sel}>
+              <option value="">—</option>
+              {parties.map((p) => <option key={p.name} value={p.name}>{p.name}{p.role && p.role !== p.name ? ` (${p.role})` : ""}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold">Served to</span>
+            <select value={servedTo} onChange={(e) => setServedTo(e.target.value)} className={sel}>
+              <option value="">—</option>
+              {parties.map((p) => <option key={p.name} value={p.name}>{p.name}{p.role && p.role !== p.name ? ` (${p.role})` : ""}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {addingParty ? (
+          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-md border border-dashed border-[var(--c-border)] p-3">
+            <label className="min-w-[10rem] flex-1 text-sm">
+              <span className="mb-1 block text-xs font-semibold">Party name</span>
+              <input value={pName} onChange={(e) => setPName(e.target.value)} autoFocus className={sel} onKeyDown={(e) => { if (e.key === "Enter") void submitParty(); }} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-semibold">Role</span>
+              <select value={pRole} onChange={(e) => setPRole(e.target.value)} className={sel}>
+                {PARTY_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+            <button onClick={() => void submitParty()} disabled={busy || !pName.trim()} className="btn btn-outline inline-flex items-center gap-1 py-2 px-3 text-sm disabled:opacity-50">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add
+            </button>
+            <button onClick={() => setAddingParty(false)} className="p-2 text-[var(--c-ink-muted)]"><X size={14} /></button>
+          </div>
+        ) : (
+          <button onClick={() => setAddingParty(true)} className="mt-3 inline-flex items-center gap-1 text-sm text-[var(--c-accent)] hover:underline">
+            <Plus size={14} /> Add party (intervenor, third party, …) — saved to the case for every tool
+          </button>
+        )}
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button onClick={onCancel} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={onSkip} className="btn btn-outline text-sm py-2 px-4" title="Upload now; service details can wait">Skip for now</button>
+          <button onClick={() => onConfirm({ servedAt, servedBy, servedTo })} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4">
+            <UploadCloud size={14} /> Upload {files.length === 1 ? "PDF" : `${files.length} PDFs`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

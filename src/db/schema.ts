@@ -1325,6 +1325,37 @@ export const exhibitRecipients = pgTable(
  * the exhibit_docs row the assembled PDF was filed under.
  * ------------------------------------------------------------------------- */
 
+/**
+ * Central case record ("Matters / Cases" tab), keyed by the Clio / Time
+ * Tracker matter display number. Every case tool (pre-trial, discovery,
+ * exhibits, share folders) links back through `matter`, so case information
+ * is typed once here and read everywhere. Parties live here too, so a
+ * third-party defendant added while uploading discovery is available in
+ * every other tool.
+ */
+export const caseHub = pgTable(
+  "case_hub",
+  {
+    id: serial("id").primaryKey(),
+    /** The cross-tool case key: matter display number, e.g. "00042-Nelson". */
+    matter: text("matter").notNull().unique(),
+    name: varchar("name", { length: 255 }).notNull().default(""),
+    causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
+    court: varchar("court", { length: 191 }).notNull().default(""),
+    county: varchar("county", { length: 96 }).notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    /** [{ name, role }] — role e.g. Plaintiff, Defendant, Intervenor, Third-Party Defendant. */
+    parties: jsonb("parties").notNull().default([]),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type CaseHubRow = typeof caseHub.$inferSelect;
+export type CaseParty = { name: string; role: string };
+
 export const discoverySets = pgTable(
   "discovery_sets",
   {
@@ -1358,6 +1389,12 @@ export const discoveryDocs = pgTable(
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) for future search. */
     pageText: jsonb("page_text").notNull().default([]),
+    /** Service record: when this production was served (YYYY-MM-DD)… */
+    servedAt: varchar("served_at", { length: 32 }).notNull().default(""),
+    /** …by which party… */
+    servedBy: varchar("served_by", { length: 191 }).notNull().default(""),
+    /** …on which party. */
+    servedTo: varchar("served_to", { length: 191 }).notNull().default(""),
     sort: integer("sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

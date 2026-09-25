@@ -3,7 +3,7 @@ import { DiscoverySets, type DiscoverySetRow } from "@/components/admin/Discover
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, timeMatters } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, timeMatters, caseHub } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -18,6 +18,7 @@ export default async function DiscoveryReviewerPage() {
   let sets: DiscoverySetRow[] = [];
   let matters: MatterOption[] = [];
   let exhibitMatters: string[] = [];
+  let hub: Record<string, { name: string; causeNumber: string; court: string }> = {};
 
   if (db) {
     await ensureDiscoveryTables();
@@ -47,6 +48,9 @@ export default async function DiscoveryReviewerPage() {
     } catch {
       /* ensure failed (no DDL rights): the sync button still covers it */
     }
+    try {
+      hub = Object.fromEntries((await db.select().from(caseHub)).map((c) => [c.matter, { name: c.name, causeNumber: c.causeNumber, court: c.court }]));
+    } catch { /* hub table pending */ }
   }
 
   return (
@@ -56,7 +60,7 @@ export default async function DiscoveryReviewerPage() {
         description="The other side's productions, reviewed page by page. Drop the Bates discovery in, check the pages you want, and save them straight to the case's exhibit set — the two tools stay linked by the Time Tracker matter number."
       />
       <div className="p-6 max-w-5xl">
-        <DiscoverySets sets={sets} matters={matters} exhibitMatters={exhibitMatters} />
+        <DiscoverySets sets={sets} matters={matters} exhibitMatters={exhibitMatters} hub={hub} />
       </div>
     </>
   );
