@@ -43,6 +43,8 @@ export function RequestClientDocs({ setId, existing }: { setId: number; existing
   const [mode, setMode] = useState<"choose" | "rfp" | "general">("choose");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [clientDue, setClientDue] = useState("");
+  const [responseDue, setResponseDue] = useState("");
   const [reqFile, setReqFile] = useState<{ url: string; pathname: string; name: string; size: number } | null>(null);
   const [parsing, setParsing] = useState(false);
   const [prefix, setPrefix] = useState("RFP");
@@ -92,6 +94,8 @@ export function RequestClientDocs({ setId, existing }: { setId: number; existing
       requestFile: reqFile ?? undefined,
       prefix,
       numbers,
+      responseDue,
+      clientDue,
     });
     setBusy(false);
     if (r.ok) {
@@ -213,6 +217,14 @@ export function RequestClientDocs({ setId, existing }: { setId: number; existing
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-semibold">Deadline for client to return documents *</span>
+                    <input type="date" value={clientDue} onChange={(e) => setClientDue(e.target.value)} className={input} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-semibold">Hard discovery-response deadline</span>
+                    <input type="date" value={responseDue} onChange={(e) => setResponseDue(e.target.value)} className={input} />
+                  </label>
+                  <label className="block text-sm">
                     <span className="mb-1 block text-xs font-semibold">Client email *</span>
                     <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" type="email" className={input} />
                   </label>
@@ -226,7 +238,7 @@ export function RequestClientDocs({ setId, existing }: { setId: number; existing
                 <div className="flex justify-end gap-2 pt-1">
                   <button onClick={() => setMode("choose")} className="btn btn-outline text-sm py-2 px-4">Back</button>
                   <button onClick={() => void submit()}
-                    disabled={busy || parsing || !email.trim() || (mode === "rfp" && (!reqFile || numbers.length === 0))}
+                    disabled={busy || parsing || !email.trim() || !clientDue || (mode === "rfp" && (!reqFile || numbers.length === 0))}
                     className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
                     {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                     {mode === "rfp" ? `Create ${numbers.length || ""} folder${numbers.length === 1 ? "" : "s"} & client link` : "Create client link"}

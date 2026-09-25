@@ -1,17 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { PDFDocument } from "pdf-lib";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, caseHub, type CaseParty } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, type CaseParty } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
+import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal } from "@/lib/production/build";
+import { FIRM } from "@/lib/firm";
 import { randomBytes } from "crypto";
 
 async function guard() {
@@ -370,6 +372,8 @@ export async function deleteDesignation(markId: number) {
   }
 }
 
+const isoDay = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : "");
+
 /* ------------------- request documents from the client ------------------- */
 
 /**
@@ -414,6 +418,9 @@ export type ClientRequestInput = {
   mode: "rfp" | "general";
   clientEmail: string;
   clientName?: string;
+  /** Hard discovery-response deadline and the earlier client-return deadline (YYYY-MM-DD). */
+  responseDue?: string;
+  clientDue?: string;
   /** rfp mode: the served requests document (already uploaded to storage). */
   requestFile?: { url: string; pathname: string; name?: string; size?: number };
   prefix?: string;
@@ -478,6 +485,8 @@ export async function createClientDocRequest(setId: number, input: ClientRequest
       discoveryRequestName: rfp ? (input.requestFile!.name ?? "Discovery requests").slice(0, 255) : null,
       discoveryPrefix: rfp ? prefix : "",
       discoveryNumbers: numbers,
+      responseDue: isoDay(input.responseDue),
+      clientDue: isoDay(input.clientDue),
     }).returning({ id: shareFolders.id });
 
     if (rfp) {
@@ -500,5 +509,233 @@ export async function createClientDocRequest(setId: number, input: ClientRequest
   } catch (err) {
     console.error("[discovery-reviewer] createClientDocRequest failed:", err);
     return { ok: false as const, error: "Couldn't create the request. Run Settings \u2192 Database updates once, then try again." };
+  }
+}
+
+/** Edit a document request's deadlines from the tracker list. */
+export async function updateRequestDeadlines(folderId: number, responseDue: string, clientDue: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.update(shareFolders).set({ responseDue: isoDay(responseDue), clientDue: isoDay(clientDue), updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
+    await audit(session.email, "update", "share-folder", String(folderId), "Updated document-request deadlines");
+    revalidatePath("/admin/share-folders");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] updateRequestDeadlines failed:", err);
+    return { ok: false as const, error: "Couldn't save the deadlines." };
+  }
+}
+
+/* ----------------------- production pipeline ---------------------------- */
+
+/** Combined source budget per staging batch, so stamping can't OOM. */
+const MAX_STAGE_BYTES = 150 * 1024 * 1024;
+
+/**
+ * "Intend to produce": Bates-stamp the selected client documents and move
+ * them to the staged (pale yellow) column. Numbers run per page, continuing
+ * wherever the case's numbering left off.
+ */
+export async function stageForProduction(setId: number, shareFileIds: number[], prefixIn: string, startIn?: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const prefix = (prefixIn ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
+    if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
+
+    const ids = [...new Set(shareFileIds.map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n)))];
+    if (ids.length === 0) return { ok: false as const, error: "Select at least one document." };
+    if (ids.length > 300) return { ok: false as const, error: "Stage at most 300 documents per batch." };
+
+    // Only files from this matter's client folders are eligible.
+    const folders = set.matter
+      ? await db.select({ id: shareFolders.id, prefix: shareFolders.discoveryPrefix }).from(shareFolders)
+          .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))
+      : [];
+    const folderIds = new Set(folders.map((f) => f.id));
+    const files = (await db.select().from(shareFiles).where(inArray(shareFiles.id, ids)))
+      .filter((f) => folderIds.has(f.folderId));
+    if (files.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client folders." };
+    const already = new Set((await db.select({ k: productionDocs.sourceKey }).from(productionDocs).where(eq(productionDocs.setId, setId))).map((r) => r.k));
+    const todo = files.filter((f) => !already.has(`share:${f.id}`));
+    if (todo.length === 0) return { ok: false as const, error: "All of those documents are already staged or produced." };
+    const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
+    if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
+
+    // Continue the case's numbering unless the user typed a start.
+    let next = Math.floor(Number(startIn));
+    if (!Number.isFinite(next) || next < 1) {
+      const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` })
+        .from(productionDocs).where(eq(productionDocs.setId, setId));
+      next = Number(maxEnd) + 1;
+    }
+
+    // Stable order: request folder, then filename.
+    todo.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }));
+    const skipped: string[] = [];
+    let staged = 0;
+    for (const f of todo) {
+      const res = await fetch(f.url);
+      if (!res.ok) { skipped.push(`${f.filename} (couldn't fetch)`); continue; }
+      const stamped = await stampToPdf(new Uint8Array(await res.arrayBuffer()), f.contentType, f.filename, prefix, next);
+      if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
+      const blob = await put(`production/${setId}/${batesLabel(prefix, next)}.pdf`, Buffer.from(stamped.bytes), {
+        access: "public", contentType: "application/pdf", addRandomSuffix: true,
+      });
+      const parts = f.filename.split("/");
+      await db.insert(productionDocs).values({
+        setId,
+        sourceKey: `share:${f.id}`,
+        name: parts[parts.length - 1] || f.filename,
+        requestLabel: parts.length > 1 ? parts[0] : "",
+        url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,
+        batesPrefix: prefix, batesStart: next, batesEnd: next + stamped.pages - 1, pageCount: stamped.pages,
+        status: "staged",
+      });
+      next += stamped.pages;
+      staged++;
+    }
+    await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${prefix})`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    if (staged === 0) return { ok: false as const, error: `Nothing could be staged. ${skipped.join("; ")}` };
+    return { ok: true as const, staged, skipped };
+  } catch (err) {
+    console.error("[discovery-reviewer] stageForProduction failed:", err);
+    return { ok: false as const, error: "Couldn't stage the documents." };
+  }
+}
+
+/** Take a staged document back out (before it's produced). */
+export async function unstageProductionDoc(id: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  try {
+    const [doc] = await db.select().from(productionDocs).where(eq(productionDocs.id, id));
+    if (!doc || doc.status !== "staged") return { ok: false as const, error: "Only staged documents can be removed." };
+    if (doc.pathname) { try { await del(doc.pathname); } catch { /* best-effort */ } }
+    await db.delete(productionDocs).where(eq(productionDocs.id, id));
+    await audit(session.email, "delete", "production-doc", String(id), `Unstaged ${batesLabel(doc.batesPrefix, doc.batesStart)}`);
+    revalidatePath(`/admin/discovery-reviewer/${doc.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] unstageProductionDoc failed:", err);
+    return { ok: false as const };
+  }
+}
+
+/**
+ * "Prepare production": assemble everything staged into the Nth production —
+ * the merged Bates PDF, the cover letter, and the opposing-counsel link —
+ * as a DRAFT the firm reviews before marking it produced.
+ */
+export async function prepareProduction(setId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const staged = (await db.select().from(productionDocs)
+      .where(and(eq(productionDocs.setId, setId), eq(productionDocs.status, "staged"))))
+      .sort((a, b) => a.batesStart - b.batesStart);
+    if (staged.length === 0) return { ok: false as const, error: "Nothing is staged for production." };
+    const totalBytes = staged.reduce((sum, d) => sum + (d.sizeBytes ?? 0), 0);
+    if (totalBytes > 200 * 1024 * 1024) return { ok: false as const, error: "This production is too large to merge into one PDF — split it into two productions." };
+
+    const prior = await db.select({ seq: productions.seq }).from(productions).where(eq(productions.setId, setId));
+    const seq = Math.max(0, ...prior.map((r) => r.seq)) + 1;
+    const prefix = staged[0].batesPrefix;
+    const from = batesLabel(prefix, Math.min(...staged.map((d) => d.batesStart)));
+    const to = batesLabel(prefix, Math.max(...staged.map((d) => d.batesEnd)));
+
+    // Merge in Bates order.
+    const parts: Uint8Array[] = [];
+    for (const d of staged) {
+      if (!d.url) continue;
+      const res = await fetch(d.url);
+      if (!res.ok) return { ok: false as const, error: `Couldn't fetch ${batesLabel(d.batesPrefix, d.batesStart)}.` };
+      parts.push(new Uint8Array(await res.arrayBuffer()));
+    }
+    const merged = await mergeProductionPdf(parts);
+
+    // "1st Bates - <Client Last Name> - <date sent>"
+    const lastName = (set.matter.includes("-") ? set.matter.slice(set.matter.indexOf("-") + 1) : set.name.split(/\s+/)[0] || "Client").trim();
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const fileName = `${ordinal(seq)} Bates - ${lastName} - ${dateStr}.pdf`;
+
+    const token = randomBytes(24).toString("base64url");
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`;
+    const publicUrl = `${origin.replace(/\/$/, "")}/production/${token}`;
+
+    const fileBlob = await put(`production/${setId}/final/${fileName}`, Buffer.from(merged), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+    const letterBytes = await buildProductionLetter({
+      caseName: set.name, causeNumber: set.causeNumber, court: set.court,
+      seq, batesFrom: from, batesTo: to, link: publicUrl, date: now,
+    });
+    const letterBlob = await put(`production/${setId}/final/${ordinal(seq)} Production Letter - ${lastName} - ${dateStr}.pdf`, Buffer.from(letterBytes), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+
+    const [row] = await db.insert(productions).values({
+      setId, seq, label: `${ordinal(seq)} Production`,
+      batesPrefix: prefix, batesStart: Math.min(...staged.map((d) => d.batesStart)), batesEnd: Math.max(...staged.map((d) => d.batesEnd)),
+      letterUrl: letterBlob.url, letterPathname: letterBlob.pathname,
+      fileUrl: fileBlob.url, filePathname: fileBlob.pathname, fileName,
+      token, createdBy: session.email,
+    }).returning({ id: productions.id });
+    await db.update(productionDocs).set({ productionId: row.id })
+      .where(and(eq(productionDocs.setId, setId), eq(productionDocs.status, "staged")));
+
+    await audit(session.email, "create", "production", String(row.id), `Prepared ${ordinal(seq)} Production (${from}\u2013${to}) for "${set.name}"`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, id: row.id, label: `${ordinal(seq)} Production`, from, to, letterUrl: letterBlob.url, fileUrl: fileBlob.url, fileName, publicUrl };
+  } catch (err) {
+    console.error("[discovery-reviewer] prepareProduction failed:", err);
+    return { ok: false as const, error: "Couldn't prepare the production." };
+  }
+}
+
+/** After review: the draft becomes the real Nth production (pale green). */
+export async function finalizeProduction(productionId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  try {
+    const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+    if (!row) return { ok: false as const, error: "Production not found." };
+    if (row.producedAt) return { ok: true as const };
+    await db.update(productions).set({ producedAt: new Date() }).where(eq(productions.id, productionId));
+    await db.update(productionDocs).set({ status: "produced" }).where(eq(productionDocs.productionId, productionId));
+    await audit(session.email, "update", "production", String(productionId), `Marked ${row.label} as produced`);
+    revalidatePath(`/admin/discovery-reviewer/${row.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] finalizeProduction failed:", err);
+    return { ok: false as const };
+  }
+}
+
+/** Throw a draft production away (documents drop back to staged). */
+export async function discardProductionDraft(productionId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  try {
+    const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+    if (!row) return { ok: false as const };
+    if (row.producedAt) return { ok: false as const, error: "This production was already marked produced." };
+    if (row.letterPathname) { try { await del(row.letterPathname); } catch { /* best-effort */ } }
+    if (row.filePathname) { try { await del(row.filePathname); } catch { /* best-effort */ } }
+    await db.update(productionDocs).set({ productionId: null }).where(eq(productionDocs.productionId, productionId));
+    await db.delete(productions).where(eq(productions.id, productionId));
+    await audit(session.email, "delete", "production", String(productionId), `Discarded draft ${row.label}`);
+    revalidatePath(`/admin/discovery-reviewer/${row.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] discardProductionDraft failed:", err);
+    return { ok: false as const };
   }
 }

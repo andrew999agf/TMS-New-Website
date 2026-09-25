@@ -440,6 +440,10 @@ export const shareFolders = pgTable(
     /** Folder label prefix (RFP/ROG/RFA/REQ) and the request numbers. */
     discoveryPrefix: varchar("discovery_prefix", { length: 16 }).notNull().default(""),
     discoveryNumbers: jsonb("discovery_numbers").notNull().default([]),
+    /** Document-request deadlines (YYYY-MM-DD): the hard discovery-response
+     *  deadline, and the earlier date the client must return documents by. */
+    responseDue: varchar("response_due", { length: 10 }).notNull().default(""),
+    clientDue: varchar("client_due", { length: 10 }).notNull().default(""),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1475,6 +1479,64 @@ export const discoveryMarks = pgTable(
   },
   (t) => ({ setIdx: index("discovery_marks_set_idx").on(t.setId) }),
 );
+
+/** A document staged for (or included in) a production to opposing counsel:
+ *  the Bates-stamped copy of something the client provided. */
+export const productionDocs = pgTable(
+  "production_docs",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    /** Where it came from: "share:<shareFileId>". */
+    sourceKey: varchar("source_key", { length: 64 }).notNull().default(""),
+    name: varchar("name", { length: 255 }).notNull().default(""),
+    /** The request folder it answered (e.g. "RFP 3"), for context. */
+    requestLabel: varchar("request_label", { length: 64 }).notNull().default(""),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    batesPrefix: varchar("bates_prefix", { length: 32 }).notNull().default(""),
+    batesStart: integer("bates_start").notNull().default(0),
+    batesEnd: integer("bates_end").notNull().default(0),
+    pageCount: integer("page_count"),
+    /** staged (pale yellow) | produced (pale green). */
+    status: varchar("status", { length: 12 }).notNull().default("staged"),
+    productionId: integer("production_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("production_docs_set_idx").on(t.setId) }),
+);
+
+/** One production to opposing counsel: the letter, the merged Bates PDF, and
+ *  the public link the letter points at. */
+export const productions = pgTable(
+  "productions",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    seq: integer("seq").notNull().default(1),
+    label: varchar("label", { length: 64 }).notNull().default(""),
+    batesPrefix: varchar("bates_prefix", { length: 32 }).notNull().default(""),
+    batesStart: integer("bates_start").notNull().default(0),
+    batesEnd: integer("bates_end").notNull().default(0),
+    letterUrl: text("letter_url"),
+    letterPathname: text("letter_pathname"),
+    fileUrl: text("file_url"),
+    filePathname: text("file_pathname"),
+    fileName: varchar("file_name", { length: 255 }).notNull().default(""),
+    /** Unguessable id for the opposing-counsel page at /production/<token>. */
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    /** Null until "Mark as produced" — a draft the firm is still reviewing. */
+    producedAt: timestamp("produced_at", { withTimezone: true }),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("productions_set_idx").on(t.setId), tokenIdx: index("productions_token_idx").on(t.token) }),
+);
+
+export type ProductionDoc = typeof productionDocs.$inferSelect;
+export type Production = typeof productions.$inferSelect;
 
 export type DiscoverySet = typeof discoverySets.$inferSelect;
 export type DiscoveryDoc = typeof discoveryDocs.$inferSelect;

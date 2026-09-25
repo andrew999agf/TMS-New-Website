@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { DiscoveryReviewer } from "@/components/admin/DiscoveryReviewer";
+
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, shareFolders, type CaseParty } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, shareFolders, shareFiles, shareRecipients, productionDocs, productions, type CaseParty } from "@/db/schema";
+import { DiscoveryWorkspace } from "@/components/admin/DiscoveryWorkspace";
+import { RequestTracker, type ClientFile, type StagedDoc, type ProductionRow, type RequestRow } from "@/components/admin/ProductionPipeline";
 import { RequestClientDocs, type ClientFolderChip } from "@/components/admin/RequestClientDocs";
 import { ensureDiscoveryTables } from "@/db/ensure";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -35,16 +37,67 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
     } catch { /* hub table pending */ }
   }
 
-  // Client document-request folders already set up for this matter.
+  // Client document-request folders, their recipients and files — the request
+  // tracker, and the "received from client" production pipeline feed.
   let clientFolders: ClientFolderChip[] = [];
+  let requests: RequestRow[] = [];
+  let clientFiles: ClientFile[] = [];
   if (set.matter) {
     try {
-      clientFolders = (await db.select({ id: shareFolders.id, name: shareFolders.name, discoveryPrefix: shareFolders.discoveryPrefix })
-        .from(shareFolders)
-        .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client"), eq(shareFolders.archived, false))))
-        .map((f) => ({ id: f.id, name: f.name, rfp: !!f.discoveryPrefix }));
+      const folders = await db.select().from(shareFolders)
+        .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client"), eq(shareFolders.archived, false)));
+      clientFolders = folders.map((f) => ({ id: f.id, name: f.name, rfp: !!f.discoveryPrefix }));
+      if (folders.length) {
+        const fids = folders.map((f) => f.id);
+        const recs = await db.select().from(shareRecipients).where(inArray(shareRecipients.folderId, fids));
+        const files = await db.select().from(shareFiles).where(inArray(shareFiles.folderId, fids));
+        requests = folders.map((f) => {
+          const rec = recs.find((r) => r.folderId === f.id);
+          return {
+            folderId: f.id,
+            who: rec ? (rec.name || rec.email) : "(no recipient yet)",
+            sentAt: f.createdAt.toISOString().slice(0, 10),
+            responseDue: f.responseDue,
+            clientDue: f.clientDue,
+            files: files.filter((x) => x.folderId === f.id).length,
+            rfp: !!f.discoveryPrefix,
+          };
+        });
+        const byId = new Map(folders.map((f) => [f.id, f.name]));
+        clientFiles = files
+          .sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
+          .map((x) => {
+            const parts = x.filename.split("/");
+            return {
+              id: x.id,
+              name: parts[parts.length - 1] || x.filename,
+              dir: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
+              folderId: x.folderId,
+              folderName: byId.get(x.folderId) ?? "",
+              createdAt: x.createdAt.toISOString(),
+              status: "" as const,
+            };
+          });
+      }
     } catch { /* share tables optional */ }
   }
+
+  // Production pipeline state.
+  let staged: StagedDoc[] = [];
+  let prods: ProductionRow[] = [];
+  let batesDefaults = { prefix: (set.matter.includes("-") ? set.matter.slice(set.matter.indexOf("-") + 1) : set.name.split(/\s+/)[0] || "BATES").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "BATES", nextStart: 1 };
+  try {
+    const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
+    staged = pdocs.map((d) => ({ id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId }));
+    const sourceStatus = new Map(pdocs.map((d) => [d.sourceKey, d.status === "produced" ? "produced" as const : "staged" as const]));
+    clientFiles = clientFiles.map((f) => ({ ...f, status: sourceStatus.get(`share:${f.id}`) ?? "" }));
+    if (pdocs.length) {
+      const latest = pdocs.reduce((a, b) => (b.id > a.id ? b : a));
+      batesDefaults = { prefix: latest.batesPrefix || batesDefaults.prefix, nextStart: Math.max(0, ...pdocs.map((d) => d.batesEnd)) + 1 };
+    }
+    prods = (await db.select().from(productions).where(eq(productions.setId, setId)))
+      .map((r) => ({ id: r.id, label: r.label, batesPrefix: r.batesPrefix, batesStart: r.batesStart, batesEnd: r.batesEnd, producedAt: r.producedAt ? r.producedAt.toISOString() : null, letterUrl: r.letterUrl, fileUrl: r.fileUrl, fileName: r.fileName, token: r.token }));
+  } catch { /* production tables optional */ }
 
   // The linked exhibit set (same matter, not archived, oldest first) and its
   // current numbering, so the save dialog can offer the next free number.
@@ -84,18 +137,25 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
             </span>
           )}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-col items-end gap-2">
           <RequestClientDocs setId={setId} existing={clientFolders} />
+          <RequestTracker requests={requests} />
         </div>
       </div>
-      <DiscoveryReviewer
-        setId={setId}
-        docs={docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo }))}
-        marks={marks.map((m) => ({ id: m.id, party: m.party as "P" | "D", number: m.number, label: m.label, title: m.title, pages: (m.pages as { docId: number; page: number }[]) ?? [], exhibitSetId: m.exhibitSetId }))}
-        usedNumbers={usedNumbers}
-        parties={parties}
-        caseName={set.name}
-        matter={set.matter}
+      <DiscoveryWorkspace
+        reviewerProps={{
+          setId,
+          docs: docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo })),
+          marks: marks.map((m) => ({ id: m.id, party: m.party as "P" | "D", number: m.number, label: m.label, title: m.title, pages: (m.pages as { docId: number; page: number }[]) ?? [], exhibitSetId: m.exhibitSetId })),
+          usedNumbers,
+          parties,
+          caseName: set.name,
+          matter: set.matter,
+        }}
+        clientFiles={clientFiles}
+        staged={staged}
+        prods={prods}
+        batesDefaults={batesDefaults}
       />
     </div>
   );

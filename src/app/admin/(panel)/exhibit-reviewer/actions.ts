@@ -6,7 +6,7 @@ import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { del, put } from "@vercel/blob";
 import { db } from "@/db";
-import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients, discoverySets } from "@/db/schema";
+import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients, discoverySets, discoveryMarks } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { requireAdmin, audit } from "@/lib/auth";
@@ -312,6 +312,9 @@ export async function deleteExhibitSet(id: number) {
     await db.delete(exhibitDocs).where(eq(exhibitDocs.setId, id));
     await db.delete(exhibitSets).where(eq(exhibitSets.id, id));
     await audit(session.email, "delete", "exhibit-set", String(id), "Deleted set and its exhibits");
+    try {
+      await db.delete(discoveryMarks).where(eq(discoveryMarks.exhibitSetId, id));
+    } catch { /* discovery tables optional */ }
     revalidatePath("/admin/exhibit-reviewer");
     return { ok: true as const };
   } catch {
@@ -541,6 +544,16 @@ export async function deleteExhibitDoc(id: number) {
     if (row?.hiResPathname) { try { await del(row.hiResPathname); } catch { /* best-effort */ } }
     if (row?.printPathname) { try { await del(row.printPathname); } catch { /* best-effort */ } }
     await db.delete(exhibitDocs).where(eq(exhibitDocs.id, id));
+    // If this exhibit was designated from the Discovery Reviewer, retire its
+    // P-/D- page badges there too — a deleted exhibit must not keep haunting
+    // the discovery grid.
+    try {
+      const marks = await db.select({ id: discoveryMarks.id, setId: discoveryMarks.setId }).from(discoveryMarks).where(eq(discoveryMarks.exhibitDocId, id));
+      if (marks.length) {
+        await db.delete(discoveryMarks).where(eq(discoveryMarks.exhibitDocId, id));
+        for (const m of new Set(marks.map((m) => m.setId))) revalidatePath(`/admin/discovery-reviewer/${m}`);
+      }
+    } catch { /* discovery tables optional */ }
     if (row) revalidatePath(`/admin/exhibit-reviewer/${row.setId}`);
     return { ok: true as const };
   } catch {
