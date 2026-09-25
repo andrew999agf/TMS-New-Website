@@ -1,4 +1,34 @@
 import type { NextConfig } from "next";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import path from "path";
+
+/**
+ * Stage pdf.js's runtime assets under public/pdfjs (gitignored). The Discovery
+ * Reviewer renders pages with pdf.js, which decodes scanned-image formats
+ * (JBIG2, JPEG2000) through WebAssembly codecs it fetches at runtime — without
+ * them, scanned pages draw blank. Copying here, when this config is evaluated,
+ * runs no matter how the build is invoked and keeps the assets in lockstep
+ * with the installed pdfjs-dist version.
+ */
+function stagePdfjsAssets() {
+  try {
+    const pkg = path.join(__dirname, "node_modules", "pdfjs-dist");
+    if (!existsSync(pkg)) return;
+    const version = JSON.parse(readFileSync(path.join(pkg, "package.json"), "utf8")).version as string;
+    const out = path.join(__dirname, "public", "pdfjs");
+    const marker = path.join(out, ".version");
+    if (existsSync(marker) && readFileSync(marker, "utf8") === version) return;
+    mkdirSync(out, { recursive: true });
+    for (const dir of ["wasm", "iccs", "cmaps", "standard_fonts"]) {
+      cpSync(path.join(pkg, dir), path.join(out, dir), { recursive: true });
+    }
+    writeFileSync(marker, version);
+    console.log(`[pdfjs] staged runtime assets v${version} into public/pdfjs`);
+  } catch (err) {
+    console.error("[pdfjs] FAILED to stage runtime assets — scanned pages will render blank in the Discovery Reviewer:", err);
+  }
+}
+stagePdfjsAssets();
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },

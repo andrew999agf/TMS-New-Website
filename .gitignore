@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Drizzle
 # (migrations in /drizzle ARE committed)
+
+# pdf.js runtime assets, staged from node_modules by next.config.ts
+/public/pdfjs

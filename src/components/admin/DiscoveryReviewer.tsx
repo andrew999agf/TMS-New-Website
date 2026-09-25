@@ -72,7 +72,17 @@ export function DiscoveryReviewer({
     let p = proxies.current.get(docId);
     if (!p) {
       p = loadPdfjs().then(async (lib) => {
-        const doc = await lib.getDocument({ url: `/admin/discovery-reviewer/${setId}/doc/${docId}` }).promise;
+        const doc = await lib.getDocument({
+          url: `/admin/discovery-reviewer/${setId}/doc/${docId}`,
+          // Codec + font assets staged into /public/pdfjs by next.config.ts.
+          // wasmUrl is what decodes scanned-image formats (JBIG2, JPEG2000);
+          // without it those pages would DISPLAY blank (the file itself is
+          // never touched — this is view-time decoding only).
+          wasmUrl: "/pdfjs/wasm/",
+          iccUrl: "/pdfjs/iccs/",
+          cMapUrl: "/pdfjs/cmaps/",
+          standardFontDataUrl: "/pdfjs/standard_fonts/",
+        }).promise;
         setPageCounts((prev) => {
           if (prev[docId] === doc.numPages) return prev;
           void setDiscoveryDocPageCount(docId, doc.numPages);
@@ -314,7 +324,7 @@ export function DiscoveryReviewer({
           </div>
         ) : view === "grid" ? (
           <GridView
-            docs={docs} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges}
+            docs={docs} setIdForLinks={setId} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges}
             getDoc={getDoc} onToggle={toggle}
             onOpen={(idx) => { setReaderIdx(idx); setView("reader"); }}
             onDeleteDoc={(d) => {
@@ -371,8 +381,9 @@ export function DiscoveryReviewer({
 
 /* -------------------------------- grid --------------------------------- */
 
-function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onToggle, onOpen, onDeleteDoc }: {
+function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
   docs: DocMeta[];
+  setIdForLinks: number;
   pageCounts: Record<number, number>;
   flatIndex: Map<string, number>;
   selected: Set<string>;
@@ -391,6 +402,10 @@ function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onTog
             <div className="mb-2 flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold">{d.name}</h3>
               <span className="text-xs text-[var(--c-ink-muted)]">{n ? `${n} page${n === 1 ? "" : "s"}` : "counting pages…"}</span>
+              <a href={`/admin/discovery-reviewer/${setIdForLinks}/doc/${d.id}`} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline" title="Open the untouched original PDF in a new tab">
+                <ExternalLink size={12} /> original
+              </a>
               <button onClick={() => onDeleteDoc(d)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
