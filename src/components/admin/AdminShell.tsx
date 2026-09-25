@@ -35,6 +35,7 @@ import {
   FolderLock,
   FileSearch,
   FileStack,
+  BookUser,
   KeyRound,
   Map as MapIcon,
   PanelLeftClose,
@@ -87,6 +88,7 @@ const NAV = [
  */
 const CASE_TOOLS = [
   { label: "Matters / Cases", href: "/admin/cases", icon: Scale },
+  { label: "Contacts", href: "/admin/contacts", icon: BookUser },
   { label: "Time Tracker 4.0", href: "/admin/time-tracker-4", icon: Clock },
   { label: "Share Folders", href: "/admin/share-folders", icon: FolderLock },
   { label: "Pre-Trial Checklist", href: "/admin/pre-trial", icon: CalendarClock },

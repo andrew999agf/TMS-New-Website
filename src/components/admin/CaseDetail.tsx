@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { updateCaseInfo, addCaseParty, updateCaseParty, removeCaseParty } from "@/app/admin/(panel)/cases/actions";
+import { PartyContactButton } from "./PartyContact";
 import type { CaseParty } from "@/db/schema";
 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
@@ -179,6 +180,7 @@ function PartiesCard({ caseRow }: { caseRow: CaseRow }) {
               <span className="min-w-0 flex-1 break-words font-medium">{p.name}</span>
               <span className="shrink-0 rounded-full border border-[var(--c-border)] px-2 py-0.5 text-xs text-[var(--c-ink-muted)]">{p.role || "Party"}</span>
               <button onClick={() => beginEdit(i)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit party" aria-label={`Edit ${p.name}`}><Pencil size={13} /></button>
+              <PartyContactButton caseId={caseRow.id} index={i} party={p} allParties={caseRow.parties} />
               <button onClick={() => { if (confirm(`Remove ${p.name}?`)) start(async () => { await removeCaseParty(caseRow.id, i); router.refresh(); }); }}
                 className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove party" aria-label={`Remove ${p.name}`}><Trash2 size={13} /></button>
             </div>

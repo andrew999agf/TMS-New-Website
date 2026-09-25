@@ -1362,7 +1362,51 @@ export const caseHub = pgTable(
 );
 
 export type CaseHubRow = typeof caseHub.$inferSelect;
-export type CaseParty = { name: string; role: string };
+
+/** Contact details for the attorney representing a party. */
+export type PartyAttorney = { name: string; firm?: string; email?: string; phone?: string; address?: string };
+
+/** A party on a case, with optional contact details. For an opposing party
+ *  the attorney block is the default point of contact; the party's own
+ *  address/phone/email still matter pre-litigation and for service. */
+export type CaseParty = {
+  name: string;
+  role: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  attorney?: PartyAttorney;
+};
+
+/**
+ * The firm-wide contact book: current/past/prospective clients, opposing
+ * parties, and attorneys (ours and the other side's). Feeds every
+ * type-ahead so a name is typed once, ever.
+ */
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: serial("id").primaryKey(),
+    /** attorney | client-current | client-past | client-prospective | opposing-party | other */
+    kind: varchar("kind", { length: 24 }).notNull().default("other"),
+    name: varchar("name", { length: 191 }).notNull(),
+    /** Attorneys: their firm. */
+    firm: varchar("firm", { length: 191 }).notNull().default(""),
+    /** Attorneys: ours | opposing | "" (unknown/neutral). */
+    side: varchar("side", { length: 16 }).notNull().default(""),
+    email: varchar("email", { length: 255 }).notNull().default(""),
+    phone: varchar("phone", { length: 64 }).notNull().default(""),
+    address: text("address").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ kindIdx: index("contacts_kind_idx").on(t.kind) }),
+);
+
+export type ContactRow = typeof contacts.$inferSelect;
 
 export const discoverySets = pgTable(
   "discovery_sets",

@@ -9,13 +9,27 @@ export const DEFAULT_PARTIES: CaseParty[] = [
   { name: "Defendant", role: "Defendant" },
 ];
 
+const fstr = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
 export function cleanParties(v: unknown): CaseParty[] {
   if (!Array.isArray(v)) return [];
   return v
-    .map((p) => ({
-      name: typeof (p as CaseParty)?.name === "string" ? (p as CaseParty).name.trim().slice(0, 191) : "",
-      role: typeof (p as CaseParty)?.role === "string" ? (p as CaseParty).role.trim().slice(0, 96) : "",
-    }))
+    .map((raw) => {
+      const p = raw as CaseParty;
+      const out: CaseParty = { name: fstr(p?.name, 191), role: fstr(p?.role, 96) };
+      // Contact details ride along untouched by name/role edits.
+      if (p?.email) out.email = fstr(p.email, 255);
+      if (p?.phone) out.phone = fstr(p.phone, 64);
+      if (p?.address) out.address = fstr(p.address, 500);
+      if (p?.attorney?.name) {
+        out.attorney = { name: fstr(p.attorney.name, 191) };
+        if (p.attorney.firm) out.attorney.firm = fstr(p.attorney.firm, 191);
+        if (p.attorney.email) out.attorney.email = fstr(p.attorney.email, 255);
+        if (p.attorney.phone) out.attorney.phone = fstr(p.attorney.phone, 64);
+        if (p.attorney.address) out.attorney.address = fstr(p.attorney.address, 500);
+      }
+      return out;
+    })
     .filter((p) => p.name)
     .slice(0, 50);
 }

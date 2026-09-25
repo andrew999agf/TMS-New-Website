@@ -62,6 +62,22 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_name varchar(255)`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_prefix varchar(16) NOT NULL DEFAULT ''`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_numbers jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `CREATE TABLE IF NOT EXISTS contacts (
+    id serial PRIMARY KEY,
+    kind varchar(24) NOT NULL DEFAULT 'other',
+    name varchar(191) NOT NULL,
+    firm varchar(191) NOT NULL DEFAULT '',
+    side varchar(16) NOT NULL DEFAULT '',
+    email varchar(255) NOT NULL DEFAULT '',
+    phone varchar(64) NOT NULL DEFAULT '',
+    address text NOT NULL DEFAULT '',
+    notes text NOT NULL DEFAULT '',
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS contacts_kind_idx ON contacts (kind)`,
   `CREATE TABLE IF NOT EXISTS case_hub (
     id serial PRIMARY KEY,
     matter text NOT NULL UNIQUE,

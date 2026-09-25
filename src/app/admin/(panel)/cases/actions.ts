@@ -8,6 +8,8 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { getOrCreateCaseForMatter, cleanParties } from "@/lib/cases";
+import { upsertAttorneyContact } from "@/lib/contacts";
+import type { PartyAttorney } from "@/db/schema";
 
 async function guard() {
   const session = await requireAdmin();
@@ -131,6 +133,50 @@ export async function updateCaseParty(id: number, index: number, name: string, r
   } catch (err) {
     console.error("[cases] updateCaseParty failed:", err);
     return { ok: false as const, error: "Couldn't save the party." };
+  }
+}
+
+export type PartyContactInput = {
+  email?: string; phone?: string; address?: string;
+  attorney?: { name?: string; firm?: string; email?: string; phone?: string; address?: string };
+};
+
+/** Save a party's contact details (their own, and their attorney's). The
+ *  attorney is also filed into the firm contact book for future type-aheads. */
+export async function updateCasePartyContact(id: number, index: number, input: PartyContactInput) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.select().from(caseHub).where(eq(caseHub.id, id));
+    if (!row) return { ok: false as const, error: "Case not found." };
+    const parties = cleanParties(row.parties);
+    if (index < 0 || index >= parties.length) return { ok: false as const, error: "That party no longer exists \u2014 reload the page." };
+    const p = parties[index];
+    p.email = str(input.email, 255) || undefined;
+    p.phone = str(input.phone, 64) || undefined;
+    p.address = str(input.address, 500) || undefined;
+    const aName = str(input.attorney?.name, 191);
+    let attorney: PartyAttorney | undefined;
+    if (aName) {
+      attorney = {
+        name: aName,
+        firm: str(input.attorney?.firm, 191) || undefined,
+        email: str(input.attorney?.email, 255) || undefined,
+        phone: str(input.attorney?.phone, 64) || undefined,
+        address: str(input.attorney?.address, 500) || undefined,
+      };
+      p.attorney = attorney;
+    } else {
+      delete p.attorney;
+    }
+    await db.update(caseHub).set({ parties, updatedAt: new Date() }).where(eq(caseHub.id, id));
+    if (attorney) await upsertAttorneyContact(attorney, session.email).catch(() => {});
+    await audit(session.email, "update", "case", String(id), `Contact details for party "${p.name}"`);
+    revalidatePath(`/admin/cases/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[cases] updateCasePartyContact failed:", err);
+    return { ok: false as const, error: "Couldn't save the contact details." };
   }
 }
 

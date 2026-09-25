@@ -28,6 +28,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "share-folders", label: "Share Folders", href: "/admin/share-folders", toggleable: true },
   { key: "pre-trial", label: "Pre-Trial Checklist", href: "/admin/pre-trial", toggleable: true },
   { key: "cases", label: "Matters / Cases", href: "/admin/cases", toggleable: true },
+  { key: "contacts", label: "Contacts", href: "/admin/contacts", toggleable: true },
   { key: "discovery-reviewer", label: "Discovery Reviewer", href: "/admin/discovery-reviewer", toggleable: true },
   { key: "exhibit-reviewer", label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", toggleable: true },
   { key: "case-portal", label: "Case Portal", href: "/admin/case-portal", toggleable: true },
