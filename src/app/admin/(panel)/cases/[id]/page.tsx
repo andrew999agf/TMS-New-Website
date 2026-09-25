@@ -57,12 +57,12 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   ];
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl min-w-0 p-6">
       <Link href="/admin/cases" className="inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
         <ArrowLeft size={15} /> All cases
       </Link>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl">{c.name || `Matter ${c.matter}`}</h1>
+        <h1 className="min-w-0 break-words font-[family-name:var(--font-display)] text-2xl">{c.name || `Matter ${c.matter}`}</h1>
         <span className="text-sm text-[var(--c-ink-muted)]">Matter {c.matter}</span>
         {c.causeNumber && <span className="text-sm text-[var(--c-ink-muted)]">{c.causeNumber}</span>}
       </div>

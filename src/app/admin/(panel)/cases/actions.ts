@@ -108,6 +108,32 @@ export async function addCaseParty(matter: string, name: string, role: string) {
   }
 }
 
+/** Rename a party or change its role, in place. */
+export async function updateCaseParty(id: number, index: number, name: string, role: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const pname = str(name, 191);
+  if (!pname) return { ok: false as const, error: "Enter the party's name." };
+  try {
+    const [row] = await db.select().from(caseHub).where(eq(caseHub.id, id));
+    if (!row) return { ok: false as const, error: "Case not found." };
+    const parties = cleanParties(row.parties);
+    if (index < 0 || index >= parties.length) return { ok: false as const, error: "That party no longer exists — reload the page." };
+    if (parties.some((p, i) => i !== index && p.name.toLowerCase() === pname.toLowerCase())) {
+      return { ok: false as const, error: "Another party already has that name." };
+    }
+    const prev = parties[index];
+    parties[index] = { name: pname, role: str(role, 96) || "Party" };
+    await db.update(caseHub).set({ parties, updatedAt: new Date() }).where(eq(caseHub.id, id));
+    await audit(session.email, "update", "case", String(id), `Party "${prev.name}" \u2192 "${pname}" (${role || "Party"})`);
+    revalidatePath(`/admin/cases/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[cases] updateCaseParty failed:", err);
+    return { ok: false as const, error: "Couldn't save the party." };
+  }
+}
+
 export async function removeCaseParty(id: number, index: number) {
   const session = await guard();
   if (!db) return { ok: false as const };
