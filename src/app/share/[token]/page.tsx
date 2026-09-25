@@ -12,7 +12,7 @@ import { getBlocks } from "@/lib/content";
 import { portalEmail } from "@/lib/share/portal-session";
 import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
-import { DiscoveryRequestPanel } from "@/components/site/DiscoveryRequestPanel";
+import { DiscoveryRequestLayout } from "@/components/site/DiscoveryRequestPanel";
 import { PRINCIPAL_OFFICE } from "@/lib/firm";
 import { ShieldCheck, Clock, Download, Eye } from "lucide-react";
 
@@ -22,10 +22,10 @@ export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robo
 const REISSUE = "max@texaslawsmith.com";
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-function Shell({ children, logo }: { children: React.ReactNode; logo?: string }) {
+function Shell({ children, logo, wide }: { children: React.ReactNode; logo?: string; wide?: boolean }) {
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
-      <div className="mx-auto max-w-2xl px-5 py-10">
+      <div className={`mx-auto ${wide ? "max-w-[1500px]" : "max-w-2xl"} px-5 py-10`}>
         <div className="mb-6 border-b border-[var(--c-border)] pb-4">
           {logo ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -106,8 +106,14 @@ export default async function SharePage({ params, searchParams }: { params: Prom
     }
   }
 
+  const discNums = ((folder.discoveryNumbers as number[]) ?? []).filter((n) => Number.isFinite(n));
+  const reqInfo = folder.discoveryRequestUrl
+    ? { prefix: folder.discoveryPrefix || "RFP", count: discNums.length, first: discNums[0] ?? 1, last: discNums[discNums.length - 1] ?? 1 }
+    : null;
+
   return (
-    <Shell logo={logo}>
+    <Shell logo={logo} wide={!!reqInfo}>
+      <DiscoveryRequestLayout info={reqInfo} token={token} phone={PRINCIPAL_OFFICE.phone}>
       {adminPreview && (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
           <Eye size={14} /> Admin preview — this is exactly what <strong>{rec.email}</strong> sees. Their access isn&apos;t recorded, and the sign-in step is skipped for you.
@@ -130,20 +136,6 @@ export default async function SharePage({ params, searchParams }: { params: Prom
       {caps.upload && (
         <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files or folders you no longer need" : ""}.</p>
       )}
-
-      {folder.discoveryRequestUrl && (() => {
-        const nums = ((folder.discoveryNumbers as number[]) ?? []).filter((n) => Number.isFinite(n));
-        return (
-          <DiscoveryRequestPanel
-            token={token}
-            prefix={folder.discoveryPrefix || "RFP"}
-            count={nums.length}
-            first={nums[0] ?? 1}
-            last={nums[nums.length - 1] ?? 1}
-            phone={PRINCIPAL_OFFICE.phone}
-          />
-        );
-      })()}
 
       <ShareUploadStatus token={token} />
 
@@ -176,6 +168,7 @@ export default async function SharePage({ params, searchParams }: { params: Prom
           blobReady={isBlobConfigured()}
         />
       </div>
+      </DiscoveryRequestLayout>
     </Shell>
   );
 }
