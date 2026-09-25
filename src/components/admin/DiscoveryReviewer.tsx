@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
-  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, FolderInput, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
-  addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation,
+  addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation, updateDesignation, setDiscoveryDocBucket,
   type PageRef,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
@@ -134,16 +134,20 @@ export function DiscoveryReviewer({
 
   /** docId:page → designations on that page, for the P/D half-bubbles. */
   const badges = useMemo(() => {
-    const m = new Map<string, { party: "P" | "D"; label: string }[]>();
+    const m = new Map<string, { party: "P" | "D"; label: string; markId: number }[]>();
     for (const mark of marks) {
       for (const p of mark.pages) {
         const k = key(p.docId, p.page);
         if (!m.has(k)) m.set(k, []);
-        m.get(k)!.push({ party: mark.party, label: mark.label });
+        m.get(k)!.push({ party: mark.party, label: mark.label, markId: mark.id });
       }
     }
     return m;
   }, [marks]);
+
+  /** The designation whose little bubble was clicked — options box open. */
+  const [openMarkId, setOpenMarkId] = useState<number | null>(null);
+  const openMark = marks.find((m) => m.id === openMarkId) ?? null;
 
   /* ------------------------------ selection ------------------------------ */
 
@@ -361,7 +365,7 @@ export function DiscoveryReviewer({
           </div>
         ) : view === "grid" ? (
           <GridView
-            docs={docs} setIdForLinks={setId} cols={cols} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges}
+            docs={docs} setIdForLinks={setId} cols={cols} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges} onBadge={setOpenMarkId}
             getDoc={getDoc} onToggle={toggle}
             onOpen={(idx) => { setReaderIdx(idx); setView("reader"); }}
             onDeleteDoc={(d) => {
@@ -374,7 +378,7 @@ export function DiscoveryReviewer({
         ) : (
           flat[readerIdx] && (
             <ReaderView
-              flat={flat} idx={readerIdx} setIdx={setReaderIdx} selected={selected} badges={badges}
+              flat={flat} idx={readerIdx} setIdx={setReaderIdx} selected={selected} badges={badges} onBadge={setOpenMarkId}
               getDoc={getDoc} onToggle={toggle}
             />
           )
@@ -419,6 +423,15 @@ export function DiscoveryReviewer({
         />
       )}
 
+      {/* ---- designation options box (the little bubble was clicked) ---- */}
+      {openMark && (
+        <DesignationDialog
+          mark={openMark}
+          onClose={() => setOpenMarkId(null)}
+          onChanged={() => { setOpenMarkId(null); router.refresh(); }}
+        />
+      )}
+
       {/* ---- "create the linked exhibit set" prompt ---- */}
       {promptCreate && (
         <CreateExhibitSetDialog
@@ -435,14 +448,15 @@ export function DiscoveryReviewer({
 
 /* -------------------------------- grid --------------------------------- */
 
-function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
+function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
   docs: DocMeta[];
   cols: number;
   setIdForLinks: number;
   pageCounts: Record<number, number>;
   flatIndex: Map<string, number>;
   selected: Set<string>;
-  badges: Map<string, { party: "P" | "D"; label: string }[]>;
+  badges: Map<string, { party: "P" | "D"; label: string; markId: number }[]>;
+  onBadge: (markId: number) => void;
   getDoc: (docId: number) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
   onOpen: (idx: number) => void;
@@ -466,14 +480,25 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, getDoc,
                 className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline" title="Open the untouched original PDF in a new tab">
                 <ExternalLink size={12} /> original
               </a>
-              <button onClick={() => onDeleteDoc(d)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
+              <button
+                onClick={async () => {
+                  if (confirm(`Move "${d.name}" to Documents received from Client? Its pages leave this view (any exhibit designations on them keep their exhibits, but the page badges go with the document).`)) {
+                    await setDiscoveryDocBucket(d.id, "client");
+                    window.location.reload();
+                  }
+                }}
+                className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+                title="This document is actually from our client, not the opposing side — move it to the Documents received from Client bucket">
+                <FolderInput size={13} /> move to Client docs
+              </button>
+              <button onClick={() => onDeleteDoc(d)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
               {Array.from({ length: n }, (_, i) => i + 1).map((page) => {
                 const k = key(d.id, page);
                 const idx = flatIndex.get(k)!;
                 return (
-                  <PageCell key={k} docId={d.id} page={page} idx={idx} checked={selected.has(k)} badges={badges.get(k)}
+                  <PageCell key={k} docId={d.id} page={page} idx={idx} checked={selected.has(k)} badges={badges.get(k)} onBadge={onBadge}
                     renderW={cols >= 8 ? 220 : cols >= 6 ? 300 : cols >= 4 ? 460 : cols >= 2 ? 720 : 1200}
                     getDoc={getDoc} onToggle={onToggle} onOpen={onOpen} />
                 );
@@ -486,9 +511,10 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, getDoc,
   );
 }
 
-function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle, onOpen }: {
+function PageCell({ docId, page, idx, checked, badges, onBadge, renderW, getDoc, onToggle, onOpen }: {
   docId: number; page: number; idx: number; checked: boolean;
-  badges?: { party: "P" | "D"; label: string }[];
+  badges?: { party: "P" | "D"; label: string; markId: number }[];
+  onBadge: (markId: number) => void;
   /** Canvas render width, bucketed by grid density so zooming in re-renders sharper. */
   renderW: number;
   getDoc: (docId: number) => Promise<PDFDocumentProxy>;
@@ -563,9 +589,11 @@ function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle
       {badges && badges.length > 0 && (
         <div className="absolute right-0 top-1.5 flex flex-col items-end gap-1">
           {badges.slice(0, 4).map((b, i) => (
-            <span key={i} className={`rounded-l-full py-0.5 pl-2 pr-1 text-[10px] font-bold leading-none text-white shadow ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>
+            <button key={i} onClick={(e) => { e.stopPropagation(); onBadge(b.markId); }}
+              title={`${b.label} — click for options`}
+              className={`rounded-l-full py-0.5 pl-2 pr-1 text-[10px] font-bold leading-none text-white shadow hover:brightness-110 ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>
               {b.label}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -577,12 +605,13 @@ function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle
 
 /* ------------------------------- reader --------------------------------- */
 
-function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
+function ReaderView({ flat, idx, setIdx, selected, badges, onBadge, getDoc, onToggle }: {
   flat: { docId: number; page: number; docName: string }[];
   idx: number;
   setIdx: (updater: (i: number) => number) => void;
   selected: Set<string>;
-  badges: Map<string, { party: "P" | "D"; label: string }[]>;
+  badges: Map<string, { party: "P" | "D"; label: string; markId: number }[]>;
+  onBadge: (markId: number) => void;
   getDoc: (docId: number) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
 }) {
@@ -643,7 +672,8 @@ function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
         {pageBadges && pageBadges.length > 0 && (
           <span className="inline-flex items-center gap-1">
             {pageBadges.map((b, i) => (
-              <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>{b.label}</span>
+              <button key={i} onClick={() => onBadge(b.markId)} title={`${b.label} — click for options`}
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white hover:brightness-110 ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>{b.label}</button>
             ))}
           </span>
         )}
@@ -655,7 +685,8 @@ function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
         {pageBadges && pageBadges.length > 0 && (
           <div className="absolute right-0 top-3 flex flex-col items-end gap-1">
             {pageBadges.map((b, i) => (
-              <span key={i} className={`rounded-l-full py-1 pl-2.5 pr-1.5 text-xs font-bold leading-none text-white shadow ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>{b.label}</span>
+              <button key={i} onClick={() => onBadge(b.markId)} title={`${b.label} — click for options`}
+                className={`rounded-l-full py-1 pl-2.5 pr-1.5 text-xs font-bold leading-none text-white shadow hover:brightness-110 ${b.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>{b.label}</button>
             ))}
           </div>
         )}
@@ -758,6 +789,87 @@ function ServiceInfoDialog({ files, parties, matter, onAddParty, onCancel, onCon
           <button onClick={onSkip} className="btn btn-outline text-sm py-2 px-4" title="Upload now; service details can wait">Skip for now</button>
           <button onClick={() => onConfirm({ servedAt, servedBy, servedTo })} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4">
             <UploadCloud size={14} /> Upload {files.length === 1 ? "PDF" : `${files.length} PDFs`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------- designation options box ------------------------- */
+
+/** Clicking a P-/D- bubble opens this: what the designation is, and the
+ *  edit / delete controls for it. */
+function DesignationDialog({ mark, onClose, onChanged }: {
+  mark: { id: number; party: "P" | "D"; number: number; label: string; title: string; pages: PageRef[]; exhibitSetId: number | null };
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [party, setParty] = useState<"P" | "D">(mark.party);
+  const [num, setNum] = useState(String(mark.number));
+  const [title, setTitle] = useState(mark.title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inp = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
+  const dirty = party !== mark.party || Number(num) !== mark.number || title !== mark.title;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const r = await updateDesignation(mark.id, { party, number: Number(num) || mark.number, title });
+    setBusy(false);
+    if (r.ok) onChanged();
+    else setError(r.error ?? "Couldn't save.");
+  }
+  async function remove() {
+    if (!confirm(`Delete designation ${mark.label}? The assembled exhibit is removed from the Exhibit Reviewer too.`)) return;
+    setBusy(true);
+    const r = await deleteDesignation(mark.id);
+    setBusy(false);
+    if (r.ok) onChanged();
+    else setError("Couldn't delete the designation.");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="w-full max-w-sm rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold text-white ${mark.party === "P" ? "bg-emerald-600" : "bg-red-600"}`}>{mark.label}</span>
+            Exhibit designation
+          </h3>
+          <button onClick={onClose} className="text-[var(--c-ink-muted)]"><X size={18} /></button>
+        </div>
+        <p className="mt-1.5 text-sm text-[var(--c-ink-muted)]">
+          {mark.pages.length} page{mark.pages.length === 1 ? "" : "s"} from this discovery{mark.title ? ` · ${mark.title}` : ""}
+        </p>
+        {mark.exhibitSetId && (
+          <a href={`/admin/exhibit-reviewer/${mark.exhibitSetId}`} className="mt-1 inline-flex items-center gap-1 text-sm text-[var(--c-accent)] hover:underline">
+            Open in Exhibit Reviewer <ExternalLink size={12} />
+          </a>
+        )}
+
+        <div className="mt-4 space-y-3 border-t border-[var(--c-border)] pt-3">
+          <div className="flex items-center gap-2">
+            <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
+              <button onClick={() => setParty("P")} className={`px-2.5 py-1.5 text-xs font-bold ${party === "P" ? "bg-emerald-600 text-white" : "hover:bg-[var(--c-bg)]"}`}>P</button>
+              <button onClick={() => setParty("D")} className={`px-2.5 py-1.5 text-xs font-bold ${party === "D" ? "bg-red-600 text-white" : "hover:bg-[var(--c-bg)]"}`}>D</button>
+            </div>
+            <input value={num} onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, ""))} className={`${inp} w-16 text-center`} title="Exhibit number" />
+            <span className="text-sm text-[var(--c-ink-muted)]">→ {party}-{num || "?"}</span>
+          </div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" className={`${inp} w-full`} />
+        </div>
+
+        {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+        <div className="mt-4 flex items-center gap-2">
+          <button onClick={() => void save()} disabled={busy || !dirty || !num}
+            className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save changes
+          </button>
+          <button onClick={() => void remove()} disabled={busy}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-red-500/50 px-3 py-2 text-sm text-red-600 hover:bg-red-500/10 disabled:opacity-50">
+            <Trash2 size={14} /> Delete
           </button>
         </div>
       </div>

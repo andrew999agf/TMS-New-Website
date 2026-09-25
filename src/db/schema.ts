@@ -1445,6 +1445,9 @@ export const discoveryDocs = pgTable(
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) for future search. */
     pageText: jsonb("page_text").notNull().default([]),
+    /** Which pile this document belongs to: opposing (their production,
+     *  page-level review) | client (documents received from the client). */
+    bucket: varchar("bucket", { length: 12 }).notNull().default("opposing"),
     /** Service record: when this production was served (YYYY-MM-DD)… */
     servedAt: varchar("served_at", { length: 32 }).notNull().default(""),
     /** …by which party… */

@@ -25,8 +25,27 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
   if (!set) notFound();
 
-  const docs = await db.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId)).orderBy(asc(discoveryDocs.sort), asc(discoveryDocs.id));
-  const marks = await db.select().from(discoveryMarks).where(eq(discoveryMarks.setId, setId)).orderBy(asc(discoveryMarks.id));
+  const allDocs = await db.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId)).orderBy(asc(discoveryDocs.sort), asc(discoveryDocs.id));
+  // The opposing-production reviewer shows only its own bucket; documents
+  // moved to the client bucket surface under "Documents received from Client".
+  const docs = allDocs.filter((d) => d.bucket !== "client");
+  const movedDocs = allDocs.filter((d) => d.bucket === "client");
+  let marks = await db.select().from(discoveryMarks).where(eq(discoveryMarks.setId, setId)).orderBy(asc(discoveryMarks.id));
+
+  // Self-heal designations whose exhibit was deleted before badge-sync
+  // existed: a mark pointing at a vanished exhibit doc is stale — drop it so
+  // no ghost P-/D- bubble lingers on the grid.
+  const exDocIds = marks.map((m) => m.exhibitDocId).filter((n): n is number => n != null);
+  if (exDocIds.length) {
+    try {
+      const alive = new Set((await db.select({ id: exhibitDocs.id }).from(exhibitDocs).where(inArray(exhibitDocs.id, exDocIds))).map((r) => r.id));
+      const stale = marks.filter((m) => m.exhibitDocId != null && !alive.has(m.exhibitDocId));
+      if (stale.length) {
+        await db.delete(discoveryMarks).where(inArray(discoveryMarks.id, stale.map((m) => m.id)));
+        marks = marks.filter((m) => !stale.some((x) => x.id === m.id));
+      }
+    } catch { /* best-effort */ }
+  }
 
   // The case's parties from the central record, for the service-info dialog.
   let parties: CaseParty[] = [];
@@ -69,7 +88,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
           .map((x) => {
             const parts = x.filename.split("/");
             return {
-              id: x.id,
+              key: `share:${x.id}`,
               name: parts[parts.length - 1] || x.filename,
               dir: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
               folderId: x.folderId,
@@ -86,11 +105,24 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   let staged: StagedDoc[] = [];
   let prods: ProductionRow[] = [];
   let batesDefaults = { prefix: (set.matter.includes("-") ? set.matter.slice(set.matter.indexOf("-") + 1) : set.name.split(/\s+/)[0] || "BATES").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "BATES", nextStart: 1 };
+  for (const d of movedDocs) {
+    clientFiles.push({
+      key: `doc:${d.id}`,
+      name: d.name,
+      dir: "",
+      folderId: null,
+      folderName: "Opposing production",
+      createdAt: d.createdAt.toISOString(),
+      status: "",
+      movedFromOpposing: true,
+    });
+  }
+
   try {
     const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
     staged = pdocs.map((d) => ({ id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId }));
     const sourceStatus = new Map(pdocs.map((d) => [d.sourceKey, d.status === "produced" ? "produced" as const : "staged" as const]));
-    clientFiles = clientFiles.map((f) => ({ ...f, status: sourceStatus.get(`share:${f.id}`) ?? "" }));
+    clientFiles = clientFiles.map((f) => ({ ...f, status: sourceStatus.get(f.key) ?? "" }));
     if (pdocs.length) {
       const latest = pdocs.reduce((a, b) => (b.id > a.id ? b : a));
       batesDefaults = { prefix: latest.batesPrefix || batesDefaults.prefix, nextStart: Math.max(0, ...pdocs.map((d) => d.batesEnd)) + 1 };

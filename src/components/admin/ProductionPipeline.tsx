@@ -7,12 +7,12 @@ import {
   Check, Copy, ExternalLink, FileText, Loader2, Pencil, Send, Stamp, Trash2, X,
 } from "lucide-react";
 import {
-  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines,
+  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export type ClientFile = { id: number; name: string; dir: string; folderId: number; folderName: string; createdAt: string; status: "" | "staged" | "produced" };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
@@ -90,7 +90,7 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
 
 function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: ClientFile[]; batesDefaults: { prefix: string; nextStart: number } }) {
   const router = useRouter();
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState(false);
   const [prefix, setPrefix] = useState(batesDefaults.prefix);
   const [start, setStart] = useState(String(batesDefaults.nextStart));
@@ -98,9 +98,9 @@ function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: C
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const toggle = (id: number, ok: boolean) => {
+  const toggle = (key: string, ok: boolean) => {
     if (!ok) return;
-    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+    setSelected((prev) => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   };
 
   async function submit() {
@@ -143,10 +143,10 @@ function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: C
       ) : (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
           {files.map((f) => {
-            const sel = selected.has(f.id);
+            const sel = selected.has(f.key);
             const locked = !!f.status;
             return (
-              <button key={f.id} onClick={() => toggle(f.id, !locked)}
+              <button key={f.key} onClick={() => toggle(f.key, !locked)}
                 className={`relative rounded-lg border bg-[var(--c-surface)] p-3 text-left transition-shadow ${sel ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${locked ? "opacity-70" : "hover:shadow"}`}>
                 <div className="flex items-start gap-2">
                   <FileText size={17} className="mt-0.5 shrink-0 text-[var(--c-accent)]" />
@@ -154,7 +154,15 @@ function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: C
                     <p className="break-words text-sm font-medium leading-snug">{f.name}</p>
                     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]">
                       {f.dir && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 font-semibold text-[var(--c-accent)]">{f.dir}</span>}
+                      {f.movedFromOpposing && (
+                        <span className="rounded-full bg-[var(--c-border)] px-1.5 py-0.5">moved from opposing</span>
+                      )}
                       <span>{fmtDay(f.createdAt.slice(0, 10))}</span>
+                      {f.movedFromOpposing && !locked && (
+                        <span role="button" tabIndex={0}
+                          onClick={async (e) => { e.stopPropagation(); if (confirm(`Move "${f.name}" back to Opposing production?`)) { await setDiscoveryDocBucket(Number(f.key.slice(4)), "opposing"); router.refresh(); } }}
+                          className="cursor-pointer text-[var(--c-accent)] underline">move back</span>
+                      )}
                     </p>
                   </div>
                 </div>

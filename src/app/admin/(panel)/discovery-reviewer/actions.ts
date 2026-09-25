@@ -348,6 +348,52 @@ export async function createLinkedExhibitSet(discoverySetId: number, name?: stri
   }
 }
 
+/** Change a designation's party, number, or title — the linked exhibit in the
+ *  Exhibit Reviewer moves with it. Pages stay as designated. */
+export async function updateDesignation(markId: number, input: { party: "P" | "D"; number: number; title?: string }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [mark] = await db.select().from(discoveryMarks).where(eq(discoveryMarks.id, markId));
+    if (!mark) return { ok: false as const, error: "Designation not found." };
+    const party = input.party === "D" ? "D" : "P";
+    const number = Math.max(1, Math.floor(Number(input.number)) || mark.number);
+    const label = `${party}-${number}`;
+    const title = str(input.title, 255);
+    await db.update(discoveryMarks).set({ party, number, label, title }).where(eq(discoveryMarks.id, markId));
+    if (mark.exhibitDocId) {
+      await db.update(exhibitDocs).set({ side: party === "P" ? "plaintiff" : "defendant", number, label, title, sort: number })
+        .where(eq(exhibitDocs.id, mark.exhibitDocId));
+      if (mark.exhibitSetId) revalidatePath(`/admin/exhibit-reviewer/${mark.exhibitSetId}`);
+    }
+    await audit(session.email, "update", "discovery-mark", String(markId), `Designation ${mark.label} \u2192 ${label}`);
+    revalidatePath(`/admin/discovery-reviewer/${mark.setId}`);
+    return { ok: true as const, label };
+  } catch (err) {
+    console.error("[discovery-reviewer] updateDesignation failed:", err);
+    return { ok: false as const, error: "Couldn't update the designation." };
+  }
+}
+
+/** Move a document between the opposing-production pile and the
+ *  received-from-client pile (for files dropped into the wrong bucket). */
+export async function setDiscoveryDocBucket(docId: number, bucket: "opposing" | "client") {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  try {
+    const [doc] = await db.select().from(discoveryDocs).where(eq(discoveryDocs.id, docId));
+    if (!doc) return { ok: false as const, error: "Document not found." };
+    const target = bucket === "client" ? "client" : "opposing";
+    await db.update(discoveryDocs).set({ bucket: target }).where(eq(discoveryDocs.id, docId));
+    await audit(session.email, "update", "discovery-doc", String(docId), `Moved "${doc.name}" to the ${target === "client" ? "received-from-client" : "opposing-production"} bucket`);
+    revalidatePath(`/admin/discovery-reviewer/${doc.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] setDiscoveryDocBucket failed:", err);
+    return { ok: false as const };
+  }
+}
+
 /** Remove a designation. The assembled exhibit in the Exhibit Reviewer is
  *  removed with it (it exists only because of this designation). */
 export async function deleteDesignation(markId: number) {
@@ -537,7 +583,7 @@ const MAX_STAGE_BYTES = 150 * 1024 * 1024;
  * them to the staged (pale yellow) column. Numbers run per page, continuing
  * wherever the case's numbering left off.
  */
-export async function stageForProduction(setId: number, shareFileIds: number[], prefixIn: string, startIn?: number) {
+export async function stageForProduction(setId: number, sourceKeys: string[], prefixIn: string, startIn?: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -546,9 +592,10 @@ export async function stageForProduction(setId: number, shareFileIds: number[], 
     const prefix = (prefixIn ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
     if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
 
-    const ids = [...new Set(shareFileIds.map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n)))];
-    if (ids.length === 0) return { ok: false as const, error: "Select at least one document." };
-    if (ids.length > 300) return { ok: false as const, error: "Stage at most 300 documents per batch." };
+    const shareIds = [...new Set(sourceKeys.filter((k) => k.startsWith("share:")).map((k) => Math.floor(Number(k.slice(6)))).filter((n) => Number.isFinite(n)))];
+    const docIds = [...new Set(sourceKeys.filter((k) => k.startsWith("doc:")).map((k) => Math.floor(Number(k.slice(4)))).filter((n) => Number.isFinite(n)))];
+    if (shareIds.length + docIds.length === 0) return { ok: false as const, error: "Select at least one document." };
+    if (shareIds.length + docIds.length > 300) return { ok: false as const, error: "Stage at most 300 documents per batch." };
 
     // Only files from this matter's client folders are eligible.
     const folders = set.matter
@@ -556,11 +603,22 @@ export async function stageForProduction(setId: number, shareFileIds: number[], 
           .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))
       : [];
     const folderIds = new Set(folders.map((f) => f.id));
-    const files = (await db.select().from(shareFiles).where(inArray(shareFiles.id, ids)))
-      .filter((f) => folderIds.has(f.folderId));
-    if (files.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client folders." };
+    type Source = { key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null };
+    const sources: Source[] = [];
+    if (shareIds.length) {
+      for (const f of (await db.select().from(shareFiles).where(inArray(shareFiles.id, shareIds))).filter((f) => folderIds.has(f.folderId))) {
+        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes });
+      }
+    }
+    if (docIds.length) {
+      // Documents moved into the client bucket from the opposing pile.
+      for (const d of (await db.select().from(discoveryDocs).where(inArray(discoveryDocs.id, docIds))).filter((d) => d.setId === setId && d.bucket === "client")) {
+        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes });
+      }
+    }
+    if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
     const already = new Set((await db.select({ k: productionDocs.sourceKey }).from(productionDocs).where(eq(productionDocs.setId, setId))).map((r) => r.k));
-    const todo = files.filter((f) => !already.has(`share:${f.id}`));
+    const todo = sources.filter((f) => !already.has(f.key));
     if (todo.length === 0) return { ok: false as const, error: "All of those documents are already staged or produced." };
     const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
@@ -578,6 +636,7 @@ export async function stageForProduction(setId: number, shareFileIds: number[], 
     const skipped: string[] = [];
     let staged = 0;
     for (const f of todo) {
+      if (!f.url) { skipped.push(`${f.filename} (no file)`); continue; }
       const res = await fetch(f.url);
       if (!res.ok) { skipped.push(`${f.filename} (couldn't fetch)`); continue; }
       const stamped = await stampToPdf(new Uint8Array(await res.arrayBuffer()), f.contentType, f.filename, prefix, next);
@@ -588,7 +647,7 @@ export async function stageForProduction(setId: number, shareFileIds: number[], 
       const parts = f.filename.split("/");
       await db.insert(productionDocs).values({
         setId,
-        sourceKey: `share:${f.id}`,
+        sourceKey: f.key,
         name: parts[parts.length - 1] || f.filename,
         requestLabel: parts.length > 1 ? parts[0] : "",
         url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,

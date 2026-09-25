@@ -54,6 +54,7 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS discovery_marks_set_idx ON discovery_marks (set_id)`,
+  `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS bucket varchar(12) NOT NULL DEFAULT 'opposing'`,
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_at varchar(32) NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_by varchar(191) NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS served_to varchar(191) NOT NULL DEFAULT ''`,
