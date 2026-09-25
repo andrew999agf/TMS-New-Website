@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
-  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud,
+  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
   addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation,
@@ -47,6 +47,19 @@ export function DiscoveryReviewer({
 }) {
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader">("grid");
+  // Grid density: pages per row. 6 by default; 1 (huge) to 10 (overview).
+  const [cols, setCols] = useState(6);
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem("discovery-grid-cols"));
+      if (saved >= 1 && saved <= 10) setCols(saved);
+    } catch { /* private browsing */ }
+  }, []);
+  const changeCols = (delta: number) => setCols((c) => {
+    const next = Math.min(10, Math.max(1, c + delta));
+    try { localStorage.setItem("discovery-grid-cols", String(next)); } catch { /* ignore */ }
+    return next;
+  });
   const [readerIdx, setReaderIdx] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anchorRef = useRef<number | null>(null);
@@ -264,6 +277,16 @@ export function DiscoveryReviewer({
             <button onClick={() => setView("reader")} disabled={totalPages === 0} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm disabled:opacity-40 ${view === "reader" ? "bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "hover:bg-[var(--c-bg)]"}`}><BookOpen size={14} /> Reader</button>
           </div>
 
+          {view === "grid" && (
+            <div className="inline-flex items-center overflow-hidden rounded-md border border-[var(--c-border)]" title="Zoom the page grid">
+              <button onClick={() => changeCols(1)} disabled={cols >= 10} aria-label="Zoom out (more pages per row)"
+                className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomOut size={15} /></button>
+              <span className="min-w-[3.5rem] border-x border-[var(--c-border)] px-2 py-1.5 text-center text-xs text-[var(--c-ink-muted)]">{cols}/row</span>
+              <button onClick={() => changeCols(-1)} disabled={cols <= 1} aria-label="Zoom in (fewer pages per row)"
+                className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomIn size={15} /></button>
+            </div>
+          )}
+
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
             {uploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
             {uploading ? `Uploading ${uploading.done + 1}/${uploading.total}…` : "Add discovery PDFs"}
@@ -324,7 +347,7 @@ export function DiscoveryReviewer({
           </div>
         ) : view === "grid" ? (
           <GridView
-            docs={docs} setIdForLinks={setId} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges}
+            docs={docs} setIdForLinks={setId} cols={cols} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges}
             getDoc={getDoc} onToggle={toggle}
             onOpen={(idx) => { setReaderIdx(idx); setView("reader"); }}
             onDeleteDoc={(d) => {
@@ -381,8 +404,9 @@ export function DiscoveryReviewer({
 
 /* -------------------------------- grid --------------------------------- */
 
-function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
+function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
   docs: DocMeta[];
+  cols: number;
   setIdForLinks: number;
   pageCounts: Record<number, number>;
   flatIndex: Map<string, number>;
@@ -408,12 +432,13 @@ function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onTog
               </a>
               <button onClick={() => onDeleteDoc(d)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
             </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
               {Array.from({ length: n }, (_, i) => i + 1).map((page) => {
                 const k = key(d.id, page);
                 const idx = flatIndex.get(k)!;
                 return (
                   <PageCell key={k} docId={d.id} page={page} idx={idx} checked={selected.has(k)} badges={badges.get(k)}
+                    renderW={cols >= 8 ? 220 : cols >= 6 ? 300 : cols >= 4 ? 460 : cols >= 2 ? 720 : 1200}
                     getDoc={getDoc} onToggle={onToggle} onOpen={onOpen} />
                 );
               })}
@@ -425,9 +450,11 @@ function GridView({ docs, pageCounts, flatIndex, selected, badges, getDoc, onTog
   );
 }
 
-function PageCell({ docId, page, idx, checked, badges, getDoc, onToggle, onOpen }: {
+function PageCell({ docId, page, idx, checked, badges, renderW, getDoc, onToggle, onOpen }: {
   docId: number; page: number; idx: number; checked: boolean;
   badges?: { party: "P" | "D"; label: string }[];
+  /** Canvas render width, bucketed by grid density so zooming in re-renders sharper. */
+  renderW: number;
   getDoc: (docId: number) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
   onOpen: (idx: number) => void;
@@ -435,37 +462,55 @@ function PageCell({ docId, page, idx, checked, badges, getDoc, onToggle, onOpen 
   const holder = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<"idle" | "done" | "error">("idle");
-  const started = useRef(false);
+  const [inView, setInView] = useState(false);
+  const renderedW = useRef(0);
+  const seqRef = useRef(0);
+  const taskRef = useRef<{ cancel: () => void } | null>(null);
 
   useEffect(() => {
     const el = holder.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
-      if (!entries.some((e) => e.isIntersecting) || started.current) return;
-      started.current = true;
-      io.disconnect();
-      void (async () => {
-        try {
-          const doc = await getDoc(docId);
-          const pdfPage = await doc.getPage(page);
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const base = pdfPage.getViewport({ scale: 1 });
-          const cssW = 300; // thumbnail render width (downscaled by CSS)
-          const viewport = pdfPage.getViewport({ scale: cssW / base.width });
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          await pdfPage.render({ canvas, viewport }).promise;
-          setState("done");
-        } catch (err) {
-          console.error("[discovery] thumbnail render failed:", err);
-          setState("error");
-        }
-      })();
+      if (entries.some((e) => e.isIntersecting)) {
+        setInView(true);
+        io.disconnect();
+      }
     }, { rootMargin: "300px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [docId, page, getDoc]);
+  }, []);
+
+  useEffect(() => {
+    if (!inView || renderedW.current === renderW) return;
+    const seq = ++seqRef.current;
+    void (async () => {
+      try {
+        const doc = await getDoc(docId);
+        const pdfPage = await doc.getPage(page);
+        if (seq !== seqRef.current) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const base = pdfPage.getViewport({ scale: 1 });
+        const viewport = pdfPage.getViewport({ scale: renderW / base.width });
+        // A canvas can only host one pdf.js render at a time; cancel any
+        // in-flight pass (e.g. the user zoomed twice quickly).
+        taskRef.current?.cancel();
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const task = pdfPage.render({ canvas, viewport });
+        taskRef.current = task;
+        await task.promise;
+        if (seq !== seqRef.current) return;
+        renderedW.current = renderW;
+        setState("done");
+      } catch (err) {
+        if (seq === seqRef.current) {
+          console.error("[discovery] thumbnail render failed:", err);
+          setState("error");
+        }
+      }
+    })();
+  }, [inView, renderW, docId, page, getDoc]);
 
   return (
     <div ref={holder}
@@ -517,6 +562,7 @@ function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendering, setRendering] = useState(true);
   const renderSeq = useRef(0);
+  const readerTaskRef = useRef<{ cancel: () => void } | null>(null);
 
   useEffect(() => {
     const seq = ++renderSeq.current;
@@ -532,10 +578,13 @@ function ReaderView({ flat, idx, setIdx, selected, badges, getDoc, onToggle }: {
         const cssW = Math.min(940, Math.max(480, (canvas.parentElement?.clientWidth ?? 800) - 16));
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const viewport = pdfPage.getViewport({ scale: (cssW / base.width) * dpr });
+        readerTaskRef.current?.cancel();
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         canvas.style.width = `${cssW}px`;
-        await pdfPage.render({ canvas, viewport }).promise;
+        const task = pdfPage.render({ canvas, viewport });
+        readerTaskRef.current = task;
+        await task.promise;
       } catch {
         /* leave the previous frame */
       } finally {
