@@ -13,7 +13,7 @@ import { portalEmail } from "@/lib/share/portal-session";
 import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
 import { DiscoveryRequestLayout } from "@/components/site/DiscoveryRequestPanel";
-import { PRINCIPAL_OFFICE } from "@/lib/firm";
+import { OFFICES } from "@/lib/firm";
 import { ShieldCheck, Clock, Download, Eye } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -113,7 +113,14 @@ export default async function SharePage({ params, searchParams }: { params: Prom
 
   return (
     <Shell logo={logo} wide={!!reqInfo}>
-      <DiscoveryRequestLayout info={reqInfo} token={token} phone={PRINCIPAL_OFFICE.phone}>
+      <DiscoveryRequestLayout
+        info={reqInfo}
+        token={token}
+        phones={{
+          fortWorth: OFFICES.find((o) => o.id === "fort-worth")?.phone ?? "(817) 348-8325",
+          bosque: OFFICES.find((o) => o.id === "meridian")?.phone ?? "(254) 435-4288",
+        }}
+      >
       {adminPreview && (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
           <Eye size={14} /> Admin preview — this is exactly what <strong>{rec.email}</strong> sees. Their access isn&apos;t recorded, and the sign-in step is skipped for you.

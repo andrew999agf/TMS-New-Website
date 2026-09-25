@@ -13,10 +13,24 @@ export type DiscoveryRequestInfo = { prefix: string; count: number; first: numbe
  * reader becomes an overlay opened from the banner button. A first-visit
  * pop-up explains the folder-per-request system.
  */
-export function DiscoveryRequestLayout({ info, token, phone, children }: {
+type OfficePhones = { fortWorth: string; bosque: string };
+
+function PhoneLinks({ phones }: { phones: OfficePhones }) {
+  const tel = (v: string) => `tel:${v.replace(/[^\d+]/g, "")}`;
+  return (
+    <>
+      call our Fort Worth office at{" "}
+      <a href={tel(phones.fortWorth)} className="font-semibold text-[var(--c-accent)] whitespace-nowrap">{phones.fortWorth}</a>{" "}
+      or our Bosque County office at{" "}
+      <a href={tel(phones.bosque)} className="font-semibold text-[var(--c-accent)] whitespace-nowrap">{phones.bosque}</a>
+    </>
+  );
+}
+
+export function DiscoveryRequestLayout({ info, token, phones, children }: {
   info: DiscoveryRequestInfo | null;
   token: string;
-  phone: string;
+  phones: OfficePhones;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -57,8 +71,7 @@ export function DiscoveryRequestLayout({ info, token, phone, children }: {
       <p className="text-sm font-semibold">Where to put your documents</p>
       <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
         Please review the discovery requests and place each document into the folder that matches the
-        request it responds to ({rangeText}). Questions? Call our office at{" "}
-        <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="font-semibold text-[var(--c-accent)]">{phone}</a>.
+        request it responds to ({rangeText}). If you have any questions, <PhoneLinks phones={phones} />.
       </p>
       {/* On phones the reader can't sit alongside — open it as an overlay. */}
       <button onClick={() => { setOverlay(true); setAside(false); }}
@@ -123,9 +136,8 @@ export function DiscoveryRequestLayout({ info, token, phone, children }: {
               folder that matches the request it responds to — that tells us exactly which request each
               document answers. The requests stay open on the right side while you work.
             </p>
-            <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)]">
-              <Phone size={14} /> Questions? Call our office at{" "}
-              <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className="font-semibold text-[var(--c-accent)]">{phone}</a>.
+            <p className="mt-2 text-sm text-[var(--c-ink-muted)]">
+              <Phone size={14} className="mr-1.5 inline-block align-[-2px]" /> If you have any questions, <PhoneLinks phones={phones} />.
             </p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button onClick={() => dismissIntro(true)} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-4 py-2 text-sm font-semibold text-white hover:brightness-110">
