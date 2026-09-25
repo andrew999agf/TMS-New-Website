@@ -37,9 +37,11 @@ export type StampResult = { bytes: Uint8Array; pages: number };
  * photos become a one-page PDF carrying the image. Anything else returns null
  * (produced as-is is not allowed — a Bates number must be visible).
  */
-export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number): Promise<StampResult | null> {
+export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number, stamp = true): Promise<StampResult | null> {
   if (isPdf(contentType, name)) {
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    // Pre-labeled material passes through byte-identical; only count pages.
+    if (!stamp) return { bytes, pages: doc.getPageCount() };
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const pages = doc.getPages();
     pages.forEach((page, i) => stampPage(page, font, batesLabel(prefix, startNum + i)));
@@ -55,7 +57,7 @@ export async function stampToPdf(bytes: Uint8Array, contentType: string | null |
     const scale = Math.min(maxW / img.width, maxH / img.height, 1);
     const w = img.width * scale, h = img.height * scale;
     page.drawImage(img, { x: (612 - w) / 2, y: 792 - 36 - h, width: w, height: h });
-    stampPage(page, font, batesLabel(prefix, startNum));
+    if (stamp) stampPage(page, font, batesLabel(prefix, startNum));
     return { bytes: await doc.save(), pages: 1 };
   }
   return null;
@@ -120,12 +122,14 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   y -= 8;
   line(`RE:  ${opts.caseName}`, bold, 11);
   if (opts.causeNumber) line(`Cause No. ${opts.causeNumber}${opts.court ? `, ${opts.court}` : ""}`, font, 11, 26);
-  line(`${ordinal(opts.seq)} Production — ${opts.batesFrom} through ${opts.batesTo}`, bold, 11, 26);
+  line(opts.batesFrom ? `${ordinal(opts.seq)} Production — ${opts.batesFrom} through ${opts.batesTo}` : `${ordinal(opts.seq)} Production`, bold, 11, 26);
   y -= 14;
   line("Counsel:");
   y -= 4;
 
-  const body = `Please see the enclosed ${ordinal(opts.seq).toLowerCase()} production, Bates numbered ${opts.batesFrom} through ${opts.batesTo}. If the production is too large to email, it can be found at the following link:`;
+  const body = opts.batesFrom
+    ? `Please see the enclosed ${ordinal(opts.seq).toLowerCase()} production, Bates numbered ${opts.batesFrom} through ${opts.batesTo}. If the production is too large to email, it can be found at the following link:`
+    : `Please see the enclosed ${ordinal(opts.seq).toLowerCase()} production. If the production is too large to email, it can be found at the following link:`;
   // simple word wrap
   const words = body.split(" ");
   let cur = "";

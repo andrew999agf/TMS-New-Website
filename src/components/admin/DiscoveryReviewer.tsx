@@ -23,7 +23,7 @@ const key = (docId: number, page: number) => `${docId}:${page}`;
 
 type PdfLib = typeof import("pdfjs-dist");
 let pdfLibPromise: Promise<PdfLib> | null = null;
-function loadPdfjs(): Promise<PdfLib> {
+export function loadPdfjs(): Promise<PdfLib> {
   if (!pdfLibPromise) {
     // The legacy build: the standard v6 build relies on brand-new JS engine
     // APIs (e.g. Map.getOrInsertComputed) that many otherwise-current browsers

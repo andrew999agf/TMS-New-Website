@@ -583,14 +583,15 @@ const MAX_STAGE_BYTES = 150 * 1024 * 1024;
  * them to the staged (pale yellow) column. Numbers run per page, continuing
  * wherever the case's numbering left off.
  */
-export async function stageForProduction(setId: number, sourceKeys: string[], prefixIn: string, startIn?: number) {
+export async function stageForProduction(setId: number, sourceKeys: string[], opts: { bates: boolean; prefix?: string; start?: number }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
     const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
     if (!set) return { ok: false as const, error: "Case not found." };
-    const prefix = (prefixIn ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
-    if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
+    const bates = opts.bates !== false;
+    const prefix = bates ? (opts.prefix ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) : "";
+    if (bates && !prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
 
     const shareIds = [...new Set(sourceKeys.filter((k) => k.startsWith("share:")).map((k) => Math.floor(Number(k.slice(6)))).filter((n) => Number.isFinite(n)))];
     const docIds = [...new Set(sourceKeys.filter((k) => k.startsWith("doc:")).map((k) => Math.floor(Number(k.slice(4)))).filter((n) => Number.isFinite(n)))];
@@ -624,7 +625,7 @@ export async function stageForProduction(setId: number, sourceKeys: string[], pr
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
 
     // Continue the case's numbering unless the user typed a start.
-    let next = Math.floor(Number(startIn));
+    let next = Math.floor(Number(opts.start));
     if (!Number.isFinite(next) || next < 1) {
       const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` })
         .from(productionDocs).where(eq(productionDocs.setId, setId));
@@ -639,9 +640,9 @@ export async function stageForProduction(setId: number, sourceKeys: string[], pr
       if (!f.url) { skipped.push(`${f.filename} (no file)`); continue; }
       const res = await fetch(f.url);
       if (!res.ok) { skipped.push(`${f.filename} (couldn't fetch)`); continue; }
-      const stamped = await stampToPdf(new Uint8Array(await res.arrayBuffer()), f.contentType, f.filename, prefix, next);
+      const stamped = await stampToPdf(new Uint8Array(await res.arrayBuffer()), f.contentType, f.filename, prefix, next, bates);
       if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
-      const blob = await put(`production/${setId}/${batesLabel(prefix, next)}.pdf`, Buffer.from(stamped.bytes), {
+      const blob = await put(`production/${setId}/${bates ? batesLabel(prefix, next) : f.filename.split("/").pop() || "doc"}.pdf`, Buffer.from(stamped.bytes), {
         access: "public", contentType: "application/pdf", addRandomSuffix: true,
       });
       const parts = f.filename.split("/");
@@ -651,13 +652,13 @@ export async function stageForProduction(setId: number, sourceKeys: string[], pr
         name: parts[parts.length - 1] || f.filename,
         requestLabel: parts.length > 1 ? parts[0] : "",
         url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,
-        batesPrefix: prefix, batesStart: next, batesEnd: next + stamped.pages - 1, pageCount: stamped.pages,
+        batesPrefix: prefix, batesStart: bates ? next : 0, batesEnd: bates ? next + stamped.pages - 1 : 0, pageCount: stamped.pages,
         status: "staged",
       });
-      next += stamped.pages;
+      if (bates) next += stamped.pages;
       staged++;
     }
-    await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${prefix})`);
+    await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${bates ? prefix : "no Bates labeling \u2014 pre-labeled"})`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
     if (staged === 0) return { ok: false as const, error: `Nothing could be staged. ${skipped.join("; ")}` };
     return { ok: true as const, staged, skipped };
@@ -705,9 +706,10 @@ export async function prepareProduction(setId: number) {
 
     const prior = await db.select({ seq: productions.seq }).from(productions).where(eq(productions.setId, setId));
     const seq = Math.max(0, ...prior.map((r) => r.seq)) + 1;
-    const prefix = staged[0].batesPrefix;
-    const from = batesLabel(prefix, Math.min(...staged.map((d) => d.batesStart)));
-    const to = batesLabel(prefix, Math.max(...staged.map((d) => d.batesEnd)));
+    const labeled = staged.filter((d) => d.batesPrefix && d.batesStart > 0);
+    const prefix = labeled[0]?.batesPrefix ?? "";
+    const from = labeled.length ? batesLabel(prefix, Math.min(...labeled.map((d) => d.batesStart))) : "";
+    const to = labeled.length ? batesLabel(prefix, Math.max(...labeled.map((d) => d.batesEnd))) : "";
 
     // Merge in Bates order.
     const parts: Uint8Array[] = [];
@@ -742,7 +744,9 @@ export async function prepareProduction(setId: number) {
 
     const [row] = await db.insert(productions).values({
       setId, seq, label: `${ordinal(seq)} Production`,
-      batesPrefix: prefix, batesStart: Math.min(...staged.map((d) => d.batesStart)), batesEnd: Math.max(...staged.map((d) => d.batesEnd)),
+      batesPrefix: prefix,
+      batesStart: labeled.length ? Math.min(...labeled.map((d) => d.batesStart)) : 0,
+      batesEnd: labeled.length ? Math.max(...labeled.map((d) => d.batesEnd)) : 0,
       letterUrl: letterBlob.url, letterPathname: letterBlob.pathname,
       fileUrl: fileBlob.url, filePathname: fileBlob.pathname, fileName,
       token, createdBy: session.email,
@@ -750,7 +754,7 @@ export async function prepareProduction(setId: number) {
     await db.update(productionDocs).set({ productionId: row.id })
       .where(and(eq(productionDocs.setId, setId), eq(productionDocs.status, "staged")));
 
-    await audit(session.email, "create", "production", String(row.id), `Prepared ${ordinal(seq)} Production (${from}\u2013${to}) for "${set.name}"`);
+    await audit(session.email, "create", "production", String(row.id), `Prepared ${ordinal(seq)} Production ${from ? `(${from}\u2013${to}) ` : ""}for "${set.name}"`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
     return { ok: true as const, id: row.id, label: `${ordinal(seq)} Production`, from, to, letterUrl: letterBlob.url, fileUrl: fileBlob.url, fileName, publicUrl };
   } catch (err) {
