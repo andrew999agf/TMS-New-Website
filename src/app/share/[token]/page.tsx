@@ -12,6 +12,8 @@ import { getBlocks } from "@/lib/content";
 import { portalEmail } from "@/lib/share/portal-session";
 import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
+import { DiscoveryRequestPanel } from "@/components/site/DiscoveryRequestPanel";
+import { PRINCIPAL_OFFICE } from "@/lib/firm";
 import { ShieldCheck, Clock, Download, Eye } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -128,6 +130,20 @@ export default async function SharePage({ params, searchParams }: { params: Prom
       {caps.upload && (
         <p className="mt-3 text-xs text-[var(--c-ink-muted)]">You can add documents and create folders here{caps.delete ? ", and remove files or folders you no longer need" : ""}.</p>
       )}
+
+      {folder.discoveryRequestUrl && (() => {
+        const nums = ((folder.discoveryNumbers as number[]) ?? []).filter((n) => Number.isFinite(n));
+        return (
+          <DiscoveryRequestPanel
+            token={token}
+            prefix={folder.discoveryPrefix || "RFP"}
+            count={nums.length}
+            first={nums[0] ?? 1}
+            last={nums[nums.length - 1] ?? 1}
+            phone={PRINCIPAL_OFFICE.phone}
+          />
+        );
+      })()}
 
       <ShareUploadStatus token={token} />
 

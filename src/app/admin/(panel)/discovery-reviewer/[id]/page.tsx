@@ -5,7 +5,8 @@ import { DiscoveryReviewer } from "@/components/admin/DiscoveryReviewer";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, type CaseParty } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, shareFolders, type CaseParty } from "@/db/schema";
+import { RequestClientDocs, type ClientFolderChip } from "@/components/admin/RequestClientDocs";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -32,6 +33,17 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       const [hubRow] = await db.select({ parties: caseHub.parties }).from(caseHub).where(eq(caseHub.matter, set.matter));
       parties = ((hubRow?.parties as CaseParty[]) ?? []).filter((party) => party?.name);
     } catch { /* hub table pending */ }
+  }
+
+  // Client document-request folders already set up for this matter.
+  let clientFolders: ClientFolderChip[] = [];
+  if (set.matter) {
+    try {
+      clientFolders = (await db.select({ id: shareFolders.id, name: shareFolders.name, discoveryPrefix: shareFolders.discoveryPrefix })
+        .from(shareFolders)
+        .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client"), eq(shareFolders.archived, false))))
+        .map((f) => ({ id: f.id, name: f.name, rfp: !!f.discoveryPrefix }));
+    } catch { /* share tables optional */ }
   }
 
   // The linked exhibit set (same matter, not archived, oldest first) and its
@@ -71,6 +83,9 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
               {set.matter ? "No exhibit set for this matter yet — you'll be asked to create one on the first exhibit." : "No matter number — exhibits can't be linked until one is set."}
             </span>
           )}
+        </div>
+        <div className="ml-auto">
+          <RequestClientDocs setId={setId} existing={clientFolders} />
         </div>
       </div>
       <DiscoveryReviewer

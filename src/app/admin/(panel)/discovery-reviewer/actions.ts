@@ -5,12 +5,14 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { PDFDocument } from "pdf-lib";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, caseHub, type CaseParty } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { expiryDaysForType } from "@/lib/share/types";
+import { randomBytes } from "crypto";
 
 async function guard() {
   const session = await requireAdmin();
@@ -365,5 +367,138 @@ export async function deleteDesignation(markId: number) {
   } catch (err) {
     console.error("[discovery-reviewer] deleteDesignation failed:", err);
     return { ok: false as const, error: "Couldn't remove the designation." };
+  }
+}
+
+/* ------------------- request documents from the client ------------------- */
+
+/**
+ * Read a served discovery-requests document and work out how many requests it
+ * contains and their numbers — including later sets that continue the
+ * numbering (a second set may run 15–22). The firm confirms or corrects the
+ * result before any folders are created.
+ */
+export async function parseDiscoveryRequestDoc(file: { url: string; size?: number }) {
+  await guard();
+  try {
+    const extracted = await extractPdfText(file.url, file.size);
+    const text = extracted.pages.join("\n");
+    if (!text.trim()) return { ok: true as const, prefix: "RFP", numbers: [] as number[], note: "No text layer found (scanned document?) — enter the request numbers below." };
+
+    const collect = (re: RegExp) => {
+      const out = new Set<number>();
+      for (const m of text.matchAll(re)) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n >= 1 && n <= 999) out.add(n);
+      }
+      return [...out].sort((a, b) => a - b);
+    };
+    const candidates: { prefix: string; numbers: number[] }[] = [
+      { prefix: "RFP", numbers: collect(/REQUEST\s+FOR\s+PRODUCTION\s+(?:NO\.?|NUMBER|#)?\s*(\d{1,3})/gi) },
+      { prefix: "ROG", numbers: collect(/INTERROGATORY\s+(?:NO\.?|NUMBER|#)?\s*(\d{1,3})/gi) },
+      { prefix: "RFA", numbers: collect(/REQUEST\s+FOR\s+ADMISSION\s+(?:NO\.?|NUMBER|#)?\s*(\d{1,3})/gi) },
+      { prefix: "RFD", numbers: collect(/REQUEST\s+FOR\s+DISCLOSURE\s+(?:NO\.?|NUMBER|#)?\s*(\d{1,3})/gi) },
+    ];
+    let best = candidates.reduce((a, b) => (b.numbers.length > a.numbers.length ? b : a));
+    if (best.numbers.length === 0) {
+      best = { prefix: "RFP", numbers: collect(/REQUEST\s+(?:NO\.?|NUMBER|#)\s*(\d{1,3})/gi) };
+    }
+    return { ok: true as const, prefix: best.prefix, numbers: best.numbers, note: best.numbers.length === 0 ? "Couldn't identify request numbers automatically — enter them below." : undefined };
+  } catch (err) {
+    console.error("[discovery-reviewer] parseDiscoveryRequestDoc failed:", err);
+    return { ok: true as const, prefix: "RFP", numbers: [] as number[], note: "Couldn't read the document — enter the request numbers below." };
+  }
+}
+
+export type ClientRequestInput = {
+  mode: "rfp" | "general";
+  clientEmail: string;
+  clientName?: string;
+  /** rfp mode: the served requests document (already uploaded to storage). */
+  requestFile?: { url: string; pathname: string; name?: string; size?: number };
+  prefix?: string;
+  numbers?: number[];
+};
+
+/**
+ * "Request documents from client": creates the secure client drop folder for
+ * this case and the private upload link. In rfp mode, one sub-folder per
+ * request (RFP 15 … RFP 22) plus the attached requests document the client
+ * reviews side-by-side while filing.
+ */
+export async function createClientDocRequest(setId: number, input: ClientRequestInput) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const email = (input.clientEmail ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter the client's email address." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+
+    const rfp = input.mode === "rfp";
+    const prefix = (input.prefix ?? "RFP").trim().slice(0, 8).toUpperCase() || "RFP";
+    const numbers = rfp
+      ? [...new Set((input.numbers ?? []).map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n) && n >= 1 && n <= 999))].sort((a, b) => a - b)
+      : [];
+    if (rfp && numbers.length === 0) return { ok: false as const, error: "Enter at least one request number." };
+    if (rfp && !input.requestFile?.url) return { ok: false as const, error: "Upload the discovery requests document first." };
+
+    // Caption details from the central case record, when it has real names.
+    let plaintiff = "", defendant = "", county = "";
+    if (set.matter) {
+      try {
+        const [hubRow] = await db.select().from(caseHub).where(eq(caseHub.matter, set.matter));
+        if (hubRow) {
+          county = hubRow.county;
+          const parties = ((hubRow.parties as CaseParty[]) ?? []).filter((party) => party?.name && party.name !== party.role);
+          plaintiff = parties.filter((party) => party.role === "Plaintiff").map((party) => party.name).join("; ");
+          defendant = parties.filter((party) => party.role === "Defendant").map((party) => party.name).join("; ");
+        }
+      } catch { /* hub optional */ }
+    }
+
+    const range = numbers.length ? (numbers.length === 1 ? `${prefix} ${numbers[0]}` : `${prefix} ${numbers[0]}\u2013${numbers[numbers.length - 1]}`) : "";
+    const folderName = rfp
+      ? `${set.name} \u2014 Discovery Responses (${range})`
+      : `${set.name} \u2014 Documents from Client`;
+
+    const [folder] = await db.insert(shareFolders).values({
+      caseNumber: set.causeNumber,
+      name: folderName.slice(0, 191),
+      matter: set.matter,
+      court: set.court,
+      county,
+      plaintiff,
+      defendant,
+      type: "client",
+      requireAuth: true,
+      createdBy: session.email,
+      discoveryRequestUrl: rfp ? input.requestFile!.url : null,
+      discoveryRequestPathname: rfp ? input.requestFile!.pathname : null,
+      discoveryRequestName: rfp ? (input.requestFile!.name ?? "Discovery requests").slice(0, 255) : null,
+      discoveryPrefix: rfp ? prefix : "",
+      discoveryNumbers: numbers,
+    }).returning({ id: shareFolders.id });
+
+    if (rfp) {
+      for (const n of numbers) {
+        await db.insert(shareDirs).values({ folderId: folder.id, path: `${prefix} ${n}`, createdBy: session.email });
+      }
+    }
+
+    const token = randomBytes(24).toString("base64url");
+    const expiresAt = new Date(Date.now() + expiryDaysForType("client") * 86_400_000);
+    await db.insert(shareRecipients).values({
+      folderId: folder.id, email, name: (input.clientName ?? "").trim().slice(0, 191),
+      token, permission: "upload", kind: "client", invitedBy: session.email, expiresAt,
+    });
+
+    await audit(session.email, "create", "share-folder", String(folder.id), `Client document request (${rfp ? range : "general"}) for "${set.name}"`);
+    revalidatePath("/admin/share-folders");
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, folderId: folder.id, shareUrl: `/share/${token}`, folderUrl: `/admin/share-folders/${folder.id}`, folders: numbers.map((n) => `${prefix} ${n}`) };
+  } catch (err) {
+    console.error("[discovery-reviewer] createClientDocRequest failed:", err);
+    return { ok: false as const, error: "Couldn't create the request. Run Settings \u2192 Database updates once, then try again." };
   }
 }

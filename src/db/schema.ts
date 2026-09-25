@@ -432,6 +432,14 @@ export const shareFolders = pgTable(
     uploadAt: timestamp("upload_at", { withTimezone: true }),
     /** Armed when the first new file lands; the digest cron sends ~12h later. */
     notifyDueAt: timestamp("notify_due_at", { withTimezone: true }),
+    /** Discovery-response collection: the served requests document the client
+     *  reviews while filing documents into the per-request folders. */
+    discoveryRequestUrl: text("discovery_request_url"),
+    discoveryRequestPathname: text("discovery_request_pathname"),
+    discoveryRequestName: varchar("discovery_request_name", { length: 255 }),
+    /** Folder label prefix (RFP/ROG/RFA/REQ) and the request numbers. */
+    discoveryPrefix: varchar("discovery_prefix", { length: 16 }).notNull().default(""),
+    discoveryNumbers: jsonb("discovery_numbers").notNull().default([]),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
