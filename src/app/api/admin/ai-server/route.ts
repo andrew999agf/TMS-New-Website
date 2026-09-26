@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { runpodConfig, getPodStatus, getBalance, startPod, stopPod, aiEndpointReady } from "@/lib/ai/runpod";
 import { AI_IDLE_KEY, AI_AUTOSLEEP_KEY, AI_LAST_USED_KEY, AI_IDLE_DEFAULT, getAiSetting, putAiSetting, monthEstimate } from "@/lib/ai/concierge";
+import { getAiNotice } from "@/lib/ai/notice";
 import { db } from "@/db";
 import { aiServerLog } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
@@ -23,7 +24,8 @@ export async function GET() {
   const session = await guard();
   if (session instanceof NextResponse) return session;
   const cfg = runpodConfig();
-  if (!cfg) return NextResponse.json({ configured: false });
+  const notice = await getAiNotice().catch(() => null);
+  if (!cfg) return NextResponse.json({ configured: false, notice });
   try {
     await ensureDiscoveryTables();
     const [pod, balance, ready, idleMinutes, autoSleep, lastUsedAt] = await Promise.all([
@@ -49,9 +51,10 @@ export async function GET() {
       idleMinutes,
       autoSleep,
       lastUsedAt,
+      notice,
     });
   } catch (e) {
-    return NextResponse.json({ configured: true, state: "error", error: (e as Error).message.slice(0, 200) });
+    return NextResponse.json({ configured: true, state: "error", error: (e as Error).message.slice(0, 200), notice });
   }
 }
 

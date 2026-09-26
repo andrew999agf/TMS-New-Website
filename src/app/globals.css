@@ -367,3 +367,9 @@
   --psx-live: #fca5a5;
   --psx-logo-filter: brightness(0) invert(1);
 }
+
+/* AI background-work toast: drop in from above. */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}

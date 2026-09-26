@@ -15,6 +15,10 @@ import {
 type Msg = { role: "user" | "assistant"; content: string };
 type Mode = "general" | "draft" | "code";
 
+/** A status notice from background AI work (model swaps, batch vision jobs):
+ *  shown as a drop-down toast; chatBlocked grays out sending while it runs. */
+type AiNotice = { message: string; chatBlocked: boolean; until: string; startedAt: string };
+
 /** Live state of the firm's rented GPU server, from /api/admin/ai-server. */
 type ServerInfo = {
   configured: boolean;
@@ -27,6 +31,7 @@ type ServerInfo = {
   idleMinutes?: number;
   autoSleep?: boolean;
   error?: string;
+  notice?: AiNotice | null;
 };
 
 const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string; starters: string[] }> = {
@@ -361,12 +366,15 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     } catch { /* keep last known */ }
   }, []);
 
+  const srvNoticeRef = useRef(false);
+  useEffect(() => { srvNoticeRef.current = !!srv?.notice; }, [srv]);
+
   useEffect(() => {
     void refreshServer();
-    // Poll gently; faster while the server is waking so the strip flips to
-    // Ready without a manual refresh.
-    const slow = setInterval(() => { if (srvStateRef.current !== "starting") void refreshServer(); }, 30000);
-    const fast = setInterval(() => { if (srvStateRef.current === "starting") void refreshServer(); }, 8000);
+    // Poll gently; faster while the server is waking (so the strip flips to
+    // Ready) or a background notice is active (so the toast clears promptly).
+    const slow = setInterval(() => { if (srvStateRef.current !== "starting" && !srvNoticeRef.current) void refreshServer(); }, 30000);
+    const fast = setInterval(() => { if (srvStateRef.current === "starting" || srvNoticeRef.current) void refreshServer(); }, 8000);
     return () => { clearInterval(slow); clearInterval(fast); };
   }, [refreshServer]);
 
@@ -608,6 +616,11 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const send = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
     if (!text || busyRef.current) return;
+    // A chat-blocking background operation (e.g. a model swap): hold the message.
+    if (srv?.notice?.chatBlocked) {
+      setError(`Chat is paused for a moment: ${srv.notice.message}`);
+      return;
+    }
     // Asleep server: don't burn the message — point at the power switch.
     if (srv?.configured && (srv.state === "stopped" || srv.state === "starting")) {
       setError(srv.state === "stopped"
@@ -790,6 +803,25 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Background-work toast: drops in from the top right when the AI is
+          doing something the user should know about (a model swap, a batch
+          vision job). Red-amber + grayed chat when sending must pause. */}
+      {srv?.notice && (
+        <div className="absolute right-3 top-3 z-40 w-80 max-w-[calc(100%-1.5rem)] animate-[slideDown_.25s_ease-out] rounded-lg border border-amber-500/50 bg-amber-50 p-3 shadow-lg dark:bg-amber-950/90">
+          <div className="flex items-start gap-2">
+            <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-600" />
+            <div className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+              <p className="font-semibold">{srv.notice.message}</p>
+              <p className="mt-0.5 opacity-80">
+                {srv.notice.chatBlocked
+                  ? "Chat is paused until this finishes — the send button is disabled for a few minutes."
+                  : "You can keep chatting normally while this runs in the background."}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -1029,15 +1061,16 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
               rows={1}
-              placeholder={voiceChat ? "Voice conversation is on — just talk…" : meta.hint}
-              className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70"
+              disabled={!!srv?.notice?.chatBlocked}
+              placeholder={srv?.notice?.chatBlocked ? "Chat is paused for a few minutes — see the notice above…" : voiceChat ? "Voice conversation is on — just talk…" : meta.hint}
+              className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70 disabled:opacity-50"
             />
             {busy ? (
               <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700" title="Stop generating">
                 <Square size={13} /> Stop
               </button>
             ) : (
-              <button onClick={() => void send()} disabled={!input.trim()} title="Send" className="rounded-lg bg-[var(--c-accent)] p-2.5 text-[var(--c-on-accent)] transition-colors hover:bg-[var(--c-accent-2)] disabled:opacity-35">
+              <button onClick={() => void send()} disabled={!input.trim() || !!srv?.notice?.chatBlocked} title={srv?.notice?.chatBlocked ? "Chat is paused while the AI finishes a background task" : "Send"} className="rounded-lg bg-[var(--c-accent)] p-2.5 text-[var(--c-on-accent)] transition-colors hover:bg-[var(--c-accent-2)] disabled:opacity-35">
                 <Send size={16} />
               </button>
             )}

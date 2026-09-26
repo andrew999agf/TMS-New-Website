@@ -8,6 +8,7 @@ import { generateFromTemplate } from "@/lib/documents/generate";
 import { aiConfig, modelForMode } from "@/lib/ai/config";
 import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/ai/tools";
 import { touchAiLastUsed } from "@/lib/ai/concierge";
+import { getAiNotice } from "@/lib/ai/notice";
 import { db } from "@/db";
 import { assistantThreads, assistantMessages, assistantPrefs, assistantMemories } from "@/db/schema";
 import { or, sql } from "drizzle-orm";
@@ -283,6 +284,13 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  }
+
+  // A chat-blocking notice (e.g. a model swap in progress) pauses sending —
+  // the UI grays the button out too, but the server is the enforcement.
+  const notice = await getAiNotice().catch(() => null);
+  if (notice?.chatBlocked) {
+    return NextResponse.json({ error: `The AI is briefly busy: ${notice.message}` }, { status: 503 });
   }
 
   // Every chat marks the AI server as in use, so the idle reaper's clock
