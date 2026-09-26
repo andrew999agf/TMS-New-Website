@@ -1,13 +1,12 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { DocumentGenerator } from "@/components/admin/DocumentGenerator";
-import { DocToolbar } from "@/components/admin/DocToolbar";
+import { TemplateLibrary } from "@/components/admin/TemplateLibrary";
+import { listTemplateBank } from "./actions";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { FIELD_LABELS } from "@/lib/documents/templates";
 import { LEGAL_DOC_META } from "@/lib/documents/legal-specs";
-import { getSetting } from "@/lib/content";
 import { ESTATE_PRACTICE_SLUG } from "@/lib/intake/config";
 
 export const dynamic = "force-dynamic";
@@ -36,21 +35,18 @@ export default async function DocumentsPage() {
     }
   }
 
-  const templates = await getSetting<{ id: string; name: string; url: string; pathname: string; uploadedAt: string }[]>(
-    "documents.templates",
-    [],
-  );
-  const mergeFields = Object.entries(FIELD_LABELS).map(([token, label]) => ({ token, label }));
   const intakeUrl = `/consultation?practice=${ESTATE_PRACTICE_SLUG}`;
+  const bank = await listTemplateBank();
 
   return (
     <>
       <AdminHeader
-        title="Document Generator"
-        description="Turn an estate-planning intake into draft documents. Blank fields show as placeholders for the attorney to complete."
+        title="Docs & Templates"
+        description="The firm's Word-template bank — drop templates in, organize by practice area (or let AI.fred sort them), and generate filled documents from a matter. The estate-planning generator lives below."
       />
-      <div className="p-8">
-        <DocToolbar mergeFields={mergeFields} initialTemplates={Array.isArray(templates) ? templates : []} intakeUrl={intakeUrl} />
+      <div className="p-4 sm:p-8">
+        <TemplateLibrary initial={bank.templates} folders={bank.folders} standardFields={bank.standardFields} />
+        <h2 className="mb-3 border-t border-[var(--c-border)] pt-6 font-[family-name:var(--font-display)] text-lg">Estate document generator</h2>
         <DocumentGenerator submissions={submissions} docMeta={LEGAL_DOC_META} intakeUrl={intakeUrl} />
       </div>
     </>

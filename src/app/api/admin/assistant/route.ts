@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath, canUseAssistantCode, canReviewBilling } from "@/lib/admin-sections";
 import { buildAdminGuide } from "@/lib/ai/admin-guide";
 import { billingSummary } from "@/lib/ai/billing";
+import { generateFromTemplate } from "@/lib/documents/generate";
 import { aiConfig, modelForMode } from "@/lib/ai/config";
 import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/ai/tools";
 import { touchAiLastUsed } from "@/lib/ai/concierge";
@@ -52,13 +53,43 @@ const BILLING_TOOL = {
   },
 };
 
+/** Produce a real Word document from a bank template. */
+const GENERATE_DOC_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "generate_document",
+    description:
+      "Generate a finished Word document FROM a firm template: fills the template's {{fields}} (standard case fields auto-fill from the matter) and applies your paragraph revisions, keeping the firm's formatting. Workflow: list_templates → read_template → get_case for the facts → generate_document. Give the user the returned downloadPath as a markdown link. Only revise paragraphs the request actually requires; the template's verbiage is the firm's preference.",
+    parameters: {
+      type: "object",
+      properties: {
+        template_id: { type: "integer", description: "The template to use (from list_templates)." },
+        matter: { type: "string", description: "Matter number — auto-fills case fields (parties, court, cause number…)." },
+        fields: { type: "object", description: "Field values to set or override, e.g. {\"client_name\": \"...\"}. Auto-filled case fields may be omitted.", additionalProperties: { type: "string" } },
+        revisions: {
+          type: "array",
+          description: "Targeted text edits: each finds exact text from the template (read_template shows it) and replaces it. Keep them few and surgical.",
+          items: { type: "object", properties: { find: { type: "string" }, replace: { type: "string" } }, required: ["find", "replace"] },
+        },
+        name_hint: { type: "string", description: "Base name for the generated file, e.g. \"Demand letter - Morganfield\"." },
+      },
+      required: ["template_id"],
+    },
+  },
+};
+
 /** Added when the firm-data tools are attached to the request. */
 const TOOLS_PROMPT =
   " You have read-only tools into the firm's own systems: Matters/Cases, the Discovery Reviewer, the Exhibit Reviewer, " +
   "the Pre-Trial Checklist, Intake, and Contacts. For ANY question about the firm's cases, documents, deadlines, or contacts, " +
   "use the tools — never answer from memory or invent case facts. Start with list_cases or get_case when only a name is given. " +
   "When reporting from documents, cite the document name and page so staff can verify. If a tool returns nothing or an error, " +
-  "say what you looked for and what came back. The tools cannot change anything; to edit data, staff use the tabs themselves.";
+  "say what you looked for and what came back. The tools cannot change case data; to edit it, staff use the tabs themselves. " +
+  "DOCUMENT DRAFTING: when asked for a letter, engagement letter, discovery requests, or any standard document, FIRST check " +
+  "list_templates for a firm template and build from it with generate_document — the firm's own files carry its letterhead and " +
+  "verbiage, so never draft from scratch when a template fits. After generating, give the download as a markdown link to the " +
+  "returned downloadPath and briefly say which fields were filled and what you revised. If no template fits, say so, then draft " +
+  "in the reply (the Word button exports it).";
 
 /**
  * Per-mode instructions and settings. The UI offers General / Drafting / Coding;
@@ -352,7 +383,7 @@ export async function POST(req: Request) {
         stream: true,
         temperature: mode.temperature,
         ...(withTools
-          ? { tools: [...assistantToolSchemas(), MEMORY_TOOL, GUIDE_TOOL, ...(billingAllowed ? [BILLING_TOOL] : [])], tool_choice: "auto" }
+          ? { tools: [...assistantToolSchemas(), MEMORY_TOOL, GUIDE_TOOL, GENERATE_DOC_TOOL, ...(billingAllowed ? [BILLING_TOOL] : [])], tool_choice: "auto" }
           : {}),
       }),
       signal: req.signal,
@@ -403,6 +434,19 @@ export async function POST(req: Request) {
             } else if (name === "admin_panel_guide") {
               emit(sse({ tool_status: "Pulling up the admin panel map…" }));
               result = buildAdminGuide(session.role, session.permissions);
+            } else if (name === "generate_document") {
+              emit(sse({ tool_status: "Filling in the template…" }));
+              const revs = Array.isArray(args.revisions) ? (args.revisions as { find: string; replace: string }[]) : [];
+              const flds = args.fields && typeof args.fields === "object" ? (args.fields as Record<string, string>) : {};
+              const gen = await generateFromTemplate({
+                templateId: Number(args.template_id),
+                matter: typeof args.matter === "string" ? args.matter : matter || undefined,
+                fields: flds,
+                revisions: revs,
+                nameHint: typeof args.name_hint === "string" ? args.name_hint : undefined,
+                byEmail: session.email,
+              });
+              result = JSON.stringify(gen);
             } else if (name === "billing_summary") {
               emit(sse({ tool_status: "Adding up the billing…" }));
               result = billingAllowed ? await billingSummary(args) : JSON.stringify({ error: "This user does not hold billing access." });

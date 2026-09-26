@@ -175,6 +175,36 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE assistant_threads ADD COLUMN IF NOT EXISTS shared_from varchar(255) NOT NULL DEFAULT ''`,
+  // Template bank: firm Word templates + generated-document paper trail.
+  `CREATE TABLE IF NOT EXISTS doc_templates (
+    id serial PRIMARY KEY,
+    name varchar(255) NOT NULL,
+    folder varchar(120) NOT NULL DEFAULT '',
+    description text NOT NULL DEFAULT '',
+    doc_type varchar(40) NOT NULL DEFAULT 'other',
+    url text,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    fields jsonb NOT NULL DEFAULT '[]',
+    doc_text text NOT NULL DEFAULT '',
+    archived boolean NOT NULL DEFAULT false,
+    created_by varchar(255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS doc_templates_folder_idx ON doc_templates (folder)`,
+  `CREATE TABLE IF NOT EXISTS generated_docs (
+    id serial PRIMARY KEY,
+    template_id integer,
+    matter text NOT NULL DEFAULT '',
+    name varchar(255) NOT NULL,
+    url text,
+    pathname text,
+    by_email varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS generated_docs_matter_idx ON generated_docs (matter)`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;

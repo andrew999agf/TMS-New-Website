@@ -3,9 +3,9 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   caseHub, contacts, discoverySets, discoveryDocs, discoveryMarks,
-  exhibitSets, exhibitDocs, intakeSubmissions, productions, productionDocs,
-  shareFolders, shareFiles, trialCases, trialDeadlines, trialWitnesses,
-  type CaseParty,
+  docTemplates, exhibitSets, exhibitDocs, intakeSubmissions, productions,
+  productionDocs, shareFolders, shareFiles, trialCases, trialDeadlines,
+  trialWitnesses, type CaseParty,
 } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 
@@ -128,6 +128,27 @@ const TOOL_DEFS: ToolDef[] = [
     },
   },
   {
+    name: "list_templates",
+    description:
+      "Search the firm's Word-template bank (letters, engagement letters, discovery requests, motions…). Returns each template's id, folder (practice area), type, description of when to use it, and its merge fields. ALWAYS check here before drafting any letter or standard document from scratch — the firm's templates carry its letterhead and preferred verbiage.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What kind of document is needed, e.g. \"demand letter\" or \"engagement\". Omit to list everything." },
+        folder: { type: "string", description: "Limit to one practice-area folder, e.g. \"Debt Defense\"." },
+      },
+    },
+  },
+  {
+    name: "read_template",
+    description: "Read one template's full text and merge fields, to confirm it fits and decide what revisions the request needs. Use the id from list_templates.",
+    parameters: {
+      type: "object",
+      properties: { id: { type: "integer", description: "The template id." } },
+      required: ["id"],
+    },
+  },
+  {
     name: "search_contacts",
     description:
       "Search the firm contact book: clients (current/past/prospective), opposing parties, and attorneys on both sides, with email, phone, address, and firm.",
@@ -158,6 +179,9 @@ export function toolStatusLabel(name: string, args: Record<string, unknown>): st
     case "list_intake": return "Reviewing intake submissions…";
     case "list_deadlines": return "Gathering upcoming deadlines…";
     case "search_contacts": return `Searching contacts for “${String(args.query ?? "").slice(0, 60)}”…`;
+    case "list_templates": return args.query ? `Looking for a “${String(args.query).slice(0, 50)}” template…` : "Browsing the template bank…";
+    case "read_template": return `Reading template #${args.id ?? "?"}…`;
+    case "generate_document": return "Filling in the template…";
     default: return "Checking the firm's systems…";
   }
 }
@@ -199,6 +223,8 @@ export async function runAssistantTool(name: string, args: Record<string, unknow
       case "list_intake": return pack(await listIntake(String(args.status ?? ""), Number(args.limit) || 25));
       case "list_deadlines": return pack(await listDeadlines(Number(args.days_ahead) || 45));
       case "search_contacts": return pack(await searchContactsTool(String(args.query ?? "")));
+      case "list_templates": return pack(await listTemplatesTool(String(args.query ?? ""), String(args.folder ?? "")));
+      case "read_template": return pack(await readTemplateTool(Number(args.id)));
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
   } catch (e) {
@@ -430,6 +456,35 @@ async function listDeadlines(daysAhead: number) {
   } catch { /* share tables optional */ }
   out.sort((a, b) => a.date.localeCompare(b.date));
   return { from: start, through: end, deadlines: out.slice(0, 80) };
+}
+
+async function listTemplatesTool(query: string, folder: string) {
+  const rows = await db!.select().from(docTemplates).where(eq(docTemplates.archived, false)).limit(500);
+  const q = query.trim().toLowerCase();
+  const f = folder.trim().toLowerCase();
+  const match = rows
+    .filter((r) => (!f || r.folder.toLowerCase() === f))
+    .filter((r) => !q || `${r.name} ${r.folder} ${r.docType} ${r.description}`.toLowerCase().includes(q) || r.docText.toLowerCase().includes(q));
+  return {
+    templates: match.slice(0, 20).map((r) => ({
+      id: r.id, name: r.name, folder: r.folder || "(inbox — not yet sorted)", type: r.docType,
+      useWhen: r.description || undefined, fields: Array.isArray(r.fields) ? r.fields : [],
+      docx: /\.docx$/i.test(r.pathname ?? r.name),
+    })),
+    total: match.length,
+    ...(match.length === 0 ? { note: "No template matched — broaden the query, or draft from scratch and say no firm template was found." } : {}),
+  };
+}
+
+async function readTemplateTool(id: number) {
+  if (!Number.isFinite(id)) return { error: "id is required." };
+  const [r] = await db!.select().from(docTemplates).where(eq(docTemplates.id, id));
+  if (!r || r.archived) return { error: `No template #${id}.` };
+  return {
+    id: r.id, name: r.name, folder: r.folder, type: r.docType, useWhen: r.description || undefined,
+    fields: Array.isArray(r.fields) ? r.fields : [],
+    text: r.docText.slice(0, 14000) || "(no extracted text — not a .docx)",
+  };
 }
 
 async function searchContactsTool(query: string) {

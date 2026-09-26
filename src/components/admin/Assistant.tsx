@@ -125,10 +125,10 @@ function splitBlocks(text: string): { type: "text" | "code"; lang: string; body:
   return out;
 }
 
-/** Inline markdown: **bold**, *italic*, `code`. */
+/** Inline markdown: **bold**, *italic*, `code`, [links](/safe/urls). */
 function inlineMd(text: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  const re = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]\n]+\]\((?:https?:\/\/|\/)[^)\s]+\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
@@ -136,7 +136,11 @@ function inlineMd(text: string): React.ReactNode[] {
     const t = m[0];
     if (t.startsWith("**")) out.push(<strong key={out.length} className="font-semibold">{t.slice(2, -2)}</strong>);
     else if (t.startsWith("`")) out.push(<code key={out.length} className="rounded bg-[var(--c-surface-2)] px-1 py-0.5 text-[0.85em]">{t.slice(1, -1)}</code>);
-    else out.push(<em key={out.length}>{t.slice(1, -1)}</em>);
+    else if (t.startsWith("[")) {
+      const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(t);
+      if (lm) out.push(<a key={out.length} href={lm[2]} target={lm[2].startsWith("/") ? undefined : "_blank"} rel="noopener noreferrer" className="font-medium text-[var(--c-accent)] underline underline-offset-2">{lm[1]}</a>);
+      else out.push(t);
+    } else out.push(<em key={out.length}>{t.slice(1, -1)}</em>);
     last = m.index + t.length;
   }
   if (last < text.length) out.push(text.slice(last));

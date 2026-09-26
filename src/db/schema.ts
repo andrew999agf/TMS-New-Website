@@ -1638,6 +1638,57 @@ export const assistantMemories = pgTable(
   (t) => ({ scopeIdx: index("assistant_memories_scope_idx").on(t.scope, t.userEmail) }),
 );
 
+/* ------------------------- Template bank ---------------------------------- *
+ * The firm's Word-template library: real .docx files with {{merge_fields}},
+ * organized into practice-area folders. New uploads land in the Inbox
+ * (folder = "") until a person — or AI.fred's sorter — files them. Both the
+ * form builder and AI.fred draft FROM these files, so generated documents
+ * keep the firm's formatting and verbiage.
+ * --------------------------------------------------------------------------- */
+export const docTemplates = pgTable(
+  "doc_templates",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    /** Practice-area folder ("" = the Inbox / drop bucket). */
+    folder: varchar("folder", { length: 120 }).notNull().default(""),
+    /** "Use this when…" — read by AI.fred to pick the right template. */
+    description: text("description").notNull().default(""),
+    /** letter | engagement-letter | discovery-requests | motion | notice | agreement | other */
+    docType: varchar("doc_type", { length: 40 }).notNull().default("other"),
+    url: text("url"),
+    pathname: text("pathname"),
+    contentType: varchar("content_type", { length: 128 }),
+    sizeBytes: integer("size_bytes"),
+    /** Detected {{merge_fields}} in the document. */
+    fields: jsonb("fields").notNull().default([]),
+    /** Extracted plain text (capped) — what AI.fred reads to match & draft. */
+    docText: text("doc_text").notNull().default(""),
+    archived: boolean("archived").notNull().default(false),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ folderIdx: index("doc_templates_folder_idx").on(t.folder) }),
+);
+
+/** Every document generated from a template — the download lives behind an
+ *  admin-gated route, and this doubles as the per-matter paper trail. */
+export const generatedDocs = pgTable(
+  "generated_docs",
+  {
+    id: serial("id").primaryKey(),
+    templateId: integer("template_id"),
+    matter: text("matter").notNull().default(""),
+    name: varchar("name", { length: 255 }).notNull(),
+    url: text("url"),
+    pathname: text("pathname"),
+    byEmail: varchar("by_email", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ matterIdx: index("generated_docs_matter_idx").on(t.matter) }),
+);
+
 /** Start/stop history of the firm's rented AI GPU server — the wake/sleep
  *  concierge's audit trail and the raw data behind the cost meter. */
 export const aiServerLog = pgTable(

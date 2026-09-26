@@ -24,7 +24,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "media", label: "Media", href: "/admin/media", toggleable: true },
   { key: "intake", label: "Intake", href: "/admin/intake", toggleable: false },
   { key: "debt-wins", label: "Debt Defense Wins", href: "/admin/debt-wins", toggleable: true },
-  { key: "documents", label: "Document Generator", href: "/admin/documents", toggleable: false },
+  { key: "documents", label: "Docs & Templates", href: "/admin/documents", toggleable: false },
   { key: "share-folders", label: "Share Folders", href: "/admin/share-folders", toggleable: true },
   { key: "pre-trial", label: "Pre-Trial Checklist", href: "/admin/pre-trial", toggleable: true },
   { key: "cases", label: "Matters / Cases", href: "/admin/cases", toggleable: true },
