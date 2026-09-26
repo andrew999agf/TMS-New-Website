@@ -93,16 +93,25 @@ export async function stopPod(cfg: RunpodConfig): Promise<PodStatus> {
 
 /** Is the AI endpoint itself answering (model loaded), not just the pod on? */
 export async function aiEndpointReady(): Promise<boolean> {
+  return (await aiServingModel()) !== null;
+}
+
+/** The model id the endpoint is actually serving right now, or null if the
+ *  endpoint isn't answering. This is how a swap knows it has finished: the
+ *  serving model finally matches the desired one. */
+export async function aiServingModel(): Promise<string | null> {
   const base = process.env.AI_BASE_URL?.trim();
   const key = process.env.AI_API_KEY?.trim();
-  if (!base || !key) return false;
+  if (!base || !key) return null;
   try {
     const res = await fetch(`${base.replace(/\/+$/, "")}/models`, {
       headers: { Authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(4000),
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => null)) as { data?: { id?: string }[] } | null;
+    return json?.data?.[0]?.id ?? ""; // answering but unparseable still counts as ready
   } catch {
-    return false;
+    return null;
   }
 }

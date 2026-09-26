@@ -9,6 +9,7 @@ import { aiConfig, modelForMode } from "@/lib/ai/config";
 import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/ai/tools";
 import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { getAiNotice } from "@/lib/ai/notice";
+import { activeModel } from "@/lib/ai/vision";
 import { db } from "@/db";
 import { assistantThreads, assistantMessages, assistantPrefs, assistantMemories } from "@/db/schema";
 import { or, sql } from "drizzle-orm";
@@ -196,10 +197,29 @@ async function saveMemory(email: string, args: Record<string, unknown>): Promise
   }
 }
 type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
+/** OpenAI-style multimodal content: text plus attached photos, used for the
+ *  final user turn when the vision model is loaded. */
+type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 type UpstreamMsg =
   | Msg
+  | { role: "user"; content: ContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
+
+/** Attached photos: a handful of reasonable-size images, nothing else. */
+const MAX_IMAGES = 4;
+const MAX_IMAGE_CHARS = 6_000_000; // ~4.4MB decoded
+function cleanImages(input: unknown): string[] | { error: string } {
+  if (!Array.isArray(input) || input.length === 0) return [];
+  if (input.length > MAX_IMAGES) return { error: `That's too many photos at once — attach up to ${MAX_IMAGES}.` };
+  const out: string[] = [];
+  for (const u of input) {
+    if (typeof u !== "string" || !/^data:image\/(png|jpe?g|webp|gif);base64,/.test(u)) return { error: "Attachments must be photos (PNG, JPEG, WebP, or GIF)." };
+    if (u.length > MAX_IMAGE_CHARS) return { error: "One of the photos is too large — try a smaller copy." };
+    out.push(u);
+  }
+  return out;
+}
 
 /** Providers that reject the `tools` parameter (some local vLLM/Ollama builds
  *  without a tool-call parser). Remembered per base URL for a short while so
@@ -285,11 +305,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "The assistant isn't configured yet. Set AI_BASE_URL, AI_API_KEY, and AI_MODEL." }, { status: 503 });
   }
 
-  let body: { messages?: Msg[]; mode?: string; threadId?: number | null; regen?: boolean; matter?: string };
+  let body: { messages?: Msg[]; mode?: string; threadId?: number | null; regen?: boolean; matter?: string; images?: string[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  }
+
+  // Photos ride on the newest user turn — but only the vision model can see
+  // them. With the text model loaded the UI gets a clear signal to offer the
+  // swap (never swapping on its own: a swap restarts the paid GPU server).
+  const images = cleanImages(body.images);
+  if (!Array.isArray(images)) return NextResponse.json({ error: images.error }, { status: 400 });
+  const active = await activeModel().catch(() => null);
+  if (images.length > 0 && active?.desired !== "vision") {
+    return NextResponse.json(
+      {
+        vision_required: true,
+        visionConfigured: !!process.env.AI_MODEL_VISION?.trim(),
+        error: "Photos need the vision model, which isn't loaded right now.",
+      },
+      { status: 409 },
+    );
   }
 
   // A chat-blocking notice (e.g. a model swap in progress) pauses sending —
@@ -344,7 +381,10 @@ export async function POST(req: Request) {
       // On regenerate the user turn is already saved — only the fresh assistant
       // reply should be appended.
       if (threadId != null && lastUser.role === "user" && !body.regen) {
-        await db.insert(assistantMessages).values({ threadId, role: "user", content: lastUser.content });
+        // Photos aren't persisted (they'd bloat the thread store) — the saved
+        // turn just records that they were there.
+        const savedContent = images.length > 0 ? `${lastUser.content}\n[${images.length} photo${images.length > 1 ? "s" : ""} attached]` : lastUser.content;
+        await db.insert(assistantMessages).values({ threadId, role: "user", content: savedContent });
         await db.update(assistantThreads).set({ updatedAt: new Date() }).where(eq(assistantThreads.id, threadId));
       }
     } catch {
@@ -370,7 +410,19 @@ export async function POST(req: Request) {
   }
 
   const convo: UpstreamMsg[] = [{ role: "system", content: systemPrompt }, ...history];
-  const model = modelForMode(modeKey) ?? cfg.model;
+  if (images.length > 0 && lastUser.role === "user") {
+    // The newest user turn carries the photos as OpenAI-style content parts.
+    convo[convo.length - 1] = {
+      role: "user",
+      content: [
+        { type: "text", text: lastUser.content },
+        ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+      ],
+    };
+  }
+  // One model is loaded at a time: with the vision model in, everything goes
+  // to it (per-mode text overrides only apply while the text model is up).
+  const model = active?.desired === "vision" ? active.model : (modelForMode(modeKey) ?? cfg.model);
   const chatUrl = `${cfg.baseUrl}/chat/completions`;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` };
 

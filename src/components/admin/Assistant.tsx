@@ -5,6 +5,7 @@ import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
   Plus, Pencil, Square, RefreshCw, X, Scale, Activity, Power, Share2, Settings2,
+  ImagePlus, Eye,
 } from "lucide-react";
 import {
   listAssistantThreads, getAssistantThread, renameAssistantThread, deleteAssistantThread,
@@ -12,12 +13,12 @@ import {
   type ThreadRow, type MemoryRow, type ShareTarget,
 } from "@/app/admin/(panel)/assistant/actions";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; images?: string[] };
 type Mode = "general" | "draft" | "code";
 
 /** A status notice from background AI work (model swaps, batch vision jobs):
  *  shown as a drop-down toast; chatBlocked grays out sending while it runs. */
-type AiNotice = { message: string; chatBlocked: boolean; until: string; startedAt: string };
+type AiNotice = { message: string; chatBlocked: boolean; until: string; startedAt: string; kind?: string };
 
 /** Live state of the firm's rented GPU server, from /api/admin/ai-server. */
 type ServerInfo = {
@@ -32,7 +33,40 @@ type ServerInfo = {
   autoSleep?: boolean;
   error?: string;
   notice?: AiNotice | null;
+  /** Which model is loaded/desired, and whether a vision model exists at all. */
+  modelLabel?: string | null;
+  desiredModel?: "text" | "vision";
+  visionConfigured?: boolean;
+  visionLabel?: string | null;
 };
+
+/** Client-side photo prep: downscale + JPEG so a phone photo doesn't ship as
+ *  12MB — the vision model reads a 1536px copy just as well. */
+async function shrinkImage(file: File): Promise<string | null> {
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const max = 1536;
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  } catch {
+    return null;
+  }
+}
 
 const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string; starters: string[] }> = {
   general: {
@@ -402,6 +436,36 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     } catch { /* next refresh corrects */ }
   }, []);
 
+  // Attached photos (need the vision model) and the model-swap confirm box.
+  // A swap restarts the paid GPU server, so it never happens without a yes.
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [swapAsk, setSwapAsk] = useState<null | "vision" | "text">(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onPickImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).slice(0, 4);
+    e.target.value = "";
+    const shrunk = (await Promise.all(files.map(shrinkImage))).filter((u): u is string => !!u);
+    if (shrunk.length < files.length) setError("Some files couldn't be read as photos.");
+    setPendingImages((p) => [...p, ...shrunk].slice(0, 4));
+  }
+
+  async function doSwap(target: "vision" | "text") {
+    setSwapBusy(true);
+    try {
+      const res = await fetch("/api/admin/ai-server", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "swap", target }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setError(j.error || "Couldn't switch models.");
+      else setSwapAsk(null);
+    } catch {
+      setError("Couldn't reach the server controls.");
+    } finally {
+      setSwapBusy(false);
+      setTimeout(() => void refreshServer(), 1200);
+    }
+  }
+
   // Preferences & memories dialog (the gear).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [prefsAbout, setPrefsAbout] = useState("");
@@ -541,7 +605,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   }, []);
 
   /** Send `history` (already ending in a user turn) and stream the reply. */
-  const run = useCallback(async (m: Mode, next: Msg[], regen: boolean) => {
+  const run = useCallback(async (m: Mode, next: Msg[], regen: boolean, images?: string[]) => {
     setError(null);
     setThreads((t) => ({ ...t, [m]: [...next, { role: "assistant", content: "" }] }));
     setBusy(true);
@@ -550,10 +614,12 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
+      // Photos ride separately from the visible history (which stays text).
+      const wire = next.map(({ role, content }) => ({ role, content }));
       const res = await fetch("/api/admin/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, mode: m, threadId: threadIds[m], regen, matter: caseMatter.trim() || undefined }),
+        body: JSON.stringify({ messages: wire, mode: m, threadId: threadIds[m], regen, matter: caseMatter.trim() || undefined, ...(images?.length ? { images } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -615,7 +681,8 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
 
   const send = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
-    if (!text || busyRef.current) return;
+    const imgs = pendingImages;
+    if ((!text && imgs.length === 0) || busyRef.current) return;
     // A chat-blocking background operation (e.g. a model swap): hold the message.
     if (srv?.notice?.chatBlocked) {
       setError(`Chat is paused for a moment: ${srv.notice.message}`);
@@ -628,9 +695,22 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
         : "The AI server is still waking up — give it a couple of minutes, then send again.");
       return;
     }
+    // Photos need the vision model; if the text model is loaded, offer the
+    // swap instead of sending. The message and photos stay staged.
+    if (imgs.length > 0 && srv?.desiredModel !== "vision") {
+      if (srv?.visionConfigured) setSwapAsk("vision");
+      else setError("Photo reading isn't set up yet — a vision model hasn't been configured (AI_MODEL_VISION).");
+      return;
+    }
     setInput("");
-    return run(mode, [...threads[mode], { role: "user", content: text }], false);
-  }, [input, mode, threads, run, srv]);
+    setPendingImages([]);
+    return run(
+      mode,
+      [...threads[mode], { role: "user", content: text || "Please take a look at the attached photo(s).", ...(imgs.length ? { images: imgs } : {}) }],
+      false,
+      imgs.length ? imgs : undefined,
+    );
+  }, [input, mode, threads, run, srv, pendingImages]);
 
   const regenerate = useCallback(() => {
     if (busyRef.current) return;
@@ -859,6 +939,19 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               </select>
               idle
             </label>
+            {srv.visionConfigured && (
+              <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]">
+                Model: <strong className="max-w-40 truncate text-[var(--c-ink)]" title={srv.modelLabel ?? undefined}>{srv.modelLabel ?? "—"}</strong>
+                <button
+                  onClick={() => setSwapAsk(srv.desiredModel === "vision" ? "text" : "vision")}
+                  disabled={!!srv.notice?.chatBlocked}
+                  className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-0.5 font-medium transition-colors hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] disabled:opacity-40"
+                  title={srv.desiredModel === "vision" ? "Switch back to the everyday text model" : "Switch to the vision model (reads photos and scans)"}
+                >
+                  <Eye size={11} /> {srv.desiredModel === "vision" ? "Back to text" : "Vision"}
+                </button>
+              </span>
+            )}
             <span className="basis-full text-[var(--c-ink-muted)] sm:ml-auto sm:basis-auto" title="Estimated from the server's start/stop log — RunPod's billing page is the authority.">
               Est. this month: <strong className="text-[var(--c-ink)]">${(srv.monthUsd ?? 0).toFixed(2)}</strong>
               {typeof srv.balance === "number" && <> · Credit left: <strong className={srv.balance < 15 ? "text-red-600" : "text-[var(--c-ink)]"}>${srv.balance.toFixed(2)}</strong></>}
@@ -1031,7 +1124,17 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                       : (busy && i === messages.length - 1
                           ? <span className="inline-flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={13} className="animate-spin text-[var(--c-accent)]" /> {toolStatus ?? "Thinking…"}</span>
                           : null))
-                  : m.content}
+                  : <>
+                      {m.images && m.images.length > 0 && (
+                        <span className="mb-1.5 flex flex-wrap gap-1.5">
+                          {m.images.map((u, j) => (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img key={j} src={u} alt="Attached photo" className="h-24 max-w-40 rounded-md object-cover" />
+                          ))}
+                        </span>
+                      )}
+                      {m.content}
+                    </>}
               </div>
             </div>
           ))}
@@ -1044,7 +1147,32 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
         )}
 
         <div className="border-t border-[var(--c-border)] bg-[var(--c-bg)] p-3 sm:px-4">
+          {pendingImages.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {pendingImages.map((u, i) => (
+                <span key={i} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={u} alt={`Attached photo ${i + 1}`} className="h-14 w-14 rounded-md border border-[var(--c-border)] object-cover" />
+                  <button onClick={() => setPendingImages((p) => p.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--c-ink)] p-0.5 text-[var(--c-bg)] hover:bg-red-600 hover:text-white" title="Remove photo">
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+              {srv?.desiredModel !== "vision" && (
+                <span className="text-[10px] text-amber-700 dark:text-amber-300">Photos need the vision model — you&apos;ll be asked to switch when you send.</span>
+              )}
+            </div>
+          )}
           <div className={`flex items-end gap-1.5 rounded-xl border bg-[var(--c-surface)] p-1.5 transition-colors ${voiceChat ? "border-[var(--c-accent)]" : "border-[var(--c-border)] focus-within:border-[var(--c-accent)]"}`}>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => void onPickImages(e)} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={!!srv?.notice?.chatBlocked || pendingImages.length >= 4}
+              title="Attach photos — AI.fred reads them with the vision model"
+              className="rounded-lg p-2.5 text-[var(--c-ink-muted)] transition-colors hover:bg-[var(--c-accent)]/10 hover:text-[var(--c-accent)] disabled:opacity-40"
+            >
+              <ImagePlus size={16} />
+            </button>
             {speechOk && (
               <button
                 onClick={toggleDictation}
@@ -1078,6 +1206,31 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
           {!saveable && <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">Conversations aren&apos;t being saved — run Settings → Database updates once to turn on saved history.</p>}
         </div>
       </div>
+
+      {/* Model-swap confirm: swapping restarts the paid GPU server, so it is
+          an explicit yes every time — never automatic. */}
+      {swapAsk && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !swapBusy && setSwapAsk(null)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="flex items-center gap-2 font-[family-name:var(--font-display)] text-base text-[var(--c-ink)]">
+              <Eye size={16} className="text-[var(--c-accent)]" /> Switch AI models?
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--c-ink-muted)]">
+              {swapAsk === "vision" ? (
+                <>Reading photos takes the vision model{srv?.visionLabel ? <> (<strong className="text-[var(--c-ink)]">{srv.visionLabel}</strong>)</> : null}. Switching restarts the AI server — chat pauses for about 3–5 minutes while it loads. Your message and photos stay staged right here; send them once the notice clears.</>
+              ) : (
+                <>Switch back to the everyday text model — best for drafting and firm-data lookups. Chat pauses for about 3–5 minutes while the server reloads.</>
+              )}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setSwapAsk(null)} disabled={swapBusy} className="btn btn-outline px-4 py-1.5 text-sm">Cancel</button>
+              <button onClick={() => void doSwap(swapAsk)} disabled={swapBusy} className="btn btn-accent px-4 py-1.5 text-sm">
+                {swapBusy ? <span className="inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Switching…</span> : "Switch models"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Settings: custom instructions + what AI.fred remembers. */}
       {settingsOpen && (

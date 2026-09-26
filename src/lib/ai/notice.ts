@@ -18,24 +18,30 @@ export type AiNotice = {
   /** ISO timestamp after which the notice self-clears (safety valve). */
   until: string;
   startedAt: string;
+  /** What raised it — lets the poster clear only its own notices (a model
+   *  swap self-clears when the serving model matches, for instance). */
+  kind?: string;
 };
 
 const KEY = "ai.notice";
 const MAX_MINUTES = 30;
 
-export async function setAiNotice(message: string, opts: { chatBlocked?: boolean; minutes?: number } = {}): Promise<void> {
+export async function setAiNotice(message: string, opts: { chatBlocked?: boolean; minutes?: number; kind?: string } = {}): Promise<void> {
   const minutes = Math.min(Math.max(1, opts.minutes ?? 10), MAX_MINUTES);
   const notice: AiNotice = {
     message: message.slice(0, 300),
     chatBlocked: !!opts.chatBlocked,
     until: new Date(Date.now() + minutes * 60000).toISOString(),
     startedAt: new Date().toISOString(),
+    ...(opts.kind ? { kind: opts.kind } : {}),
   };
   await putAiSetting(KEY, notice);
 }
 
 export async function clearAiNotice(): Promise<void> {
-  await putAiSetting(KEY, null);
+  // The settings value column is NOT NULL, so "cleared" is an empty object —
+  // getAiNotice treats anything without a message as no notice.
+  await putAiSetting(KEY, {});
 }
 
 /** The active notice, or null if none / expired. */

@@ -111,6 +111,7 @@ import { extractDocxText, detectFields } from "@/lib/documents/merge";
 import { caseFieldValues, STANDARD_FIELDS } from "@/lib/documents/case-fields";
 import { generateFromTemplate, type GenerateOutput } from "@/lib/documents/generate";
 import { aiConfig } from "@/lib/ai/config";
+import { activeModel } from "@/lib/ai/vision";
 
 export type BankTemplate = {
   id: number; name: string; folder: string; description: string; docType: string;
@@ -227,6 +228,8 @@ export async function aiSortInbox() {
   const cfg = aiConfig();
   if (!cfg) return { ok: false as const, error: "The AI isn't configured yet." };
   await ensureDiscoveryTables();
+  // Whichever model is loaded right now does the filing (vision or text).
+  const sortModel = (await activeModel())?.model ?? cfg.model;
 
   const inbox = await db.select().from(docTemplates).where(and(eq(docTemplates.folder, ""), eq(docTemplates.archived, false))).limit(50);
   const rows = await db.select({ folder: docTemplates.folder }).from(docTemplates).where(eq(docTemplates.archived, false));
@@ -242,7 +245,7 @@ export async function aiSortInbox() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
         signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
-          model: cfg.model, stream: false, temperature: 0.1,
+          model: sortModel, stream: false, temperature: 0.1,
           messages: [
             { role: "system", content: "You are filing a law firm's Word templates. Reply with ONLY a JSON object, no prose: {\"folder\": string, \"doc_type\": string, \"name\": string, \"description\": string}. folder MUST be one of the provided folders (pick \"Engagement Letters\" for engagement/fee agreements regardless of practice area). doc_type MUST be one of: letter, engagement-letter, discovery-requests, motion, pleading, notice, agreement, other. name: a clean human title. description: one sentence starting \"Use this when\"." },
             { role: "user", content: `SORT_TEMPLATE_REQUEST\nFolders: ${folders.join(" | ")}\nFilename: ${t.name}\n\nDocument text (excerpt):\n${t.docText.slice(0, 3000)}` },

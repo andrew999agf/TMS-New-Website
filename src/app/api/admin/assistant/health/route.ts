@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { aiConfig } from "@/lib/ai/config";
+import { activeModel } from "@/lib/ai/vision";
 import { db } from "@/db";
 
 export const runtime = "nodejs";
@@ -29,6 +30,9 @@ export async function POST() {
     });
   }
 
+  // Test whichever model is actually loaded (text or vision).
+  const act = await activeModel().catch(() => null);
+  const model = act?.model ?? cfg.model;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` };
   const url = `${cfg.baseUrl}/chat/completions`;
   const withTimeout = (ms: number) => AbortSignal.timeout(ms);
@@ -45,7 +49,7 @@ export async function POST() {
       headers,
       signal: withTimeout(30000),
       body: JSON.stringify({
-        model: cfg.model,
+        model,
         messages: [{ role: "user", content: "Connection test - reply with the single word: ready" }],
         max_tokens: 10,
         temperature: 0,
@@ -75,7 +79,7 @@ export async function POST() {
         headers,
         signal: withTimeout(30000),
         body: JSON.stringify({
-          model: cfg.model,
+          model,
           messages: [{ role: "user", content: "Say ok." }],
           max_tokens: 10,
           temperature: 0,
@@ -93,8 +97,8 @@ export async function POST() {
   return NextResponse.json({
     configured: true,
     baseUrlHost: (() => { try { return new URL(cfg.baseUrl).host; } catch { return cfg.baseUrl; } })(),
-    model: cfg.model,
-    label: cfg.label,
+    model,
+    label: act?.label ?? cfg.label,
     reachable,
     latencyMs,
     reply: reply.slice(0, 80),
