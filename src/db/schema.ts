@@ -1586,6 +1586,8 @@ export const assistantThreads = pgTable(
     mode: varchar("mode", { length: 16 }).notNull().default("general"),
     /** Auto-titled from the first message; renamable. */
     title: varchar("title", { length: 200 }).notNull().default("New conversation"),
+    /** When this thread arrived as a shared copy: who shared it. */
+    sharedFrom: varchar("shared_from", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1607,6 +1609,34 @@ export const assistantMessages = pgTable(
 
 export type AssistantThread = typeof assistantThreads.$inferSelect;
 export type AssistantMessage = typeof assistantMessages.$inferSelect;
+
+/** Per-user Assistant preferences — ChatGPT-style custom instructions:
+ *  who the person is and how replies should read. Injected per request. */
+export const assistantPrefs = pgTable("assistant_prefs", {
+  userEmail: varchar("user_email", { length: 255 }).primaryKey(),
+  /** "About you" — name, role, what they work on. */
+  about: text("about").notNull().default(""),
+  /** "How to respond" — tone, length, format preferences. */
+  style: text("style").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The Assistant's long-term memory: short, durable notes it decides are
+ *  worth keeping (never case facts — those live in the case hub). Two
+ *  shelves: firm-wide facts everyone benefits from, and per-user notes. */
+export const assistantMemories = pgTable(
+  "assistant_memories",
+  {
+    id: serial("id").primaryKey(),
+    /** user (private to userEmail) | firm (shared). */
+    scope: varchar("scope", { length: 12 }).notNull().default("user"),
+    userEmail: varchar("user_email", { length: 255 }).notNull().default(""),
+    content: varchar("content", { length: 500 }).notNull(),
+    createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ scopeIdx: index("assistant_memories_scope_idx").on(t.scope, t.userEmail) }),
+);
 
 /** Start/stop history of the firm's rented AI GPU server — the wake/sleep
  *  concierge's audit trail and the raw data behind the cost meter. */

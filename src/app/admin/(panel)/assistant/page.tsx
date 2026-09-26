@@ -23,13 +23,15 @@ export default async function AssistantPage() {
   let saveable = false;
   if (db) {
     try {
+      const { ensureDiscoveryTables } = await import("@/db/ensure");
+      await ensureDiscoveryTables();
       const rows = await db
-        .select({ id: assistantThreads.id, mode: assistantThreads.mode, title: assistantThreads.title, updatedAt: assistantThreads.updatedAt })
+        .select({ id: assistantThreads.id, mode: assistantThreads.mode, title: assistantThreads.title, updatedAt: assistantThreads.updatedAt, sharedFrom: assistantThreads.sharedFrom })
         .from(assistantThreads)
         .where(eq(assistantThreads.userEmail, session.email))
         .orderBy(desc(assistantThreads.updatedAt))
         .limit(100);
-      threads = rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() }));
+      threads = rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString(), sharedFrom: r.sharedFrom || undefined }));
       saveable = true;
     } catch {
       saveable = false;
@@ -57,8 +59,8 @@ export default async function AssistantPage() {
   return (
     <>
       <AdminHeader
-        title="Assistant"
-        description="The firm's in-house AI — general conversation, document drafting, and coding, with saved conversations and voice. Admin-only, kept off the public site."
+        title="AI.fred"
+        description="The firm's in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site."
       />
       <div className="p-6">
         <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />

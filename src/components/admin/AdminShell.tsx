@@ -95,7 +95,7 @@ const CASE_TOOLS = [
   { label: "Discovery Reviewer", href: "/admin/discovery-reviewer", icon: FileStack },
   { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
   { label: "Case Portal", href: "/admin/case-portal", icon: Briefcase },
-  { label: "Assistant", href: "/admin/assistant", icon: Bot },
+  { label: "AI.fred", href: "/admin/assistant", icon: Bot },
   { label: "Map Overlay", href: "/admin/map-overlay", icon: MapIcon },
 ];
 

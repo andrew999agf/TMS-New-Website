@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
-  Plus, Pencil, Square, RefreshCw, X, Scale, Activity, Power,
+  Plus, Pencil, Square, RefreshCw, X, Scale, Activity, Power, Share2, Settings2,
 } from "lucide-react";
 import {
   listAssistantThreads, getAssistantThread, renameAssistantThread, deleteAssistantThread,
-  type ThreadRow,
+  getAssistantSettings, saveAssistantPrefs, deleteAssistantMemory, listShareTargets, shareAssistantThread,
+  type ThreadRow, type MemoryRow, type ShareTarget,
 } from "@/app/admin/(panel)/assistant/actions";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -31,8 +32,8 @@ type ServerInfo = {
 const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string; starters: string[] }> = {
   general: {
     label: "General", icon: MessageSquare,
-    hint: "Ask anything…  (Enter to send, Shift+Enter for a new line)",
-    empty: "A balanced, all-purpose conversation — and it can read the firm's own systems: cases, discovery, exhibits, deadlines, intake.",
+    hint: "Ask AI.fred anything…  (Enter to send, Shift+Enter for a new line)",
+    empty: "AI.fred, at your service — questions, research, and the firm's own systems: cases, discovery, exhibits, deadlines, intake. It can also show you around this admin panel.",
     starters: [
       "Give me a status report on a case — I'll give you the matter number",
       "What deadlines does the firm have coming up in the next 30 days?",
@@ -354,6 +355,58 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     } catch { /* next refresh corrects */ }
   }, []);
 
+  // Preferences & memories dialog (the gear).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [prefsAbout, setPrefsAbout] = useState("");
+  const [prefsStyle, setPrefsStyle] = useState("");
+  const [memories, setMemories] = useState<MemoryRow[]>([]);
+  const [fullAdmin, setFullAdmin] = useState(false);
+  const [prefsBusy, setPrefsBusy] = useState(false);
+  const [prefsSaved, setPrefsSaved] = useState(false);
+
+  const openSettings = useCallback(async () => {
+    setSettingsOpen(true);
+    setPrefsSaved(false);
+    try {
+      const r = await getAssistantSettings();
+      setPrefsAbout(r.prefs.about);
+      setPrefsStyle(r.prefs.style);
+      setMemories(r.memories);
+      setFullAdmin(r.fullAdmin);
+    } catch { /* dialog still usable */ }
+  }, []);
+
+  const savePrefs = useCallback(async () => {
+    setPrefsBusy(true);
+    try {
+      const r = await saveAssistantPrefs({ about: prefsAbout, style: prefsStyle });
+      setPrefsSaved(r.ok);
+    } finally {
+      setPrefsBusy(false);
+    }
+  }, [prefsAbout, prefsStyle]);
+
+  const forgetMemory = useCallback(async (id: number) => {
+    setMemories((m) => m.filter((x) => x.id !== id));
+    await deleteAssistantMemory(id);
+  }, []);
+
+  // Share-a-chat dialog.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTargets, setShareTargets] = useState<ShareTarget[]>([]);
+  const [shareQuery, setShareQuery] = useState("");
+  const [shareSel, setShareSel] = useState<string[]>([]);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+
+  const openShare = useCallback(async () => {
+    setShareOpen(true);
+    setShareNote(null);
+    setShareSel([]);
+    setShareQuery("");
+    try { setShareTargets(await listShareTargets()); } catch { /* empty list renders */ }
+  }, []);
+
   const [healthBusy, setHealthBusy] = useState(false);
   const [health, setHealth] = useState<{
     configured: boolean; reachable: boolean; latencyMs?: number | null; model?: string;
@@ -375,6 +428,20 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   }, []);
   const [threads, setThreads] = useState<Record<Mode, Msg[]>>({ general: [], draft: [], code: [] });
   const [threadIds, setThreadIds] = useState<Record<Mode, number | null>>({ general: null, draft: null, code: null });
+
+  const doShare = useCallback(async () => {
+    const tid = threadIds[mode];
+    if (tid == null || !shareSel.length) return;
+    setShareBusy(true);
+    try {
+      const r = await shareAssistantThread(tid, shareSel);
+      setShareNote(r.ok ? `Shared with ${r.shared} ${r.shared === 1 ? "person" : "people"}.` : (r.error ?? "Couldn't share."));
+      if (r.ok) setShareSel([]);
+    } finally {
+      setShareBusy(false);
+    }
+  }, [threadIds, mode, shareSel]);
+
   const [history, setHistory] = useState<ThreadRow[]>(initialThreads);
   const [histOpen, setHistOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -673,7 +740,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                       <Icon size={13} className={`shrink-0 ${active ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"}`} />
                       <button onClick={() => void openThread(t)} className="min-w-0 flex-1 text-left" title={t.title}>
                         <span className={`block truncate text-xs ${active ? "font-semibold text-[var(--c-accent)]" : "font-medium text-[var(--c-ink)]"}`}>{t.title}</span>
-                        <span className="block text-[10px] text-[var(--c-ink-muted)]">{timeAgo(t.updatedAt)}</span>
+                        <span className="block truncate text-[10px] text-[var(--c-ink-muted)]">{t.sharedFrom ? `↪ from ${t.sharedFrom} · ` : ""}{timeAgo(t.updatedAt)}</span>
                       </button>
                       <span className="hidden shrink-0 items-center gap-0.5 group-hover/th:flex">
                         <button onClick={() => { setRenamingId(t.id); setRenameText(t.title); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Rename"><Pencil size={11} /></button>
@@ -789,6 +856,22 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               {speakReplies ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </button>
             {label && <span className="hidden rounded bg-[var(--c-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] sm:inline">{label}</span>}
+            {saveable && threadIds[mode] != null && (
+              <button
+                onClick={() => void openShare()}
+                title="Share this conversation — each person gets their own copy"
+                className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+              >
+                <Share2 size={14} />
+              </button>
+            )}
+            <button
+              onClick={() => void openSettings()}
+              title="AI.fred settings — who you are, how it should respond, and what it remembers"
+              className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+            >
+              <Settings2 size={14} />
+            </button>
             <button
               onClick={() => void testConnection()}
               disabled={healthBusy}
@@ -922,6 +1005,95 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
           {!saveable && <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">Conversations aren&apos;t being saved — run Settings → Database updates once to turn on saved history.</p>}
         </div>
       </div>
+
+      {/* Settings: custom instructions + what AI.fred remembers. */}
+      {settingsOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSettingsOpen(false)}>
+          <div className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-4 py-3">
+              <Settings2 size={15} className="text-[var(--c-accent)]" />
+              <span className="font-[family-name:var(--font-display)] text-sm">AI.fred settings</span>
+              <button onClick={() => setSettingsOpen(false)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">About you</label>
+                <p className="mb-1.5 text-[11px] text-[var(--c-ink-muted)]">Who you are and what you work on — AI.fred keeps it in mind. Only applies to your own chats.</p>
+                <textarea value={prefsAbout} onChange={(e) => setPrefsAbout(e.target.value)} rows={3} maxLength={800} placeholder="e.g. I'm the firm's paralegal; I mostly handle discovery and client intake." className="w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm outline-none focus:border-[var(--c-accent)]" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">How AI.fred should respond to you</label>
+                <textarea value={prefsStyle} onChange={(e) => setPrefsStyle(e.target.value)} rows={3} maxLength={800} placeholder="e.g. Keep answers short. Lead with the deadline. Explain legal terms plainly." className="w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5 text-sm outline-none focus:border-[var(--c-accent)]" />
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => void savePrefs()} disabled={prefsBusy} className="btn btn-accent px-4 py-2 text-sm">{prefsBusy ? <Loader2 size={14} className="animate-spin" /> : "Save preferences"}</button>
+                {prefsSaved && <span className="text-xs text-green-600">Saved.</span>}
+              </div>
+              <div className="border-t border-[var(--c-border)] pt-3">
+                <p className="mb-1 text-xs font-semibold text-[var(--c-ink)]">What AI.fred remembers</p>
+                <p className="mb-2 text-[11px] text-[var(--c-ink-muted)]">Notes it chose to keep — say “remember that…” in a chat to add one. Delete anything you don&apos;t want kept.</p>
+                {memories.length === 0 && <p className="text-xs text-[var(--c-ink-muted)]">Nothing remembered yet.</p>}
+                <ul className="space-y-1.5">
+                  {memories.map((m) => (
+                    <li key={m.id} className="flex items-start gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1.5 text-xs">
+                      <span className={`mt-0.5 shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${m.scope === "firm" ? "bg-[var(--c-accent)]/10 text-[var(--c-accent)]" : "bg-[var(--c-surface-2)] text-[var(--c-ink-muted)]"}`}>{m.scope === "firm" ? "Firm" : "You"}</span>
+                      <span className="min-w-0 flex-1">{m.content}</span>
+                      {(m.scope === "user" || fullAdmin) && (
+                        <button onClick={() => void forgetMemory(m.id)} className="shrink-0 rounded p-0.5 text-[var(--c-ink-muted)] hover:text-red-600" title="Forget this"><Trash2 size={12} /></button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share this conversation with other staff (each gets their own copy). */}
+      {shareOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShareOpen(false)}>
+          <div className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-4 py-3">
+              <Share2 size={15} className="text-[var(--c-accent)]" />
+              <span className="font-[family-name:var(--font-display)] text-sm">Share this conversation</span>
+              <button onClick={() => setShareOpen(false)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>
+            </div>
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+              <p className="text-[11px] text-[var(--c-ink-muted)]">Each person gets their own copy in their Conversations list, marked as shared by you. They can keep chatting in it without affecting yours.</p>
+              <input
+                value={shareQuery}
+                onChange={(e) => setShareQuery(e.target.value)}
+                placeholder="Search people…"
+                className="w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-2 text-sm outline-none focus:border-[var(--c-accent)]"
+              />
+              <div className="max-h-56 space-y-1 overflow-y-auto">
+                {shareTargets
+                  .filter((t) => `${t.name} ${t.email}`.toLowerCase().includes(shareQuery.trim().toLowerCase()))
+                  .map((t) => (
+                    <label key={t.email} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--c-surface-2)]">
+                      <input
+                        type="checkbox"
+                        className="accent-[var(--c-accent)]"
+                        checked={shareSel.includes(t.email)}
+                        onChange={(e) => setShareSel((s) => (e.target.checked ? [...s, t.email] : s.filter((x) => x !== t.email)))}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{t.name} <span className="text-[11px] text-[var(--c-ink-muted)]">{t.email}</span></span>
+                    </label>
+                  ))}
+                {shareTargets.length === 0 && <p className="px-2 text-xs text-[var(--c-ink-muted)]">No other staff accounts found.</p>}
+              </div>
+              {shareNote && <p className={`text-xs ${shareNote.startsWith("Shared") ? "text-green-600" : "text-red-600"}`}>{shareNote}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--c-border)] px-4 py-3">
+              <button onClick={() => setShareOpen(false)} className="btn btn-outline px-3 py-1.5 text-sm">Close</button>
+              <button onClick={() => void doShare()} disabled={shareBusy || !shareSel.length} className="btn btn-accent px-4 py-1.5 text-sm disabled:opacity-40">
+                {shareBusy ? <Loader2 size={14} className="animate-spin" /> : `Share${shareSel.length ? ` (${shareSel.length})` : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

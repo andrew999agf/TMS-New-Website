@@ -645,6 +645,24 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS ai_server_log_created_idx ON ai_server_log (created_at)`,
+  // Assistant personalization: per-user preferences, long-term memories,
+  // and shared-conversation provenance.
+  `CREATE TABLE IF NOT EXISTS assistant_prefs (
+    user_email varchar(255) PRIMARY KEY,
+    about text NOT NULL DEFAULT '',
+    style text NOT NULL DEFAULT '',
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS assistant_memories (
+    id serial PRIMARY KEY,
+    scope varchar(12) NOT NULL DEFAULT 'user',
+    user_email varchar(255) NOT NULL DEFAULT '',
+    content varchar(500) NOT NULL,
+    created_by varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS assistant_memories_scope_idx ON assistant_memories (scope, user_email)`,
+  `ALTER TABLE assistant_threads ADD COLUMN IF NOT EXISTS shared_from varchar(255) NOT NULL DEFAULT ''`,
   // Case Portal: enterprise groups -> companies -> matters with tasks,
   // correspondence, and documents; matters link out to the exhibit reviewer,
   // share folders, and Clio time via the matter display number.

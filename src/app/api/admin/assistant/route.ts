@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
-import { canAccessPath, canUseAssistantCode } from "@/lib/admin-sections";
+import { canAccessPath, canUseAssistantCode, canReviewBilling } from "@/lib/admin-sections";
+import { buildAdminGuide } from "@/lib/ai/admin-guide";
+import { billingSummary } from "@/lib/ai/billing";
 import { aiConfig, modelForMode } from "@/lib/ai/config";
 import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/ai/tools";
 import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { db } from "@/db";
-import { assistantThreads, assistantMessages } from "@/db/schema";
+import { assistantThreads, assistantMessages, assistantPrefs, assistantMemories } from "@/db/schema";
+import { or, sql } from "drizzle-orm";
 
 export const runtime = "nodejs";
 // Streaming replies plus tool rounds can run a while; give the function room.
@@ -14,9 +17,37 @@ export const maxDuration = 300;
 
 /** Shared ground rules for every mode. Behavior only — no confidential data. */
 const BASE_PROMPT =
-  "You are the in-house assistant for a Texas trial law firm, used only by firm staff inside the admin panel. " +
+  "You are AI.fred, the in-house AI for a Texas trial law firm — the firm's steady digital butler, in the spirit of a trusted " +
+  "aide-de-camp: unflappable, quietly capable, loyal to the firm, with an occasional touch of dry wit that never gets in the " +
+  "way of the work. You serve firm staff inside the admin panel only. Refer to yourself as AI.fred when a name is called for; " +
+  "never be theatrical about the persona — competence first, charm second. " +
   "Be direct and practical. You are not a substitute for a lawyer's judgment and you do not give legal advice to the public. " +
   "If you are unsure, say so rather than inventing facts, citations, or case law.";
+
+/** Admin-panel navigator: the map is fetched on demand, per user. */
+const GUIDE_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "admin_panel_guide",
+    description:
+      "Get the map of this admin panel tailored to the asking user: every section their account can access, what each is for, and where it lives in the sidebar. Use it whenever someone asks how to do something in the portal, where a feature lives, or what a tab does.",
+    parameters: { type: "object", properties: {} },
+  },
+};
+
+/** Billing rollup — only attached for accounts that hold billing access. */
+const BILLING_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "billing_summary",
+    description:
+      "Billing totals from the firm's time entries for one month: billable hours and dollars, per-timekeeper breakdown, and top matters. Use for questions like how much was billed last month or who logged the most hours.",
+    parameters: {
+      type: "object",
+      properties: { month: { type: "string", description: "Month as YYYY-MM. Omit for the current month." } },
+    },
+  },
+};
 
 /** Added when the firm-data tools are attached to the request. */
 const TOOLS_PROMPT =
@@ -58,6 +89,71 @@ const MODES: Record<string, { prompt: string; temperature: number }> = {
 };
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
+
+/** The memory tool: the model saves only durable, genuinely useful notes. */
+const MEMORY_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "save_memory",
+    description:
+      "Save ONE short, durable note to long-term memory. Be highly selective: only save when the user states a lasting preference, a standing fact about themselves or how the firm works, or explicitly says to remember something. NEVER save case-specific facts (those live in Matters/Cases), transient details, or anything sensitive like passwords. Keep it under 200 characters, written in third person.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The note, e.g. \"Prefers short answers\" or \"Share-portal documents are managed in the Intake tab\"." },
+        scope: { type: "string", enum: ["user", "firm"], description: "user = about this person only (default); firm = true for the whole firm." },
+      },
+      required: ["content"],
+    },
+  },
+};
+
+/** Custom instructions + remembered notes, folded into the system prompt. */
+async function personalization(email: string): Promise<string> {
+  if (!db) return "";
+  try {
+    const [row] = await db.select().from(assistantPrefs).where(eq(assistantPrefs.userEmail, email));
+    const mems = await db
+      .select({ scope: assistantMemories.scope, content: assistantMemories.content })
+      .from(assistantMemories)
+      .where(or(eq(assistantMemories.scope, "firm"), and(eq(assistantMemories.scope, "user"), eq(assistantMemories.userEmail, email))))
+      .orderBy(assistantMemories.id)
+      .limit(200);
+    let out = "";
+    if (row?.about?.trim()) out += `\nAbout this user (their own words): ${row.about.trim().slice(0, 800)}`;
+    if (row?.style?.trim()) out += `\nHow they want replies: ${row.style.trim().slice(0, 800)}`;
+    const firm = mems.filter((m) => m.scope === "firm").map((m) => `- ${m.content}`).join("\n").slice(0, 1600);
+    const mine = mems.filter((m) => m.scope !== "firm").map((m) => `- ${m.content}`).join("\n").slice(0, 1600);
+    if (firm) out += `\nRemembered firm-wide notes:\n${firm}`;
+    if (mine) out += `\nRemembered notes about this user:\n${mine}`;
+    if (out) out = "\n" + out + "\nApply these quietly; don't recite them back.";
+    return out;
+  } catch {
+    return "";
+  }
+}
+
+/** save_memory executor — selective, deduplicated, capped. */
+async function saveMemory(email: string, args: Record<string, unknown>): Promise<string> {
+  if (!db) return JSON.stringify({ error: "No database." });
+  const content = String(args.content ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (content.length < 8) return JSON.stringify({ error: "Too short to be worth remembering." });
+  const scope = args.scope === "firm" ? "firm" : "user";
+  const owner = scope === "user" ? email : "";
+  try {
+    const dupe = await db
+      .select({ id: assistantMemories.id })
+      .from(assistantMemories)
+      .where(and(eq(assistantMemories.scope, scope), eq(assistantMemories.userEmail, owner), sql`lower(${assistantMemories.content}) = ${content.toLowerCase()}`));
+    if (dupe.length) return JSON.stringify({ saved: false, note: "Already remembered." });
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(assistantMemories).where(and(eq(assistantMemories.scope, scope), eq(assistantMemories.userEmail, owner)));
+    if (n >= 200) return JSON.stringify({ error: "Memory is full — ask the user to prune old notes in Assistant settings." });
+    await db.insert(assistantMemories).values({ scope, userEmail: owner, content, createdBy: email });
+    return JSON.stringify({ saved: true, scope });
+  } catch (e) {
+    return JSON.stringify({ error: (e as Error).message.slice(0, 150) });
+  }
+}
 type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 type UpstreamMsg =
   | Msg
@@ -211,10 +307,18 @@ export async function POST(req: Request) {
   // Firm-data tools ride along whenever the database is configured and the
   // provider accepts them. A conversation-attached matter pins the case.
   let useTools = !!db && !toolsUnsupported(cfg.baseUrl);
+  const billingAllowed = canReviewBilling(session.role, session.permissions);
   const matter = typeof body.matter === "string" ? body.matter.trim().slice(0, 120) : "";
   let systemPrompt = mode.prompt + (useTools ? TOOLS_PROMPT : "");
   if (matter && useTools) {
     systemPrompt += ` The user attached case/matter "${matter}" to this conversation — when a question concerns "the case" or "this case", that is the one; look it up with your tools as needed.`;
+  }
+  if (useTools) {
+    systemPrompt += billingAllowed
+      ? " This user holds billing access: the billing_summary tool answers questions about billed hours and amounts."
+      : " This user does NOT hold billing access: politely decline to share billing amounts, revenue, or rates — that information is limited to the owners and billing staff. Their own time entry work in Time Tracker 4.0 is fine to discuss in general terms.";
+    systemPrompt += " Use save_memory sparingly — only for durable preferences or standing facts, never case details or anything sensitive.";
+    systemPrompt += await personalization(session.email);
   }
 
   const convo: UpstreamMsg[] = [{ role: "system", content: systemPrompt }, ...history];
@@ -244,7 +348,9 @@ export async function POST(req: Request) {
         messages: convo,
         stream: true,
         temperature: mode.temperature,
-        ...(withTools ? { tools: assistantToolSchemas(), tool_choice: "auto" } : {}),
+        ...(withTools
+          ? { tools: [...assistantToolSchemas(), MEMORY_TOOL, GUIDE_TOOL, ...(billingAllowed ? [BILLING_TOOL] : [])], tool_choice: "auto" }
+          : {}),
       }),
       signal: req.signal,
     });
@@ -286,8 +392,21 @@ export async function POST(req: Request) {
           for (const tc of toolCalls) {
             let args: Record<string, unknown> = {};
             try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* malformed args */ }
-            emit(sse({ tool_status: toolStatusLabel(tc.function.name, args) }));
-            const result = await runAssistantTool(tc.function.name, args);
+            const name = tc.function.name;
+            let result: string;
+            if (name === "save_memory") {
+              emit(sse({ tool_status: "Saving a note to memory…" }));
+              result = await saveMemory(session.email, args);
+            } else if (name === "admin_panel_guide") {
+              emit(sse({ tool_status: "Pulling up the admin panel map…" }));
+              result = buildAdminGuide(session.role, session.permissions);
+            } else if (name === "billing_summary") {
+              emit(sse({ tool_status: "Adding up the billing…" }));
+              result = billingAllowed ? await billingSummary(args) : JSON.stringify({ error: "This user does not hold billing access." });
+            } else {
+              emit(sse({ tool_status: toolStatusLabel(name, args) }));
+              result = await runAssistantTool(name, args);
+            }
             convo.push({ role: "tool", tool_call_id: tc.id, content: result });
           }
 
