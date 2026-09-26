@@ -127,12 +127,20 @@ export async function POST(req: Request) {
       );
       // Swapping counts as use: don't let the idle reaper kill the pod mid-load.
       await putAiSetting(AI_LAST_USED_KEY, new Date().toISOString());
-      if (running) {
-        await stopPod(cfg);
-        if (db) await db.insert(aiServerLog).values({ event: "stop", costPerHr: pod.costPerHr, byEmail: session.email });
+      try {
+        if (running) {
+          await stopPod(cfg);
+          if (db) await db.insert(aiServerLog).values({ event: "stop", costPerHr: pod.costPerHr, byEmail: session.email });
+        }
+        const started = await startPod(cfg);
+        if (db) await db.insert(aiServerLog).values({ event: "start", costPerHr: started.costPerHr, byEmail: session.email });
+      } catch (e) {
+        // Roll back so a failed restart doesn't leave chat blocked or the
+        // desired model pointing at something that never loaded.
+        await setDesiredModel(already).catch(() => {});
+        await clearAiNotice().catch(() => {});
+        throw e;
       }
-      const started = await startPod(cfg);
-      if (db) await db.insert(aiServerLog).values({ event: "start", costPerHr: started.costPerHr, byEmail: session.email });
       return NextResponse.json({ ok: true, state: "starting", desiredModel: target });
     }
     if (body.action === "config") {
