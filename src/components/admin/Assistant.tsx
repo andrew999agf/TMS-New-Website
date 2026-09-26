@@ -245,6 +245,38 @@ function CopyBtn({ text, title = "Copy", className = "" }: { text: string; title
   );
 }
 
+/** Download an AI.fred reply as a real Word document. */
+function WordBtn({ content, title }: { content: string; title?: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const res = await fetch("/api/admin/assistant/docx", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content, title }),
+          });
+          if (!res.ok) return;
+          const blob = await res.blob();
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = (res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]) ?? "AIfred-draft.docx";
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(a.href);
+        } finally {
+          setBusy(false);
+        }
+      }}
+      title="Download as a Word document (.docx)"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+    >
+      {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Word (.docx)
+    </button>
+  );
+}
+
 function AssistantBody({ content, mode }: { content: string; mode: Mode }) {
   const blocks = splitBlocks(content);
   return (
@@ -262,22 +294,25 @@ function AssistantBody({ content, mode }: { content: string; mode: Mode }) {
           b.body.trim() && <MarkdownText key={i} body={b.body.trim()} />
         ),
       )}
-      {mode === "draft" && content.trim() && (
-        <div className="flex gap-2 pt-0.5">
-          <CopyBtn text={content} title="Copy draft" />
-          <button
-            onClick={() => {
-              const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = `draft-${new Date().toISOString().slice(0, 10)}.txt`;
-              document.body.appendChild(a); a.click(); a.remove();
-              URL.revokeObjectURL(a.href);
-            }}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
-          >
-            <Download size={12} /> Download
-          </button>
+      {content.trim() && (
+        <div className="flex flex-wrap gap-2 pt-0.5">
+          <CopyBtn text={content} title={mode === "draft" ? "Copy draft" : "Copy"} />
+          <WordBtn content={content} title={mode === "draft" ? "Draft" : "AI.fred reply"} />
+          {mode === "draft" && (
+            <button
+              onClick={() => {
+                const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `draft-${new Date().toISOString().slice(0, 10)}.txt`;
+                document.body.appendChild(a); a.click(); a.remove();
+                URL.revokeObjectURL(a.href);
+              }}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+            >
+              <Download size={12} /> Plain text
+            </button>
+          )}
         </div>
       )}
     </div>
