@@ -152,8 +152,10 @@ export function TemplateLibrary({ initial, folders: initialFolders, standardFiel
       >
         <UploadCloud size={22} className="text-[var(--c-accent)]" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Drop templates here</p>
-          <p className="text-xs text-[var(--c-ink-muted)]">Word files (.docx best — that&apos;s what AI.fred can fill). They land in the Inbox; you or AI.fred file them into folders. Mark blanks in your documents like <code className="rounded bg-[var(--c-surface-2)] px-1">{"{{client_name}}"}</code> and they auto-fill from the case.</p>
+          <p className="text-sm font-medium">Drop templates here — your real documents, as they are</p>
+          <p className="text-xs text-[var(--c-ink-muted)]">
+            Past agreements, letters, filed motions — no preparation needed. AI.fred reads the old document, finds the names, dates, and case-specific facts, and adapts it to the new case the way a person would, keeping your formatting and verbiage. (.docx works best; if a document happens to contain <code className="rounded bg-[var(--c-surface-2)] px-1">{"{{fields}}"}</code> they auto-fill too, but that&apos;s optional.)
+          </p>
         </div>
         <input ref={fileRef} type="file" multiple accept=".doc,.docx,.rtf,.odt" className="hidden" onChange={(e) => { if (e.target.files?.length) void doUpload(e.target.files); e.target.value = ""; }} />
         <button onClick={() => fileRef.current?.click()} disabled={busy} className="btn btn-outline px-3 py-2 text-sm">
@@ -342,7 +344,11 @@ function GenerateDialog({ template, standardFields, onClose }: { template: BankT
             </div>
             <button onClick={() => void lookup()} disabled={looking || !matter.trim()} className="btn btn-outline px-3 py-2 text-sm">{looking ? <Loader2 size={14} className="animate-spin" /> : "Fill"}</button>
           </div>
-          {template.fields.length === 0 && <p className="text-xs text-[var(--c-ink-muted)]">This template has no {"{{fields}}"} — it generates as-is. Add placeholders in Word to make it fillable.</p>}
+          {template.fields.length === 0 && (
+            <p className="text-xs text-[var(--c-ink-muted)]">
+              This document has no fill-in fields, so this button just downloads a fresh copy. To adapt it to a case — new names, dates, and facts — ask <strong>AI.fred</strong>: e.g. &ldquo;use the {template.name} template for matter 00042-Nelson.&rdquo;
+            </p>
+          )}
           {template.fields.map((f) => (
             <div key={f}>
               <label className="mb-1 block text-xs font-semibold">{labels.get(f) ?? f} <code className="ml-1 rounded bg-[var(--c-surface-2)] px-1 text-[10px] font-normal">{`{{${f}}}`}</code></label>

@@ -141,10 +141,13 @@ const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: "read_template",
-    description: "Read one template's full text and merge fields, to confirm it fits and decide what revisions the request needs. Use the id from list_templates.",
+    description: "Read a template's full text (and any merge fields) — the step before adapting it to a new case. Long documents (motions, agreements) come back in parts; keep reading parts until you've seen everything you plan to revise.",
     parameters: {
       type: "object",
-      properties: { id: { type: "integer", description: "The template id." } },
+      properties: {
+        id: { type: "integer", description: "The template id." },
+        part: { type: "integer", description: "Which chunk of a long document to read (1-based). Default 1; the result says how many parts exist." },
+      },
       required: ["id"],
     },
   },
@@ -224,7 +227,7 @@ export async function runAssistantTool(name: string, args: Record<string, unknow
       case "list_deadlines": return pack(await listDeadlines(Number(args.days_ahead) || 45));
       case "search_contacts": return pack(await searchContactsTool(String(args.query ?? "")));
       case "list_templates": return pack(await listTemplatesTool(String(args.query ?? ""), String(args.folder ?? "")));
-      case "read_template": return pack(await readTemplateTool(Number(args.id)));
+      case "read_template": return pack(await readTemplateTool(Number(args.id), args.part == null ? 1 : Number(args.part)));
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
   } catch (e) {
@@ -476,14 +479,22 @@ async function listTemplatesTool(query: string, folder: string) {
   };
 }
 
-async function readTemplateTool(id: number) {
+// Sized so the full JSON result (text + metadata) stays under MAX_RESULT_CHARS.
+const TEMPLATE_PART_CHARS = 12000;
+
+async function readTemplateTool(id: number, partIn: number) {
   if (!Number.isFinite(id)) return { error: "id is required." };
   const [r] = await db!.select().from(docTemplates).where(eq(docTemplates.id, id));
   if (!r || r.archived) return { error: `No template #${id}.` };
+  const text = r.docText;
+  const parts = Math.max(1, Math.ceil(text.length / TEMPLATE_PART_CHARS));
+  const part = Math.min(Math.max(1, Number.isFinite(partIn) ? partIn : 1), parts);
   return {
     id: r.id, name: r.name, folder: r.folder, type: r.docType, useWhen: r.description || undefined,
     fields: Array.isArray(r.fields) ? r.fields : [],
-    text: r.docText.slice(0, 14000) || "(no extracted text — not a .docx)",
+    part, totalParts: parts,
+    ...(parts > 1 ? { note: `Long document — this is part ${part} of ${parts}. Read the remaining parts before revising passages you haven't seen.` } : {}),
+    text: text.slice((part - 1) * TEMPLATE_PART_CHARS, part * TEMPLATE_PART_CHARS) || "(no extracted text — not a .docx)",
   };
 }
 

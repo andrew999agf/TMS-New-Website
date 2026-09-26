@@ -60,7 +60,7 @@ const GENERATE_DOC_TOOL = {
   function: {
     name: "generate_document",
     description:
-      "Generate a finished Word document FROM a firm template: fills the template's {{fields}} (standard case fields auto-fill from the matter) and applies your paragraph revisions, keeping the firm's formatting. Workflow: list_templates → read_template → get_case for the facts → generate_document. Give the user the returned downloadPath as a markdown link. Only revise paragraphs the request actually requires; the template's verbiage is the firm's preference.",
+      "Generate a finished Word document FROM a firm template, preserving its formatting. Two mechanisms, usable together: (1) revisions — exact-text find/replace, the main tool for adapting a real past document (swap the old case's names/dates/facts, rewrite argument passages); each find must match the template text verbatim from read_template. (2) {{fields}} auto-fill for templates that have them (standard case fields fill from the matter automatically). Workflow: list_templates → read_template → get_case → generate_document → check failedRevisions and fix any misses. Keep the template's structure and verbiage except where the new case requires change.",
     parameters: {
       type: "object",
       properties: {
@@ -86,11 +86,17 @@ const TOOLS_PROMPT =
   "use the tools — never answer from memory or invent case facts. Start with list_cases or get_case when only a name is given. " +
   "When reporting from documents, cite the document name and page so staff can verify. If a tool returns nothing or an error, " +
   "say what you looked for and what came back. The tools cannot change case data; to edit it, staff use the tabs themselves. " +
-  "DOCUMENT DRAFTING: when asked for a letter, engagement letter, discovery requests, or any standard document, FIRST check " +
-  "list_templates for a firm template and build from it with generate_document — the firm's own files carry its letterhead and " +
-  "verbiage, so never draft from scratch when a template fits. After generating, give the download as a markdown link to the " +
-  "returned downloadPath and briefly say which fields were filled and what you revised. If no template fits, say so, then draft " +
-  "in the reply (the Word button exports it).";
+  "DOCUMENT DRAFTING: when asked for a letter, agreement, motion, discovery requests, or any standard document, FIRST check " +
+  "list_templates and build from the firm's own file with generate_document — never draft from scratch when a template fits. " +
+  "Most templates are REAL PAST DOCUMENTS from other cases, not fill-in forms. Work them like an associate adapting prior work " +
+  "product: read_template for the full text, get_case for the new case's facts, then generate_document with revisions that swap " +
+  "EVERY old-case detail — party names, dates, cause numbers, courts, counties, addresses, dollar amounts, and fact-specific " +
+  "passages — for the new case's, and rewrite argument paragraphs to fit the new facts while keeping the document's structure, " +
+  "boilerplate, and voice untouched. CONFIDENTIALITY SWEEP: before finishing, list every identifier of the old case you found " +
+  "and confirm each was replaced; if the result reports failedRevisions, fix the find-text and regenerate — an old client's " +
+  "name surviving into a new case's document is a serious error. After generating, give the download as a markdown link to the " +
+  "returned downloadPath and summarize what you changed. If no template fits, say so, then draft in the reply (the Word button " +
+  "exports it).";
 
 /**
  * Per-mode instructions and settings. The UI offers General / Drafting / Coding;

@@ -177,7 +177,7 @@ export async function uploadBankTemplates(formData: FormData) {
     if (/\.docx$/i.test(file.name)) {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        docText = await extractDocxText(bytes, 24000);
+        docText = await extractDocxText(bytes, 80000);
         fields = detectFields(docText);
       } catch { /* keep file even if unreadable */ }
     }
