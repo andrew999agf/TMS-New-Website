@@ -62,7 +62,7 @@ export default async function AssistantPage() {
         title="AI.fred"
         description="The firm's in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site."
       />
-      <div className="p-6">
+      <div className="p-2 sm:p-6">
         <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />
       </div>
     </>

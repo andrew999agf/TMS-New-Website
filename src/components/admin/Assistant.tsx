@@ -735,7 +735,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const meta = MODE_META[mode];
 
   return (
-    <div className="relative flex h-[calc(100vh-11rem)] max-w-6xl overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-sm">
+    <div className="relative flex h-[calc(100dvh-10rem)] max-w-6xl overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-sm sm:h-[calc(100vh-11rem)]">
       {/* History rail — saved conversations. Always present on desktop; a
           toggled overlay panel on phones. Cream inset so it reads as the
           "shelf" beside the white conversation surface. */}
@@ -823,7 +823,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               </select>
               idle
             </label>
-            <span className="ml-auto text-[var(--c-ink-muted)]" title="Estimated from the server's start/stop log — RunPod's billing page is the authority.">
+            <span className="basis-full text-[var(--c-ink-muted)] sm:ml-auto sm:basis-auto" title="Estimated from the server's start/stop log — RunPod's billing page is the authority.">
               Est. this month: <strong className="text-[var(--c-ink)]">${(srv.monthUsd ?? 0).toFixed(2)}</strong>
               {typeof srv.balance === "number" && <> · Credit left: <strong className={srv.balance < 15 ? "text-red-600" : "text-[var(--c-ink)]"}>${srv.balance.toFixed(2)}</strong></>}
             </span>
@@ -844,10 +844,11 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${mode === m ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] shadow-sm" : "text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"}`}
+                  title={MODE_META[m].label}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3 ${mode === m ? "bg-[var(--c-accent)] text-[var(--c-on-accent)] shadow-sm" : "text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"}`}
                 >
-                  <Icon size={13} /> {MODE_META[m].label}
-                  {threads[m].length > 0 && mode !== m && <span className="rounded-full bg-[var(--c-surface)] px-1.5 text-[9px] text-[var(--c-ink-muted)]">{threads[m].length}</span>}
+                  <Icon size={13} /> <span className="hidden sm:inline">{MODE_META[m].label}</span>
+                  {threads[m].length > 0 && mode !== m && <span className="hidden rounded-full bg-[var(--c-surface)] px-1.5 text-[9px] text-[var(--c-ink-muted)] sm:inline">{threads[m].length}</span>}
                 </button>
               );
             })}
@@ -856,14 +857,14 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
           {/* Attach a case: the model treats "the case" as this matter and
               pulls its real details (parties, court, discovery, exhibits)
               through the firm-data tools. */}
-          <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${caseMatter.trim() ? "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`} title="Attach a case — the assistant will pull this matter's details from Matters/Cases, Discovery, Exhibits, and Pre-Trial">
+          <div className={`order-last inline-flex basis-full items-center gap-1 rounded-md border px-2 py-1 sm:order-none sm:basis-auto ${caseMatter.trim() ? "border-[var(--c-accent)]/50 bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`} title="Attach a case — the assistant will pull this matter's details from Matters/Cases, Discovery, Exhibits, and Pre-Trial">
             <Scale size={12} className={caseMatter.trim() ? "text-[var(--c-accent)]" : "text-[var(--c-ink-muted)]"} />
             <input
               value={caseMatter}
               onChange={(e) => setCaseMatter(e.target.value)}
               list="assistant-matter-list"
               placeholder="Attach case (matter no.)"
-              className="w-44 bg-transparent text-xs text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70"
+              className="min-w-0 flex-1 bg-transparent text-xs text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70 sm:w-44 sm:flex-none"
             />
             {caseMatter && (
               <button onClick={() => setCaseMatter("")} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" title="Detach the case"><X size={12} /></button>
@@ -880,7 +881,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                 title={voiceChat ? "End the voice conversation" : "Voice conversation — talk back and forth, hands-free"}
                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${voiceChat ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
               >
-                <AudioLines size={13} className={voiceChat ? "animate-pulse" : ""} /> {voiceChat ? (speaking ? "Speaking…" : listening ? "Listening…" : "Voice on") : "Voice"}
+                <AudioLines size={13} className={voiceChat ? "animate-pulse" : ""} /> <span className={voiceChat ? "" : "hidden sm:inline"}>{voiceChat ? (speaking ? "Speaking…" : listening ? "Listening…" : "Voice on") : "Voice"}</span>
               </button>
             )}
             <button
@@ -949,7 +950,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
+        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
           {messages.length === 0 && (
             <div className="mx-auto mt-8 max-w-lg text-center">
               <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-accent)]/10">
@@ -977,7 +978,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${m.role === "user" ? "bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-accent)]"}`}>
                 {m.role === "user" ? <User size={14} /> : <Bot size={15} />}
               </span>
-              <div className={`min-w-0 max-w-[85%] rounded-xl px-3.5 py-2.5 ${m.role === "user" ? "whitespace-pre-wrap rounded-tr-sm bg-[var(--c-accent)] text-sm leading-relaxed text-[var(--c-on-accent)]" : "rounded-tl-sm border border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-ink)]"}`}>
+              <div className={`min-w-0 max-w-[92%] rounded-xl px-3.5 py-2.5 sm:max-w-[85%] ${m.role === "user" ? "whitespace-pre-wrap rounded-tr-sm bg-[var(--c-accent)] text-sm leading-relaxed text-[var(--c-on-accent)]" : "rounded-tl-sm border border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-ink)]"}`}>
                 {m.role === "assistant"
                   ? (m.content
                       ? <>

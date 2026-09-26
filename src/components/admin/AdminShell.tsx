@@ -125,9 +125,13 @@ export function AdminShell({
   const nav = NAV.filter((i) => (i.label === "Website Management" ? canWebsite : allowed.has(sectionForPath(i.href) ?? "")));
   const caseTools = CASE_TOOLS.filter((i) => allowed.has(sectionForPath(i.href) ?? ""));
 
-  // Restore the saved preference on mount, and persist changes.
+  // Restore the saved preference on mount, and persist changes. On phones and
+  // small tablets the full 240px rail would crush the content, so narrow
+  // screens start collapsed to the icon rail regardless of the saved
+  // preference — the toggle still expands it on demand.
   useEffect(() => {
-    setCollapsed(localStorage.getItem("tms_admin_sidebar_collapsed") === "1");
+    const small = window.matchMedia("(max-width: 1023px)").matches;
+    setCollapsed(small || localStorage.getItem("tms_admin_sidebar_collapsed") === "1");
   }, []);
   function toggle() {
     setCollapsed((c) => {
