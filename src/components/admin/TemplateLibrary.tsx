@@ -34,17 +34,52 @@ export function TemplateLibrary({ initial, folders: initialFolders, standardFiel
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ name: string; description: string; docType: string }>({ name: "", description: "", docType: "other" });
   const [genFor, setGenFor] = useState<BankTemplate | null>(null);
+  // "Use AI?" confirmation: nothing spends GPU time without an explicit yes.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [srv, setSrv] = useState<{ configured: boolean; state?: string; costPerHr?: number; podCostPerHr?: number } | null>(null);
+  const [waking, setWaking] = useState(false);
+
+  async function openConfirm() {
+    setConfirmOpen(true);
+    setSrv(null);
+    try {
+      const res = await fetch("/api/admin/ai-server");
+      setSrv(res.ok ? await res.json() : { configured: false });
+    } catch {
+      setSrv({ configured: false });
+    }
+  }
+
+  async function wakeThenSort() {
+    setWaking(true);
+    try {
+      await fetch("/api/admin/ai-server", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start" }) });
+      // Poll until the model answers (up to ~6 minutes).
+      for (let i = 0; i < 45; i++) {
+        await new Promise((r) => setTimeout(r, 8000));
+        try {
+          const res = await fetch("/api/admin/ai-server");
+          const j = await res.json();
+          setSrv(j);
+          if (j.state === "ready") {
+            setWaking(false);
+            setConfirmOpen(false);
+            await runAiSort();
+            return;
+          }
+        } catch { /* keep polling */ }
+      }
+      setNote("The AI server didn't come up in time — check the AI.fred tab and try again.");
+    } finally {
+      setWaking(false);
+    }
+  }
 
   const inboxCount = templates.filter((t) => !t.folder).length;
-  const visible = useMemo(
-    () => templates.filter((t) => (active === "__all" ? true : active === "__inbox" ? !t.folder : t.folder === active)),
-    [templates, active],
-  );
-  const folderCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    templates.forEach((t) => { if (t.folder) m.set(t.folder, (m.get(t.folder) ?? 0) + 1); });
-    return m;
-  }, [templates]);
+  // Small lists — computed inline; the React Compiler memoizes renders itself.
+  const visible = templates.filter((t) => (active === "__all" ? true : active === "__inbox" ? !t.folder : t.folder === active));
+  const folderCounts = new Map<string, number>();
+  templates.forEach((t) => { if (t.folder) folderCounts.set(t.folder, (folderCounts.get(t.folder) ?? 0) + 1); });
 
   const doUpload = useCallback(async (files: FileList | File[]) => {
     const fd = new FormData();
@@ -125,7 +160,7 @@ export function TemplateLibrary({ initial, folders: initialFolders, standardFiel
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Choose files
         </button>
         {inboxCount > 0 && (
-          <button onClick={() => void runAiSort()} disabled={sorting} className="btn btn-accent px-3 py-2 text-sm" title="AI.fred reads each inbox template and files it by practice area with a name, type, and description">
+          <button onClick={() => void openConfirm()} disabled={sorting} className="btn btn-accent px-3 py-2 text-sm" title="AI.fred reads each inbox template and files it by practice area with a name, type, and description">
             {sorting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Let AI.fred sort {inboxCount}
           </button>
         )}
@@ -200,6 +235,45 @@ export function TemplateLibrary({ initial, folders: initialFolders, standardFiel
       )}
 
       {genFor && <GenerateDialog template={genFor} standardFields={standardFields} onClose={() => setGenFor(null)} />}
+
+      {/* "Use AI?" gate: shows the server's live state and the rough cost
+          before a single GPU second is spent. */}
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !waking && setConfirmOpen(false)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center gap-2">
+              <Sparkles size={16} className="text-[var(--c-accent)]" />
+              <span className="font-[family-name:var(--font-display)] text-sm">Use AI.fred to sort {inboxCount} template{inboxCount === 1 ? "" : "s"}?</span>
+            </div>
+            <p className="mb-2 text-xs leading-relaxed text-[var(--c-ink-muted)]">
+              This runs on the firm&apos;s AI server. Sorting {inboxCount} template{inboxCount === 1 ? "" : "s"} takes a minute or two of server time — a few cents, not dollars.
+            </p>
+            <p className="mb-4 text-xs">
+              {srv == null ? (
+                <span className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Checking the server…</span>
+              ) : !srv.configured ? (
+                <span>Server controls aren&apos;t wired up yet — sorting will try the AI connection directly.</span>
+              ) : srv.state === "ready" ? (
+                <span className="font-medium text-green-700 dark:text-green-400">● Server is on (${(srv.costPerHr ?? 0).toFixed(2)}/hr) — no extra wake-up cost.</span>
+              ) : srv.state === "starting" ? (
+                <span className="font-medium text-amber-700 dark:text-amber-300">● Server is waking up — sorting will start when it&apos;s ready.</span>
+              ) : (
+                <span className="font-medium text-amber-700 dark:text-amber-300">● Server is asleep — it needs to wake first (~3 minutes, then auto-sleeps again after the idle timeout).</span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmOpen(false)} disabled={waking} className="btn btn-outline px-3 py-1.5 text-sm">Cancel</button>
+              {srv != null && srv.configured && (srv.state === "stopped" || srv.state === "starting") ? (
+                <button onClick={() => void wakeThenSort()} disabled={waking} className="btn btn-accent px-4 py-1.5 text-sm">
+                  {waking ? <span className="inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Waking… then sorting</span> : "Wake server & sort"}
+                </button>
+              ) : (
+                <button onClick={() => { setConfirmOpen(false); void runAiSort(); }} disabled={waking || srv == null} className="btn btn-accent px-4 py-1.5 text-sm">Yes, sort now</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
