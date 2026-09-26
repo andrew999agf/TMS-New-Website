@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
-  Plus, Pencil, Square, RefreshCw, X, Scale, Activity,
+  Plus, Pencil, Square, RefreshCw, X, Scale, Activity, Power,
 } from "lucide-react";
 import {
   listAssistantThreads, getAssistantThread, renameAssistantThread, deleteAssistantThread,
@@ -13,6 +13,20 @@ import {
 
 type Msg = { role: "user" | "assistant"; content: string };
 type Mode = "general" | "draft" | "code";
+
+/** Live state of the firm's rented GPU server, from /api/admin/ai-server. */
+type ServerInfo = {
+  configured: boolean;
+  state?: "ready" | "starting" | "stopped" | "missing" | "error";
+  costPerHr?: number;
+  podCostPerHr?: number;
+  gpu?: string;
+  balance?: number | null;
+  monthUsd?: number;
+  idleMinutes?: number;
+  autoSleep?: boolean;
+  error?: string;
+};
 
 const MODE_META: Record<Mode, { label: string; icon: typeof MessageSquare; hint: string; empty: string; starters: string[] }> = {
   general: {
@@ -294,6 +308,52 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   // "Test connection": pings the configured AI endpoint and reports back —
   // reachability, speed, and whether firm-data tool calling is supported.
+  // The GPU server's power strip: live state, costs, and the on/off switch.
+  const [srv, setSrv] = useState<ServerInfo | null>(null);
+  const [srvBusy, setSrvBusy] = useState(false);
+  const srvStateRef = useRef<string | undefined>(undefined);
+  useEffect(() => { srvStateRef.current = srv?.state; }, [srv]);
+
+  const refreshServer = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/ai-server");
+      if (res.ok) setSrv(await res.json());
+    } catch { /* keep last known */ }
+  }, []);
+
+  useEffect(() => {
+    void refreshServer();
+    // Poll gently; faster while the server is waking so the strip flips to
+    // Ready without a manual refresh.
+    const slow = setInterval(() => { if (srvStateRef.current !== "starting") void refreshServer(); }, 30000);
+    const fast = setInterval(() => { if (srvStateRef.current === "starting") void refreshServer(); }, 8000);
+    return () => { clearInterval(slow); clearInterval(fast); };
+  }, [refreshServer]);
+
+  const powerAction = useCallback(async (action: "start" | "stop") => {
+    setSrvBusy(true);
+    try {
+      const res = await fetch("/api/admin/ai-server", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setError(j.error || "Server control failed.");
+      else setSrv((s) => (s ? { ...s, state: action === "start" ? "starting" : "stopped", costPerHr: action === "start" ? s.podCostPerHr : 0 } : s));
+    } catch {
+      setError("Couldn't reach the server controls.");
+    } finally {
+      setSrvBusy(false);
+      setTimeout(() => void refreshServer(), 1500);
+    }
+  }, [refreshServer]);
+
+  const saveIdle = useCallback(async (value: string) => {
+    const autoSleep = value !== "off";
+    const idleMinutes = autoSleep ? Number(value) : undefined;
+    setSrv((s) => (s ? { ...s, autoSleep, ...(idleMinutes ? { idleMinutes } : {}) } : s));
+    try {
+      await fetch("/api/admin/ai-server", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "config", autoSleep, ...(idleMinutes ? { idleMinutes } : {}) }) });
+    } catch { /* next refresh corrects */ }
+  }, []);
+
   const [healthBusy, setHealthBusy] = useState(false);
   const [health, setHealth] = useState<{
     configured: boolean; reachable: boolean; latencyMs?: number | null; model?: string;
@@ -442,9 +502,16 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const send = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
     if (!text || busyRef.current) return;
+    // Asleep server: don't burn the message — point at the power switch.
+    if (srv?.configured && (srv.state === "stopped" || srv.state === "starting")) {
+      setError(srv.state === "stopped"
+        ? "The AI server is asleep. Press the power button above to wake it (about 3 minutes), then send again."
+        : "The AI server is still waking up — give it a couple of minutes, then send again.");
+      return;
+    }
     setInput("");
     return run(mode, [...threads[mode], { role: "user", content: text }], false);
-  }, [input, mode, threads, run]);
+  }, [input, mode, threads, run, srv]);
 
   const regenerate = useCallback(() => {
     if (busyRef.current) return;
@@ -622,6 +689,45 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Power strip: the GPU server's live state, cost meter, and switch. */}
+        {srv?.configured && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <span className={`h-2 w-2 rounded-full ${srv.state === "ready" ? "bg-green-500" : srv.state === "starting" ? "animate-pulse bg-amber-500" : srv.state === "error" ? "bg-red-500" : "bg-[var(--c-ink-muted)]/40"}`} />
+              {srv.state === "ready" && <>AI server on · ${srv.costPerHr?.toFixed(2)}/hr</>}
+              {srv.state === "starting" && <>Waking up — loading the model (~3 min)…</>}
+              {srv.state === "stopped" && <>AI server asleep · $0/hr</>}
+              {srv.state === "missing" && <>Server not found — check RUNPOD_POD_ID</>}
+              {srv.state === "error" && <span className="text-red-600">{srv.error || "Can't reach server controls"}</span>}
+            </span>
+            <button
+              onClick={() => void powerAction(srv.state === "stopped" ? "start" : "stop")}
+              disabled={srvBusy || srv.state === "missing" || srv.state === "error"}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium transition-colors disabled:opacity-40 ${srv.state === "stopped" ? "border-green-600/50 text-green-700 hover:bg-green-600 hover:text-white dark:text-green-400" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"}`}
+              title={srv.state === "stopped" ? "Wake the AI server (billing starts; ready in ~3 minutes)" : "Put the AI server to sleep (billing stops; the model stays saved)"}
+            >
+              {srvBusy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
+              {srv.state === "stopped" ? "Turn on" : "Turn off"}
+            </button>
+            <label className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]">
+              Auto-sleep after
+              <select
+                value={srv.autoSleep === false ? "off" : String(srv.idleMinutes ?? 5)}
+                onChange={(e) => void saveIdle(e.target.value)}
+                className="rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
+              >
+                {[2, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} min</option>)}
+                <option value="off">never</option>
+              </select>
+              idle
+            </label>
+            <span className="ml-auto text-[var(--c-ink-muted)]" title="Estimated from the server's start/stop log — RunPod's billing page is the authority.">
+              Est. this month: <strong className="text-[var(--c-ink)]">${(srv.monthUsd ?? 0).toFixed(2)}</strong>
+              {typeof srv.balance === "number" && <> · Credit left: <strong className={srv.balance < 15 ? "text-red-600" : "text-[var(--c-ink)]"}>${srv.balance.toFixed(2)}</strong></>}
+            </span>
+          </div>
+        )}
+
         {/* Header: the three tools + voice + model chip */}
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2.5">
           {saveable && (

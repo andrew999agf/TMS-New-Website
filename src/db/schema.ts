@@ -1608,6 +1608,22 @@ export const assistantMessages = pgTable(
 export type AssistantThread = typeof assistantThreads.$inferSelect;
 export type AssistantMessage = typeof assistantMessages.$inferSelect;
 
+/** Start/stop history of the firm's rented AI GPU server — the wake/sleep
+ *  concierge's audit trail and the raw data behind the cost meter. */
+export const aiServerLog = pgTable(
+  "ai_server_log",
+  {
+    id: serial("id").primaryKey(),
+    /** start (someone woke it) | stop (someone turned it off) | autostop (idle reaper). */
+    event: varchar("event", { length: 16 }).notNull(),
+    /** The pod's hourly rate at the time, for cost reconstruction. */
+    costPerHr: real("cost_per_hr").notNull().default(0),
+    byEmail: varchar("by_email", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ createdIdx: index("ai_server_log_created_idx").on(t.createdAt) }),
+);
+
 /* ------------------------------ Case Portal ------------------------------ */
 /*
  * Matter portal for select business clients. An enterprise GROUP (custom name,

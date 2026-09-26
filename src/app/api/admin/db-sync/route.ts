@@ -636,6 +636,15 @@ const DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS assistant_messages_thread_idx ON assistant_messages (thread_id)`,
+  // AI server concierge: start/stop audit trail behind the cost meter.
+  `CREATE TABLE IF NOT EXISTS ai_server_log (
+    id serial PRIMARY KEY,
+    event varchar(16) NOT NULL,
+    cost_per_hr real NOT NULL DEFAULT 0,
+    by_email varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_server_log_created_idx ON ai_server_log (created_at)`,
   // Case Portal: enterprise groups -> companies -> matters with tasks,
   // correspondence, and documents; matters link out to the exhibit reviewer,
   // share folders, and Clio time via the matter display number.

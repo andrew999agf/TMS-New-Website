@@ -133,6 +133,15 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  // AI server concierge: start/stop audit trail behind the cost meter.
+  `CREATE TABLE IF NOT EXISTS ai_server_log (
+    id serial PRIMARY KEY,
+    event varchar(16) NOT NULL,
+    cost_per_hr real NOT NULL DEFAULT 0,
+    by_email varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_server_log_created_idx ON ai_server_log (created_at)`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;

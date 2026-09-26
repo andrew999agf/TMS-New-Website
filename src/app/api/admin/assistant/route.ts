@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath, canUseAssistantCode } from "@/lib/admin-sections";
 import { aiConfig, modelForMode } from "@/lib/ai/config";
 import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/ai/tools";
+import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { db } from "@/db";
 import { assistantThreads, assistantMessages } from "@/db/schema";
 
@@ -153,6 +154,10 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
+
+  // Every chat marks the AI server as in use, so the idle reaper's clock
+  // resets while people are actually working with it.
+  void touchAiLastUsed();
 
   const modeKey = MODES[body.mode ?? "general"] ? (body.mode ?? "general") : "general";
   // The Coding tool is a separately granted ability: owners always, everyone

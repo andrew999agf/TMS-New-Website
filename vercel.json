@@ -64,6 +64,10 @@
     {
       "path": "/api/cron/dst-check",
       "schedule": "0 9 1 1 *"
+    },
+    {
+      "path": "/api/cron/ai-idle",
+      "schedule": "* * * * *"
     }
   ]
 }
