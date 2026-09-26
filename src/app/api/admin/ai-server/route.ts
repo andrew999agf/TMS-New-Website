@@ -42,7 +42,7 @@ export async function GET() {
       getBalance(cfg),
       aiServingModel(),
       getAiSetting<number>(AI_IDLE_KEY, AI_IDLE_DEFAULT),
-      getAiSetting<boolean>(AI_AUTOSLEEP_KEY, true),
+      getAiSetting<boolean>(AI_AUTOSLEEP_KEY, false), // default: on until turned off
       getAiSetting<string | null>(AI_LAST_USED_KEY, null),
     ]);
     // A model swap self-completes here: once the endpoint is serving the
