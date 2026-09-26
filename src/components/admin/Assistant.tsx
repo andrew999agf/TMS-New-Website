@@ -110,6 +110,113 @@ function splitBlocks(text: string): { type: "text" | "code"; lang: string; body:
   return out;
 }
 
+/** Inline markdown: **bold**, *italic*, `code`. */
+function inlineMd(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const t = m[0];
+    if (t.startsWith("**")) out.push(<strong key={out.length} className="font-semibold">{t.slice(2, -2)}</strong>);
+    else if (t.startsWith("`")) out.push(<code key={out.length} className="rounded bg-[var(--c-surface-2)] px-1 py-0.5 text-[0.85em]">{t.slice(1, -1)}</code>);
+    else out.push(<em key={out.length}>{t.slice(1, -1)}</em>);
+    last = m.index + t.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+const MD_TABLE_LINE = /^\s*\|.*\|\s*$/;
+const MD_TABLE_SEP = /^\s*\|[\s:|-]+\|\s*$/;
+const MD_LIST_ITEM = /^\s*([-*•]|\d+[.)])\s+/;
+const MD_HEADING = /^(#{1,4})\s+(.*)$/;
+const MD_RULE = /^\s*([-_*])\1{2,}\s*$/;
+
+/**
+ * Render the model's markdown as real formatting — bold, tables, lists,
+ * headings — instead of raw ** and | characters. Small on purpose: it covers
+ * what chat replies actually use, with plain text as the safe fallback.
+ */
+function MarkdownText({ body }: { body: string }) {
+  const lines = body.replace(/<br\s*\/?>/gi, "\n").split("\n");
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    if (MD_TABLE_LINE.test(line)) {
+      const rows: string[][] = [];
+      let sawSep = false;
+      while (i < lines.length && MD_TABLE_LINE.test(lines[i])) {
+        if (MD_TABLE_SEP.test(lines[i])) { sawSep = true; i++; continue; }
+        rows.push(lines[i].trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()));
+        i++;
+      }
+      const head = sawSep && rows.length > 1 ? rows[0] : null;
+      const bodyRows = head ? rows.slice(1) : rows;
+      nodes.push(
+        <div key={key++} className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            {head && (
+              <thead>
+                <tr>{head.map((c, ci) => <th key={ci} className="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2.5 py-1.5 text-left font-semibold">{inlineMd(c)}</th>)}</tr>
+              </thead>
+            )}
+            <tbody>
+              {bodyRows.map((r, ri) => (
+                <tr key={ri}>{r.map((c, ci) => <td key={ci} className="border border-[var(--c-border)] px-2.5 py-1.5 align-top">{inlineMd(c)}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
+    const h = MD_HEADING.exec(line);
+    if (h) {
+      nodes.push(<p key={key++} className={`font-semibold leading-snug ${h[1].length <= 2 ? "text-base" : "text-sm"}`}>{inlineMd(h[2].trim())}</p>);
+      i++;
+      continue;
+    }
+
+    if (MD_RULE.test(line)) {
+      nodes.push(<hr key={key++} className="border-[var(--c-border)]" />);
+      i++;
+      continue;
+    }
+
+    if (MD_LIST_ITEM.test(line)) {
+      const ordered = /^\s*\d/.test(line);
+      const items: string[] = [];
+      while (i < lines.length && MD_LIST_ITEM.test(lines[i])) {
+        items.push(lines[i].replace(MD_LIST_ITEM, "").trim());
+        i++;
+      }
+      const cls = "space-y-1 pl-5 text-sm leading-relaxed";
+      nodes.push(
+        ordered
+          ? <ol key={key++} className={`list-decimal ${cls}`}>{items.map((t, ti) => <li key={ti}>{inlineMd(t)}</li>)}</ol>
+          : <ul key={key++} className={`list-disc ${cls}`}>{items.map((t, ti) => <li key={ti}>{inlineMd(t)}</li>)}</ul>,
+      );
+      continue;
+    }
+
+    const para: string[] = [line];
+    i++;
+    while (i < lines.length && lines[i].trim() && !MD_TABLE_LINE.test(lines[i]) && !MD_HEADING.test(lines[i]) && !MD_LIST_ITEM.test(lines[i]) && !MD_RULE.test(lines[i])) {
+      para.push(lines[i]);
+      i++;
+    }
+    nodes.push(<p key={key++} className="whitespace-pre-wrap text-sm leading-relaxed">{inlineMd(para.join("\n"))}</p>);
+  }
+  return <div className="min-w-0 space-y-2">{nodes}</div>;
+}
+
 function CopyBtn({ text, title = "Copy", className = "" }: { text: string; title?: string; className?: string }) {
   const [ok, setOk] = useState(false);
   return (
@@ -137,7 +244,7 @@ function AssistantBody({ content, mode }: { content: string; mode: Mode }) {
             <pre className="overflow-x-auto p-3 text-xs leading-relaxed"><code>{b.body}</code></pre>
           </div>
         ) : (
-          b.body.trim() && <p key={i} className="whitespace-pre-wrap text-sm leading-relaxed">{b.body.trim()}</p>
+          b.body.trim() && <MarkdownText key={i} body={b.body.trim()} />
         ),
       )}
       {mode === "draft" && content.trim() && (
