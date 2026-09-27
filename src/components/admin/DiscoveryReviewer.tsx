@@ -12,9 +12,10 @@ import {
   type PageRef,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
+import { DiscoveryAiReview } from "@/components/admin/DiscoveryAiReview";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string };
+type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string; aiLabel?: string; aiDescription?: string; aiLabelStatus?: string };
 type Mark = { id: number; party: "P" | "D"; number: number; label: string; title: string; pages: PageRef[]; exhibitSetId: number | null };
 
 const key = (docId: number, page: number) => `${docId}:${page}`;
@@ -316,6 +317,8 @@ export function DiscoveryReviewer({
             {docs.length} doc{docs.length === 1 ? "" : "s"} · {totalPages} page{totalPages === 1 ? "" : "s"}{countsPending ? " (counting…)" : ""}
           </span>
 
+          <DiscoveryAiReview setId={setId} docCount={docs.length} />
+
           {/* selection → save as exhibit */}
           <div className={`ml-auto flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${selected.size > 0 ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
             <span className={`text-sm font-medium ${selected.size > 0 ? "" : "text-[var(--c-ink-muted)]"}`}>
@@ -470,6 +473,14 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge
           <section key={d.id}>
             <div className="mb-2 flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold">{d.name}</h3>
+              {d.aiLabel && (
+                <span
+                  className={`inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] ${d.aiLabelStatus === "illegible" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-[var(--c-accent)]/10 text-[var(--c-accent)]"}`}
+                  title={d.aiDescription || d.aiLabel}
+                >
+                  ✦ {d.aiLabel}
+                </span>
+              )}
               <span className="text-xs text-[var(--c-ink-muted)]">{n ? `${n} page${n === 1 ? "" : "s"}` : "counting pages…"}</span>
               {(d.servedAt || d.servedBy || d.servedTo) && (
                 <span className="text-xs text-[var(--c-ink-muted)]">

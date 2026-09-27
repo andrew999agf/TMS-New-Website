@@ -295,7 +295,7 @@ async function listDiscovery(matter: string) {
   if (!sets.length) return { note: `No discovery sets for matter "${matter}".` };
   const setIds = sets.map((s) => s.id);
   const [docs, marks, pdocs, prods] = await Promise.all([
-    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
+    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt, aiLabel: discoveryDocs.aiLabel, aiLabelStatus: discoveryDocs.aiLabelStatus }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
     db!.select({ party: discoveryMarks.party, number: discoveryMarks.number, label: discoveryMarks.label, title: discoveryMarks.title, pages: discoveryMarks.pages }).from(discoveryMarks).where(inArray(discoveryMarks.setId, setIds)),
     db!.select().from(productionDocs).where(inArray(productionDocs.setId, setIds)),
     db!.select().from(productions).where(inArray(productions.setId, setIds)),
@@ -312,8 +312,8 @@ async function listDiscovery(matter: string) {
   } catch { /* share tables optional */ }
   return {
     sets: sets.map((s) => ({ id: s.id, name: s.name, causeNumber: s.causeNumber })),
-    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined })),
-    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount })),
+    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
+    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined })),
     clientUploadedFiles: clientFiles,
     exhibitDesignations: marks.map((m) => ({ designation: m.label || `${m.party}-${m.number}`, title: m.title, pageCount: Array.isArray(m.pages) ? (m.pages as unknown[]).length : 0 })),
     productionPipeline: {
@@ -352,11 +352,14 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
     if (!row) return { error: `No exhibit document #${docId}.` };
     name = row.name; pages = Array.isArray(row.pageText) ? (row.pageText as string[]) : [];
   } else {
-    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
+    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
     if (!row) return { error: `No discovery document #${docId}.` };
     name = row.name; pages = Array.isArray(row.pageText) ? (row.pageText as string[]) : [];
+    if (!pages.length && row.aiLabel) {
+      return { document: name, aiLabel: row.aiLabel, aiDescription: row.aiDescription, note: "No extractable text; this is AI.fred's visual review of the document (from the discovery sweep)." };
+    }
   }
-  if (!pages.length) return { document: name, note: "No extracted text — likely a scanned image without a text layer. The contents can't be read as text." };
+  if (!pages.length) return { document: name, note: "No extracted text — likely a scanned image without a text layer. If the set has been through an AI discovery review, the label will appear in list_discovery_documents." };
   const from = Math.max(1, pageFrom ?? 1);
   const to = Math.min(pages.length, Math.max(from, pageTo ?? pages.length));
   const out: { page: number; text: string }[] = [];
@@ -391,8 +394,16 @@ async function searchDocuments(matter: string, query: string) {
     });
   };
   if (dsets.length) {
-    const docs = await db!.select({ id: discoveryDocs.id, name: discoveryDocs.name, pageText: discoveryDocs.pageText }).from(discoveryDocs).where(inArray(discoveryDocs.setId, dsets.map((s) => s.id)));
-    for (const d of docs) scan("discovery", d.id, d.name, Array.isArray(d.pageText) ? (d.pageText as string[]) : []);
+    const docs = await db!.select({ id: discoveryDocs.id, name: discoveryDocs.name, pageText: discoveryDocs.pageText, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(inArray(discoveryDocs.setId, dsets.map((s) => s.id)));
+    for (const d of docs) {
+      scan("discovery", d.id, d.name, Array.isArray(d.pageText) ? (d.pageText as string[]) : []);
+      // AI review labels make photos and scans searchable too.
+      const labelText = [d.aiLabel, d.aiDescription].filter(Boolean).join(" — ");
+      if (labelText && hits.length < 30) {
+        const idx = labelText.toLowerCase().indexOf(q);
+        if (idx >= 0) hits.push({ source: "discovery (AI label)", docId: d.id, document: d.name, page: 1, snippet: labelText.slice(0, 220) });
+      }
+    }
   }
   if (esets.length) {
     const docs = await db!.select({ id: exhibitDocs.id, label: exhibitDocs.label, title: exhibitDocs.title, pageText: exhibitDocs.pageText }).from(exhibitDocs).where(inArray(exhibitDocs.setId, esets.map((s) => s.id)));

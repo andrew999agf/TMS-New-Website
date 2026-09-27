@@ -1454,6 +1454,12 @@ export const discoveryDocs = pgTable(
     servedBy: varchar("served_by", { length: 191 }).notNull().default(""),
     /** …on which party. */
     servedTo: varchar("served_to", { length: 191 }).notNull().default(""),
+    /** AI.fred's review: a short label, a fuller description, and how the
+     *  review went ('' = not reviewed | labeled | illegible | error). */
+    aiLabel: varchar("ai_label", { length: 300 }).notNull().default(""),
+    aiDescription: text("ai_description").notNull().default(""),
+    aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
+    aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
     sort: integer("sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -44,6 +44,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Native/asset-heavy server deps the bundler must load from node_modules at
+  // runtime instead of bundling (@napi-rs/canvas ships a .node binary; the
+  // discovery AI review renders scanned PDF pages with it server-side).
+  serverExternalPackages: ["@napi-rs/canvas", "pdfjs-dist"],
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

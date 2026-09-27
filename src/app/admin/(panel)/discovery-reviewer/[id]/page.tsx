@@ -177,7 +177,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       <DiscoveryWorkspace
         reviewerProps={{
           setId,
-          docs: docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo })),
+          docs: docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus })),
           marks: marks.map((m) => ({ id: m.id, party: m.party as "P" | "D", number: m.number, label: m.label, title: m.title, pages: (m.pages as { docId: number; page: number }[]) ?? [], exhibitSetId: m.exhibitSetId })),
           usedNumbers,
           parties,
