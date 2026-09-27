@@ -21,7 +21,9 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
 }) {
-  const [mode, setMode] = useState<Mode>("opposing");
+  // Land where the work is: finalized productions (green) if any exist,
+  // otherwise the client documents under review (red).
+  const [mode, setMode] = useState<Mode>(() => (prods.some((p) => p.producedAt) ? "produced" : "received"));
   const receivedCount = clientFiles.length;
   const stagedCount = staged.filter((d) => d.batesStart && !prods.some((p) => p.id === d.productionId && p.producedAt)).length;
   const producedCount = prods.filter((p) => p.producedAt).length;

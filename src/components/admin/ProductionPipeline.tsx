@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
+import { UploadCloud,
   BookOpen, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, FileText, Grid3x3, Loader2, Pencil, Send, Stamp, Trash2, X, ZoomIn, ZoomOut,
 } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
-import {
+import { addDiscoveryDoc,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 
@@ -121,6 +122,34 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number; current: string } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  /** Direct uploads into the red pile — for when the firm itself has the
+   *  client's documents in hand (the client portal remains the other door). */
+  async function uploadClientFiles(all: File[]) {
+    const okFiles = all.filter((f) => /\.(pdf|jpe?g|png)$/i.test(f.name));
+    if (okFiles.length === 0) { setError("Drop PDFs or photos (JPG/PNG)."); return; }
+    setError(null);
+    setUploading({ done: 0, total: okFiles.length, current: okFiles[0].name });
+    for (let i = 0; i < okFiles.length; i++) {
+      const file = okFiles[i];
+      setUploading({ done: i, total: okFiles.length, current: file.name });
+      try {
+        const blob = await upload(`discovery/${setId}/client/${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`, file, {
+          access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+          contentType: file.type || undefined,
+        });
+        const r = await addDiscoveryDoc(setId, { name: file.name, file: { url: blob.url, pathname: blob.pathname, contentType: file.type || undefined, size: file.size }, bucket: "client" });
+        if (!r.ok) setError(r.error ?? `Couldn't save "${file.name}".`);
+      } catch (err) {
+        setError(`Upload failed for "${file.name}": ${(err as Error).message}`);
+      }
+    }
+    setUploading(null);
+    setNotice(`${okFiles.length} document${okFiles.length === 1 ? "" : "s"} added to Received from Client.`);
+    router.refresh();
+  }
 
   // one pdf.js proxy per document, shared by grid + reader
   const proxies = useRef(new Map<string, Promise<import("pdfjs-dist").PDFDocumentProxy>>());
@@ -190,6 +219,12 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
             <button onClick={() => setCols((c) => Math.max(1, c - 1))} disabled={cols <= 1} className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
         )}
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+          {uploading ? `Uploading ${uploading.done + 1}/${uploading.total}…` : "Add client documents"}
+          <input type="file" accept=".pdf,image/jpeg,image/png" multiple className="hidden" disabled={!!uploading}
+            onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void uploadClientFiles(fs); }} />
+        </label>
         <span className="text-xs text-[var(--c-ink-muted)]">Click a document (or any of its pages) to select it for production.</span>
         <div className={`ml-auto flex items-center gap-2 rounded-md px-2 py-1 ${selected.size ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
           {selected.size > 0 && <span className="text-sm font-medium">{selected.size} selected</span>}
@@ -200,15 +235,23 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className={`min-h-0 flex-1 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-[var(--c-accent)] bg-[var(--c-accent)]/5" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadClientFiles(Array.from(e.dataTransfer.files)); }}>
         {notice && (
           <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
             <Check size={15} className="mt-0.5 shrink-0" /> {notice} <button onClick={() => setNotice(null)} className="ml-auto"><X size={14} /></button>
           </p>
         )}
+        {error && (
+          <p className="mb-3 flex items-start gap-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            {error} <button onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
+          </p>
+        )}
         {files.length === 0 ? (
           <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
-            Nothing from the client yet. Send a document request (button above) and their uploads will land here.
+            Nothing here yet. Drag &amp; drop the client&apos;s documents anywhere on this area (or use <strong>Add client documents</strong> above) — or send a document request and their uploads land here on their own.
           </p>
         ) : view === "reader" ? (
           <ClientReader files={files} state={reader} setState={setReader} selected={selected} onToggle={toggle} getDoc={getDoc} proxyUrl={proxyUrl} />

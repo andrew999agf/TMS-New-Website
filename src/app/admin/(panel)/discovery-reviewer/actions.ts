@@ -110,7 +110,7 @@ export async function deleteDiscoverySet(id: number) {
 
 /* -------------------------------- docs --------------------------------- */
 
-export async function addDiscoveryDoc(setId: number, input: { name?: string; file: { url: string; pathname: string; contentType?: string; size?: number }; service?: { servedAt?: string; servedBy?: string; servedTo?: string } }) {
+export async function addDiscoveryDoc(setId: number, input: { name?: string; file: { url: string; pathname: string; contentType?: string; size?: number }; service?: { servedAt?: string; servedBy?: string; servedTo?: string }; bucket?: "opposing" | "client" }) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -132,6 +132,7 @@ export async function addDiscoveryDoc(setId: number, input: { name?: string; fil
         url: input.file.url, pathname: input.file.pathname,
         contentType: input.file.contentType ?? null, sizeBytes: input.file.size ?? null,
         pageCount, pageText,
+        bucket: input.bucket === "client" ? "client" : "opposing",
         servedAt: str(input.service?.servedAt, 32),
         servedBy: str(input.service?.servedBy, 191),
         servedTo: str(input.service?.servedTo, 191),
