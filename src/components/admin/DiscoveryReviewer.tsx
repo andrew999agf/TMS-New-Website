@@ -12,7 +12,7 @@ import {
   type PageRef,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
-import { DiscoveryAiReview } from "@/components/admin/DiscoveryAiReview";
+import { IndexAndLabel } from "@/components/admin/DiscoveryAiReview";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string; aiLabel?: string; aiDescription?: string; aiLabelStatus?: string };
@@ -317,7 +317,7 @@ export function DiscoveryReviewer({
             {docs.length} doc{docs.length === 1 ? "" : "s"} · {totalPages} page{totalPages === 1 ? "" : "s"}{countsPending ? " (counting…)" : ""}
           </span>
 
-          <DiscoveryAiReview setId={setId} docCount={docs.length} />
+          <IndexAndLabel setId={setId} docCount={docs.length} />
 
           {/* selection → save as exhibit */}
           <div className={`ml-auto flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${selected.size > 0 ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>

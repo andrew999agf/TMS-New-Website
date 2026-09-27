@@ -51,7 +51,7 @@ const TOOL_DEFS: ToolDef[] = [
   {
     name: "list_discovery_documents",
     description:
-      "Everything in the Discovery Reviewer for a case: opposing-production documents (with service info and page counts), exhibit designations made from them, documents received from the client, and the production pipeline (staged and produced documents with Bates ranges).",
+      "Everything in the Discovery Reviewer for a case: opposing-production documents (with service info and page counts), exhibit designations made from them, documents received from the client, and the production pipeline (staged and produced documents with Bates ranges). Each document carries AI.fred's label and notes (aiNotes) — the firm's standing case memory. ANSWER FROM THE NOTES when they cover the question; use read_document only when they don't.",
     parameters: {
       type: "object",
       properties: { matter: { type: "string", description: "The matter display number." } },
@@ -295,7 +295,7 @@ async function listDiscovery(matter: string) {
   if (!sets.length) return { note: `No discovery sets for matter "${matter}".` };
   const setIds = sets.map((s) => s.id);
   const [docs, marks, pdocs, prods] = await Promise.all([
-    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt, aiLabel: discoveryDocs.aiLabel, aiLabelStatus: discoveryDocs.aiLabelStatus }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
+    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription, aiLabelStatus: discoveryDocs.aiLabelStatus }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
     db!.select({ party: discoveryMarks.party, number: discoveryMarks.number, label: discoveryMarks.label, title: discoveryMarks.title, pages: discoveryMarks.pages }).from(discoveryMarks).where(inArray(discoveryMarks.setId, setIds)),
     db!.select().from(productionDocs).where(inArray(productionDocs.setId, setIds)),
     db!.select().from(productions).where(inArray(productions.setId, setIds)),
@@ -309,19 +309,19 @@ async function listDiscovery(matter: string) {
       const byId = new Map(folders.map((f) => [f.id, f.name]));
       clientFiles = files.map((f) => ({
         fileId: f.id, name: f.filename, folder: byId.get(f.folderId) ?? "", uploadedAt: f.createdAt.toISOString().slice(0, 10),
-        pages: f.pageCount ?? undefined, aiLabel: f.aiLabel || undefined,
+        pages: f.pageCount ?? undefined, aiLabel: f.aiLabel || undefined, aiNotes: f.aiDescription ? f.aiDescription.slice(0, 500) : undefined,
         textIndexed: Array.isArray(f.pageText) && (f.pageText as string[]).some((p) => p && p.trim()),
       }));
     }
   } catch { /* share tables optional */ }
   return {
     sets: sets.map((s) => ({ id: s.id, name: s.name, causeNumber: s.causeNumber })),
-    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
-    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined })),
+    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
+    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined })),
     clientUploadedFiles: clientFiles,
     exhibitDesignations: marks.map((m) => ({ designation: m.label || `${m.party}-${m.number}`, title: m.title, pageCount: Array.isArray(m.pages) ? (m.pages as unknown[]).length : 0 })),
     productionPipeline: {
-      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ docId: d.id, name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)", aiLabel: d.aiLabel || undefined })),
+      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ docId: d.id, name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)", aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined })),
       produced: prods.map((p) => ({ label: p.label, producedAt: p.producedAt?.toISOString().slice(0, 10) ?? null, documents: pdocs.filter((d) => d.productionId === p.id).map((d) => ({ docId: d.id, name: d.name, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : undefined, aiLabel: d.aiLabel || undefined })) })),
       note: "Read a staged/produced copy with read_document source 'production' (docId above) — its pages carry Bates numbers. Client-portal files: source 'client' with fileId.",
     },
@@ -354,7 +354,7 @@ const NOT_INDEXED_NOTE =
 
 async function readDocument(source: string, docId: number, pageFrom?: number, pageTo?: number) {
   if (!Number.isFinite(docId)) return { error: "doc_id is required." };
-  let name = "", pages: string[] = [];
+  let name = "", pages: string[] = [], pageNotes: string[] = [];
   let batesFor: ((pageIdx: number) => string | undefined) | null = null;
   let label: { aiLabel: string; aiDescription: string } | null = null;
   const asArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
@@ -365,18 +365,18 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
   } else if (source === "client") {
     const [row] = await db!.select().from(shareFiles).where(eq(shareFiles.id, docId));
     if (!row) return { error: `No client-uploaded file #${docId}.` };
-    name = row.filename; pages = asArr(row.pageText);
+    name = row.filename; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   } else if (source === "production") {
     const [row] = await db!.select().from(productionDocs).where(eq(productionDocs.id, docId));
     if (!row) return { error: `No production document #${docId}.` };
-    name = row.name; pages = asArr(row.pageText);
+    name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
     if (row.batesPrefix) batesFor = (i) => `${row.batesPrefix}${String(row.batesStart + i).padStart(6, "0")}`;
   } else {
-    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
+    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
     if (!row) return { error: `No discovery document #${docId}.` };
-    name = row.name; pages = asArr(row.pageText);
+    name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   }
   if (!pages.some((p) => p && p.trim())) {
@@ -385,13 +385,14 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
   }
   const from = Math.max(1, pageFrom ?? 1);
   const to = Math.min(pages.length, Math.max(from, pageTo ?? pages.length));
-  const out: { page: number; bates?: string; text: string }[] = [];
+  const out: { page: number; bates?: string; note?: string; text: string }[] = [];
   let budget = 11000;
   let last = from - 1;
   for (let p = from; p <= to && budget > 0; p++) {
     const text = (pages[p - 1] ?? "").slice(0, 3000);
-    budget -= text.length + 20;
-    out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), text });
+    const note = (pageNotes[p - 1] ?? "").slice(0, 400);
+    budget -= text.length + note.length + 20;
+    out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), ...(note ? { note } : {}), text });
     last = p;
   }
   return {

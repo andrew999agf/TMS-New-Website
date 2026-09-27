@@ -469,6 +469,11 @@ export const shareFiles = pgTable(
     pageText: jsonb("page_text").notNull().default([]),
     /** "" never tried · done · pending (needs the chunked indexer) · failed */
     textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
+    /** Why indexing failed (diagnostic, staff-visible). */
+    textError: text("text_error").notNull().default(""),
+    /** AI.fred's per-page notes (index 0 = page 1): "Page 5 of 20-page
+     *  contract re … — states X, Y, Z." Internal work product. */
+    pageNotes: jsonb("page_notes").notNull().default([]),
     /** AI.fred's review — INTERNAL WORK PRODUCT, never rendered on any
      *  public/shared page. Editable by staff. */
     aiLabel: varchar("ai_label", { length: 300 }).notNull().default(""),
@@ -1440,11 +1445,16 @@ export const discoverySets = pgTable(
     prodToc: text("prod_toc").notNull().default(""),
     prodNotes: text("prod_notes").notNull().default(""),
     prodTocFile: text("prod_toc_file").notNull().default(""),
-    /** Friendly-parties share link for the production pipeline (co-counsel,
-     *  experts, an outside AI). Null = sharing off. NEVER give this link to
-     *  opposing counsel — productions have their own OC link, and this one's
-     *  pages carry only the documents themselves (no notes/labels/TOC). */
+    /** Friendly-parties share links — ONE PER TAB, each independently on/off
+     *  (null = off), so a link never exposes more than its own pile. NEVER
+     *  for opposing counsel — productions have their own OC link — and the
+     *  shared pages carry only the documents (no notes/labels/TOC).
+     *  share_token is the retired all-tabs link (kept only so old rows don't
+     *  break; nothing resolves it anymore). */
     shareToken: varchar("share_token", { length: 64 }),
+    shareTokenReceived: varchar("share_token_received", { length: 64 }),
+    shareTokenStaged: varchar("share_token_staged", { length: 64 }),
+    shareTokenProduced: varchar("share_token_produced", { length: 64 }),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1471,6 +1481,11 @@ export const discoveryDocs = pgTable(
     /** "" never tried (legacy) · done · pending (too big for upload-time
      *  extraction — the chunked indexer finishes it) · failed */
     textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
+    /** Why indexing failed (diagnostic, staff-visible). */
+    textError: text("text_error").notNull().default(""),
+    /** AI.fred's per-page notes (index 0 = page 1): "Page 5 of 20-page
+     *  contract re … — states X, Y, Z." Internal work product. */
+    pageNotes: jsonb("page_notes").notNull().default([]),
     /** Which pile this document belongs to: opposing (their production,
      *  page-level review) | client (documents received from the client). */
     bucket: varchar("bucket", { length: 12 }).notNull().default("opposing"),
@@ -1544,6 +1559,11 @@ export const productionDocs = pgTable(
     pageText: jsonb("page_text").notNull().default([]),
     /** "" never tried · done · pending · failed */
     textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
+    /** Why indexing failed (diagnostic, staff-visible). */
+    textError: text("text_error").notNull().default(""),
+    /** AI.fred's per-page notes (index 0 = page 1): "Page 5 of 20-page
+     *  contract re … — states X, Y, Z." Internal work product. */
+    pageNotes: jsonb("page_notes").notNull().default([]),
     /** AI.fred's review, inherited from the source document at staging and
      *  editable — INTERNAL WORK PRODUCT, never rendered on the opposing-
      *  counsel production page or any shared link. */

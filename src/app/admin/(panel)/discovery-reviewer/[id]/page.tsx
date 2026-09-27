@@ -202,7 +202,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
         prods={prods}
         batesDefaults={batesDefaults}
         contents={{ toc: set.prodToc ?? "", notes: set.prodNotes ?? "", tocFile: set.prodTocFile ?? "" }}
-        shareToken={set.shareToken ?? null}
+        shareTokens={{ received: set.shareTokenReceived ?? null, staged: set.shareTokenStaged ?? null, produced: set.shareTokenProduced ?? null }}
       />
     </div>
   );

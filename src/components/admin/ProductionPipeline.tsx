@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
-  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, ScanText, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
+  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
-import { DiscoveryAiReview } from "./DiscoveryAiReview";
-import { addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations,
+import { IndexAndLabel } from "./DiscoveryAiReview";
+import { addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
   updateAiLabel, setDiscoveryShare, redactProductionDoc,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
@@ -38,48 +38,72 @@ async function copyText(text: string): Promise<boolean> {
 
 /* --------------------- shared pipeline controls -------------------------- */
 
-/** The friendly-parties share link: on/off + copy. Docs only — no notes. */
-function ShareControl({ setId, shareToken }: { setId: number; shareToken: string | null }) {
+export type ShareTokens = { received: string | null; staged: string | null; produced: string | null };
+
+const SCOPE_META: { scope: "received" | "staged" | "produced"; title: string; blurb: string; tone: string }[] = [
+  { scope: "received", title: "Documents received from Client (red)", blurb: "The client's raw documents.", tone: "border-red-300/60" },
+  { scope: "staged", title: "Documents to be produced (yellow)", blurb: "Bates-stamped copies still under review.", tone: "border-yellow-400/70" },
+  { scope: "produced", title: "Documents produced (green)", blurb: "What has actually gone out.", tone: "border-green-500/60" },
+];
+
+/** Exhibit-style sharing, one link PER TAB: each pile has its own on/off and
+ *  its own unguessable link, so a link never exposes another tab. Documents
+ *  only — notes, labels, and TOC never appear on any of them. */
+function ShareControl({ setId, tokens, activeScope }: { setId: number; tokens: ShareTokens; activeScope: "received" | "staged" | "produced" }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const link = shareToken ? shareUrl(shareToken, "").replace(/\/d\/$/, "") : "";
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const anyOn = !!(tokens.received || tokens.staged || tokens.produced);
+  const thisOn = !!tokens[activeScope];
+  const linkOf = (t: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/discovery/${t}`;
   return (
     <>
       <button onClick={() => setOpen(true)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${shareToken ? "border-emerald-500/60 text-emerald-700 dark:text-emerald-300" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
-        title="Share these documents with co-counsel, an expert, or an outside AI">
-        <Share2 size={14} /> {shareToken ? "Sharing on" : "Share"}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${thisOn ? "border-emerald-500/60 text-emerald-700 dark:text-emerald-300" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
+        title="Share links — a separate link per tab, each with its own on/off">
+        <Share2 size={14} /> {thisOn ? "Sharing on" : anyOn ? "Share…" : "Share"}
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="w-full max-w-md rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
-            <h3 className="font-[family-name:var(--font-display)] text-lg">Document share link</h3>
-            <p className="mt-2 text-sm text-[var(--c-ink-muted)]">
-              One link covers this case&apos;s red, yellow, and green documents — each document gets its own page, and <code>#page=N</code> links straight to a page. For <strong>friendly parties only</strong> (co-counsel, experts, or an outside AI like Claude). <strong className="text-red-600">Never send it to opposing counsel</strong> — they get the separate production link. The link shows the documents ONLY: your notes, labels, and table of contents never appear on it.
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Share documents</h3>
+            <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
+              Each tab gets its <strong>own</strong> link — a link shows that one pile and nothing else. No sign-in; for <strong>friendly parties only</strong> (your client, co-counsel, experts, an outside AI). Every document also gets per-page links. The links carry the documents ONLY: your notes, labels, and table of contents never appear.
             </p>
-            {shareToken ? (
-              <>
-                <div className="mt-3 flex items-center gap-2">
-                  <input readOnly value={link} className={`${input} min-w-0 flex-1 text-xs`} onFocus={(e) => e.target.select()} />
-                  <button onClick={async () => { if (await copyText(link)) { setCopied(true); setTimeout(() => setCopied(false), 2000); } }} className="btn btn-outline inline-flex items-center gap-1.5 px-3 py-2 text-xs"><Copy size={13} /> {copied ? "Copied!" : "Copy"}</button>
-                </div>
-                <div className="mt-4 flex justify-between gap-2">
-                  <button disabled={busy} onClick={async () => { setBusy(true); await setDiscoveryShare(setId, false); setBusy(false); setOpen(false); router.refresh(); }} className="btn btn-outline px-4 py-1.5 text-sm text-red-600">
-                    {busy ? "Working…" : "Turn sharing off"}
-                  </button>
-                  <button onClick={() => setOpen(false)} className="btn btn-accent px-4 py-1.5 text-sm">Done</button>
-                </div>
-              </>
-            ) : (
-              <div className="mt-4 flex justify-end gap-2">
-                <button onClick={() => setOpen(false)} className="btn btn-outline px-4 py-1.5 text-sm">Cancel</button>
-                <button disabled={busy} onClick={async () => { setBusy(true); await setDiscoveryShare(setId, true); setBusy(false); setOpen(false); router.refresh(); }} className="btn btn-accent px-4 py-1.5 text-sm">
-                  {busy ? "Working…" : "Turn sharing on"}
-                </button>
-              </div>
-            )}
+            <p className="mt-2 rounded-md border border-red-300 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
+              DO NOT SEND ANY OF THESE TO OPPOSING COUNSEL — the other side gets only the separate production link created when you finalize a production.
+            </p>
+            <div className="mt-4 space-y-3">
+              {SCOPE_META.map(({ scope, title, blurb, tone }) => {
+                const tok = tokens[scope];
+                return (
+                  <div key={scope} className={`rounded-lg border p-3 ${tone}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 flex-1 text-sm font-semibold">{title}</p>
+                      <button disabled={busy === scope}
+                        onClick={async () => { setBusy(scope); await setDiscoveryShare(setId, scope, !tok); setBusy(null); router.refresh(); }}
+                        className={`rounded-md border px-3 py-1 text-xs font-semibold ${tok ? "border-red-400 text-red-600 hover:bg-red-500/10" : "border-emerald-500 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"}`}>
+                        {busy === scope ? "Working…" : tok ? "Turn off" : "Turn on"}
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">{blurb}</p>
+                    {tok ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input readOnly value={linkOf(tok)} className={`${input} min-w-0 flex-1 text-xs`} onFocus={(e) => e.target.select()} />
+                        <button onClick={async () => { if (await copyText(linkOf(tok))) { setCopied(scope); setTimeout(() => setCopied(null), 2000); } }}
+                          className="btn btn-outline inline-flex items-center gap-1.5 px-3 py-2 text-xs"><Copy size={13} /> {copied === scope ? "Copied!" : "Copy"}</button>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-[var(--c-ink-muted)]">Off — no link works for this tab.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setOpen(false)} className="btn btn-accent px-4 py-1.5 text-sm">Done</button>
+            </div>
           </div>
         </div>
       )}
@@ -147,46 +171,6 @@ function GoToPage({ onGo }: { onGo: (page: number) => void }) {
   );
 }
 
-/** Pull text out of every un-indexed document in the case (chunked, resumable).
- *  Read-only: copies text into the database, never touches the files. */
-function IndexTextButton({ setId }: { setId: number }) {
-  const router = useRouter();
-  const [st, setSt] = useState<{ total: number; indexed: number; remaining: number; failed: number } | null>(null);
-  const [running, setRunning] = useState(false);
-  const [note, setNote] = useState("");
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/admin/discovery/index-text?setId=${setId}`).then((r) => r.json()).then((j) => { if (alive && typeof j.total === "number") setSt(j); }).catch(() => {});
-    return () => { alive = false; };
-  }, [setId]);
-  async function run() {
-    setRunning(true);
-    setNote("");
-    try {
-      for (let i = 0; i < 200; i++) {
-        const r = await fetch("/api/admin/discovery/index-text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setId, retryFailed: i === 0 }) });
-        const j = await r.json();
-        if (!r.ok) { setNote(String(j.error ?? "Indexing failed.")); break; }
-        setSt(j);
-        if (j.done) { setNote(j.failed > 0 ? `${j.failed} document(s) couldn't be indexed (too large or unreadable).` : ""); break; }
-      }
-    } catch { setNote("Indexing was interrupted — click again to continue where it left off."); }
-    setRunning(false);
-    router.refresh();
-  }
-  if (!st || (st.remaining === 0 && st.failed === 0)) return null; // everything's indexed — stay out of the way
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <button onClick={() => void run()} disabled={running}
-        className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/60 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-500/10 disabled:opacity-60 dark:text-amber-300"
-        title="Pull the text out of documents that haven't been indexed yet, so search and AI.fred can read them. Reads only — never changes a file.">
-        {running ? <Loader2 size={14} className="animate-spin" /> : <ScanText size={14} />}
-        {running ? `Indexing… ${st.indexed}/${st.total}` : `Index text (${st.remaining + st.failed} to do)`}
-      </button>
-      {note && <span className="text-xs text-amber-700 dark:text-amber-300">{note}</span>}
-    </span>
-  );
-}
 
 /* --------------------------- request tracker ----------------------------- */
 
@@ -243,7 +227,7 @@ export function RequestTracker({ requests }: { requests: RequestRow[] }) {
 
 export type PipelineContents = { toc: string; notes: string; tocFile: string };
 
-export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareToken }: {
+export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareTokens }: {
   mode: "received" | "staged" | "produced";
   setId: number;
   clientFiles: ClientFile[];
@@ -251,11 +235,11 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
   prods: ProductionRow[];
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
-  shareToken: string | null;
+  shareTokens: ShareTokens;
 }) {
-  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareToken={shareToken} />;
-  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareToken={shareToken} />;
-  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareToken={shareToken} />;
+  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} />;
+  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} />;
+  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} />;
 }
 
 /** The staged/produced PDF most likely to be "the review set" the table of
@@ -285,7 +269,8 @@ export type PageMark = "" | "staged" | "produced";
 /** DOM id for one page cell in the grid, so jumps can scroll to it. */
 const cellId = (key: string, page: number) => `pgc-${key.replace(/[^a-zA-Z0-9]/g, "_")}-${page}`;
 
-function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, shareToken }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents; shareToken: string | null }) {
+function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, shareTokens }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents; shareTokens: ShareTokens }) {
+  const shareToken = shareTokens.received;
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
@@ -320,6 +305,19 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const pageMark = useCallback((f: ClientFile, page: number): PageMark => f.status || (pageMarks.get(f.key)?.get(page) ?? ""), [pageMarks]);
 
   const notePages = useCallback((key: string, n: number) => setPageCounts((prev) => (prev[key] === n ? prev : { ...prev, [key]: n })), []);
+
+  // AI.fred's per-page notes, fetched per document as its section opens.
+  const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
+  const loadedNotes = useRef(new Set<string>());
+  const ensureNotes = useCallback(async (key: string) => {
+    if (loadedNotes.current.has(key)) return;
+    loadedNotes.current.add(key);
+    const r = await getPageNotes(setId, key);
+    if (r.ok && r.notes.length) setPgNotes((prev) => ({ ...prev, [key]: r.notes }));
+    else loadedNotes.current.delete(key); // nothing yet — re-ask after a labeling run
+  }, [setId]);
+  const noteFor = useCallback((f: ClientFile, page: number) => pgNotes[f.key]?.[page - 1] ?? "", [pgNotes]);
+  const pagesKnown = useCallback((key: string, n: number) => { notePages(key, n); void ensureNotes(key); }, [notePages, ensureNotes]);
 
   /** Direct uploads into the red pile — for when the firm itself has the
    *  client's documents in hand (the client portal remains the other door). */
@@ -524,9 +522,8 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void uploadClientFiles(fs); }} />
         </label>
         {files.length > 0 && <GoToPage onGo={goToPage} />}
-        <IndexTextButton setId={setId} />
-        <DiscoveryAiReview setId={setId} docCount={files.length + stagedDocs.length} />
-        <ShareControl setId={setId} shareToken={shareToken} />
+        <IndexAndLabel setId={setId} docCount={files.length + stagedDocs.length} />
+        <ShareControl setId={setId} tokens={shareTokens} activeScope="received" />
         <span className="text-xs text-[var(--c-ink-muted)]">Click a page to select it · Shift-click another page for the range · double-click to read.</span>
         <div className={`ml-auto flex items-center gap-2 rounded-md px-2 py-1 ${selected.size ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
           {selected.size > 0 && <span className="text-sm font-medium">{selected.size} page{selected.size === 1 ? "" : "s"} · {selByKey.size} doc{selByKey.size === 1 ? "" : "s"}</span>}
@@ -557,7 +554,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
           </p>
         ) : view === "reader" ? (
           <ClientReader files={files} state={reader} setState={setReader} selected={selected} pageMark={pageMark}
-            setId={setId} shareToken={shareToken}
+            setId={setId} shareToken={shareToken} noteFor={noteFor}
             onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl}
             annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
             onStageFromTools={(f) => {
@@ -568,8 +565,8 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
           <div className="space-y-6">
             {files.map((f) => (
               <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
-                setId={setId} shareToken={shareToken} flash={flash}
-                onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={notePages}
+                setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
+                onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={pagesKnown}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} />
             ))}
@@ -704,7 +701,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -717,6 +714,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   /** false = review-only surface (the yellow tab): no page selection. */
   selectable?: boolean;
   headerExtra?: React.ReactNode;
+  /** AI.fred's note for a page (internal), shown under the page cell. */
+  noteFor?: (f: ClientFile, page: number) => string;
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -794,12 +793,20 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
         </div>
       ) : kind === "pdf" && pages > 0 ? (
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
-            <ClientPageCell key={page} f={f} page={page} renderW={renderW}
-              selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
-              flash={!!flash && flash.key === f.key && flash.page === page}
-              onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)} />
-          ))}
+          {Array.from({ length: pages }, (_, i) => i + 1).map((page) => {
+            const note = noteFor?.(f, page) ?? "";
+            return (
+              <div key={page} className="min-w-0">
+                <ClientPageCell f={f} page={page} renderW={renderW}
+                  selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
+                  flash={!!flash && flash.key === f.key && flash.page === page}
+                  onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)} />
+                {note && cols <= 7 && (
+                  <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-[var(--c-ink-muted)]" title={note}>{note}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : kind === "pdf" && failed ? (
         <p className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-xs text-[var(--c-ink-muted)]">Preview unavailable — open the original instead.</p>
@@ -884,7 +891,7 @@ type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
 
 const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
 
-function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, variant = "received", onRemove, onBurnRedact }: {
+function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, variant = "received", onRemove, onBurnRedact }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
@@ -899,6 +906,8 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   addAnno: (key: string, page: number, kind: AnnotationKind, rect: { x: number; y: number; w: number; h: number }, note?: string) => Promise<void>;
   delAnno: (key: string, id: number) => Promise<void>;
   onStageFromTools: (f: ClientFile) => void;
+  /** AI.fred's note for a page (internal), shown above the page. */
+  noteFor?: (f: ClientFile, page: number) => string;
   /** "staged" = the yellow tab's review surface: no page selection, remove
    *  instead of stage, and redactions burn into the staged copy on confirm. */
   variant?: "received" | "staged";
@@ -1097,6 +1106,16 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
           </button>
         )}
       </div>
+      {(() => {
+        const pageNote = noteFor?.(f, state.page) ?? "";
+        if (!pageNote && !f.aiDescription) return null;
+        return (
+          <div className="mx-auto mb-2 max-w-[940px] rounded-md border border-amber-300/50 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed">
+            {pageNote && <p><strong className="text-amber-800 dark:text-amber-300">p.{state.page}:</strong> {pageNote}</p>}
+            {f.aiDescription && <p className={`text-[var(--c-ink-muted)] ${pageNote ? "mt-1 border-t border-amber-300/30 pt-1" : ""}`}><strong>Document:</strong> {f.aiDescription}</p>}
+          </div>
+        );
+      })()}
       <div className={`relative mx-auto w-fit overflow-hidden rounded-md border bg-white shadow ${isSel ? "ring-2 ring-[var(--c-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
         {kind === "pdf" ? (
           <>
@@ -1214,7 +1233,20 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
   const noMark = useCallback((): PageMark => "", []);
   const noSel = useMemo(() => new Set<string>(), []);
   const noop = useCallback(() => {}, []);
-  const noPages = useCallback((_key: string, _n: number) => { void _key; void _n; }, []);
+
+  // AI.fred's per-page notes on the staged copies (inherited from the source
+  // slice at staging, or written by Read & label on the copy itself).
+  const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
+  const loadedNotes = useRef(new Set<string>());
+  const ensureNotes = useCallback(async (key: string) => {
+    if (loadedNotes.current.has(key)) return;
+    loadedNotes.current.add(key);
+    const r = await getPageNotes(setId, key);
+    if (r.ok && r.notes.length) setPgNotes((prev) => ({ ...prev, [key]: r.notes }));
+    else loadedNotes.current.delete(key);
+  }, [setId]);
+  const noteFor = useCallback((f: ClientFile, page: number) => pgNotes[f.key]?.[page - 1] ?? "", [pgNotes]);
+  const noPages = useCallback((key: string, _n: number) => { void _n; void ensureNotes(key); }, [ensureNotes]);
 
   useEffect(() => {
     if (!flash) return;
@@ -1316,14 +1348,14 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
       {view === "reader" ? (
         <ClientReader files={files} state={reader} setState={setReader} selected={noSel} pageMark={noMark}
           setId={setId} shareToken={shareToken} onTogglePage={noop} getDoc={getDoc} proxyUrl={proxyUrl}
-          annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
+          annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno} noteFor={noteFor}
           onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact} />
       ) : (
         <div className="space-y-6">
           {files.map((f) => (
             <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={noSel} pageMark={noMark}
               setId={setId} shareToken={shareToken} flash={flash}
-              onTogglePage={noop} onToggleDoc={noop} onPagesKnown={noPages}
+              onTogglePage={noop} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
               onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
               getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)} />
           ))}
@@ -1333,7 +1365,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
   );
 }
 
-function StagedView({ setId, staged, prods, contents, shareToken }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareToken: string | null }) {
+function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens }) {
+  const shareToken = shareTokens.staged;
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [view, setView] = useState<"grid" | "reader" | "list">("grid");
   const router = useRouter();
@@ -1373,8 +1406,8 @@ function StagedView({ setId, staged, prods, contents, shareToken }: { setId: num
             </button>
           ))}
         </div>
-        <DiscoveryAiReview setId={setId} docCount={rows.length} />
-        <ShareControl setId={setId} shareToken={shareToken} />
+        <IndexAndLabel setId={setId} docCount={rows.length} />
+        <ShareControl setId={setId} tokens={shareTokens} activeScope="staged" />
         <button onClick={() => void prepare()} disabled={busy || rows.length === 0 || !!draft}
           className="btn btn-accent ml-auto inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50"
           title={draft ? "A draft production is awaiting review below" : undefined}>
@@ -1439,7 +1472,8 @@ function StagedView({ setId, staged, prods, contents, shareToken }: { setId: num
 
 /* --------------- pale green: what has actually gone out ------------------ */
 
-function ProducedView({ setId, staged, prods, contents, shareToken }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareToken: string | null }) {
+function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens }) {
+  const shareToken = shareTokens.produced;
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
   // Link + Bates base come from the most recent production with a file.
@@ -1456,8 +1490,8 @@ function ProducedView({ setId, staged, prods, contents, shareToken }: { setId: n
     <div className="p-4">
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} batesBase={batesBase} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <DiscoveryAiReview setId={setId} docCount={staged.length} />
-        <ShareControl setId={setId} shareToken={shareToken} />
+        <IndexAndLabel setId={setId} docCount={staged.length} />
+        <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />
       </div>
       {done.length === 0 ? (
         <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-8 text-center text-sm text-[var(--c-ink-muted)]">

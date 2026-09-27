@@ -601,6 +601,30 @@ function shapeAnnotation(a: typeof discoveryAnnotations.$inferSelect): FileAnnot
   return { id: a.id, page: a.page, kind: a.kind as AnnotationKind, rect: { x: r.x ?? 0, y: r.y ?? 0, w: r.w ?? 0, h: r.h ?? 0 }, note: a.note };
 }
 
+/** AI.fred's per-page notes for one document (internal work product). */
+export async function getPageNotes(setId: number, fileKey: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!validFileKey(fileKey)) return { ok: false as const, error: "Bad file key." };
+  const id = Number(fileKey.split(":")[1]);
+  const shape = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((x) => (typeof x === "string" ? x : "")) : []);
+  try {
+    if (fileKey.startsWith("doc:")) {
+      const [d] = await db.select({ n: discoveryDocs.pageNotes }).from(discoveryDocs).where(and(eq(discoveryDocs.id, id), eq(discoveryDocs.setId, setId)));
+      return { ok: true as const, notes: shape(d?.n) };
+    }
+    if (fileKey.startsWith("prod:")) {
+      const [d] = await db.select({ n: productionDocs.pageNotes }).from(productionDocs).where(and(eq(productionDocs.id, id), eq(productionDocs.setId, setId)));
+      return { ok: true as const, notes: shape(d?.n) };
+    }
+    const [d] = await db.select({ n: shareFiles.pageNotes }).from(shareFiles).where(eq(shareFiles.id, id));
+    return { ok: true as const, notes: shape(d?.n) };
+  } catch (err) {
+    console.error("[discovery-reviewer] getPageNotes failed:", err);
+    return { ok: false as const, error: "Couldn't load the page notes." };
+  }
+}
+
 /** All marks on one client document, for the reader overlay. */
 export async function listFileAnnotations(setId: number, fileKey: string) {
   await guard();
@@ -706,19 +730,24 @@ export async function updateAiLabel(setId: number, target: LabelTarget, label: s
 
 /* --------------- friendly-parties share link (pipeline) ------------------ */
 
+export type ShareScope = "received" | "staged" | "produced";
+
 /**
- * Turn the case's document share link on/off. The link shows the documents
- * in the three pipeline piles — files only: no notes, labels, or TOC — for
- * co-counsel, experts, or an outside AI. It is NOT the opposing-counsel
+ * Turn ONE tab's share link on/off — each pile has its OWN link, so a link
+ * never exposes more than its own tab. Files only: no notes, labels, or
+ * TOC. For co-counsel, experts, or an outside AI — NOT the opposing-counsel
  * production link (that one lives on each finalized production).
  */
-export async function setDiscoveryShare(setId: number, on: boolean) {
+export async function setDiscoveryShare(setId: number, scope: ShareScope, on: boolean) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!["received", "staged", "produced"].includes(scope)) return { ok: false as const, error: "Bad scope." };
   try {
     const token = on ? randomBytes(20).toString("base64url") : null;
-    await db.update(discoverySets).set({ shareToken: token }).where(eq(discoverySets.id, setId));
-    await audit(session.email, "update", "discovery-share", String(setId), on ? "Share link turned ON" : "Share link turned OFF");
+    const col = scope === "received" ? { shareTokenReceived: token } : scope === "staged" ? { shareTokenStaged: token } : { shareTokenProduced: token };
+    // The retired all-tabs link dies the moment any scoped choice is made.
+    await db.update(discoverySets).set({ ...col, shareToken: null }).where(eq(discoverySets.id, setId));
+    await audit(session.email, "update", "discovery-share", String(setId), `${scope} share link turned ${on ? "ON" : "OFF"}`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
     return { ok: true as const, token };
   } catch (err) {
