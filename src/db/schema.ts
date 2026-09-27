@@ -1624,6 +1624,8 @@ export const assistantPrefs = pgTable("assistant_prefs", {
   about: text("about").notNull().default(""),
   /** "How to respond" — tone, length, format preferences. */
   style: text("style").notNull().default(""),
+  /** Named voice preset (see src/lib/ai/styles.ts); custom text layers on top. */
+  preset: varchar("preset", { length: 32 }).notNull().default("butler"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

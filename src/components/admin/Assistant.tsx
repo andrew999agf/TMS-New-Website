@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { STYLE_PRESETS, DEFAULT_STYLE_KEY } from "@/lib/ai/styles";
 import {
   Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
@@ -474,6 +475,13 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const [fullAdmin, setFullAdmin] = useState(false);
   const [prefsBusy, setPrefsBusy] = useState(false);
   const [prefsSaved, setPrefsSaved] = useState(false);
+  const [prefsPreset, setPrefsPreset] = useState<string>(DEFAULT_STYLE_KEY);
+  // "Switch to The Drafter for this?" — a per-conversation voice override,
+  // and a one-shot suggestion chip (each style offered at most once per
+  // conversation, so it never nags).
+  const [styleOverride, setStyleOverride] = useState<Record<Mode, string | null>>({ general: null, draft: null, code: null });
+  const [styleTip, setStyleTip] = useState<{ key: string; name: string; tagline: string } | null>(null);
+  const styleTipsShown = useRef<Record<Mode, Set<string>>>({ general: new Set(), draft: new Set(), code: new Set() });
 
   const openSettings = useCallback(async () => {
     setSettingsOpen(true);
@@ -482,6 +490,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       const r = await getAssistantSettings();
       setPrefsAbout(r.prefs.about);
       setPrefsStyle(r.prefs.style);
+      setPrefsPreset(r.prefs.preset || DEFAULT_STYLE_KEY);
       setMemories(r.memories);
       setFullAdmin(r.fullAdmin);
     } catch { /* dialog still usable */ }
@@ -490,12 +499,12 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const savePrefs = useCallback(async () => {
     setPrefsBusy(true);
     try {
-      const r = await saveAssistantPrefs({ about: prefsAbout, style: prefsStyle });
+      const r = await saveAssistantPrefs({ about: prefsAbout, style: prefsStyle, preset: prefsPreset });
       setPrefsSaved(r.ok);
     } finally {
       setPrefsBusy(false);
     }
-  }, [prefsAbout, prefsStyle]);
+  }, [prefsAbout, prefsStyle, prefsPreset]);
 
   const forgetMemory = useCallback(async (id: number) => {
     setMemories((m) => m.filter((x) => x.id !== id));
@@ -619,7 +628,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       const res = await fetch("/api/admin/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: wire, mode: m, threadId: threadIds[m], regen, matter: caseMatter.trim() || undefined, ...(images?.length ? { images } : {}) }),
+        body: JSON.stringify({ messages: wire, mode: m, threadId: threadIds[m], regen, matter: caseMatter.trim() || undefined, ...(images?.length ? { images } : {}), ...(styleOverride[m] ? { styleOverride: styleOverride[m] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -647,6 +656,11 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
             const json = JSON.parse(data);
             // Firm-data lookups in progress ("Reading the exhibit list…").
             if (typeof json.tool_status === "string") { setToolStatus(json.tool_status || null); continue; }
+            if (json.style_suggestion?.key && !styleTipsShown.current[m].has(json.style_suggestion.key)) {
+              styleTipsShown.current[m].add(json.style_suggestion.key);
+              setStyleTip(json.style_suggestion);
+              continue;
+            }
             if (typeof json.stream_error === "string") { setError(json.stream_error); continue; }
             const delta = json.choices?.[0]?.delta?.content;
             if (delta) {
@@ -677,7 +691,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     // own speaking so it can chain back into listening.
     if (acc && speakRef.current && !voiceChatRef.current) speak(acc);
     return acc;
-  }, [threadIds, saveable, refreshHistory, speak, caseMatter]);
+  }, [threadIds, saveable, refreshHistory, speak, caseMatter, styleOverride]);
 
   const send = useCallback(async (raw?: string) => {
     const text = (raw ?? input).trim();
@@ -738,6 +752,9 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   function newConversation() {
     setThreads((t) => ({ ...t, [mode]: [] }));
     setThreadIds((ids) => ({ ...ids, [mode]: null }));
+    setStyleOverride((o) => ({ ...o, [mode]: null }));
+    styleTipsShown.current[mode] = new Set();
+    setStyleTip(null);
     setError(null);
   }
 
@@ -1147,6 +1164,22 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
         )}
 
         <div className="border-t border-[var(--c-border)] bg-[var(--c-bg)] p-3 sm:px-4">
+          {styleTip && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 px-3 py-2 text-xs">
+              <span className="text-[var(--c-ink)]">Want me to switch to <strong>{styleTip.name}</strong> for this conversation?</span>
+              <span className="text-[var(--c-ink-muted)]">{styleTip.tagline}</span>
+              <span className="ml-auto flex gap-1.5">
+                <button onClick={() => { setStyleOverride((o) => ({ ...o, [mode]: styleTip.key })); setStyleTip(null); }} className="rounded-md bg-[var(--c-accent)] px-2.5 py-1 font-medium text-[var(--c-on-accent)] hover:bg-[var(--c-accent-2)]">Switch</button>
+                <button onClick={() => setStyleTip(null)} className="rounded-md border border-[var(--c-border)] px-2.5 py-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">No thanks</button>
+              </span>
+            </div>
+          )}
+          {styleOverride[mode] && (
+            <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--c-accent)]/10 px-2.5 py-1 text-[11px] text-[var(--c-accent)]">
+              Voice for this conversation: <strong>{STYLE_PRESETS.find((sp) => sp.key === styleOverride[mode])?.name}</strong>
+              <button onClick={() => setStyleOverride((o) => ({ ...o, [mode]: null }))} className="hover:text-red-600" title="Back to your usual style"><X size={11} /></button>
+            </p>
+          )}
           {pendingImages.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-2">
               {pendingImages.map((u, i) => (
@@ -1242,6 +1275,22 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               <button onClick={() => setSettingsOpen(false)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">AI.fred&apos;s style with you</label>
+                <p className="mb-1.5 text-[11px] text-[var(--c-ink-muted)]">Pick the voice; your notes below fine-tune it.</p>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {STYLE_PRESETS.map((sp) => (
+                    <button
+                      key={sp.key}
+                      onClick={() => setPrefsPreset(sp.key)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${prefsPreset === sp.key ? "border-[var(--c-accent)] bg-[var(--c-accent)]/10" : "border-[var(--c-border)] hover:border-[var(--c-accent)]/50"}`}
+                    >
+                      <span className="block text-xs font-semibold text-[var(--c-ink)]">{sp.name}{sp.key === "butler" ? " · default" : ""}</span>
+                      <span className="block text-[11px] leading-snug text-[var(--c-ink-muted)]">{sp.tagline}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">About you</label>
                 <p className="mb-1.5 text-[11px] text-[var(--c-ink-muted)]">Who you are and what you work on — AI.fred keeps it in mind. Only applies to your own chats.</p>

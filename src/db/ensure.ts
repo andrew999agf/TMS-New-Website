@@ -62,6 +62,7 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS ai_description text NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS ai_label_status varchar(24) NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS ai_labeled_at timestamptz`,
+  `ALTER TABLE assistant_prefs ADD COLUMN IF NOT EXISTS preset varchar(32) NOT NULL DEFAULT 'butler'`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_url text`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_pathname text`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_name varchar(255)`,

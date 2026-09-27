@@ -10,6 +10,7 @@ import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/a
 import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { getAiNotice } from "@/lib/ai/notice";
 import { activeModel } from "@/lib/ai/vision";
+import { styleByKey, isStyleKey, suggestStyle, DEFAULT_STYLE_KEY } from "@/lib/ai/styles";
 import { db } from "@/db";
 import { assistantThreads, assistantMessages, assistantPrefs, assistantMemories } from "@/db/schema";
 import { or, sql } from "drizzle-orm";
@@ -151,8 +152,8 @@ const MEMORY_TOOL = {
 };
 
 /** Custom instructions + remembered notes, folded into the system prompt. */
-async function personalization(email: string): Promise<string> {
-  if (!db) return "";
+async function personalization(email: string, styleOverride: string | null): Promise<{ text: string; styleKey: string }> {
+  if (!db) return { text: "", styleKey: styleOverride ?? DEFAULT_STYLE_KEY };
   try {
     const [row] = await db.select().from(assistantPrefs).where(eq(assistantPrefs.userEmail, email));
     const mems = await db
@@ -161,17 +162,21 @@ async function personalization(email: string): Promise<string> {
       .where(or(eq(assistantMemories.scope, "firm"), and(eq(assistantMemories.scope, "user"), eq(assistantMemories.userEmail, email))))
       .orderBy(assistantMemories.id)
       .limit(200);
-    let out = "";
+    // A conversation-level override (the "switch for this task" chip) beats
+    // the user's saved preset; both beat the default Butler.
+    const styleKey = styleOverride ?? (isStyleKey(row?.preset) ? row!.preset : DEFAULT_STYLE_KEY);
+    const voice = styleByKey(styleKey);
+    let out = `\nVoice for this conversation — "${voice.name}": ${voice.prompt}`;
     if (row?.about?.trim()) out += `\nAbout this user (their own words): ${row.about.trim().slice(0, 800)}`;
     if (row?.style?.trim()) out += `\nHow they want replies: ${row.style.trim().slice(0, 800)}`;
     const firm = mems.filter((m) => m.scope === "firm").map((m) => `- ${m.content}`).join("\n").slice(0, 1600);
     const mine = mems.filter((m) => m.scope !== "firm").map((m) => `- ${m.content}`).join("\n").slice(0, 1600);
     if (firm) out += `\nRemembered firm-wide notes:\n${firm}`;
     if (mine) out += `\nRemembered notes about this user:\n${mine}`;
-    if (out) out = "\n" + out + "\nApply these quietly; don't recite them back.";
-    return out;
+    out = "\n" + out + "\nApply these quietly; don't recite them back.";
+    return { text: out, styleKey };
   } catch {
-    return "";
+    return { text: "", styleKey: styleOverride ?? DEFAULT_STYLE_KEY };
   }
 }
 
@@ -305,7 +310,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "The assistant isn't configured yet. Set AI_BASE_URL, AI_API_KEY, and AI_MODEL." }, { status: 503 });
   }
 
-  let body: { messages?: Msg[]; mode?: string; threadId?: number | null; regen?: boolean; matter?: string; images?: string[] };
+  let body: { messages?: Msg[]; mode?: string; threadId?: number | null; regen?: boolean; matter?: string; images?: string[]; styleOverride?: string };
   try {
     body = await req.json();
   } catch {
@@ -406,8 +411,16 @@ export async function POST(req: Request) {
       ? " This user holds billing access: the billing_summary tool answers questions about billed hours and amounts."
       : " This user does NOT hold billing access: politely decline to share billing amounts, revenue, or rates — that information is limited to the owners and billing staff. Their own time entry work in Time Tracker 4.0 is fine to discuss in general terms.";
     systemPrompt += " Use save_memory sparingly — only for durable preferences or standing facts, never case details or anything sensitive.";
-    systemPrompt += await personalization(session.email);
   }
+  const styleOverride = isStyleKey(body.styleOverride) ? body.styleOverride : null;
+  const persona = await personalization(session.email, styleOverride);
+  systemPrompt += persona.text;
+  // A rare, targeted nudge: when the request plainly calls for a different
+  // voice (drafting, stress-testing, teach-me), tell the UI — it offers the
+  // switch at most once per conversation, never silently changes anything.
+  const styleTip = lastUser.role === "user" && !body.regen && typeof lastUser.content === "string"
+    ? suggestStyle(lastUser.content, persona.styleKey)
+    : null;
 
   const convo: UpstreamMsg[] = [{ role: "system", content: systemPrompt }, ...history];
   if (images.length > 0 && lastUser.role === "user") {
@@ -478,6 +491,7 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (chunk: Uint8Array) => { try { controller.enqueue(chunk); } catch { /* client gone */ } };
+      if (styleTip) emit(sse({ style_suggestion: { key: styleTip.key, name: styleTip.name, tagline: styleTip.tagline } }));
       try {
         let res: Response | null = first;
         // The agentic loop: each round either finishes the answer or asks for

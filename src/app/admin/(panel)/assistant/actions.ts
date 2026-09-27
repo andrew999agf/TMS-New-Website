@@ -84,13 +84,15 @@ export async function deleteAssistantThread(id: number) {
 
 /* --------------------------- preferences & memory ------------------------ */
 
-export type AssistantPrefs = { about: string; style: string };
+import { DEFAULT_STYLE_KEY, isStyleKey } from "@/lib/ai/styles";
+
+export type AssistantPrefs = { about: string; style: string; preset: string };
 export type MemoryRow = { id: number; scope: "user" | "firm"; content: string; createdAt: string };
 
 /** The caller's custom instructions plus every memory that applies to them. */
 export async function getAssistantSettings(): Promise<{ prefs: AssistantPrefs; memories: MemoryRow[]; fullAdmin: boolean }> {
   const session = await guard();
-  const empty = { prefs: { about: "", style: "" }, memories: [] as MemoryRow[], fullAdmin: isFullAdminRole(session.role) };
+  const empty = { prefs: { about: "", style: "", preset: DEFAULT_STYLE_KEY }, memories: [] as MemoryRow[], fullAdmin: isFullAdminRole(session.role) };
   if (!db) return empty;
   try {
     await ensureDiscoveryTables();
@@ -103,7 +105,7 @@ export async function getAssistantSettings(): Promise<{ prefs: AssistantPrefs; m
       .limit(300);
     return {
       ...empty,
-      prefs: { about: row?.about ?? "", style: row?.style ?? "" },
+      prefs: { about: row?.about ?? "", style: row?.style ?? "", preset: isStyleKey(row?.preset) ? row!.preset : DEFAULT_STYLE_KEY },
       memories: mems.map((m) => ({ id: m.id, scope: m.scope === "firm" ? "firm" : "user", content: m.content, createdAt: m.createdAt.toISOString() })),
     };
   } catch {
@@ -116,12 +118,13 @@ export async function saveAssistantPrefs(input: AssistantPrefs) {
   if (!db) return { ok: false as const };
   const about = String(input.about ?? "").slice(0, 800);
   const style = String(input.style ?? "").slice(0, 800);
+  const preset = isStyleKey(input.preset) ? input.preset : DEFAULT_STYLE_KEY;
   try {
     await ensureDiscoveryTables();
     await db
       .insert(assistantPrefs)
-      .values({ userEmail: session.email, about, style, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: assistantPrefs.userEmail, set: { about, style, updatedAt: new Date() } });
+      .values({ userEmail: session.email, about, style, preset, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: assistantPrefs.userEmail, set: { about, style, preset, updatedAt: new Date() } });
     return { ok: true as const };
   } catch {
     return { ok: false as const };
