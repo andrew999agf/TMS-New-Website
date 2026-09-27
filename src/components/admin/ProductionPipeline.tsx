@@ -4,26 +4,189 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
-  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Loader2, MousePointer2, Pencil, Send, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
+  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, ScanText, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
+import { DiscoveryAiReview } from "./DiscoveryAiReview";
 import { addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
-  type FileAnnotation, type AnnotationKind, type StageSelection,
+  updateAiLabel, setDiscoveryShare,
+  type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced" };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; textStatus: string };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
 export const bates = (prefix: string, n: number) => `${prefix}${String(n).padStart(6, "0")}`;
 const fmtDay = (iso: string) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+
+/** Admin file key ("doc:12" / "share:9") or production id → share-route key. */
+const shareKeyFor = (adminKey: string) => adminKey.replace(":", "-");
+const shareUrl = (token: string, key: string, page?: number) =>
+  `${typeof window !== "undefined" ? window.location.origin : ""}/discovery/${token}/d/${key}${page ? `#page=${page}` : ""}`;
+
+async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+/* --------------------- shared pipeline controls -------------------------- */
+
+/** The friendly-parties share link: on/off + copy. Docs only — no notes. */
+function ShareControl({ setId, shareToken }: { setId: number; shareToken: string | null }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const link = shareToken ? shareUrl(shareToken, "").replace(/\/d\/$/, "") : "";
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${shareToken ? "border-emerald-500/60 text-emerald-700 dark:text-emerald-300" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
+        title="Share these documents with co-counsel, an expert, or an outside AI">
+        <Share2 size={14} /> {shareToken ? "Sharing on" : "Share"}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="w-full max-w-md rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Document share link</h3>
+            <p className="mt-2 text-sm text-[var(--c-ink-muted)]">
+              One link covers this case&apos;s red, yellow, and green documents — each document gets its own page, and <code>#page=N</code> links straight to a page. For <strong>friendly parties only</strong> (co-counsel, experts, or an outside AI like Claude). <strong className="text-red-600">Never send it to opposing counsel</strong> — they get the separate production link. The link shows the documents ONLY: your notes, labels, and table of contents never appear on it.
+            </p>
+            {shareToken ? (
+              <>
+                <div className="mt-3 flex items-center gap-2">
+                  <input readOnly value={link} className={`${input} min-w-0 flex-1 text-xs`} onFocus={(e) => e.target.select()} />
+                  <button onClick={async () => { if (await copyText(link)) { setCopied(true); setTimeout(() => setCopied(false), 2000); } }} className="btn btn-outline inline-flex items-center gap-1.5 px-3 py-2 text-xs"><Copy size={13} /> {copied ? "Copied!" : "Copy"}</button>
+                </div>
+                <div className="mt-4 flex justify-between gap-2">
+                  <button disabled={busy} onClick={async () => { setBusy(true); await setDiscoveryShare(setId, false); setBusy(false); setOpen(false); router.refresh(); }} className="btn btn-outline px-4 py-1.5 text-sm text-red-600">
+                    {busy ? "Working…" : "Turn sharing off"}
+                  </button>
+                  <button onClick={() => setOpen(false)} className="btn btn-accent px-4 py-1.5 text-sm">Done</button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-4 flex justify-end gap-2">
+                <button onClick={() => setOpen(false)} className="btn btn-outline px-4 py-1.5 text-sm">Cancel</button>
+                <button disabled={busy} onClick={async () => { setBusy(true); await setDiscoveryShare(setId, true); setBusy(false); setOpen(false); router.refresh(); }} className="btn btn-accent px-4 py-1.5 text-sm">
+                  {busy ? "Working…" : "Turn sharing on"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** AI.fred's label on a document — shown as a chip, editable in place.
+ *  Internal work product: never appears on shared links or productions. */
+function LabelChip({ setId, target, label, description, muted }: { setId: number; target: LabelTarget; label: string; description: string; muted?: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [l, setL] = useState(label);
+  const [d, setD] = useState(description);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      {label ? (
+        <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-medium ${muted ? "bg-[var(--c-border)]/60 text-[var(--c-ink-muted)]" : "bg-amber-500/15 text-amber-800 dark:text-amber-300"}`} title={description || label}>
+          <Sparkles size={10} className="shrink-0" /> <span className="truncate">{label}</span>
+          <button onClick={() => { setL(label); setD(description); setOpen(true); }} className="shrink-0 opacity-70 hover:opacity-100" title="Edit label & notes"><Pencil size={10} /></button>
+        </span>
+      ) : (
+        <button onClick={() => { setL(""); setD(""); setOpen(true); }} className="rounded-full border border-dashed border-[var(--c-border)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]" title="Add a label & notes (internal)">
+          + label
+        </button>
+      )}
+      {open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
+          <div className="w-full max-w-md rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Document label &amp; notes</h3>
+            <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Internal work product — follows the document from red to yellow to green. Never shared with opposing counsel or on any share link.</p>
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block text-xs font-semibold">Label (short)</span>
+              <input value={l} onChange={(e) => setL(e.target.value)} className={`${input} w-full`} placeholder='e.g. "Repair estimate, Caliber Collision, $4,850"' />
+            </label>
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block text-xs font-semibold">Notes (detail, as needed)</span>
+              <textarea value={d} onChange={(e) => setD(e.target.value)} rows={4} className={`${input} w-full`} />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setOpen(false)} disabled={busy} className="btn btn-outline px-4 py-1.5 text-sm">Cancel</button>
+              <button disabled={busy} onClick={async () => { setBusy(true); await updateAiLabel(setId, target, l, d); setBusy(false); setOpen(false); router.refresh(); }} className="btn btn-accent px-4 py-1.5 text-sm">
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** "Go to page N" — type a number, hit Enter. */
+function GoToPage({ onGo }: { onGo: (page: number) => void }) {
+  const [v, setV] = useState("");
+  const go = () => { const n = Math.floor(Number(v)); if (n >= 1) { onGo(n); setV(""); } };
+  return (
+    <label className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2 py-1 text-xs text-[var(--c-ink-muted)]">
+      Go to page
+      <input value={v} onChange={(e) => setV(e.target.value.replace(/[^0-9]/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Enter") go(); }}
+        className="w-14 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-1.5 py-0.5 text-sm outline-none focus:border-[var(--c-accent)]" placeholder="№" />
+    </label>
+  );
+}
+
+/** Pull text out of every un-indexed document in the case (chunked, resumable).
+ *  Read-only: copies text into the database, never touches the files. */
+function IndexTextButton({ setId }: { setId: number }) {
+  const router = useRouter();
+  const [st, setSt] = useState<{ total: number; indexed: number; remaining: number; failed: number } | null>(null);
+  const [running, setRunning] = useState(false);
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/admin/discovery/index-text?setId=${setId}`).then((r) => r.json()).then((j) => { if (alive && typeof j.total === "number") setSt(j); }).catch(() => {});
+    return () => { alive = false; };
+  }, [setId]);
+  async function run() {
+    setRunning(true);
+    setNote("");
+    try {
+      for (let i = 0; i < 200; i++) {
+        const r = await fetch("/api/admin/discovery/index-text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setId, retryFailed: i === 0 }) });
+        const j = await r.json();
+        if (!r.ok) { setNote(String(j.error ?? "Indexing failed.")); break; }
+        setSt(j);
+        if (j.done) { setNote(j.failed > 0 ? `${j.failed} document(s) couldn't be indexed (too large or unreadable).` : ""); break; }
+      }
+    } catch { setNote("Indexing was interrupted — click again to continue where it left off."); }
+    setRunning(false);
+    router.refresh();
+  }
+  if (!st || (st.remaining === 0 && st.failed === 0)) return null; // everything's indexed — stay out of the way
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button onClick={() => void run()} disabled={running}
+        className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/60 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-500/10 disabled:opacity-60 dark:text-amber-300"
+        title="Pull the text out of documents that haven't been indexed yet, so search and AI.fred can read them. Reads only — never changes a file.">
+        {running ? <Loader2 size={14} className="animate-spin" /> : <ScanText size={14} />}
+        {running ? `Indexing… ${st.indexed}/${st.total}` : `Index text (${st.remaining + st.failed} to do)`}
+      </button>
+      {note && <span className="text-xs text-amber-700 dark:text-amber-300">{note}</span>}
+    </span>
+  );
+}
 
 /* --------------------------- request tracker ----------------------------- */
 
@@ -80,7 +243,7 @@ export function RequestTracker({ requests }: { requests: RequestRow[] }) {
 
 export type PipelineContents = { toc: string; notes: string; tocFile: string };
 
-export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents }: {
+export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareToken }: {
   mode: "received" | "staged" | "produced";
   setId: number;
   clientFiles: ClientFile[];
@@ -88,10 +251,11 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
   prods: ProductionRow[];
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
+  shareToken: string | null;
 }) {
-  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} />;
-  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} />;
-  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} />;
+  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareToken={shareToken} />;
+  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareToken={shareToken} />;
+  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareToken={shareToken} />;
 }
 
 /** The staged/produced PDF most likely to be "the review set" the table of
@@ -116,7 +280,10 @@ const pk = (key: string, page: number) => `${key}#${page}`;
 
 export type PageMark = "" | "staged" | "produced";
 
-function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents }) {
+/** DOM id for one page cell in the grid, so jumps can scroll to it. */
+const cellId = (key: string, page: number) => `pgc-${key.replace(/[^a-zA-Z0-9]/g, "_")}-${page}`;
+
+function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, shareToken }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents; shareToken: string | null }) {
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
@@ -296,10 +463,39 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { s
   // The TOC's jump target: the designated file, else the first PDF.
   const pdfFiles = files.filter((f) => fileKind(f.name) === "pdf");
   const tocTarget = pdfFiles.find((f) => f.key === contents.tocFile) ?? pdfFiles[0] ?? null;
-  const jumpToPage = (page: number) => {
-    if (!tocTarget) return;
-    setReader({ docIdx: files.findIndex((x) => x.key === tocTarget.key), page });
-    setView("reader");
+
+  // Briefly ring a page cell after a jump so the eye lands on it.
+  const [flash, setFlash] = useState<{ key: string; page: number } | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    let tries = 0;
+    const scroll = () => {
+      const el = document.getElementById(cellId(flash.key, flash.page));
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      else if (++tries < 20) setTimeout(scroll, 250); // cells appear once the PDF opens
+    };
+    scroll();
+    const t = setTimeout(() => setFlash(null), 2600);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  /** Jump to a page of a document. In the grid, stay in the grid and scroll
+   *  to the page; in the reader (or documents view), open it in the reader. */
+  const goToDocPage = (key: string, page: number) => {
+    const idx = files.findIndex((x) => x.key === key);
+    if (idx < 0) return;
+    if (view === "grid") {
+      setFlash({ key, page });
+    } else {
+      setReader({ docIdx: idx, page: Math.max(1, page) });
+      if (view !== "reader") setView("reader");
+    }
+  };
+  const jumpToPage = (page: number) => { if (tocTarget) goToDocPage(tocTarget.key, page); };
+  /** The "Go to page" box: reader → current document; grid → the TOC target. */
+  const goToPage = (page: number) => {
+    if (view === "reader") { setReader({ ...reader, page }); return; }
+    if (tocTarget) goToDocPage(tocTarget.key, page);
   };
 
   return (
@@ -325,6 +521,10 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { s
           <input type="file" accept=".pdf,image/jpeg,image/png" multiple className="hidden" disabled={!!uploading}
             onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void uploadClientFiles(fs); }} />
         </label>
+        {files.length > 0 && <GoToPage onGo={goToPage} />}
+        <IndexTextButton setId={setId} />
+        <DiscoveryAiReview setId={setId} docCount={files.length + stagedDocs.length} />
+        <ShareControl setId={setId} shareToken={shareToken} />
         <span className="text-xs text-[var(--c-ink-muted)]">Click a page to select it · Shift-click another page for the range · double-click to read.</span>
         <div className={`ml-auto flex items-center gap-2 rounded-md px-2 py-1 ${selected.size ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
           {selected.size > 0 && <span className="text-sm font-medium">{selected.size} page{selected.size === 1 ? "" : "s"} · {selByKey.size} doc{selByKey.size === 1 ? "" : "s"}</span>}
@@ -355,6 +555,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { s
           </p>
         ) : view === "reader" ? (
           <ClientReader files={files} state={reader} setState={setReader} selected={selected} pageMark={pageMark}
+            setId={setId} shareToken={shareToken}
             onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl}
             annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
             onStageFromTools={(f) => {
@@ -365,6 +566,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { s
           <div className="space-y-6">
             {files.map((f) => (
               <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
+                setId={setId} shareToken={shareToken} flash={flash}
                 onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={notePages}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} />
@@ -494,10 +696,15 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { s
   );
 }
 
+/** Which table a client file's label lives in. */
+const labelTargetFor = (f: ClientFile): LabelTarget =>
+  f.key.startsWith("share:") ? { kind: "share", id: Number(f.key.slice(6)) } : { kind: "doc", id: Number(f.key.slice(4)) };
+
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
+  setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
   onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
   onToggleDoc: () => void;
   onPagesKnown: (key: string, n: number) => void;
@@ -505,6 +712,7 @@ function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleD
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
 }) {
+  const [linkCopied, setLinkCopied] = useState(false);
   const kind = fileKind(f.name);
   const [pages, setPages] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -550,8 +758,17 @@ function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleD
             {selCount > 0 && <span className="rounded-full bg-[var(--c-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--c-accent)]">{selCount} pp. selected</span>}
           </>
         )}
+        <LabelChip setId={setId} target={labelTargetFor(f)} label={f.aiLabel} description={f.aiDescription} />
         <span className="text-xs text-[var(--c-ink-muted)]">{kind === "pdf" ? (failed ? "couldn't open" : pages ? `${pages} page${pages === 1 ? "" : "s"}` : "opening…") : ""}</span>
-        <a href={proxyUrl(f)} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline"><ExternalLink size={12} /> original</a>
+        <span className="ml-auto inline-flex items-center gap-2">
+          {shareToken && (
+            <button onClick={async () => { if (await copyText(shareUrl(shareToken, shareKeyFor(f.key)))) { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); } }}
+              className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline" title="Copy this document's share link (friendly parties only)">
+              <Link2 size={12} /> {linkCopied ? "copied!" : "share link"}
+            </button>
+          )}
+          <a href={proxyUrl(f)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline"><ExternalLink size={12} /> original</a>
+        </span>
       </div>
       {kind === "image" ? (
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
@@ -573,6 +790,7 @@ function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleD
           {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
             <ClientPageCell key={page} f={f} page={page} renderW={renderW}
               selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
+              flash={!!flash && flash.key === f.key && flash.page === page}
               onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)} />
           ))}
         </div>
@@ -585,8 +803,8 @@ function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleD
   );
 }
 
-function ClientPageCell({ f, page, renderW, selected, mark, getDoc, onClick, onOpen }: {
-  f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark;
+function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen }: {
+  f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark; flash?: boolean;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   onClick: (shiftKey: boolean) => void; onOpen: () => void;
 }) {
@@ -636,9 +854,9 @@ function ClientPageCell({ f, page, renderW, selected, mark, getDoc, onClick, onO
   }, [inView, renderW, f, page, getDoc]);
 
   return (
-    <div ref={holder} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
+    <div ref={holder} id={cellId(f.key, page)} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} // shift-click shouldn't drag-select text
-      className={`group relative aspect-[8.5/11] overflow-hidden rounded-md border bg-white shadow-sm ${mark ? "cursor-default" : "cursor-pointer"} ${selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${!mark && !selected ? "hover:ring-1 hover:ring-[var(--c-accent)]/50" : ""}`}
+      className={`group relative aspect-[8.5/11] overflow-hidden rounded-md border bg-white shadow-sm ${mark ? "cursor-default" : "cursor-pointer"} ${flash ? "ring-4 ring-amber-400" : selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${selected && !flash ? "border-[var(--c-accent)]" : ""} ${!mark && !selected && !flash ? "hover:ring-1 hover:ring-[var(--c-accent)]/50" : ""}`}
       title={mark === "produced" ? "Already produced" : mark === "staged" ? "Already staged — see the yellow tab" : "Click to select this page · Shift-click for a range · Double-click to read"}>
       <canvas ref={canvasRef} className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} />
       {state === "idle" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
@@ -659,12 +877,13 @@ type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
 
 const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
 
-function ClientReader({ files, state, setState, selected, pageMark, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools }: {
+function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
   selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
+  setId: number; shareToken: string | null;
   onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
@@ -684,8 +903,11 @@ function ClientReader({ files, state, setState, selected, pageMark, onTogglePage
   const [tool, setTool] = useState<ReviewTool>("select");
   const [menuOpen, setMenuOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
+  const textTaskRef = useRef<{ cancel: () => void } | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [pageLinkCopied, setPageLinkCopied] = useState(false);
 
   useEffect(() => { if (kind === "pdf") void ensureAnnos(f.key); }, [kind, f.key, ensureAnnos]);
 
@@ -718,6 +940,24 @@ function ClientReader({ files, state, setState, selected, pageMark, onTogglePage
         const task = pdfPage.render({ canvas, viewport });
         taskRef.current = task;
         await task.promise;
+        // Selectable text layer (same feel as the Exhibit Reviewer's native
+        // viewer): invisible text positioned over the picture. Display-only —
+        // the file itself is never touched.
+        try {
+          const lib = await loadPdfjs();
+          const tl = textLayerRef.current;
+          if (tl && seq === renderSeq.current) {
+            textTaskRef.current?.cancel();
+            tl.replaceChildren();
+            const vpCss = pdfPage.getViewport({ scale: cssW / base.width });
+            tl.style.width = `${cssW}px`;
+            tl.style.height = `${Math.ceil(vpCss.height)}px`;
+            tl.style.setProperty("--scale-factor", String(vpCss.scale));
+            const layer = new lib.TextLayer({ textContentSource: pdfPage.streamTextContent(), container: tl, viewport: vpCss });
+            textTaskRef.current = layer;
+            await layer.render();
+          }
+        } catch { /* text selection is a nicety */ }
       } catch { /* keep previous frame */ } finally {
         if (seq === renderSeq.current) setRendering(false);
       }
@@ -820,11 +1060,20 @@ function ClientReader({ files, state, setState, selected, pageMark, onTogglePage
             </>
           )}
         </div>
+        <LabelChip setId={setId} target={labelTargetFor(f)} label={f.aiLabel} description={f.aiDescription} />
+        {shareToken && (
+          <button onClick={async () => { if (await copyText(shareUrl(shareToken, shareKeyFor(f.key), state.page))) { setPageLinkCopied(true); setTimeout(() => setPageLinkCopied(false), 2000); } }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-xs text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+            title="Copy a share link straight to this page (friendly parties only)">
+            <Link2 size={13} /> {pageLinkCopied ? "Copied!" : `Link to p.${state.page}`}
+          </button>
+        )}
       </div>
       <div className={`relative mx-auto w-fit overflow-hidden rounded-md border bg-white shadow ${isSel ? "ring-2 ring-[var(--c-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
         {kind === "pdf" ? (
           <>
             <canvas ref={canvasRef} className={mk ? "opacity-60 grayscale-[35%]" : ""} />
+            <div ref={textLayerRef} className="pdf-text-layer" style={{ pointerEvents: tool === "select" ? "auto" : "none" }} />
             <div ref={overlayRef} data-testid="reader-overlay" className="absolute inset-0"
               style={{ cursor: drawing || tool === "note" ? "crosshair" : tool === "eraser" ? "pointer" : "default", pointerEvents: tool === "select" ? "none" : "auto" }}
               onMouseDown={onOverlayDown} onMouseMove={onOverlayMove} onMouseUp={finishDrag} onMouseLeave={finishDrag} onClick={onOverlayClick}>
@@ -866,7 +1115,8 @@ function ClientReader({ files, state, setState, selected, pageMark, onTogglePage
 
 /* ------------- pale yellow: staged, reviewable, then produce ------------- */
 
-function StagedView({ setId, staged, prods, contents }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents }) {
+function StagedView({ setId, staged, prods, contents, shareToken }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareToken: string | null }) {
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const router = useRouter();
   const draft = prods.find((p) => !p.producedAt) ?? null;
   const rows = staged.filter((d) => !d.productionId || d.productionId === draft?.id).sort((a, b) => a.batesStart - b.batesStart);
@@ -896,6 +1146,8 @@ function StagedView({ setId, staged, prods, contents }: { setId: number; staged:
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <p className="text-sm text-[var(--c-ink-muted)]">Bates-labeled and under review — nothing here has gone to the other side yet.</p>
+        <DiscoveryAiReview setId={setId} docCount={rows.length} />
+        <ShareControl setId={setId} shareToken={shareToken} />
         <button onClick={() => void prepare()} disabled={busy || rows.length === 0 || !!draft}
           className="btn btn-accent ml-auto inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50"
           title={draft ? "A draft production is awaiting review below" : undefined}>
@@ -935,7 +1187,14 @@ function StagedView({ setId, staged, prods, contents }: { setId: number; staged:
             <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
               <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{d.batesPrefix ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "pre-labeled"}</span>
               <span className="min-w-0 flex-1 break-words">{d.name}</span>
+              <LabelChip setId={setId} target={{ kind: "production", id: d.id }} label={d.aiLabel} description={d.aiDescription} />
               {d.requestLabel && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{d.requestLabel}</span>}
+              {shareToken && (
+                <button onClick={async () => { if (await copyText(shareUrl(shareToken, `prod-${d.id}`))) { setCopiedId(d.id); setTimeout(() => setCopiedId(null), 2000); } }}
+                  className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy share link (friendly parties only)">
+                  {copiedId === d.id ? <Check size={14} className="text-emerald-600" /> : <Link2 size={14} />}
+                </button>
+              )}
               {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="text-[var(--c-accent)]" title="View staged copy"><ExternalLink size={14} /></a>}
               {!d.productionId && (
                 <button onClick={async () => { if (confirm(`Remove ${bates(d.batesPrefix, d.batesStart)} from the staging list?`)) { await unstageProductionDoc(d.id); router.refresh(); } }}
@@ -951,7 +1210,8 @@ function StagedView({ setId, staged, prods, contents }: { setId: number; staged:
 
 /* --------------- pale green: what has actually gone out ------------------ */
 
-function ProducedView({ setId, staged, prods, contents }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents }) {
+function ProducedView({ setId, staged, prods, contents, shareToken }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareToken: string | null }) {
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
   // Link + Bates base come from the most recent production with a file.
   const latest = [...done].reverse().find((p) => p.fileUrl) ?? null;
@@ -966,6 +1226,10 @@ function ProducedView({ setId, staged, prods, contents }: { setId: number; stage
   return (
     <div className="p-4">
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} batesBase={batesBase} /></div>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <DiscoveryAiReview setId={setId} docCount={staged.length} />
+        <ShareControl setId={setId} shareToken={shareToken} />
+      </div>
       {done.length === 0 ? (
         <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
           Nothing has been produced yet. Stage documents, prepare the production, review it, and mark it produced.
@@ -991,7 +1255,14 @@ function ProducedView({ setId, staged, prods, contents }: { setId: number; stage
                     <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
                       <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</span>
                       <span className="min-w-0 flex-1 break-words">{d.name}</span>
+                      <LabelChip setId={setId} target={{ kind: "production", id: d.id }} label={d.aiLabel} description={d.aiDescription} />
                       {d.requestLabel && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{d.requestLabel}</span>}
+                      {shareToken && (
+                        <button onClick={async () => { if (await copyText(shareUrl(shareToken, `prod-${d.id}`))) { setCopiedId(d.id); setTimeout(() => setCopiedId(null), 2000); } }}
+                          className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy share link (friendly parties only)">
+                          {copiedId === d.id ? <Check size={14} className="text-emerald-600" /> : <Link2 size={14} />}
+                        </button>
+                      )}
                       {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="text-[var(--c-accent)]"><ExternalLink size={13} /></a>}
                     </div>
                   ))}

@@ -14,6 +14,7 @@ import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
 import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
 import { buildStagedPdf, compressPageRanges, type RedactionMark } from "@/lib/production/subset";
+import { rasterizeRedactedPages } from "@/lib/production/redact";
 import { FIRM } from "@/lib/firm";
 import { randomBytes } from "crypto";
 
@@ -133,6 +134,11 @@ export async function addDiscoveryDoc(setId: number, input: { name?: string; fil
         url: input.file.url, pathname: input.file.pathname,
         contentType: input.file.contentType ?? null, sizeBytes: input.file.size ?? null,
         pageCount, pageText,
+        // Big/slow files skip upload-time extraction; the chunked indexer
+        // (Index text button, or the AI review pre-pass) finishes them.
+        // Non-PDFs (photos) have no text layer to index.
+        textStatus: pageCount != null ? "done"
+          : (input.file.contentType ?? "").includes("pdf") || /\.pdf$/i.test(input.file.pathname) ? "pending" : "done",
         bucket: input.bucket === "client" ? "client" : "opposing",
         servedAt: str(input.service?.servedAt, 32),
         servedBy: str(input.service?.servedBy, 191),
@@ -663,6 +669,61 @@ export async function deleteDiscoveryAnnotation(setId: number, id: number) {
   }
 }
 
+/* --------------- AI labels (editable, internal work product) ------------- */
+
+export type LabelTarget = { kind: "doc" | "share" | "production"; id: number };
+
+/**
+ * Staff edit of AI.fred's label/description on any pipeline document.
+ * These notes are internal work product: they render only inside the admin,
+ * never on the opposing-counsel production page or any share link.
+ */
+export async function updateAiLabel(setId: number, target: LabelTarget, label: string, description: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const aiLabel = str(label, 300);
+  const aiDescription = str(description, 4000);
+  const patch = { aiLabel, aiDescription, aiLabelStatus: aiLabel || aiDescription ? "labeled" : "", aiLabeledAt: new Date() };
+  try {
+    if (target.kind === "doc") {
+      await db.update(discoveryDocs).set(patch).where(and(eq(discoveryDocs.id, target.id), eq(discoveryDocs.setId, setId)));
+    } else if (target.kind === "production") {
+      await db.update(productionDocs).set(patch).where(and(eq(productionDocs.id, target.id), eq(productionDocs.setId, setId)));
+    } else {
+      await db.update(shareFiles).set(patch).where(eq(shareFiles.id, target.id));
+    }
+    await audit(session.email, "update", "discovery-label", `${target.kind}:${target.id}`, "Edited document label/notes");
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] updateAiLabel failed:", err);
+    return { ok: false as const, error: "Couldn't save the label." };
+  }
+}
+
+/* --------------- friendly-parties share link (pipeline) ------------------ */
+
+/**
+ * Turn the case's document share link on/off. The link shows the documents
+ * in the three pipeline piles — files only: no notes, labels, or TOC — for
+ * co-counsel, experts, or an outside AI. It is NOT the opposing-counsel
+ * production link (that one lives on each finalized production).
+ */
+export async function setDiscoveryShare(setId: number, on: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const token = on ? randomBytes(20).toString("base64url") : null;
+    await db.update(discoverySets).set({ shareToken: token }).where(eq(discoverySets.id, setId));
+    await audit(session.email, "update", "discovery-share", String(setId), on ? "Share link turned ON" : "Share link turned OFF");
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, token };
+  } catch (err) {
+    console.error("[discovery-reviewer] setDiscoveryShare failed:", err);
+    return { ok: false as const, error: "Couldn't update sharing." };
+  }
+}
+
 /* ----------------------- production pipeline ---------------------------- */
 
 /** Combined source budget per staging batch, so stamping can't OOM. */
@@ -700,17 +761,21 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
           .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))
       : [];
     const folderIds = new Set(folders.map((f) => f.id));
-    type Source = { key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null };
+    type Source = {
+      key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null;
+      pageText: string[]; aiLabel: string; aiDescription: string; aiLabelStatus: string; aiLabeledAt: Date | null;
+    };
+    const srcPages = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((p) => (typeof p === "string" ? p : "")) : []);
     const sources: Source[] = [];
     if (shareIds.length) {
       for (const f of (await db.select().from(shareFiles).where(inArray(shareFiles.id, shareIds))).filter((f) => folderIds.has(f.folderId))) {
-        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes });
+        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt });
       }
     }
     if (docIds.length) {
       // Documents moved into the client bucket from the opposing pile.
       for (const d of (await db.select().from(discoveryDocs).where(inArray(discoveryDocs.id, docIds))).filter((d) => d.setId === setId && d.bucket === "client")) {
-        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes });
+        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt });
       }
     }
     if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
@@ -729,11 +794,15 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const annos = await db.select().from(discoveryAnnotations)
       .where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.kind, "redact"), inArray(discoveryAnnotations.fileKey, sourceKeys)));
     const redsByKey = new Map<string, RedactionMark[]>();
+    const redPagesByKey = new Map<string, Set<number>>();
     for (const a of annos) {
       const list = redsByKey.get(a.fileKey) ?? [];
       const rc = a.rect as { x?: number; y?: number; w?: number; h?: number };
       list.push({ page: a.page, rect: { x: rc.x ?? 0, y: rc.y ?? 0, w: rc.w ?? 0, h: rc.h ?? 0 } });
       redsByKey.set(a.fileKey, list);
+      const pset = redPagesByKey.get(a.fileKey) ?? new Set<number>();
+      pset.add(a.page);
+      redPagesByKey.set(a.fileKey, pset);
     }
     const todo = sources.filter((f) => !covered.get(f.key)?.all);
     if (todo.length === 0) return { ok: false as const, error: "All of those documents are already staged or produced." };
@@ -763,6 +832,7 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       let bytes: Uint8Array = new Uint8Array(await res.arrayBuffer());
       let sourcePages: number[] = [];
       let nameSuffix = "";
+      let prodText: string[] = [];
       if (isPdfSrc) {
         const built = await buildStagedPdf(bytes, requested, [...cov.pages], redsByKey.get(f.key) ?? []).catch(() => null);
         if (!built) { skipped.push(`${f.filename} (those pages are already staged, or the PDF couldn't be read)`); continue; }
@@ -770,6 +840,16 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         const isWholeFresh = built.includedPages.length === built.totalPages && cov.pages.size === 0;
         sourcePages = isWholeFresh ? [] : built.includedPages;
         if (!isWholeFresh) nameSuffix = ` (pp. ${compressPageRanges(built.includedPages)})`;
+        // TRUE redaction: pages carrying a redaction box are flattened to
+        // images so the text underneath is truly gone from the outgoing copy.
+        const redPages = redPagesByKey.get(f.key);
+        if (redPages?.size) {
+          const positions = built.includedPages.map((srcPage, i) => (redPages.has(srcPage) ? i + 1 : 0)).filter(Boolean);
+          if (positions.length) bytes = new Uint8Array(await rasterizeRedactedPages(bytes, positions));
+        }
+        // The copy's text index: the source's per-page text for the included
+        // pages, with redacted pages blanked (their text no longer exists).
+        prodText = built.includedPages.map((srcPage) => (redPages?.has(srcPage) ? "" : f.pageText[srcPage - 1] ?? ""));
       }
       const stamped = await stampToPdf(bytes, f.contentType, f.filename, prefix, next, bates, opts.stamp);
       if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
@@ -785,6 +865,13 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,
         batesPrefix: prefix, batesStart: bates ? next : 0, batesEnd: bates ? next + stamped.pages - 1 : 0, pageCount: stamped.pages,
         sourcePages,
+        // Text + AI.fred's review ride along from the source document, so the
+        // yellow/green tabs and the chat can cite by Bates number. Internal
+        // only — none of this reaches the opposing-counsel page.
+        pageText: prodText,
+        textStatus: prodText.some((p) => p.trim()) || !isPdfSrc ? "done" : "pending",
+        aiLabel: f.aiLabel, aiDescription: f.aiDescription,
+        aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt,
         status: "staged",
       });
       if (bates) next += stamped.pages;

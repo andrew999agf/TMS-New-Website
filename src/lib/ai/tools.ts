@@ -71,11 +71,11 @@ const TOOL_DEFS: ToolDef[] = [
   {
     name: "read_document",
     description:
-      "Read the extracted text of one discovery or exhibit document, page by page. Use list_discovery_documents or list_exhibits first to find the document id. Large documents come back in page ranges — ask for further pages as needed. Scanned images without a text layer return empty pages; say so rather than guessing at their contents.",
+      "Read the extracted text of one document, page by page: 'discovery' (opposing/client piles), 'exhibit', 'client' (a client-portal upload, by fileId), or 'production' (a staged/produced Bates copy — each page comes back with its Bates number, so cite those). Use list_discovery_documents or list_exhibits first to find the id. Large documents come back in page ranges — ask for further pages as needed. A document whose text isn't indexed yet says so — tell the user the 'Index text' button (or an AI review) in the Discovery Reviewer will fix it; NEVER tell them to re-OCR or re-upload the file.",
     parameters: {
       type: "object",
       properties: {
-        source: { type: "string", enum: ["discovery", "exhibit"], description: "Which tool the document lives in." },
+        source: { type: "string", enum: ["discovery", "exhibit", "client", "production"], description: "Which pile the document lives in." },
         doc_id: { type: "integer", description: "The document id from a listing tool." },
         page_from: { type: "integer", description: "First page to read (1-based). Default 1." },
         page_to: { type: "integer", description: "Last page to read (inclusive). Default: as many as fit." },
@@ -301,13 +301,17 @@ async function listDiscovery(matter: string) {
     db!.select().from(productions).where(inArray(productions.setId, setIds)),
   ]);
   // Client-uploaded files live in share folders keyed to the matter.
-  let clientFiles: { name: string; folder: string; uploadedAt: string }[] = [];
+  let clientFiles: { fileId: number; name: string; folder: string; uploadedAt: string; pages?: number; aiLabel?: string; textIndexed: boolean }[] = [];
   try {
     const folders = await db!.select().from(shareFolders).where(and(eq(shareFolders.matter, matter), eq(shareFolders.type, "client"), eq(shareFolders.archived, false)));
     if (folders.length) {
       const files = await db!.select().from(shareFiles).where(inArray(shareFiles.folderId, folders.map((f) => f.id)));
       const byId = new Map(folders.map((f) => [f.id, f.name]));
-      clientFiles = files.map((f) => ({ name: f.filename, folder: byId.get(f.folderId) ?? "", uploadedAt: f.createdAt.toISOString().slice(0, 10) }));
+      clientFiles = files.map((f) => ({
+        fileId: f.id, name: f.filename, folder: byId.get(f.folderId) ?? "", uploadedAt: f.createdAt.toISOString().slice(0, 10),
+        pages: f.pageCount ?? undefined, aiLabel: f.aiLabel || undefined,
+        textIndexed: Array.isArray(f.pageText) && (f.pageText as string[]).some((p) => p && p.trim()),
+      }));
     }
   } catch { /* share tables optional */ }
   return {
@@ -317,8 +321,9 @@ async function listDiscovery(matter: string) {
     clientUploadedFiles: clientFiles,
     exhibitDesignations: marks.map((m) => ({ designation: m.label || `${m.party}-${m.number}`, title: m.title, pageCount: Array.isArray(m.pages) ? (m.pages as unknown[]).length : 0 })),
     productionPipeline: {
-      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)" })),
-      produced: prods.map((p) => ({ label: p.label, producedAt: p.producedAt?.toISOString().slice(0, 10) ?? null, documents: pdocs.filter((d) => d.productionId === p.id).map((d) => d.name) })),
+      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ docId: d.id, name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)", aiLabel: d.aiLabel || undefined })),
+      produced: prods.map((p) => ({ label: p.label, producedAt: p.producedAt?.toISOString().slice(0, 10) ?? null, documents: pdocs.filter((d) => d.productionId === p.id).map((d) => ({ docId: d.id, name: d.name, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : undefined, aiLabel: d.aiLabel || undefined })) })),
+      note: "Read a staged/produced copy with read_document source 'production' (docId above) — its pages carry Bates numbers. Client-portal files: source 'client' with fileId.",
     },
   };
 }
@@ -344,35 +349,54 @@ async function listExhibits(matter: string) {
   };
 }
 
+const NOT_INDEXED_NOTE =
+  "This document's text hasn't been indexed yet (big files are indexed on demand). The 'Index text' button — or an AI review — in that case's Discovery Reviewer pulls the text in; the file itself is fine and does NOT need re-OCR or re-upload. If it's a photo or a scan with no text layer, the AI review's vision pass labels it instead.";
+
 async function readDocument(source: string, docId: number, pageFrom?: number, pageTo?: number) {
   if (!Number.isFinite(docId)) return { error: "doc_id is required." };
   let name = "", pages: string[] = [];
+  let batesFor: ((pageIdx: number) => string | undefined) | null = null;
+  let label: { aiLabel: string; aiDescription: string } | null = null;
+  const asArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
   if (source === "exhibit") {
     const [row] = await db!.select({ name: exhibitDocs.title, pageText: exhibitDocs.pageText }).from(exhibitDocs).where(eq(exhibitDocs.id, docId));
     if (!row) return { error: `No exhibit document #${docId}.` };
-    name = row.name; pages = Array.isArray(row.pageText) ? (row.pageText as string[]) : [];
+    name = row.name; pages = asArr(row.pageText);
+  } else if (source === "client") {
+    const [row] = await db!.select().from(shareFiles).where(eq(shareFiles.id, docId));
+    if (!row) return { error: `No client-uploaded file #${docId}.` };
+    name = row.filename; pages = asArr(row.pageText);
+    if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
+  } else if (source === "production") {
+    const [row] = await db!.select().from(productionDocs).where(eq(productionDocs.id, docId));
+    if (!row) return { error: `No production document #${docId}.` };
+    name = row.name; pages = asArr(row.pageText);
+    if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
+    if (row.batesPrefix) batesFor = (i) => `${row.batesPrefix}${String(row.batesStart + i).padStart(6, "0")}`;
   } else {
     const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
     if (!row) return { error: `No discovery document #${docId}.` };
-    name = row.name; pages = Array.isArray(row.pageText) ? (row.pageText as string[]) : [];
-    if (!pages.length && row.aiLabel) {
-      return { document: name, aiLabel: row.aiLabel, aiDescription: row.aiDescription, note: "No extractable text; this is AI.fred's visual review of the document (from the discovery sweep)." };
-    }
+    name = row.name; pages = asArr(row.pageText);
+    if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   }
-  if (!pages.length) return { document: name, note: "No extracted text — likely a scanned image without a text layer. If the set has been through an AI discovery review, the label will appear in list_discovery_documents." };
+  if (!pages.some((p) => p && p.trim())) {
+    if (label) return { document: name, ...label, note: "No extractable text; this is AI.fred's review of the document. " + NOT_INDEXED_NOTE };
+    return { document: name, note: NOT_INDEXED_NOTE };
+  }
   const from = Math.max(1, pageFrom ?? 1);
   const to = Math.min(pages.length, Math.max(from, pageTo ?? pages.length));
-  const out: { page: number; text: string }[] = [];
+  const out: { page: number; bates?: string; text: string }[] = [];
   let budget = 11000;
   let last = from - 1;
   for (let p = from; p <= to && budget > 0; p++) {
     const text = (pages[p - 1] ?? "").slice(0, 3000);
     budget -= text.length + 20;
-    out.push({ page: p, text });
+    out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), text });
     last = p;
   }
   return {
     document: name, totalPages: pages.length, pagesReturned: `${from}–${last}`,
+    ...(label ? { aiLabel: label.aiLabel } : {}),
     ...(last < to || to < pages.length ? { note: `More pages exist — call again with page_from: ${last + 1}.` } : {}),
     pages: out,
   };
@@ -383,14 +407,14 @@ async function searchDocuments(matter: string, query: string) {
   if (!matter || !q) return { error: "matter and query are required." };
   const dsets = await discoverySetsFor(matter);
   const esets = await db!.select().from(exhibitSets).where(and(eq(exhibitSets.matter, matter), eq(exhibitSets.archived, false)));
-  const hits: { source: string; docId: number; document: string; page: number; snippet: string }[] = [];
-  const scan = (sourceLabel: string, docId: number, docName: string, pages: string[]) => {
+  const hits: { source: string; docId: number; document: string; page: number; bates?: string; snippet: string }[] = [];
+  const scan = (sourceLabel: string, docId: number, docName: string, pages: string[], batesFor?: (pageIdx: number) => string | undefined) => {
     pages.forEach((t, i) => {
       if (hits.length >= 30 || !t) return;
       const idx = t.toLowerCase().indexOf(q);
       if (idx < 0) return;
       const start = Math.max(0, idx - 70);
-      hits.push({ source: sourceLabel, docId, document: docName, page: i + 1, snippet: `…${t.slice(start, idx + q.length + 90).replace(/\s+/g, " ")}…` });
+      hits.push({ source: sourceLabel, docId, document: docName, page: i + 1, ...(batesFor?.(i) ? { bates: batesFor(i) } : {}), snippet: `…${t.slice(start, idx + q.length + 90).replace(/\s+/g, " ")}…` });
     });
   };
   if (dsets.length) {
@@ -409,7 +433,27 @@ async function searchDocuments(matter: string, query: string) {
     const docs = await db!.select({ id: exhibitDocs.id, label: exhibitDocs.label, title: exhibitDocs.title, pageText: exhibitDocs.pageText }).from(exhibitDocs).where(inArray(exhibitDocs.setId, esets.map((s) => s.id)));
     for (const d of docs) scan("exhibit", d.id, `${d.label ? d.label + " — " : ""}${d.title}`, Array.isArray(d.pageText) ? (d.pageText as string[]) : []);
   }
-  return { query, hits, ...(hits.length >= 30 ? { note: "Capped at 30 hits — refine the query for more precision." } : {}), ...(hits.length === 0 ? { note: "No hits. Scanned documents without a text layer can't be searched." } : {}) };
+  // Client-portal uploads (the red tab's share-folder files).
+  try {
+    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, matter), eq(shareFolders.type, "client")));
+    if (folders.length) {
+      const files = await db!.select().from(shareFiles).where(inArray(shareFiles.folderId, folders.map((f) => f.id)));
+      for (const f of files) {
+        scan("client file", f.id, f.filename, Array.isArray(f.pageText) ? (f.pageText as string[]) : []);
+        const labelText = [f.aiLabel, f.aiDescription].filter(Boolean).join(" — ");
+        if (labelText && hits.length < 30 && labelText.toLowerCase().includes(q)) hits.push({ source: "client file (AI label)", docId: f.id, document: f.filename, page: 1, snippet: labelText.slice(0, 220) });
+      }
+    }
+  } catch { /* share tables optional */ }
+  // Staged/produced Bates copies — hits cite the exact Bates number.
+  if (dsets.length) {
+    const pdocs = await db!.select().from(productionDocs).where(inArray(productionDocs.setId, dsets.map((s) => s.id)));
+    for (const d of pdocs) {
+      const batesFor = d.batesPrefix ? (i: number) => `${d.batesPrefix}${String(d.batesStart + i).padStart(6, "0")}` : undefined;
+      scan(d.status === "produced" ? "produced" : "staged", d.id, d.name, Array.isArray(d.pageText) ? (d.pageText as string[]) : [], batesFor);
+    }
+  }
+  return { query, hits, ...(hits.length >= 30 ? { note: "Capped at 30 hits — refine the query for more precision." } : {}), ...(hits.length === 0 ? { note: "No hits. A document whose text isn't indexed yet can't be searched — the Index text button in the Discovery Reviewer fixes that (no re-OCR or re-upload needed); photos/scans are covered by the AI review's labels instead." } : {}) };
 }
 
 async function getPretrial(matter: string) {

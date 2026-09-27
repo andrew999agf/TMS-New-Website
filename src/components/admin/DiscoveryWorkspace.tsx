@@ -13,13 +13,14 @@ type Mode = "opposing" | "received" | "staged" | "produced";
  * pale red (received from client), pale yellow (to be produced), pale green
  * (produced).
  */
-export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults, contents }: {
+export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults, contents, shareToken }: {
   reviewerProps: ComponentProps<typeof DiscoveryReviewer>;
   clientFiles: ClientFile[];
   staged: StagedDoc[];
   prods: ProductionRow[];
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
+  shareToken: string | null;
 }) {
   // Land where the work is: finalized productions (green) if any exist,
   // otherwise the client documents under review (red).
@@ -47,7 +48,7 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
         <DiscoveryReviewer {...reviewerProps} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} />
+          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} shareToken={shareToken} />
         </div>
       )}
     </div>

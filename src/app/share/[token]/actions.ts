@@ -11,6 +11,7 @@ import { sanitizeRichText, hasRichText } from "@/lib/share/sanitize";
 import { shareNotifyList } from "@/lib/share/notify";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
+import { shareFileTextFields } from "@/lib/share/text-fields";
 
 /** Record a file a recipient uploaded (after the Blob upload resolves). */
 export async function recipientRegisterFile(
@@ -25,6 +26,7 @@ export async function recipientRegisterFile(
   const base = (file.filename || "file").split("/").pop() || "file";
   const path = (dir ? `${dir}/${base}` : base).slice(0, 1024);
   try {
+    const text = await shareFileTextFields({ url: file.url, contentType: file.contentType, filename: path, size: file.size });
     await db.insert(shareFiles).values({
       folderId: ctx.folder.id,
       url: file.url,
@@ -33,6 +35,7 @@ export async function recipientRegisterFile(
       contentType: file.contentType ?? null,
       sizeBytes: file.size ?? null,
       uploadedBy: ctx.rec.email,
+      ...text,
     });
     await db.insert(shareAccessLog).values({ folderId: ctx.folder.id, recipientId: ctx.rec.id, action: "upload" });
     if (progress) await db.update(shareFolders).set({ uploadTotal: progress.total, uploadDone: progress.done, uploadAt: new Date() }).where(eq(shareFolders.id, ctx.folder.id));

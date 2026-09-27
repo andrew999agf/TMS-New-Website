@@ -464,6 +464,17 @@ export const shareFiles = pgTable(
     uploadedBy: varchar("uploaded_by", { length: 255 }),
     /** False until included in a "new documents" digest to recipients. */
     notified: boolean("notified").notNull().default(false),
+    /** Per-page extracted text (index 0 = page 1), for search and the AI. */
+    pageCount: integer("page_count"),
+    pageText: jsonb("page_text").notNull().default([]),
+    /** "" never tried · done · pending (needs the chunked indexer) · failed */
+    textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
+    /** AI.fred's review — INTERNAL WORK PRODUCT, never rendered on any
+     *  public/shared page. Editable by staff. */
+    aiLabel: varchar("ai_label", { length: 300 }).notNull().default(""),
+    aiDescription: text("ai_description").notNull().default(""),
+    aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
+    aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ folderIdx: index("share_files_folder_idx").on(t.folderId) }),
@@ -1429,6 +1440,11 @@ export const discoverySets = pgTable(
     prodToc: text("prod_toc").notNull().default(""),
     prodNotes: text("prod_notes").notNull().default(""),
     prodTocFile: text("prod_toc_file").notNull().default(""),
+    /** Friendly-parties share link for the production pipeline (co-counsel,
+     *  experts, an outside AI). Null = sharing off. NEVER give this link to
+     *  opposing counsel — productions have their own OC link, and this one's
+     *  pages carry only the documents themselves (no notes/labels/TOC). */
+    shareToken: varchar("share_token", { length: 64 }),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1452,6 +1468,9 @@ export const discoveryDocs = pgTable(
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) for future search. */
     pageText: jsonb("page_text").notNull().default([]),
+    /** "" never tried (legacy) · done · pending (too big for upload-time
+     *  extraction — the chunked indexer finishes it) · failed */
+    textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
     /** Which pile this document belongs to: opposing (their production,
      *  page-level review) | client (documents received from the client). */
     bucket: varchar("bucket", { length: 12 }).notNull().default("opposing"),
@@ -1520,6 +1539,18 @@ export const productionDocs = pgTable(
      *  means the whole document. Lets a 700-page client PDF go over in
      *  reviewed slices, with the red tab showing what's already gone. */
     sourcePages: jsonb("source_pages").notNull().default([]),
+    /** Per-page text of THIS copy (index 0 = its page 1), so the AI can cite
+     *  by Bates number: label of page i = batesPrefix + (batesStart + i). */
+    pageText: jsonb("page_text").notNull().default([]),
+    /** "" never tried · done · pending · failed */
+    textStatus: varchar("text_status", { length: 12 }).notNull().default(""),
+    /** AI.fred's review, inherited from the source document at staging and
+     *  editable — INTERNAL WORK PRODUCT, never rendered on the opposing-
+     *  counsel production page or any shared link. */
+    aiLabel: varchar("ai_label", { length: 300 }).notNull().default(""),
+    aiDescription: text("ai_description").notNull().default(""),
+    aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
+    aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
     /** staged (pale yellow) | produced (pale green). */
     status: varchar("status", { length: 12 }).notNull().default("staged"),
     productionId: integer("production_id"),

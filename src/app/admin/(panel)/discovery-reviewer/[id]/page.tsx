@@ -95,6 +95,8 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
               folderName: byId.get(x.folderId) ?? "",
               createdAt: x.createdAt.toISOString(),
               status: "" as const,
+              aiLabel: x.aiLabel ?? "", aiDescription: x.aiDescription ?? "",
+              textStatus: x.textStatus ?? "",
             };
           });
       }
@@ -115,6 +117,8 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       createdAt: d.createdAt.toISOString(),
       status: "",
       movedFromOpposing: true,
+      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "",
+      textStatus: d.textStatus ?? "",
     });
   }
 
@@ -123,6 +127,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
     staged = pdocs.map((d) => ({
       id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
       sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
+      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "",
     }));
     // Whole-document rows lock their source in the red tab; page-slice rows
     // leave it open so the remaining pages can still be staged.
@@ -197,6 +202,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
         prods={prods}
         batesDefaults={batesDefaults}
         contents={{ toc: set.prodToc ?? "", notes: set.prodNotes ?? "", tocFile: set.prodTocFile ?? "" }}
+        shareToken={set.shareToken ?? null}
       />
     </div>
   );

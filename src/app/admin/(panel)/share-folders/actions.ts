@@ -1,6 +1,7 @@
 "use server";
 
 import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { shareFileTextFields } from "@/lib/share/text-fields";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
@@ -157,6 +158,7 @@ export async function registerShareFile(folderId: number, file: { url: string; p
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
+    const text = await shareFileTextFields({ url: file.url, contentType: file.contentType, filename: file.filename, size: file.size });
     const [row] = await db
       .insert(shareFiles)
       .values({
@@ -170,6 +172,7 @@ export async function registerShareFile(folderId: number, file: { url: string; p
         // Firm uploads never go through the auto digest — staff are asked at
         // upload time whether to notify recipients — so mark them handled.
         notified: true,
+        ...text,
       })
       .returning({ id: shareFiles.id });
     const set: Record<string, unknown> = { updatedAt: new Date() };

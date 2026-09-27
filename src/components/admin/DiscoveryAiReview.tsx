@@ -13,7 +13,7 @@ import { Loader2, Sparkles, X } from "lucide-react";
  */
 
 type Srv = { configured: boolean; state?: string; desiredModel?: "text" | "vision"; visionConfigured?: boolean; visionLabel?: string | null };
-type Chunk = { total: number; labeled: number; remaining: number; errors: number; needsVision: number; done: boolean };
+type Chunk = { total: number; labeled: number; remaining: number; errors: number; needsVision: number; done: boolean; stage?: string };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -169,7 +169,7 @@ export function DiscoveryAiReview({ setId, docCount }: { setId: number; docCount
               <div className="mt-3 space-y-2">
                 <p className="flex items-center gap-2 text-sm text-[var(--c-ink-muted)]">
                   <Loader2 size={14} className="animate-spin text-[var(--c-accent)]" />
-                  {phase === "sweeping" && progress ? `Labeling… ${progress.labeled} of ${progress.total} documents` : note || "Working…"}
+                  {phase === "sweeping" && progress ? (progress.stage ?? `Labeling… ${progress.labeled} of ${progress.total} documents`) : note || "Working…"}
                 </p>
                 {progress && progress.total > 0 && (
                   <div className="h-2 overflow-hidden rounded-full bg-[var(--c-bg)]">
