@@ -1,5 +1,5 @@
 import "server-only";
-import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, PDFName, PDFString, type PDFFont, type PDFPage } from "pdf-lib";
 import { FIRM, PRINCIPAL_OFFICE } from "@/lib/firm";
 
 export function ordinal(n: number): string {
@@ -24,7 +24,7 @@ function isImage(contentType: string | null | undefined, name: string) {
 export type StampStyle = {
   position?: "bottom-right" | "bottom-left" | "bottom-center";
   font?: "helvetica" | "helvetica-bold" | "times" | "courier";
-  color?: "black" | "red" | "blue" | "gray" | "white";
+  color?: "black" | "red" | "blue" | "gray";
   /** Point size, clamped 6–24. */
   size?: number;
 };
@@ -41,25 +41,46 @@ const STAMP_COLORS: Record<NonNullable<StampStyle["color"]>, ReturnType<typeof r
   red: rgb(0.72, 0.11, 0.11),
   blue: rgb(0.1, 0.2, 0.6),
   gray: rgb(0.35, 0.35, 0.35),
-  white: rgb(1, 1, 1),
 };
 
 const stampSize = (style?: StampStyle) => Math.min(24, Math.max(6, Math.round(Number(style?.size) || 10)));
 
-/** Draw one Bates label along the bottom edge, on a backing box so it stays
- *  legible over dark scans (dark backing when the label itself is white). */
+/** Fixed distances from the page's VISUAL bottom edge and corner, identical
+ *  on every page no matter its size. */
+const STAMP_MARGIN_X = 24;
+const STAMP_MARGIN_Y = 14;
+
+/**
+ * Draw one Bates label along the bottom edge — plain text, no backing box.
+ *
+ * Placement is computed in DISPLAY coordinates and then mapped into the
+ * page's raw coordinate space: scanned PDFs routinely carry a /Rotate flag
+ * (the raw page is sideways and the viewer spins it) and crop boxes that
+ * don't start at (0,0). Ignoring either puts a fixed-offset stamp somewhere
+ * random — including clean off the visible page. This maps both, so the
+ * label always sits the same distance from the visual bottom and corner.
+ */
 function stampPage(page: PDFPage, font: PDFFont, label: string, style?: StampStyle) {
-  const { width } = page.getSize();
   const size = stampSize(style);
   const textW = font.widthOfTextAtSize(label, size);
-  const x = style?.position === "bottom-left" ? 24
-    : style?.position === "bottom-center" ? Math.max(24, (width - textW) / 2)
-    : width - textW - 24;
-  const y = 14;
   const color = STAMP_COLORS[style?.color ?? "black"] ?? STAMP_COLORS.black;
-  const backing = style?.color === "white" ? rgb(0.12, 0.12, 0.12) : rgb(1, 1, 1);
-  page.drawRectangle({ x: x - 4, y: y - 3, width: textW + 8, height: size + 6, color: backing, opacity: 0.85 });
-  page.drawText(label, { x, y, size, font, color });
+
+  const rot = ((page.getRotation().angle % 360) + 360) % 360;
+  const box = page.getCropBox(); // the visible area (defaults to the media box)
+  const visW = rot === 90 || rot === 270 ? box.height : box.width;
+
+  // Where the label goes on the page AS DISPLAYED (origin: visual bottom-left).
+  const vx = style?.position === "bottom-left" ? STAMP_MARGIN_X
+    : style?.position === "bottom-center" ? Math.max(STAMP_MARGIN_X, (visW - textW) / 2)
+    : Math.max(STAMP_MARGIN_X, visW - textW - STAMP_MARGIN_X);
+  const vy = STAMP_MARGIN_Y;
+
+  // Map visual → raw coordinates for the page's rotation, inside the crop box.
+  let x = vx, y = vy;
+  if (rot === 90) { x = box.width - vy; y = vx; }
+  else if (rot === 180) { x = box.width - vx; y = box.height - vy; }
+  else if (rot === 270) { x = vy; y = box.height - vx; }
+  page.drawText(label, { x: box.x + x, y: box.y + y, size, font, color, rotate: degrees(rot) });
 }
 
 export type StampResult = { bytes: Uint8Array; pages: number };

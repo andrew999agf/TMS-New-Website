@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
 import { db } from "@/db";
 import { discoverySets, discoveryDocs, discoveryMarks, discoveryAnnotations, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, type CaseParty } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
@@ -594,7 +594,7 @@ export type FileAnnotation = {
 
 const ANNOTATION_KINDS = new Set<AnnotationKind>(["highlight", "redact", "note"]);
 const clamp01 = (v: unknown) => Math.min(1, Math.max(0, Number(v) || 0));
-const validFileKey = (k: string) => /^(doc|share):\d{1,10}$/.test(k);
+const validFileKey = (k: string) => /^(doc|share|prod):\d{1,10}$/.test(k);
 
 function shapeAnnotation(a: typeof discoveryAnnotations.$inferSelect): FileAnnotation {
   const r = (a.rect ?? {}) as { x?: number; y?: number; w?: number; h?: number };
@@ -640,6 +640,9 @@ export async function addDiscoveryAnnotation(
   const x = clamp01(rect?.x), y = clamp01(rect?.y);
   const w = Math.min(clamp01(rect?.w), 1 - x), h = Math.min(clamp01(rect?.h), 1 - y);
   if (kind !== "note" && (w < 0.005 || h < 0.005)) return { ok: false as const, error: "Drag out a box first." };
+  // Redactions on a staged copy burn in immediately via redactProductionDoc —
+  // they are never overlay marks that could silently fail to apply.
+  if (kind === "redact" && fileKey.startsWith("prod:")) return { ok: false as const, error: "Staged copies take burned-in redactions, not overlay marks." };
   try {
     const [row] = await db.insert(discoveryAnnotations)
       .values({ setId, fileKey, page: p, kind, rect: { x, y, w, h }, note: str(note, 2000), createdBy: session.email })
@@ -896,12 +899,62 @@ export async function unstageProductionDoc(id: number) {
     if (!doc || doc.status !== "staged") return { ok: false as const, error: "Only staged documents can be removed." };
     if (doc.pathname) { try { await del(doc.pathname); } catch { /* best-effort */ } }
     await db.delete(productionDocs).where(eq(productionDocs.id, id));
+    // Review marks made on this staged copy go with it.
+    try { await db.delete(discoveryAnnotations).where(and(eq(discoveryAnnotations.setId, doc.setId), eq(discoveryAnnotations.fileKey, `prod:${id}`))); } catch { /* marks are a nicety */ }
     await audit(session.email, "delete", "production-doc", String(id), `Unstaged ${batesLabel(doc.batesPrefix, doc.batesStart)}`);
     revalidatePath(`/admin/discovery-reviewer/${doc.setId}`);
     return { ok: true as const };
   } catch (err) {
     console.error("[discovery-reviewer] unstageProductionDoc failed:", err);
     return { ok: false as const };
+  }
+}
+
+/**
+ * A late redaction caught during yellow-tab review: burn it into the staged
+ * copy RIGHT NOW — black box drawn, then the page flattened to an image so
+ * the text underneath is genuinely gone — and blank that page's text index.
+ * The red-tab original is untouched; unstage and re-stage to start over.
+ */
+export async function redactProductionDoc(setId: number, id: number, page: number, rect: { x: number; y: number; w: number; h: number }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const p = Math.floor(Number(page));
+  const rx = Math.min(1, Math.max(0, Number(rect?.x) || 0)), ry = Math.min(1, Math.max(0, Number(rect?.y) || 0));
+  const rw = Math.min(Math.max(0, Number(rect?.w) || 0), 1 - rx), rh = Math.min(Math.max(0, Number(rect?.h) || 0), 1 - ry);
+  if (rw < 0.005 || rh < 0.005) return { ok: false as const, error: "Drag out a box first." };
+  try {
+    const [doc] = await db.select().from(productionDocs).where(and(eq(productionDocs.id, id), eq(productionDocs.setId, setId)));
+    if (!doc?.url) return { ok: false as const, error: "Document not found." };
+    if (doc.status !== "staged") return { ok: false as const, error: "Only staged documents can still be redacted — this one has been produced." };
+    if (doc.productionId) return { ok: false as const, error: "This document is in a draft production — discard the draft first, then redact." };
+    if (!Number.isFinite(p) || p < 1 || (doc.pageCount && p > doc.pageCount)) return { ok: false as const, error: "Bad page number." };
+
+    const res = await fetch(doc.url);
+    if (!res.ok) return { ok: false as const, error: "Couldn't fetch the staged copy." };
+    const srcBytes = new Uint8Array(await res.arrayBuffer());
+    const pdf = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+    if (p > pdf.getPageCount()) return { ok: false as const, error: "Bad page number." };
+    const pg = pdf.getPage(p - 1);
+    const { width, height } = pg.getSize();
+    pg.drawRectangle({ x: rx * width, y: height - Math.min(1, ry + rh) * height, width: rw * width, height: rh * height, color: rgb(0, 0, 0) });
+    const boxed = await pdf.save();
+    const flattened = new Uint8Array(await rasterizeRedactedPages(new Uint8Array(boxed), [p]));
+
+    const blob = await put(`production/${setId}/${(doc.pathname?.split("/").pop() || "doc.pdf").replace(/\.pdf$/i, "")}-r.pdf`, Buffer.from(flattened), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+    const oldPath = doc.pathname;
+    const pages = Array.isArray(doc.pageText) ? [...(doc.pageText as string[])] : [];
+    if (pages.length >= p) pages[p - 1] = ""; // that text no longer exists in the copy
+    await db.update(productionDocs).set({ url: blob.url, pathname: blob.pathname, sizeBytes: flattened.byteLength, pageText: pages }).where(eq(productionDocs.id, id));
+    if (oldPath) { try { await del(oldPath); } catch { /* best-effort */ } }
+    await audit(session.email, "update", "production-doc", String(id), `Redaction burned into ${batesLabel(doc.batesPrefix, doc.batesStart + p - 1)} (page ${p})`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] redactProductionDoc failed:", err);
+    return { ok: false as const, error: "Couldn't apply the redaction." };
   }
 }
 
