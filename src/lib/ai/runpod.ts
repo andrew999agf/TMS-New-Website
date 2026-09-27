@@ -1,4 +1,5 @@
 import "server-only";
+import { getAiSetting, putAiSetting } from "@/lib/ai/concierge";
 
 /**
  * Remote control for the firm's rented AI GPU server (a RunPod pod running
@@ -22,6 +23,24 @@ export function runpodConfig(): RunpodConfig | null {
   const podId = process.env.RUNPOD_POD_ID?.trim();
   if (!apiKey || !podId) return null;
   return { apiKey, podId, url: process.env.RUNPOD_API_URL?.trim() || "https://api.runpod.io/graphql" };
+}
+
+/** When a full host forces the pod to relocate, the replacement's id is
+ *  stored here so the env var doesn't have to change. The override only
+ *  applies while RUNPOD_POD_ID still names the pod it replaced — if someone
+ *  updates the env var by hand, the hand-set value wins. */
+const POD_OVERRIDE_KEY = "ai.podOverride";
+type PodOverride = { podId: string; replacedEnvPodId: string };
+
+/** runpodConfig with any stored relocation override applied. */
+export async function resolvedRunpodConfig(): Promise<RunpodConfig | null> {
+  const cfg = runpodConfig();
+  if (!cfg) return null;
+  try {
+    const o = await getAiSetting<PodOverride | null>(POD_OVERRIDE_KEY, null);
+    if (o?.podId && o.replacedEnvPodId === cfg.podId) return { ...cfg, podId: o.podId };
+  } catch { /* fall back to the env pod */ }
+  return cfg;
 }
 
 async function gql<T>(cfg: RunpodConfig, query: string, variables: Record<string, unknown>): Promise<T> {
@@ -114,4 +133,100 @@ export async function aiServingModel(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/* ----------------------- self-healing relocation ------------------------ */
+
+/** Does this error mean "the pod's host machine has no free GPU"? */
+export function isNoGpuError(message: string): boolean {
+  return /not enough free gpus|gpus? (is|are) no longer available|no longer available/i.test(message);
+}
+
+type EnvPair = { key: string; value: string };
+const parseEnv = (env: unknown): EnvPair[] => {
+  if (!Array.isArray(env)) return [];
+  const out: EnvPair[] = [];
+  for (const e of env) {
+    if (typeof e === "string") {
+      const i = e.indexOf("=");
+      if (i > 0) out.push({ key: e.slice(0, i), value: e.slice(i + 1) });
+    } else if (e && typeof e === "object" && typeof (e as EnvPair).key === "string") {
+      out.push({ key: (e as EnvPair).key, value: String((e as EnvPair).value ?? "") });
+    }
+  }
+  return out;
+};
+
+/**
+ * The stuck pod's host rented out its GPU. Recreate the pod, identically
+ * configured, on any machine in the same building that has a free card —
+ * the network volume (models included) attaches wherever. On success the
+ * new pod id is stored as the override and the stuck shell is terminated.
+ * Returns the new pod id.
+ */
+export async function relocatePod(cfg: RunpodConfig): Promise<string> {
+  // 1) The stuck pod's own spec is the blueprint.
+  const spec = await gql<{ pod: { name?: string; imageName?: string; dockerArgs?: string; ports?: string; volumeMountPath?: string; containerDiskInGb?: number; env?: unknown; machine?: { gpuDisplayName?: string } | null } | null }>(
+    cfg,
+    `query pod($input: PodFilter) { pod(input: $input) { name imageName dockerArgs ports volumeMountPath containerDiskInGb env machine { gpuDisplayName } } }`,
+    { input: { podId: cfg.podId } },
+  );
+  const p = spec.pod;
+  if (!p?.imageName) throw new Error("Couldn't read the stuck pod's configuration.");
+
+  // 2) The network volume decides the building; the models live on it.
+  const vols = await gql<{ myself: { networkVolumes?: { id: string; name?: string; dataCenterId?: string }[] } | null }>(
+    cfg,
+    `query { myself { networkVolumes { id name dataCenterId } } }`,
+    {},
+  );
+  const all = vols.myself?.networkVolumes ?? [];
+  const wanted = process.env.RUNPOD_VOLUME_ID?.trim();
+  const volume = wanted ? all.find((v) => v.id === wanted) : all.length === 1 ? all[0] : all.find((v) => (v.name ?? "").includes("firm"));
+  if (!volume) throw new Error("Couldn't identify the network storage volume to attach.");
+
+  // 3) Same GPU model, by id (match the display name against the catalog).
+  let gpuTypeId = process.env.RUNPOD_GPU_TYPE_ID?.trim() || "";
+  if (!gpuTypeId) {
+    const types = await gql<{ gpuTypes: { id: string; displayName?: string }[] }>(cfg, `query { gpuTypes { id displayName } }`, {});
+    const want = (p.machine?.gpuDisplayName ?? "").toLowerCase();
+    const hit = want ? types.gpuTypes.find((t) => (t.displayName ?? "").toLowerCase() === want) ?? types.gpuTypes.find((t) => (t.displayName ?? "").toLowerCase().includes(want)) : undefined;
+    if (!hit) throw new Error(`Couldn't match the GPU type ("${p.machine?.gpuDisplayName ?? "unknown"}") in RunPod's catalog.`);
+    gpuTypeId = hit.id;
+  }
+
+  // 4) Deploy the replacement wherever a card is free in that data center.
+  const made = await gql<{ podFindAndDeployOnDemand: { id?: string } | null }>(
+    cfg,
+    `mutation deploy($input: PodFindAndDeployOnDemandInput) { podFindAndDeployOnDemand(input: $input) { id desiredStatus } }`,
+    {
+      input: {
+        cloudType: "SECURE",
+        gpuCount: 1,
+        gpuTypeId,
+        name: p.name || "firm-ai-server",
+        imageName: p.imageName,
+        ...(p.dockerArgs ? { dockerArgs: p.dockerArgs } : {}),
+        ...(p.ports ? { ports: p.ports } : {}),
+        volumeMountPath: p.volumeMountPath || "/workspace",
+        containerDiskInGb: p.containerDiskInGb ?? 20,
+        volumeInGb: 0,
+        env: parseEnv(p.env),
+        networkVolumeId: volume.id,
+        ...(volume.dataCenterId ? { dataCenterId: volume.dataCenterId } : {}),
+      },
+    },
+  );
+  const newId = made.podFindAndDeployOnDemand?.id;
+  if (!newId) throw new Error("RunPod accepted the relocation but returned no pod id.");
+
+  // 5) Point everything at the replacement, then clear away the stuck shell.
+  const envPodId = process.env.RUNPOD_POD_ID?.trim() ?? "";
+  await putAiSetting(POD_OVERRIDE_KEY, { podId: newId, replacedEnvPodId: envPodId } satisfies PodOverride);
+  if (newId !== cfg.podId) {
+    try {
+      await gql(cfg, `mutation terminate($input: PodTerminateInput!) { podTerminate(input: $input) }`, { input: { podId: cfg.podId } });
+    } catch { /* a lingering empty shell is cosmetic — never fail the rescue over it */ }
+  }
+  return newId;
 }

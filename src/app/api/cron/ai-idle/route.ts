@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
-import { runpodConfig, getPodStatus, stopPod, aiEndpointReady } from "@/lib/ai/runpod";
+import { resolvedRunpodConfig, getPodStatus, stopPod, aiEndpointReady } from "@/lib/ai/runpod";
 import { AI_IDLE_KEY, AI_AUTOSLEEP_KEY, AI_LAST_USED_KEY, AI_IDLE_DEFAULT, getAiSetting, putAiSetting, monthEstimate } from "@/lib/ai/concierge";
 import { db } from "@/db";
 import { aiServerLog } from "@/db/schema";
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     if (auth !== `Bearer ${secret}`) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const cfg = runpodConfig();
+  const cfg = await resolvedRunpodConfig();
   if (!cfg) return NextResponse.json({ ok: true, note: "not configured" });
 
   // Default is OFF: the server stays on until someone turns it off. Auto-sleep

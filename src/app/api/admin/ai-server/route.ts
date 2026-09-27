@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { runpodConfig, getPodStatus, getBalance, startPod, stopPod, aiServingModel } from "@/lib/ai/runpod";
+import { resolvedRunpodConfig, getPodStatus, getBalance, startPod, stopPod, aiServingModel, relocatePod, isNoGpuError } from "@/lib/ai/runpod";
 import { AI_IDLE_KEY, AI_AUTOSLEEP_KEY, AI_LAST_USED_KEY, AI_IDLE_DEFAULT, getAiSetting, putAiSetting, monthEstimate } from "@/lib/ai/concierge";
 import { getAiNotice, setAiNotice, clearAiNotice } from "@/lib/ai/notice";
 import { visionEnv, getDesiredModel, setDesiredModel, activeModel } from "@/lib/ai/vision";
@@ -24,7 +24,7 @@ async function guard(): Promise<{ email: string } | NextResponse> {
 export async function GET() {
   const session = await guard();
   if (session instanceof NextResponse) return session;
-  const cfg = runpodConfig();
+  const cfg = await resolvedRunpodConfig();
   let notice = await getAiNotice().catch(() => null);
   const active = await activeModel().catch(() => null);
   const vision = visionEnv();
@@ -49,7 +49,7 @@ export async function GET() {
     // desired model, the swap notice comes down and chat reopens. The UI
     // polls this endpoint anyway, so no background job is needed.
     const swapDone = serving !== null && (serving === "" || !active || serving === active.model);
-    if (notice?.kind === "swap" && swapDone) {
+    if ((notice?.kind === "swap" || notice?.kind === "relocate") && swapDone) {
       await clearAiNotice().catch(() => {});
       notice = null;
     }
@@ -81,7 +81,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await guard();
   if (session instanceof NextResponse) return session;
-  const cfg = runpodConfig();
+  const cfg = await resolvedRunpodConfig();
   if (!cfg) return NextResponse.json({ error: "Server controls aren't configured — set RUNPOD_API_KEY and RUNPOD_POD_ID." }, { status: 503 });
 
   let body: { action?: string; idleMinutes?: number; autoSleep?: boolean; target?: string };
@@ -94,11 +94,24 @@ export async function POST(req: Request) {
   try {
     await ensureDiscoveryTables();
     if (body.action === "start") {
-      const pod = await startPod(cfg);
+      let pod;
+      let relocated = false;
+      try {
+        pod = await startPod(cfg);
+      } catch (e) {
+        // The stuck-host case: the pod's machine rented out its GPU while we
+        // slept. Self-heal by recreating the pod on a machine with a free
+        // card (same building, same storage volume) instead of failing.
+        if (!isNoGpuError((e as Error).message)) throw e;
+        const newId = await relocatePod(cfg);
+        relocated = true;
+        pod = await getPodStatus({ ...cfg, podId: newId });
+        await setAiNotice("The AI server's old machine was full, so it moved to a fresh one — starting up now.", { chatBlocked: false, minutes: 15, kind: "relocate" });
+      }
       // A fresh wake gets a grace period — the idle reaper measures from now.
       await putAiSetting(AI_LAST_USED_KEY, new Date().toISOString());
       if (db) await db.insert(aiServerLog).values({ event: "start", costPerHr: pod.costPerHr, byEmail: session.email });
-      return NextResponse.json({ ok: true, state: "starting" });
+      return NextResponse.json({ ok: true, state: "starting", ...(relocated ? { relocated: true } : {}) });
     }
     if (body.action === "stop") {
       const pod = await getPodStatus(cfg);
@@ -132,7 +145,14 @@ export async function POST(req: Request) {
           await stopPod(cfg);
           if (db) await db.insert(aiServerLog).values({ event: "stop", costPerHr: pod.costPerHr, byEmail: session.email });
         }
-        const started = await startPod(cfg);
+        let started;
+        try {
+          started = await startPod(cfg);
+        } catch (e) {
+          if (!isNoGpuError((e as Error).message)) throw e;
+          const newId = await relocatePod(cfg); // the replacement boots straight into the desired model
+          started = await getPodStatus({ ...cfg, podId: newId });
+        }
         if (db) await db.insert(aiServerLog).values({ event: "start", costPerHr: started.costPerHr, byEmail: session.email });
       } catch (e) {
         // Roll back so a failed restart doesn't leave chat blocked or the
