@@ -16,12 +16,13 @@ import { discoveryDocs, shareFiles, productionDocs, shareFolders, discoverySets 
  * OUT of a PDF into the database. The stored file is never modified.
  */
 
-/** Don't even fetch a file bigger than this — it's a memory hazard in a
- *  serverless function. Such a file gets status "failed" with a clear note. */
-export const INDEX_MAX_BYTES = 150 * 1024 * 1024;
+/** Sanity ceiling only. Documents are STREAMED page by page (never loaded
+ *  whole), so ordinary giants — a 700-page scanned-and-OCR'd production —
+ *  index fine; this guards against something absurd. */
+export const INDEX_MAX_BYTES = 1024 * 1024 * 1024; // 1 GB
 
 const PAGE_CHAR_CAP = 8_000;
-const TOTAL_CHAR_CAP = 1_500_000;
+const TOTAL_CHAR_CAP = 4_000_000; // ~700 dense pages before later pages stop indexing
 const MAX_PAGES = 2_000;
 
 export type IndexTargetKind = "discovery" | "share" | "production";
@@ -60,6 +61,13 @@ async function saveProgress(row: Row, pages: string[], pageCount: number | null,
 /**
  * Index one document for up to `budgetMs`. Returns true when the document is
  * finished (done or terminally failed), false when it needs another chunk.
+ *
+ * The document is STREAMED, not loaded whole: pdf.js opens it over ranged
+ * HTTP requests and parses one page at a time (each page released before the
+ * next), so a 700-page combined litigation PDF indexes fine — the file never
+ * has to fit in the serverless function's memory at once. Progress is saved
+ * as pages accumulate, so however many chunks it takes, none of the work is
+ * repeated.
  */
 async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
   const started = Date.now();
@@ -71,20 +79,14 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
   }
   if (row.sizeBytes && row.sizeBytes > INDEX_MAX_BYTES) { await saveProgress(row, row.pageText, null, "failed"); return true; }
 
-  let bytes: Uint8Array;
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  let task: ReturnType<typeof getDocument> | null = null;
   try {
-    const res = await fetch(row.url, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength > INDEX_MAX_BYTES) { await saveProgress(row, row.pageText, null, "failed"); return true; }
-  } catch {
-    // Transient fetch trouble: leave state as-is so the next sweep retries.
-    return true;
-  }
-
-  try {
-    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const doc = await getDocument({ data: bytes, useSystemFonts: true }).promise;
+    // Ranged streaming; hosts that refuse Range requests just get a plain
+    // download through the same pipe. disableAutoFetch keeps pdf.js from
+    // greedily pulling the whole file in the background.
+    task = getDocument({ url: row.url, useSystemFonts: true, disableAutoFetch: true, rangeChunkSize: 1 << 20 });
+    const doc = await task.promise;
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
     const pages = [...row.pageText];
     let total = pages.reduce((n, p) => n + p.length, 0);
@@ -92,14 +94,14 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
     for (let n = pages.length + 1; n <= pageCount; n++) {
       if (Date.now() - started > budgetMs) {
         await saveProgress(row, pages, doc.numPages, "pending");
-        await doc.cleanup().catch(() => {});
-        return false; // resume next chunk
+        return false; // resume next chunk right where this one stopped
       }
       if (total >= TOTAL_CHAR_CAP) { pages.push(""); continue; }
       try {
         const page = await doc.getPage(n);
         const tc = await page.getTextContent();
         const text = clean(tc.items.map((it) => ("str" in it ? it.str : "")).join(" "));
+        page.cleanup(); // release this page's objects before the next one
         pages.push(text);
         total += text.length;
       } catch {
@@ -107,11 +109,15 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
       }
     }
     await saveProgress(row, pages, doc.numPages, "done");
-    await doc.cleanup().catch(() => {});
     return true;
   } catch {
-    await saveProgress(row, row.pageText, null, "failed");
+    // A document that opened before (partial progress exists) hit transient
+    // trouble — keep it retryable. One that can't even open is a real failure.
+    if (row.pageText.length > 0) return true; // stays pending; next sweep retries
+    await saveProgress(row, [], null, "failed");
     return true;
+  } finally {
+    try { await task?.destroy(); } catch { /* socket cleanup is best-effort */ }
   }
 }
 
