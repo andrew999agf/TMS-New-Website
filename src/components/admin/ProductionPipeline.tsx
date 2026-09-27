@@ -4,19 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
-  BookOpen, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, FileText, Grid3x3, Loader2, Pencil, Send, Stamp, Trash2, X, ZoomIn, ZoomOut,
+  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Loader2, MousePointer2, Pencil, Send, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
-import { addDiscoveryDoc,
+import { addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
+  type FileAnnotation, type AnnotationKind, type StageSelection,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
+import type { StampStyle } from "@/lib/production/build";
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced" };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -87,7 +89,7 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
 }) {
-  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} batesDefaults={batesDefaults} contents={contents} />;
+  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} />;
   if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} />;
   return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} />;
 }
@@ -109,7 +111,12 @@ const fileKind = (name: string): "pdf" | "image" | "other" => {
   return "other";
 };
 
-function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number; files: ClientFile[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents }) {
+/** A selected page's key in the selection set: "<fileKey>#<page>". */
+const pk = (key: string, page: number) => `${key}#${page}`;
+
+export type PageMark = "" | "staged" | "produced";
+
+function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents }) {
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
@@ -119,11 +126,31 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
   const [doBates, setDoBates] = useState(true);
   const [prefix, setPrefix] = useState(batesDefaults.prefix);
   const [start, setStart] = useState(String(batesDefaults.nextStart));
+  const [stampStyle, setStampStyle] = useState<Required<StampStyle>>({ position: "bottom-right", font: "helvetica", color: "black", size: 10 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number; current: string } | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
+  const anchor = useRef<{ key: string; page: number } | null>(null);
+  const [annos, setAnnos] = useState<Record<string, FileAnnotation[]>>({});
+
+  // Which pages of which source files are already staged/produced, so a
+  // 700-page PDF can go over in slices and the sent slices show their stamp.
+  const pageMarks = useMemo(() => {
+    const m = new Map<string, Map<number, PageMark>>();
+    for (const d of stagedDocs) {
+      if (!d.sourceKey || !d.sourcePages.length) continue;
+      const mm = m.get(d.sourceKey) ?? new Map<number, PageMark>();
+      for (const p of d.sourcePages) mm.set(p, d.status === "produced" || mm.get(p) === "produced" ? "produced" : "staged");
+      m.set(d.sourceKey, mm);
+    }
+    return m;
+  }, [stagedDocs]);
+  const pageMark = useCallback((f: ClientFile, page: number): PageMark => f.status || (pageMarks.get(f.key)?.get(page) ?? ""), [pageMarks]);
+
+  const notePages = useCallback((key: string, n: number) => setPageCounts((prev) => (prev[key] === n ? prev : { ...prev, [key]: n })), []);
 
   /** Direct uploads into the red pile — for when the firm itself has the
    *  client's documents in hand (the client portal remains the other door). */
@@ -168,15 +195,66 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
     return p;
   }, [proxyUrl]);
 
-  const toggle = (f: ClientFile) => {
-    if (f.status) return;
-    setSelected((prev) => { const next = new Set(prev); if (next.has(f.key)) next.delete(f.key); else next.add(f.key); return next; });
+  /** Click = one page. Shift-click = the range from the last clicked page. */
+  const togglePage = (f: ClientFile, page: number, shiftKey = false) => {
+    if (pageMark(f, page)) return;
+    const next = new Set(selected);
+    const a = anchor.current;
+    if (shiftKey && a && a.key === f.key && a.page !== page) {
+      const [lo, hi] = [Math.min(a.page, page), Math.max(a.page, page)];
+      for (let p = lo; p <= hi; p++) if (!pageMark(f, p)) next.add(pk(f.key, p));
+    } else {
+      const k = pk(f.key, page);
+      if (next.has(k)) next.delete(k); else next.add(k);
+    }
+    anchor.current = { key: f.key, page };
+    setSelected(next);
   };
+
+  /** Header checkbox / documents-view card: whole document at once. */
+  const toggleDoc = async (f: ClientFile) => {
+    if (f.status) return;
+    let n = fileKind(f.name) === "pdf" ? pageCounts[f.key] ?? 0 : 1;
+    if (!n && fileKind(f.name) === "pdf") {
+      try { n = (await getDoc(f)).numPages; notePages(f.key, n); } catch { return; }
+    }
+    if (!n) n = 1;
+    const free: number[] = [];
+    for (let p = 1; p <= n; p++) if (!pageMark(f, p)) free.push(p);
+    if (!free.length) return;
+    const allSel = free.every((p) => selected.has(pk(f.key, p)));
+    const next = new Set(selected);
+    for (const p of free) { if (allSel) next.delete(pk(f.key, p)); else next.add(pk(f.key, p)); }
+    anchor.current = { key: f.key, page: free[free.length - 1] };
+    setSelected(next);
+  };
+
+  // Selection tallies for the toolbar and the staging dialog.
+  const selByKey = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const s of selected) {
+      const i = s.lastIndexOf("#");
+      const key = s.slice(0, i), p = Number(s.slice(i + 1));
+      const list = m.get(key) ?? [];
+      list.push(p);
+      m.set(key, list);
+    }
+    return m;
+  }, [selected]);
 
   async function submit() {
     setBusy(true);
     setError(null);
-    const r = await stageForProduction(setId, [...selected], { bates: doBates, prefix, start: Number(start) || undefined });
+    const selections: StageSelection[] = [];
+    for (const [key, pages] of selByKey) {
+      const f = files.find((x) => x.key === key);
+      if (f && fileKind(f.name) === "pdf") selections.push({ key, pages: [...pages].sort((a, b) => a - b) });
+      else selections.push({ key });
+    }
+    const r = await stageForProduction(setId, selections, {
+      bates: doBates, prefix, start: Number(start) || undefined,
+      stamp: doBates ? stampStyle : undefined,
+    });
     setBusy(false);
     if (r.ok) {
       setDialog(false);
@@ -185,6 +263,28 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
       router.refresh();
     } else setError(r.error ?? "Couldn't stage the documents.");
   }
+
+  const openStageDialog = () => { setDoBates(true); setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setDialog(true); };
+
+  // ---- review marks (highlighter / redaction / notes), cached per file ----
+  const loadedAnnos = useRef(new Set<string>());
+  const ensureAnnos = useCallback(async (key: string) => {
+    if (loadedAnnos.current.has(key)) return;
+    loadedAnnos.current.add(key);
+    const r = await listFileAnnotations(setId, key);
+    if (r.ok) setAnnos((prev) => ({ ...prev, [key]: r.annotations }));
+    else loadedAnnos.current.delete(key);
+  }, [setId]);
+  const addAnno = async (key: string, page: number, kind: AnnotationKind, rect: { x: number; y: number; w: number; h: number }, note?: string) => {
+    const r = await addDiscoveryAnnotation(setId, key, page, kind, rect, note);
+    if (r.ok) setAnnos((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), r.annotation] }));
+    else setError(r.error ?? "Couldn't save the mark.");
+  };
+  const delAnno = async (key: string, id: number) => {
+    setAnnos((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((a) => a.id !== id) }));
+    const r = await deleteDiscoveryAnnotation(setId, id);
+    if (!r.ok) void ensureAnnos(key); // resync on failure
+  };
 
   const viewBtn = (m: "grid" | "reader" | "docs", label: string, icon: React.ReactNode) => (
     <button onClick={() => setView(m)} disabled={m !== "docs" && files.length === 0}
@@ -225,12 +325,12 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
           <input type="file" accept=".pdf,image/jpeg,image/png" multiple className="hidden" disabled={!!uploading}
             onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void uploadClientFiles(fs); }} />
         </label>
-        <span className="text-xs text-[var(--c-ink-muted)]">Click a document (or any of its pages) to select it for production.</span>
+        <span className="text-xs text-[var(--c-ink-muted)]">Click a page to select it · Shift-click another page for the range · double-click to read.</span>
         <div className={`ml-auto flex items-center gap-2 rounded-md px-2 py-1 ${selected.size ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
-          {selected.size > 0 && <span className="text-sm font-medium">{selected.size} selected</span>}
-          <button onClick={() => { setDoBates(true); setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setDialog(true); }} disabled={selected.size === 0}
+          {selected.size > 0 && <span className="text-sm font-medium">{selected.size} page{selected.size === 1 ? "" : "s"} · {selByKey.size} doc{selByKey.size === 1 ? "" : "s"}</span>}
+          <button onClick={openStageDialog} disabled={selected.size === 0}
             className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
-            <Stamp size={15} /> Intend to produce{selected.size ? ` (${selected.size})` : ""}
+            <Stamp size={15} /> Intend to produce{selected.size ? ` (${selected.size} pp.)` : ""}
           </button>
         </div>
       </div>
@@ -254,11 +354,18 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
             Nothing here yet. Drag &amp; drop the client&apos;s documents anywhere on this area (or use <strong>Add client documents</strong> above) — or send a document request and their uploads land here on their own.
           </p>
         ) : view === "reader" ? (
-          <ClientReader files={files} state={reader} setState={setReader} selected={selected} onToggle={toggle} getDoc={getDoc} proxyUrl={proxyUrl} />
+          <ClientReader files={files} state={reader} setState={setReader} selected={selected} pageMark={pageMark}
+            onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl}
+            annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
+            onStageFromTools={(f) => {
+              if (selected.size === 0 && !pageMark(f, reader.page)) togglePage(f, reader.page);
+              openStageDialog();
+            }} />
         ) : view === "grid" ? (
           <div className="space-y-6">
             {files.map((f) => (
-              <ClientDocSection key={f.key} f={f} cols={cols} selected={selected.has(f.key)} onToggle={() => toggle(f)}
+              <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
+                onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={notePages}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} />
             ))}
@@ -266,10 +373,11 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
             {files.map((f) => {
-              const sel = selected.has(f.key);
+              const selPages = selByKey.get(f.key)?.length ?? 0;
+              const sel = selPages > 0;
               const locked = !!f.status;
               return (
-                <button key={f.key} onClick={() => toggle(f)}
+                <button key={f.key} onClick={() => void toggleDoc(f)}
                   className={`relative rounded-lg border bg-[var(--c-surface)] p-3 text-left transition-shadow ${sel ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${locked ? "opacity-70" : "hover:shadow"}`}>
                   <div className="flex items-start gap-2">
                     <FileText size={17} className="mt-0.5 shrink-0 text-[var(--c-accent)]" />
@@ -287,11 +395,17 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
                       </p>
                     </div>
                   </div>
-                  {f.status && (
+                  {f.status ? (
                     <span className={`absolute right-2 top-2 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${f.status === "produced" ? "bg-green-200 text-green-900" : "bg-yellow-200 text-yellow-900"}`}>
-                      {f.status === "produced" ? "produced" : "to produce"}
+                      {f.status === "produced" ? "produced" : "TBP →"}
                     </span>
-                  )}
+                  ) : (pageMarks.get(f.key)?.size ?? 0) > 0 ? (
+                    <span className="absolute right-2 top-2 rounded-full bg-yellow-200 px-1.5 py-0.5 text-[10px] font-bold text-yellow-900">
+                      {pageMarks.get(f.key)!.size} pp. TBP →
+                    </span>
+                  ) : sel ? (
+                    <span className="absolute right-2 top-2 rounded-full bg-[var(--c-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--c-accent)]">{selPages} pp. selected</span>
+                  ) : null}
                 </button>
               );
             })}
@@ -304,7 +418,7 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
           <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5">
             <h3 className="font-[family-name:var(--font-display)] text-lg">Stage for production</h3>
             <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
-              The {selected.size} selected document{selected.size === 1 ? "" : "s"} will move to <strong>Documents to be produced</strong>.
+              The {selected.size} selected page{selected.size === 1 ? "" : "s"} (across {selByKey.size} document{selByKey.size === 1 ? "" : "s"}) will move to <strong>Documents to be produced</strong>. Pages you didn&apos;t select stay here for a later batch.
             </p>
             <label className="mt-3 flex items-start gap-2 text-sm">
               <input type="checkbox" checked={doBates} onChange={(e) => setDoBates(e.target.checked)} className="mt-0.5 accent-[var(--c-accent)]" />
@@ -326,6 +440,44 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
                   </label>
                 </div>
                 <p className="mt-2 text-xs text-[var(--c-ink-muted)]">First label: <strong>{bates(prefix || "PREFIX", Number(start) || 1)}</strong>. Numbering continues automatically on later batches.</p>
+                <fieldset className="mt-3 rounded-md border border-[var(--c-border)] p-2.5">
+                  <legend className="px-1 text-xs font-semibold">Stamp appearance</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-xs">
+                      <span className="mb-0.5 block font-semibold">Location</span>
+                      <select value={stampStyle.position} onChange={(e) => setStampStyle((s) => ({ ...s, position: e.target.value as Required<StampStyle>["position"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                        <option value="bottom-right">Bottom right</option>
+                        <option value="bottom-left">Bottom left</option>
+                        <option value="bottom-center">Bottom middle</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs">
+                      <span className="mb-0.5 block font-semibold">Font</span>
+                      <select value={stampStyle.font} onChange={(e) => setStampStyle((s) => ({ ...s, font: e.target.value as Required<StampStyle>["font"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                        <option value="helvetica">Helvetica</option>
+                        <option value="helvetica-bold">Helvetica bold</option>
+                        <option value="times">Times Roman</option>
+                        <option value="courier">Courier</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs">
+                      <span className="mb-0.5 block font-semibold">Color</span>
+                      <select value={stampStyle.color} onChange={(e) => setStampStyle((s) => ({ ...s, color: e.target.value as Required<StampStyle>["color"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                        <option value="black">Black</option>
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="gray">Gray</option>
+                        <option value="white">White (dark backing)</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs">
+                      <span className="mb-0.5 block font-semibold">Size</span>
+                      <select value={String(stampStyle.size)} onChange={(e) => setStampStyle((s) => ({ ...s, size: Number(e.target.value) }))} className={`${input} w-full py-1.5 text-xs`}>
+                        {[8, 9, 10, 12, 14, 18].map((n) => <option key={n} value={n}>{n} pt</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </fieldset>
               </>
             )}
             {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -343,9 +495,13 @@ function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number
 }
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, onToggle, onOpen, getDoc, proxyUrl }: {
-  f: ClientFile; cols: number; selected: boolean;
-  onToggle: () => void; onOpen: (page: number) => void;
+function ClientDocSection({ f, cols, selected, pageMark, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl }: {
+  f: ClientFile; cols: number; selected: Set<string>;
+  pageMark: (f: ClientFile, page: number) => PageMark;
+  onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
+  onToggleDoc: () => void;
+  onPagesKnown: (key: string, n: number) => void;
+  onOpen: (page: number) => void;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
 }) {
@@ -355,43 +511,69 @@ function ClientDocSection({ f, cols, selected, onToggle, onOpen, getDoc, proxyUr
   useEffect(() => {
     if (kind !== "pdf") return;
     let alive = true;
-    getDoc(f).then((d) => { if (alive) setPages(d.numPages); }).catch(() => { if (alive) setFailed(true); });
+    getDoc(f).then((d) => { if (alive) { setPages(d.numPages); onPagesKnown(f.key, d.numPages); } }).catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [kind, f, getDoc]);
+  }, [kind, f, getDoc, onPagesKnown]);
   const renderW = cols >= 8 ? 220 : cols >= 6 ? 300 : cols >= 4 ? 460 : cols >= 2 ? 720 : 1200;
+
+  // Header checkbox state + this document's staged-page tally.
+  const total = kind === "pdf" ? pages : 1;
+  let selCount = 0, stagedCount = 0, producedCount = 0;
+  for (let p = 1; p <= total; p++) {
+    const mk = pageMark(f, p);
+    if (mk === "produced") producedCount++;
+    else if (mk === "staged") stagedCount++;
+    else if (selected.has(pk(f.key, p))) selCount++;
+  }
+  const freeCount = total - stagedCount - producedCount;
+  const allSel = total > 0 && freeCount > 0 && selCount === freeCount;
 
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <button onClick={onToggle} disabled={!!f.status}
-          className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : "border-[var(--c-border)]"} disabled:opacity-40`}
-          title={f.status ? "Already staged or produced" : "Select this document for production"}>
-          {selected && <Check size={13} strokeWidth={3} />}
+        <button onClick={onToggleDoc} disabled={!!f.status || (total > 0 && freeCount === 0)}
+          className={`flex h-5 w-5 items-center justify-center rounded border ${allSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : selCount > 0 ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)]"} disabled:opacity-40`}
+          title={f.status ? "Already staged or produced" : allSel ? "Deselect all pages" : "Select every remaining page of this document"}>
+          {allSel ? <Check size={13} strokeWidth={3} /> : selCount > 0 ? <span className="text-[11px] font-bold leading-none">–</span> : null}
         </button>
         <h3 className="truncate text-sm font-semibold">{f.name}</h3>
         {f.dir && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{f.dir}</span>}
         {f.movedFromOpposing && <span className="rounded-full bg-[var(--c-border)] px-1.5 py-0.5 text-[11px] text-[var(--c-ink-muted)]">moved from opposing</span>}
-        {f.status && (
+        {f.status ? (
           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${f.status === "produced" ? "bg-green-200 text-green-900" : "bg-yellow-200 text-yellow-900"}`}>
-            {f.status === "produced" ? "produced" : "to produce"}
+            {f.status === "produced" ? "produced" : "TBP →"}
           </span>
+        ) : (
+          <>
+            {stagedCount > 0 && <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 text-[10px] font-bold text-yellow-900">{stagedCount} pp. TBP →</span>}
+            {producedCount > 0 && <span className="rounded-full bg-green-200 px-1.5 py-0.5 text-[10px] font-bold text-green-900">{producedCount} pp. produced</span>}
+            {selCount > 0 && <span className="rounded-full bg-[var(--c-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--c-accent)]">{selCount} pp. selected</span>}
+          </>
         )}
         <span className="text-xs text-[var(--c-ink-muted)]">{kind === "pdf" ? (failed ? "couldn't open" : pages ? `${pages} page${pages === 1 ? "" : "s"}` : "opening…") : ""}</span>
         <a href={proxyUrl(f)} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline"><ExternalLink size={12} /> original</a>
       </div>
       {kind === "image" ? (
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          <button onClick={onToggle} onDoubleClick={() => onOpen(1)}
-            className={`overflow-hidden rounded-md border bg-white shadow-sm ${selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:ring-1 hover:ring-[var(--c-accent)]/50"}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={proxyUrl(f)} alt={f.name} className="aspect-[8.5/11] w-full object-contain" loading="lazy" />
-          </button>
+          <div className="relative">
+            <button onClick={() => onTogglePage(f, 1)} onDoubleClick={() => onOpen(1)} disabled={!!pageMark(f, 1)}
+              className={`w-full overflow-hidden rounded-md border bg-white shadow-sm ${selected.has(pk(f.key, 1)) ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:ring-1 hover:ring-[var(--c-accent)]/50"} ${pageMark(f, 1) ? "cursor-default" : ""}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={proxyUrl(f)} alt={f.name} className={`aspect-[8.5/11] w-full object-contain ${pageMark(f, 1) ? "opacity-60 grayscale-[35%]" : ""}`} loading="lazy" />
+            </button>
+            {pageMark(f, 1) && (
+              <span className={`absolute right-1.5 top-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow ${pageMark(f, 1) === "produced" ? "bg-green-300 text-green-950" : "bg-yellow-300 text-yellow-950"}`}>
+                {pageMark(f, 1) === "produced" ? "PROD" : "TBP →"}
+              </span>
+            )}
+          </div>
         </div>
       ) : kind === "pdf" && pages > 0 ? (
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
-            <ClientPageCell key={page} f={f} page={page} renderW={renderW} selected={selected} getDoc={getDoc}
-              onClick={onToggle} onOpen={() => onOpen(page)} />
+            <ClientPageCell key={page} f={f} page={page} renderW={renderW}
+              selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
+              onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)} />
           ))}
         </div>
       ) : kind === "pdf" && failed ? (
@@ -403,10 +585,10 @@ function ClientDocSection({ f, cols, selected, onToggle, onOpen, getDoc, proxyUr
   );
 }
 
-function ClientPageCell({ f, page, renderW, selected, getDoc, onClick, onOpen }: {
-  f: ClientFile; page: number; renderW: number; selected: boolean;
+function ClientPageCell({ f, page, renderW, selected, mark, getDoc, onClick, onOpen }: {
+  f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
-  onClick: () => void; onOpen: () => void;
+  onClick: (shiftKey: boolean) => void; onOpen: () => void;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -454,26 +636,43 @@ function ClientPageCell({ f, page, renderW, selected, getDoc, onClick, onOpen }:
   }, [inView, renderW, f, page, getDoc]);
 
   return (
-    <div ref={holder} onClick={onClick} onDoubleClick={onOpen}
-      className={`group relative aspect-[8.5/11] cursor-pointer overflow-hidden rounded-md border bg-white shadow-sm ${selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:ring-1 hover:ring-[var(--c-accent)]/50"}`}
-      title="Click to select this document · Double-click to read">
-      <canvas ref={canvasRef} className="h-full w-full object-contain" />
+    <div ref={holder} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
+      onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} // shift-click shouldn't drag-select text
+      className={`group relative aspect-[8.5/11] overflow-hidden rounded-md border bg-white shadow-sm ${mark ? "cursor-default" : "cursor-pointer"} ${selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${!mark && !selected ? "hover:ring-1 hover:ring-[var(--c-accent)]/50" : ""}`}
+      title={mark === "produced" ? "Already produced" : mark === "staged" ? "Already staged — see the yellow tab" : "Click to select this page · Shift-click for a range · Double-click to read"}>
+      <canvas ref={canvasRef} className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} />
       {state === "idle" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
       {state === "error" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)] text-xs text-[var(--c-ink-muted)]">page {page}</div>}
+      {mark && (
+        <span className={`absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold shadow ${mark === "produced" ? "bg-green-300 text-green-950" : "bg-yellow-300 text-yellow-950"}`}>
+          {mark === "produced" ? "PROD" : "TBP →"}
+        </span>
+      )}
       <span className="absolute bottom-1 right-1.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">{page}</span>
     </div>
   );
 }
 
 /* reader: one client document at a time, full width */
-function ClientReader({ files, state, setState, selected, onToggle, getDoc, proxyUrl }: {
+
+type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
+
+const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
+
+function ClientReader({ files, state, setState, selected, pageMark, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
   selected: Set<string>;
-  onToggle: (f: ClientFile) => void;
+  pageMark: (f: ClientFile, page: number) => PageMark;
+  onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
+  annos: Record<string, FileAnnotation[]>;
+  ensureAnnos: (key: string) => Promise<void>;
+  addAnno: (key: string, page: number, kind: AnnotationKind, rect: { x: number; y: number; w: number; h: number }, note?: string) => Promise<void>;
+  delAnno: (key: string, id: number) => Promise<void>;
+  onStageFromTools: (f: ClientFile) => void;
 }) {
   const f = files[Math.min(state.docIdx, files.length - 1)];
   const kind = fileKind(f.name);
@@ -482,6 +681,13 @@ function ClientReader({ files, state, setState, selected, onToggle, getDoc, prox
   const [rendering, setRendering] = useState(true);
   const renderSeq = useRef(0);
   const taskRef = useRef<{ cancel: () => void } | null>(null);
+  const [tool, setTool] = useState<ReviewTool>("select");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  useEffect(() => { if (kind === "pdf") void ensureAnnos(f.key); }, [kind, f.key, ensureAnnos]);
 
   useEffect(() => {
     if (kind !== "pdf") { setPages(1); return; }
@@ -526,7 +732,52 @@ function ClientReader({ files, state, setState, selected, onToggle, getDoc, prox
     if (state.page < pages) setState({ ...state, page: state.page + 1 });
     else if (state.docIdx < files.length - 1) setState({ docIdx: state.docIdx + 1, page: 1 });
   };
-  const isSel = selected.has(f.key);
+  const mk = pageMark(f, state.page);
+  const isSel = selected.has(pk(f.key, state.page));
+  const pageAnnos = (annos[f.key] ?? []).filter((a) => a.page === state.page);
+  const drawing = tool === "highlight" || tool === "redact";
+
+  const normPoint = (e: React.MouseEvent) => {
+    const r = overlayRef.current?.getBoundingClientRect();
+    if (!r || r.width < 2 || r.height < 2) return null;
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+  };
+  const onOverlayDown = (e: React.MouseEvent) => {
+    if (!drawing || e.button !== 0) return;
+    const p = normPoint(e);
+    if (!p) return;
+    e.preventDefault();
+    dragStart.current = p;
+    setDraft({ x: p.x, y: p.y, w: 0, h: 0 });
+  };
+  const onOverlayMove = (e: React.MouseEvent) => {
+    const s = dragStart.current;
+    if (!s) return;
+    const p = normPoint(e);
+    if (!p) return;
+    setDraft({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+  };
+  const finishDrag = () => {
+    const rect = draft;
+    dragStart.current = null;
+    setDraft(null);
+    if (rect && drawing && rect.w >= 0.005 && rect.h >= 0.005) void addAnno(f.key, state.page, tool as AnnotationKind, rect);
+  };
+  const onOverlayClick = (e: React.MouseEvent) => {
+    if (tool !== "note") return;
+    const p = normPoint(e);
+    if (!p) return;
+    const text = window.prompt("Note (stays internal — never goes to the other side):");
+    if (text && text.trim()) void addAnno(f.key, state.page, "note", { x: p.x, y: p.y, w: 0, h: 0 }, text.trim());
+  };
+
+  const toolItem = (t: ReviewTool, icon: React.ReactNode, hint?: string) => (
+    <button key={t} onClick={() => { setTool(t); setMenuOpen(false); }}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-[var(--c-bg)] ${tool === t ? "font-semibold text-[var(--c-accent)]" : ""}`}>
+      {icon} {TOOL_LABELS[t]} {hint && <span className="ml-auto text-[10px] text-[var(--c-ink-muted)]">{hint}</span>}
+      {tool === t && <Check size={13} className={hint ? "" : "ml-auto"} />}
+    </button>
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -538,20 +789,73 @@ function ClientReader({ files, state, setState, selected, onToggle, getDoc, prox
           <span className="ml-2 text-xs text-[var(--c-ink-muted)]">page {state.page}{pages ? ` of ${pages}` : ""} · document {state.docIdx + 1} of {files.length}</span>
         </span>
         <button onClick={next} disabled={state.docIdx >= files.length - 1 && state.page >= pages} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]"><ChevronRight size={16} /></button>
-        <button onClick={() => onToggle(f)} disabled={!!f.status}
+        <button onClick={() => onTogglePage(f, state.page)} disabled={!!mk}
           className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${isSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}>
-          <Check size={14} /> {f.status ? (f.status === "produced" ? "Produced" : "Staged") : isSel ? "Selected" : "Select document"}
+          <Check size={14} /> {mk ? (mk === "produced" ? "Page produced" : "Page staged") : isSel ? `Page ${state.page} selected` : `Select page ${state.page}`}
         </button>
+        <div className="relative">
+          <button onClick={() => setMenuOpen((o) => !o)} disabled={kind !== "pdf"}
+            title={kind !== "pdf" ? "Review tools work on PDF pages" : "Review tools"}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${tool !== "select" ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}>
+            <Wrench size={14} /> Tools{tool !== "select" ? `: ${TOOL_LABELS[tool]}` : ""}
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 z-50 mt-1 w-64 overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-lg">
+                {toolItem("select", <MousePointer2 size={14} />)}
+                {toolItem("highlight", <Highlighter size={14} className="text-yellow-600" />, "drag a box")}
+                {toolItem("redact", <Square size={14} className="fill-black text-black" />, "drag a box")}
+                {toolItem("note", <StickyNote size={14} className="text-amber-600" />, "click to place")}
+                {toolItem("eraser", <Eraser size={14} />, "click a mark")}
+                <div className="my-1 border-t border-[var(--c-border)]" />
+                <button onClick={() => { setMenuOpen(false); onStageFromTools(f); }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-[var(--c-bg)]">
+                  <Stamp size={14} /> Bates label &amp; stage selection…
+                </button>
+                <p className="border-t border-[var(--c-border)] px-3 py-1.5 text-[10px] leading-snug text-[var(--c-ink-muted)]">
+                  Redactions are burned into the copies that go out. Highlights &amp; notes stay internal.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
       <div className={`relative mx-auto w-fit overflow-hidden rounded-md border bg-white shadow ${isSel ? "ring-2 ring-[var(--c-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
         {kind === "pdf" ? (
           <>
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} className={mk ? "opacity-60 grayscale-[35%]" : ""} />
+            <div ref={overlayRef} data-testid="reader-overlay" className="absolute inset-0"
+              style={{ cursor: drawing || tool === "note" ? "crosshair" : tool === "eraser" ? "pointer" : "default", pointerEvents: tool === "select" ? "none" : "auto" }}
+              onMouseDown={onOverlayDown} onMouseMove={onOverlayMove} onMouseUp={finishDrag} onMouseLeave={finishDrag} onClick={onOverlayClick}>
+              {pageAnnos.map((a) => a.kind === "note" ? (
+                <button key={a.id} title={a.note || "Note"}
+                  onClick={(e) => { e.stopPropagation(); if (tool === "eraser") void delAnno(f.key, a.id); else window.alert(a.note || "Note"); }}
+                  className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-500 bg-amber-200 p-1 text-amber-900 shadow"
+                  style={{ left: `${a.rect.x * 100}%`, top: `${a.rect.y * 100}%`, pointerEvents: "auto" }}>
+                  <StickyNote size={12} />
+                </button>
+              ) : (
+                <div key={a.id} title={tool === "eraser" ? "Click to remove" : a.kind === "redact" ? "Redaction — burned into produced copies" : "Highlight (internal)"}
+                  onClick={(e) => { if (tool === "eraser") { e.stopPropagation(); void delAnno(f.key, a.id); } }}
+                  className={a.kind === "redact" ? "absolute bg-black/80" : "absolute bg-yellow-300/40 ring-1 ring-yellow-500/60"}
+                  style={{ left: `${a.rect.x * 100}%`, top: `${a.rect.y * 100}%`, width: `${a.rect.w * 100}%`, height: `${a.rect.h * 100}%`, pointerEvents: tool === "eraser" ? "auto" : "none" }} />
+              ))}
+              {draft && (
+                <div className={tool === "redact" ? "absolute bg-black/60 ring-2 ring-black" : "absolute bg-yellow-300/40 ring-2 ring-yellow-500"}
+                  style={{ left: `${draft.x * 100}%`, top: `${draft.y * 100}%`, width: `${draft.w * 100}%`, height: `${draft.h * 100}%`, pointerEvents: "none" }} />
+              )}
+            </div>
+            {mk && (
+              <span className={`absolute right-2 top-2 z-20 rounded px-2 py-1 text-xs font-bold shadow ${mk === "produced" ? "bg-green-300 text-green-950" : "bg-yellow-300 text-yellow-950"}`}>
+                {mk === "produced" ? "PROD" : "TBP →"}
+              </span>
+            )}
             {rendering && <div className="absolute inset-0 flex items-center justify-center bg-white/60"><Loader2 size={20} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
           </>
         ) : kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={proxyUrl(f)} alt={f.name} className="max-h-[80vh] w-auto" />
+          <img src={proxyUrl(f)} alt={f.name} className={`max-h-[80vh] w-auto ${mk ? "opacity-60 grayscale-[35%]" : ""}`} />
         ) : (
           <p className="p-10 text-sm text-[var(--c-ink-muted)]">No preview for this file type — <a href={proxyUrl(f)} className="text-[var(--c-accent)] underline" target="_blank" rel="noreferrer">open the original</a>.</p>
         )}

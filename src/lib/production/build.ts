@@ -18,16 +18,48 @@ function isImage(contentType: string | null | undefined, name: string) {
   return IMAGE_TYPES.has((contentType ?? "").toLowerCase()) || /\.(jpe?g|png)$/i.test(name);
 }
 
-/** Draw one Bates label bottom-right of a page, on a white backing box so it
- *  stays legible over dark scans. */
-function stampPage(page: PDFPage, font: PDFFont, label: string) {
+/** How the Bates label looks on the page — the user picks these in the
+ *  staging dialog; every field is optional and falls back to the classic
+ *  bottom-right / Helvetica / black / 10pt stamp. */
+export type StampStyle = {
+  position?: "bottom-right" | "bottom-left" | "bottom-center";
+  font?: "helvetica" | "helvetica-bold" | "times" | "courier";
+  color?: "black" | "red" | "blue" | "gray" | "white";
+  /** Point size, clamped 6–24. */
+  size?: number;
+};
+
+export const STAMP_FONTS: Record<NonNullable<StampStyle["font"]>, StandardFonts> = {
+  helvetica: StandardFonts.Helvetica,
+  "helvetica-bold": StandardFonts.HelveticaBold,
+  times: StandardFonts.TimesRoman,
+  courier: StandardFonts.Courier,
+};
+
+const STAMP_COLORS: Record<NonNullable<StampStyle["color"]>, ReturnType<typeof rgb>> = {
+  black: rgb(0, 0, 0),
+  red: rgb(0.72, 0.11, 0.11),
+  blue: rgb(0.1, 0.2, 0.6),
+  gray: rgb(0.35, 0.35, 0.35),
+  white: rgb(1, 1, 1),
+};
+
+const stampSize = (style?: StampStyle) => Math.min(24, Math.max(6, Math.round(Number(style?.size) || 10)));
+
+/** Draw one Bates label along the bottom edge, on a backing box so it stays
+ *  legible over dark scans (dark backing when the label itself is white). */
+function stampPage(page: PDFPage, font: PDFFont, label: string, style?: StampStyle) {
   const { width } = page.getSize();
-  const size = 10;
+  const size = stampSize(style);
   const textW = font.widthOfTextAtSize(label, size);
-  const x = width - textW - 24;
+  const x = style?.position === "bottom-left" ? 24
+    : style?.position === "bottom-center" ? Math.max(24, (width - textW) / 2)
+    : width - textW - 24;
   const y = 14;
-  page.drawRectangle({ x: x - 4, y: y - 3, width: textW + 8, height: size + 6, color: rgb(1, 1, 1), opacity: 0.85 });
-  page.drawText(label, { x, y, size, font, color: rgb(0, 0, 0) });
+  const color = STAMP_COLORS[style?.color ?? "black"] ?? STAMP_COLORS.black;
+  const backing = style?.color === "white" ? rgb(0.12, 0.12, 0.12) : rgb(1, 1, 1);
+  page.drawRectangle({ x: x - 4, y: y - 3, width: textW + 8, height: size + 6, color: backing, opacity: 0.85 });
+  page.drawText(label, { x, y, size, font, color });
 }
 
 export type StampResult = { bytes: Uint8Array; pages: number };
@@ -37,19 +69,20 @@ export type StampResult = { bytes: Uint8Array; pages: number };
  * photos become a one-page PDF carrying the image. Anything else returns null
  * (produced as-is is not allowed — a Bates number must be visible).
  */
-export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number, stamp = true): Promise<StampResult | null> {
+export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number, stamp = true, style?: StampStyle): Promise<StampResult | null> {
+  const fontName = STAMP_FONTS[style?.font ?? "helvetica"] ?? StandardFonts.Helvetica;
   if (isPdf(contentType, name)) {
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     // Pre-labeled material passes through byte-identical; only count pages.
     if (!stamp) return { bytes, pages: doc.getPageCount() };
-    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const font = await doc.embedFont(fontName);
     const pages = doc.getPages();
-    pages.forEach((page, i) => stampPage(page, font, batesLabel(prefix, startNum + i)));
+    pages.forEach((page, i) => stampPage(page, font, batesLabel(prefix, startNum + i), style));
     return { bytes: await doc.save(), pages: pages.length };
   }
   if (isImage(contentType, name)) {
     const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const font = await doc.embedFont(fontName);
     const img = /png$/i.test(name) || contentType === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
     // Letter-size page, image fit inside with margins.
     const page = doc.addPage([612, 792]);
@@ -57,7 +90,7 @@ export async function stampToPdf(bytes: Uint8Array, contentType: string | null |
     const scale = Math.min(maxW / img.width, maxH / img.height, 1);
     const w = img.width * scale, h = img.height * scale;
     page.drawImage(img, { x: (612 - w) / 2, y: 792 - 36 - h, width: w, height: h });
-    if (stamp) stampPage(page, font, batesLabel(prefix, startNum));
+    if (stamp) stampPage(page, font, batesLabel(prefix, startNum), style);
     return { bytes: await doc.save(), pages: 1 };
   }
   return null;

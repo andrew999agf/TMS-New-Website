@@ -120,8 +120,16 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
 
   try {
     const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
-    staged = pdocs.map((d) => ({ id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId }));
-    const sourceStatus = new Map(pdocs.map((d) => [d.sourceKey, d.status === "produced" ? "produced" as const : "staged" as const]));
+    staged = pdocs.map((d) => ({
+      id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
+      sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
+    }));
+    // Whole-document rows lock their source in the red tab; page-slice rows
+    // leave it open so the remaining pages can still be staged.
+    const sourceStatus = new Map(
+      pdocs.filter((d) => !Array.isArray(d.sourcePages) || (d.sourcePages as number[]).length === 0)
+        .map((d) => [d.sourceKey, d.status === "produced" ? "produced" as const : "staged" as const]),
+    );
     clientFiles = clientFiles.map((f) => ({ ...f, status: sourceStatus.get(f.key) ?? "" }));
     if (pdocs.length) {
       const latest = pdocs.reduce((a, b) => (b.id > a.id ? b : a));

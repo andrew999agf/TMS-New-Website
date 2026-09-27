@@ -5,14 +5,15 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { PDFDocument } from "pdf-lib";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, type CaseParty } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, discoveryAnnotations, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, type CaseParty } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
-import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal } from "@/lib/production/build";
+import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
+import { buildStagedPdf, compressPageRanges, type RedactionMark } from "@/lib/production/subset";
 import { FIRM } from "@/lib/firm";
 import { randomBytes } from "crypto";
 
@@ -574,6 +575,94 @@ export async function updateRequestDeadlines(folderId: number, responseDue: stri
   }
 }
 
+/* ------------------------ review annotations ---------------------------- */
+
+export type AnnotationKind = "highlight" | "redact" | "note";
+export type FileAnnotation = {
+  id: number;
+  page: number;
+  kind: AnnotationKind;
+  rect: { x: number; y: number; w: number; h: number };
+  note: string;
+};
+
+const ANNOTATION_KINDS = new Set<AnnotationKind>(["highlight", "redact", "note"]);
+const clamp01 = (v: unknown) => Math.min(1, Math.max(0, Number(v) || 0));
+const validFileKey = (k: string) => /^(doc|share):\d{1,10}$/.test(k);
+
+function shapeAnnotation(a: typeof discoveryAnnotations.$inferSelect): FileAnnotation {
+  const r = (a.rect ?? {}) as { x?: number; y?: number; w?: number; h?: number };
+  return { id: a.id, page: a.page, kind: a.kind as AnnotationKind, rect: { x: r.x ?? 0, y: r.y ?? 0, w: r.w ?? 0, h: r.h ?? 0 }, note: a.note };
+}
+
+/** All marks on one client document, for the reader overlay. */
+export async function listFileAnnotations(setId: number, fileKey: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!validFileKey(fileKey)) return { ok: false as const, error: "Bad file key." };
+  try {
+    const rows = await db.select().from(discoveryAnnotations)
+      .where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.fileKey, fileKey)))
+      .orderBy(asc(discoveryAnnotations.id));
+    return { ok: true as const, annotations: rows.map(shapeAnnotation) };
+  } catch (err) {
+    console.error("[discovery-reviewer] listFileAnnotations failed:", err);
+    return { ok: false as const, error: "Couldn't load the marks." };
+  }
+}
+
+/**
+ * Drop one mark on a page. Rects are normalized 0–1 from the page's top-left,
+ * so they survive any zoom level. Highlights and notes stay internal work
+ * product; redactions burn into the copy that goes out when the pages are
+ * staged for production.
+ */
+export async function addDiscoveryAnnotation(
+  setId: number,
+  fileKey: string,
+  page: number,
+  kind: AnnotationKind,
+  rect: { x: number; y: number; w: number; h: number },
+  note?: string,
+) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!validFileKey(fileKey)) return { ok: false as const, error: "Bad file key." };
+  if (!ANNOTATION_KINDS.has(kind)) return { ok: false as const, error: "Unknown tool." };
+  const p = Math.floor(Number(page));
+  if (!Number.isFinite(p) || p < 1) return { ok: false as const, error: "Bad page number." };
+  const x = clamp01(rect?.x), y = clamp01(rect?.y);
+  const w = Math.min(clamp01(rect?.w), 1 - x), h = Math.min(clamp01(rect?.h), 1 - y);
+  if (kind !== "note" && (w < 0.005 || h < 0.005)) return { ok: false as const, error: "Drag out a box first." };
+  try {
+    const [row] = await db.insert(discoveryAnnotations)
+      .values({ setId, fileKey, page: p, kind, rect: { x, y, w, h }, note: str(note, 2000), createdBy: session.email })
+      .returning();
+    if (kind === "redact") await audit(session.email, "create", "discovery-annotation", String(row.id), `Redaction marked on ${fileKey} p.${p}`);
+    return { ok: true as const, annotation: shapeAnnotation(row) };
+  } catch (err) {
+    console.error("[discovery-reviewer] addDiscoveryAnnotation failed:", err);
+    return { ok: false as const, error: "Couldn't save the mark." };
+  }
+}
+
+/** Eraser: remove one mark. */
+export async function deleteDiscoveryAnnotation(setId: number, id: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [gone] = await db.delete(discoveryAnnotations)
+      .where(and(eq(discoveryAnnotations.id, id), eq(discoveryAnnotations.setId, setId)))
+      .returning({ id: discoveryAnnotations.id, kind: discoveryAnnotations.kind });
+    if (!gone) return { ok: false as const, error: "That mark is already gone." };
+    if (gone.kind === "redact") await audit(session.email, "delete", "discovery-annotation", String(id), "Redaction mark removed");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[discovery-reviewer] deleteDiscoveryAnnotation failed:", err);
+    return { ok: false as const, error: "Couldn't remove the mark." };
+  }
+}
+
 /* ----------------------- production pipeline ---------------------------- */
 
 /** Combined source budget per staging batch, so stamping can't OOM. */
@@ -584,7 +673,13 @@ const MAX_STAGE_BYTES = 150 * 1024 * 1024;
  * them to the staged (pale yellow) column. Numbers run per page, continuing
  * wherever the case's numbering left off.
  */
-export async function stageForProduction(setId: number, sourceKeys: string[], opts: { bates: boolean; prefix?: string; start?: number }) {
+export type StageSelection = { key: string; pages?: number[] };
+
+export async function stageForProduction(setId: number, selectionsIn: (string | StageSelection)[], opts: { bates: boolean; prefix?: string; start?: number; stamp?: StampStyle }) {
+  // Normalize: plain keys mean "the whole document".
+  const selections: StageSelection[] = (selectionsIn ?? []).map((x) => (typeof x === "string" ? { key: x } : x)).filter((x) => x && typeof x.key === "string");
+  const pagesByKey = new Map(selections.map((x) => [x.key, x.pages && x.pages.length ? [...new Set(x.pages.map((p) => Math.floor(p)))].sort((a, b) => a - b) : null]));
+  const sourceKeys = selections.map((x) => x.key);
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
@@ -619,8 +714,28 @@ export async function stageForProduction(setId: number, sourceKeys: string[], op
       }
     }
     if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
-    const already = new Set((await db.select({ k: productionDocs.sourceKey }).from(productionDocs).where(eq(productionDocs.setId, setId))).map((r) => r.k));
-    const todo = sources.filter((f) => !already.has(f.key));
+    // Page-aware coverage: a document can go over in slices, so "already
+    // staged" is judged per page, not per file.
+    const prior = await db.select({ k: productionDocs.sourceKey, pages: productionDocs.sourcePages }).from(productionDocs).where(eq(productionDocs.setId, setId));
+    const covered = new Map<string, { all: boolean; pages: Set<number> }>();
+    for (const r of prior) {
+      const entry = covered.get(r.k) ?? { all: false, pages: new Set<number>() };
+      const pp = Array.isArray(r.pages) ? (r.pages as number[]) : [];
+      if (pp.length === 0) entry.all = true;
+      else pp.forEach((p) => entry.pages.add(p));
+      covered.set(r.k, entry);
+    }
+    // Review-stage redactions burn permanently into every staged copy.
+    const annos = await db.select().from(discoveryAnnotations)
+      .where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.kind, "redact"), inArray(discoveryAnnotations.fileKey, sourceKeys)));
+    const redsByKey = new Map<string, RedactionMark[]>();
+    for (const a of annos) {
+      const list = redsByKey.get(a.fileKey) ?? [];
+      const rc = a.rect as { x?: number; y?: number; w?: number; h?: number };
+      list.push({ page: a.page, rect: { x: rc.x ?? 0, y: rc.y ?? 0, w: rc.w ?? 0, h: rc.h ?? 0 } });
+      redsByKey.set(a.fileKey, list);
+    }
+    const todo = sources.filter((f) => !covered.get(f.key)?.all);
     if (todo.length === 0) return { ok: false as const, error: "All of those documents are already staged or produced." };
     const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
@@ -639,9 +754,24 @@ export async function stageForProduction(setId: number, sourceKeys: string[], op
     let staged = 0;
     for (const f of todo) {
       if (!f.url) { skipped.push(`${f.filename} (no file)`); continue; }
+      const cov = covered.get(f.key) ?? { all: false, pages: new Set<number>() };
+      const isPdfSrc = f.contentType === "application/pdf" || /\.pdf$/i.test(f.filename);
+      const requested = pagesByKey.get(f.key) ?? null;
+      if (!isPdfSrc && cov.pages.size > 0) { skipped.push(`${f.filename} (already staged)`); continue; }
       const res = await fetch(f.url);
       if (!res.ok) { skipped.push(`${f.filename} (couldn't fetch)`); continue; }
-      const stamped = await stampToPdf(new Uint8Array(await res.arrayBuffer()), f.contentType, f.filename, prefix, next, bates);
+      let bytes: Uint8Array = new Uint8Array(await res.arrayBuffer());
+      let sourcePages: number[] = [];
+      let nameSuffix = "";
+      if (isPdfSrc) {
+        const built = await buildStagedPdf(bytes, requested, [...cov.pages], redsByKey.get(f.key) ?? []).catch(() => null);
+        if (!built) { skipped.push(`${f.filename} (those pages are already staged, or the PDF couldn't be read)`); continue; }
+        bytes = built.bytes instanceof Uint8Array ? built.bytes : new Uint8Array(built.bytes);
+        const isWholeFresh = built.includedPages.length === built.totalPages && cov.pages.size === 0;
+        sourcePages = isWholeFresh ? [] : built.includedPages;
+        if (!isWholeFresh) nameSuffix = ` (pp. ${compressPageRanges(built.includedPages)})`;
+      }
+      const stamped = await stampToPdf(bytes, f.contentType, f.filename, prefix, next, bates, opts.stamp);
       if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
       const blob = await put(`production/${setId}/${bates ? batesLabel(prefix, next) : f.filename.split("/").pop() || "doc"}.pdf`, Buffer.from(stamped.bytes), {
         access: "public", contentType: "application/pdf", addRandomSuffix: true,
@@ -650,10 +780,11 @@ export async function stageForProduction(setId: number, sourceKeys: string[], op
       await db.insert(productionDocs).values({
         setId,
         sourceKey: f.key,
-        name: parts[parts.length - 1] || f.filename,
+        name: (parts[parts.length - 1] || f.filename) + nameSuffix,
         requestLabel: parts.length > 1 ? parts[0] : "",
         url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,
         batesPrefix: prefix, batesStart: bates ? next : 0, batesEnd: bates ? next + stamped.pages - 1 : 0, pageCount: stamped.pages,
+        sourcePages,
         status: "staged",
       });
       if (bates) next += stamped.pages;

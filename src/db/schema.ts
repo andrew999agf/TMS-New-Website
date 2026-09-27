@@ -1516,6 +1516,10 @@ export const productionDocs = pgTable(
     batesStart: integer("bates_start").notNull().default(0),
     batesEnd: integer("bates_end").notNull().default(0),
     pageCount: integer("page_count"),
+    /** Which 1-based pages of the source this staged copy contains; empty
+     *  means the whole document. Lets a 700-page client PDF go over in
+     *  reviewed slices, with the red tab showing what's already gone. */
+    sourcePages: jsonb("source_pages").notNull().default([]),
     /** staged (pale yellow) | produced (pale green). */
     status: varchar("status", { length: 12 }).notNull().default("staged"),
     productionId: integer("production_id"),
@@ -1526,6 +1530,28 @@ export const productionDocs = pgTable(
 
 /** One production to opposing counsel: the letter, the merged Bates PDF, and
  *  the public link the letter points at. */
+/** Review-stage marks drawn on client documents in the red tab: highlights
+ *  and notes stay internal work product; redactions are burned permanently
+ *  into any staged/produced copy of that page. Rects are normalized 0-1
+ *  against the page, origin top-left. */
+export const discoveryAnnotations = pgTable(
+  "discovery_annotations",
+  {
+    id: serial("id").primaryKey(),
+    setId: integer("set_id").notNull(),
+    /** Matches the client-file key: "doc:<id>" or "share:<id>". */
+    fileKey: varchar("file_key", { length: 64 }).notNull(),
+    page: integer("page").notNull(),
+    /** highlight | redact | note */
+    kind: varchar("kind", { length: 12 }).notNull(),
+    rect: jsonb("rect").notNull().default({}),
+    note: text("note").notNull().default(""),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ fileIdx: index("discovery_annotations_file_idx").on(t.setId, t.fileKey) }),
+);
+
 export const productions = pgTable(
   "productions",
   {
