@@ -188,6 +188,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
         staged={staged}
         prods={prods}
         batesDefaults={batesDefaults}
+        contents={{ toc: set.prodToc ?? "", notes: set.prodNotes ?? "", tocFile: set.prodTocFile ?? "" }}
       />
     </div>
   );

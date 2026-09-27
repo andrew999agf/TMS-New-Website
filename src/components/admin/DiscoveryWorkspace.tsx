@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DiscoveryReviewer } from "./DiscoveryReviewer";
-import { ProductionPipeline, type ClientFile, type StagedDoc, type ProductionRow } from "./ProductionPipeline";
+import { ProductionPipeline, type ClientFile, type StagedDoc, type ProductionRow, type PipelineContents } from "./ProductionPipeline";
 import type { ComponentProps } from "react";
 
 type Mode = "opposing" | "received" | "staged" | "produced";
@@ -13,12 +13,13 @@ type Mode = "opposing" | "received" | "staged" | "produced";
  * pale red (received from client), pale yellow (to be produced), pale green
  * (produced).
  */
-export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults }: {
+export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults, contents }: {
   reviewerProps: ComponentProps<typeof DiscoveryReviewer>;
   clientFiles: ClientFile[];
   staged: StagedDoc[];
   prods: ProductionRow[];
   batesDefaults: { prefix: string; nextStart: number };
+  contents: PipelineContents;
 }) {
   const [mode, setMode] = useState<Mode>("opposing");
   const receivedCount = clientFiles.length;
@@ -44,7 +45,7 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
         <DiscoveryReviewer {...reviewerProps} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} />
+          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} />
         </div>
       )}
     </div>

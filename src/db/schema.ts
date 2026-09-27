@@ -1422,6 +1422,13 @@ export const discoverySets = pgTable(
     causeNumber: varchar("cause_number", { length: 128 }).notNull().default(""),
     court: varchar("court", { length: 191 }).notNull().default(""),
     notes: text("notes").notNull().default(""),
+    /** Client-production pipeline "Contents & notes": a shared table of
+     *  contents (one line per section, "1-60 Photographs") that follows the
+     *  documents from received -> to-produce -> produced, plus free notes,
+     *  plus which client file the page numbers refer to. */
+    prodToc: text("prod_toc").notNull().default(""),
+    prodNotes: text("prod_notes").notNull().default(""),
+    prodTocFile: text("prod_toc_file").notNull().default(""),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

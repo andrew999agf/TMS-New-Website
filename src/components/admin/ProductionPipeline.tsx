@@ -7,6 +7,7 @@ import {
   BookOpen, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, FileText, Grid3x3, Loader2, Pencil, Send, Stamp, Trash2, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { loadPdfjs } from "./DiscoveryReviewer";
+import { ProductionContents, type TocEntry } from "./ProductionContents";
 import {
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -74,17 +75,29 @@ export function RequestTracker({ requests }: { requests: RequestRow[] }) {
 
 /* ---------------------------- pipeline views ------------------------------ */
 
-export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults }: {
+export type PipelineContents = { toc: string; notes: string; tocFile: string };
+
+export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents }: {
   mode: "received" | "staged" | "produced";
   setId: number;
   clientFiles: ClientFile[];
   staged: StagedDoc[];
   prods: ProductionRow[];
   batesDefaults: { prefix: string; nextStart: number };
+  contents: PipelineContents;
 }) {
-  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} batesDefaults={batesDefaults} />;
-  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} />;
-  return <ProducedView staged={staged} prods={prods} />;
+  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} batesDefaults={batesDefaults} contents={contents} />;
+  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} />;
+  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} />;
+}
+
+/** The staged/produced PDF most likely to be "the review set" the table of
+ *  contents was written against: the widest Bates span with a file, else
+ *  the first with a file. */
+function likelyMainDoc(rows: StagedDoc[]): StagedDoc | null {
+  const withUrl = rows.filter((d) => d.url);
+  if (!withUrl.length) return null;
+  return [...withUrl].sort((a, b) => (b.batesEnd - b.batesStart) - (a.batesEnd - a.batesStart))[0];
 }
 
 /* ---- pale red: everything the client dropped, page-level like opposing ---- */
@@ -95,7 +108,7 @@ const fileKind = (name: string): "pdf" | "image" | "other" => {
   return "other";
 };
 
-function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: ClientFile[]; batesDefaults: { prefix: string; nextStart: number } }) {
+function ReceivedView({ setId, files, batesDefaults, contents }: { setId: number; files: ClientFile[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents }) {
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
@@ -151,9 +164,20 @@ function ReceivedView({ setId, files, batesDefaults }: { setId: number; files: C
     </button>
   );
 
+  // The TOC's jump target: the designated file, else the first PDF.
+  const pdfFiles = files.filter((f) => fileKind(f.name) === "pdf");
+  const tocTarget = pdfFiles.find((f) => f.key === contents.tocFile) ?? pdfFiles[0] ?? null;
+  const jumpToPage = (page: number) => {
+    if (!tocTarget) return;
+    setReader({ docIdx: files.findIndex((x) => x.key === tocTarget.key), page });
+    setView("reader");
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2">
+      <ProductionContents setId={setId} mode="received" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile}
+        fileChoices={pdfFiles.map((f) => ({ key: f.key, name: f.name }))} onJump={jumpToPage} />
+      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 mt-3">
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
           {viewBtn("grid", "Grid", <Grid3x3 size={14} />)}
           {viewBtn("reader", "Reader", <BookOpen size={14} />)}
@@ -495,7 +519,7 @@ function ClientReader({ files, state, setState, selected, onToggle, getDoc, prox
 
 /* ------------- pale yellow: staged, reviewable, then produce ------------- */
 
-function StagedView({ setId, staged, prods }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[] }) {
+function StagedView({ setId, staged, prods, contents }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents }) {
   const router = useRouter();
   const draft = prods.find((p) => !p.producedAt) ?? null;
   const rows = staged.filter((d) => !d.productionId || d.productionId === draft?.id).sort((a, b) => a.batesStart - b.batesStart);
@@ -517,8 +541,12 @@ function StagedView({ setId, staged, prods }: { setId: number; staged: StagedDoc
 
   const publicUrl = (p: ProductionRow) => `${typeof window !== "undefined" ? window.location.origin : ""}/production/${p.token}`;
 
+  const mainDoc = likelyMainDoc(rows.length ? rows : staged);
+  const linkFor = (e: TocEntry) => (mainDoc?.url ? `${mainDoc.url}#page=${e.from}` : null);
+
   return (
     <div className="p-4">
+      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <p className="text-sm text-[var(--c-ink-muted)]">Bates-labeled and under review — nothing here has gone to the other side yet.</p>
         <button onClick={() => void prepare()} disabled={busy || rows.length === 0 || !!draft}
@@ -576,10 +604,21 @@ function StagedView({ setId, staged, prods }: { setId: number; staged: StagedDoc
 
 /* --------------- pale green: what has actually gone out ------------------ */
 
-function ProducedView({ staged, prods }: { staged: StagedDoc[]; prods: ProductionRow[] }) {
+function ProducedView({ setId, staged, prods, contents }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents }) {
   const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
+  // Link + Bates base come from the most recent production with a file.
+  const latest = [...done].reverse().find((p) => p.fileUrl) ?? null;
+  const mainDoc = latest ? null : likelyMainDoc(staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId)));
+  const linkUrl = latest?.fileUrl ?? mainDoc?.url ?? null;
+  const linkFor = (e: TocEntry) => (linkUrl ? `${linkUrl}#page=${e.from}` : null);
+  const batesBase = latest && latest.batesPrefix
+    ? { prefix: latest.batesPrefix, start: latest.batesStart }
+    : mainDoc && mainDoc.batesPrefix
+      ? { prefix: mainDoc.batesPrefix, start: mainDoc.batesStart }
+      : null;
   return (
     <div className="p-4">
+      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} batesBase={batesBase} /></div>
       {done.length === 0 ? (
         <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
           Nothing has been produced yet. Stage documents, prepare the production, review it, and mark it produced.

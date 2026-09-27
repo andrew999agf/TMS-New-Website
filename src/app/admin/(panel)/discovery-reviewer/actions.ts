@@ -802,3 +802,23 @@ export async function discardProductionDraft(productionId: number) {
     return { ok: false as const };
   }
 }
+
+/** Save the pipeline's shared "Contents & notes": the table of contents that
+ *  follows the client documents from received to produced, the free notes
+ *  under it, and which file the page numbers refer to. */
+export async function saveProductionContents(setId: number, input: { toc: string; notes: string; tocFile: string }) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  try {
+    await db.update(discoverySets).set({
+      prodToc: String(input.toc ?? "").slice(0, 20000),
+      prodNotes: String(input.notes ?? "").slice(0, 20000),
+      prodTocFile: String(input.tocFile ?? "").slice(0, 512),
+      updatedAt: new Date(),
+    }).where(eq(discoverySets.id, setId));
+    await audit(session.email, "update", "discovery-set", String(setId), "Updated production contents/notes");
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
+}
