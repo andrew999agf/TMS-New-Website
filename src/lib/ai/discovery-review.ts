@@ -7,6 +7,7 @@ import { activeModel } from "@/lib/ai/vision";
 import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { setAiNotice, clearAiNotice } from "@/lib/ai/notice";
 import { renderPdfPages } from "@/lib/documents/pdf-pages";
+import { resolvedAiBaseUrl } from "@/lib/ai/runpod";
 
 /**
  * The discovery sweep: AI.fred reads every document in a discovery set and
@@ -60,6 +61,7 @@ type Verdict = { label: string; description: string; legible: boolean };
 async function askModel(model: string, docName: string, caseLine: string, text: string, images: string[]): Promise<Verdict | null> {
   const cfg = aiConfig();
   if (!cfg) return null;
+  const base = (await resolvedAiBaseUrl()) ?? cfg.baseUrl;
   const system =
     "You label documents produced in discovery for a Texas trial law firm. Reply with ONLY a JSON object, no prose: " +
     '{"label": string, "description": string, "legible": boolean}. ' +
@@ -75,7 +77,7 @@ async function askModel(model: string, docName: string, caseLine: string, text: 
     ? [{ type: "text", text: userText }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))]
     : userText;
   try {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+    const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
       signal: AbortSignal.timeout(90_000),

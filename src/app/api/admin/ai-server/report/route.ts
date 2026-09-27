@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { gte, eq, and, sql } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { runpodConfig, resolvedRunpodConfig, getPodStatus, getBalance } from "@/lib/ai/runpod";
+import { runpodConfig, resolvedRunpodConfig, getPodStatus, getBalance, resolvedAiBaseUrl } from "@/lib/ai/runpod";
 import { AI_IDLE_KEY, AI_AUTOSLEEP_KEY, AI_LAST_USED_KEY, AI_IDLE_DEFAULT, getAiSetting, monthEstimate } from "@/lib/ai/concierge";
 import { getAiNotice } from "@/lib/ai/notice";
 import { aiConfig } from "@/lib/ai/config";
@@ -48,7 +48,11 @@ export async function GET() {
   if (override?.podId) push(`Pod override (from auto-relocation): ${override.podId} — replaced ${override.replacedEnvPodId}; ${override.replacedEnvPodId === envPod ? "ACTIVE" : "ignored (env pod id changed by hand)"}`);
   const rcfg = await resolvedRunpodConfig();
   push(`Effective pod id: ${rcfg?.podId ?? "(none — controls off)"}`);
-  const baseHost = (() => { try { return new URL(process.env.AI_BASE_URL ?? "").host; } catch { return ""; } })();
+  const effBase = await resolvedAiBaseUrl();
+  if (effBase && effBase !== (process.env.AI_BASE_URL?.trim()?.replace(/\/+$/, "") ?? "")) {
+    push(`Effective AI endpoint (auto-follows relocation): ${effBase}`);
+  }
+  const baseHost = (() => { try { return new URL(effBase ?? "").host; } catch { return ""; } })();
   if (rcfg && baseHost && !baseHost.startsWith(`${rcfg.podId}-`)) {
     push(`!! MISMATCH: AI_BASE_URL points at "${baseHost}" but the pod id is "${rcfg.podId}" — chat and the power strip are talking to different servers.`);
   }
@@ -88,7 +92,7 @@ export async function GET() {
   if (cfg) {
     const t0 = Date.now();
     try {
-      const res = await fetch(`${cfg.baseUrl}/models`, { headers: { Authorization: `Bearer ${cfg.apiKey}` }, signal: AbortSignal.timeout(8000) });
+      const res = await fetch(`${effBase ?? cfg.baseUrl}/models`, { headers: { Authorization: `Bearer ${cfg.apiKey}` }, signal: AbortSignal.timeout(8000) });
       const ms = Date.now() - t0;
       if (res.ok) {
         const j = (await res.json().catch(() => null)) as { data?: { id?: string }[] } | null;

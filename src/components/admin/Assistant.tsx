@@ -404,6 +404,15 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const srvNoticeRef = useRef(false);
   useEffect(() => { srvNoticeRef.current = !!srv?.notice; }, [srv]);
 
+  // A visible clock for the notice toast: users watching "starting up…"
+  // deserve to know how long it's actually been and when to worry.
+  const [noticeNow, setNoticeNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!srv?.notice) return;
+    const t = setInterval(() => setNoticeNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [srv?.notice]);
+
   useEffect(() => {
     void refreshServer();
     // Poll gently; faster while the server is waking (so the strip flips to
@@ -937,6 +946,24 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
             <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-600" />
             <div className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
               <p className="font-semibold">{srv.notice.message}</p>
+              {(() => {
+                const started = new Date(srv.notice.startedAt).getTime();
+                const secs = Math.max(0, Math.floor((noticeNow - started) / 1000));
+                const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+                const stateLine =
+                  srv.state === "ready" ? "The server is up and answering — this should clear on its own any moment."
+                  : srv.state === "starting" ? "The machine is on; the AI model is still loading into it."
+                  : srv.state === "stopped" ? "The server is currently asleep."
+                  : "Waiting on the server…";
+                return (
+                  <>
+                    <p className="mt-0.5 font-mono text-[11px]">⏱ {clock} elapsed · {stateLine}</p>
+                    {secs > 480 && (
+                      <p className="mt-0.5 font-semibold">Running long (normal only for a first-time model download). The System report at the bottom of this page shows exactly what&apos;s happening — copy it to your developer if this passes 20 minutes.</p>
+                    )}
+                  </>
+                );
+              })()}
               <p className="mt-0.5 opacity-80">
                 {srv.notice.chatBlocked
                   ? "Chat is paused until this finishes — the send button is disabled for a few minutes."

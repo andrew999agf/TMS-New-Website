@@ -10,6 +10,7 @@ import { assistantToolSchemas, runAssistantTool, toolStatusLabel } from "@/lib/a
 import { touchAiLastUsed } from "@/lib/ai/concierge";
 import { getAiNotice } from "@/lib/ai/notice";
 import { activeModel } from "@/lib/ai/vision";
+import { resolvedAiBaseUrl } from "@/lib/ai/runpod";
 import { styleByKey, isStyleKey, suggestStyle, DEFAULT_STYLE_KEY } from "@/lib/ai/styles";
 import { db } from "@/db";
 import { assistantThreads, assistantMessages, assistantPrefs, assistantMemories } from "@/db/schema";
@@ -397,9 +398,13 @@ export async function POST(req: Request) {
     }
   }
 
+  // The chat address follows pod relocations (the env URL names the pod the
+  // account started with; a rescued pod lives at a new hostname).
+  const aiBase = (await resolvedAiBaseUrl()) ?? cfg.baseUrl;
+
   // Firm-data tools ride along whenever the database is configured and the
   // provider accepts them. A conversation-attached matter pins the case.
-  let useTools = !!db && !toolsUnsupported(cfg.baseUrl);
+  let useTools = !!db && !toolsUnsupported(aiBase);
   const billingAllowed = canReviewBilling(session.role, session.permissions);
   const matter = typeof body.matter === "string" ? body.matter.trim().slice(0, 120) : "";
   let systemPrompt = mode.prompt + (useTools ? TOOLS_PROMPT : "");
@@ -436,7 +441,7 @@ export async function POST(req: Request) {
   // One model is loaded at a time: with the vision model in, everything goes
   // to it (per-mode text overrides only apply while the text model is up).
   const model = active?.desired === "vision" ? active.model : (modelForMode(modeKey) ?? cfg.model);
-  const chatUrl = `${cfg.baseUrl}/chat/completions`;
+  const chatUrl = `${aiBase}/chat/completions`;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` };
 
   let acc = "";
@@ -475,7 +480,7 @@ export async function POST(req: Request) {
       // Some local engines (vLLM/Ollama without a tool parser) reject `tools`.
       // Fall back to a plain chat and remember briefly, so the assistant still
       // works everywhere — just without live firm-data lookups.
-      toolsUnsupportedUntil.set(cfg.baseUrl, Date.now() + TOOLS_RETRY_MS);
+      toolsUnsupportedUntil.set(aiBase, Date.now() + TOOLS_RETRY_MS);
       useTools = false;
       convo[0] = { role: "system", content: mode.prompt };
       first = await callUpstream(false);

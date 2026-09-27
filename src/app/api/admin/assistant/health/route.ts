@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { aiConfig } from "@/lib/ai/config";
 import { activeModel } from "@/lib/ai/vision";
+import { resolvedAiBaseUrl } from "@/lib/ai/runpod";
 import { db } from "@/db";
 
 export const runtime = "nodejs";
@@ -33,8 +34,9 @@ export async function POST() {
   // Test whichever model is actually loaded (text or vision).
   const act = await activeModel().catch(() => null);
   const model = act?.model ?? cfg.model;
+  const aiBase = (await resolvedAiBaseUrl()) ?? cfg.baseUrl;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` };
-  const url = `${cfg.baseUrl}/chat/completions`;
+  const url = `${aiBase}/chat/completions`;
   const withTimeout = (ms: number) => AbortSignal.timeout(ms);
 
   // 1) Plain round trip: can we reach it and get words back?
@@ -96,7 +98,7 @@ export async function POST() {
 
   return NextResponse.json({
     configured: true,
-    baseUrlHost: (() => { try { return new URL(cfg.baseUrl).host; } catch { return cfg.baseUrl; } })(),
+    baseUrlHost: (() => { try { return new URL(aiBase).host; } catch { return aiBase; } })(),
     model,
     label: act?.label ?? cfg.label,
     reachable,

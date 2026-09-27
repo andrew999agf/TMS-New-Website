@@ -1,5 +1,6 @@
 import "server-only";
 import { getAiSetting, putAiSetting } from "@/lib/ai/concierge";
+import { rewriteBaseUrlForPod } from "@/lib/ai/config";
 
 /**
  * Remote control for the firm's rented AI GPU server (a RunPod pod running
@@ -41,6 +42,21 @@ export async function resolvedRunpodConfig(): Promise<RunpodConfig | null> {
     if (o?.podId && o.replacedEnvPodId === cfg.podId) return { ...cfg, podId: o.podId };
   } catch { /* fall back to the env pod */ }
   return cfg;
+}
+
+/** The chat endpoint's base URL with any relocation applied: when the pod
+ *  moved, its proxy hostname moved with it, so the env AI_BASE_URL (which
+ *  names the old pod) is rewritten to the replacement's hostname. */
+export async function resolvedAiBaseUrl(): Promise<string | null> {
+  const base = process.env.AI_BASE_URL?.trim()?.replace(/\/+$/, "") ?? null;
+  if (!base) return null;
+  const cfg = runpodConfig();
+  if (!cfg) return base;
+  try {
+    const o = await getAiSetting<PodOverride | null>(POD_OVERRIDE_KEY, null);
+    if (o?.podId && o.replacedEnvPodId === cfg.podId) return rewriteBaseUrlForPod(base, cfg.podId, o.podId);
+  } catch { /* env value stands */ }
+  return base;
 }
 
 async function gql<T>(cfg: RunpodConfig, query: string, variables: Record<string, unknown>): Promise<T> {
@@ -119,7 +135,7 @@ export async function aiEndpointReady(): Promise<boolean> {
  *  endpoint isn't answering. This is how a swap knows it has finished: the
  *  serving model finally matches the desired one. */
 export async function aiServingModel(): Promise<string | null> {
-  const base = process.env.AI_BASE_URL?.trim();
+  const base = await resolvedAiBaseUrl();
   const key = process.env.AI_API_KEY?.trim();
   if (!base || !key) return null;
   try {

@@ -68,3 +68,21 @@ export function aiPublicInfo(): { configured: boolean; label: string | null } {
   const c = aiConfig();
   return { configured: c !== null, label: c?.label ?? null };
 }
+
+/**
+ * When the pod auto-relocates, its proxy hostname changes with its id.
+ * This rewrites a RunPod proxy base URL from the old pod's hostname to the
+ * replacement's, and returns the input untouched when it doesn't reference
+ * the old pod (custom domains, other providers, local mocks).
+ */
+export function rewriteBaseUrlForPod(baseUrl: string, fromPodId: string, toPodId: string): string {
+  if (!baseUrl || !fromPodId || !toPodId || fromPodId === toPodId) return baseUrl;
+  try {
+    const u = new URL(baseUrl);
+    if (u.host.startsWith(`${fromPodId}-`)) {
+      u.host = u.host.replace(`${fromPodId}-`, `${toPodId}-`);
+      return u.toString().replace(/\/$/, "");
+    }
+  } catch { /* not a URL — leave it alone */ }
+  return baseUrl;
+}

@@ -112,6 +112,7 @@ import { caseFieldValues, STANDARD_FIELDS } from "@/lib/documents/case-fields";
 import { generateFromTemplate, type GenerateOutput } from "@/lib/documents/generate";
 import { aiConfig } from "@/lib/ai/config";
 import { activeModel } from "@/lib/ai/vision";
+import { resolvedAiBaseUrl } from "@/lib/ai/runpod";
 
 export type BankTemplate = {
   id: number; name: string; folder: string; description: string; docType: string;
@@ -230,6 +231,7 @@ export async function aiSortInbox() {
   await ensureDiscoveryTables();
   // Whichever model is loaded right now does the filing (vision or text).
   const sortModel = (await activeModel())?.model ?? cfg.model;
+  const sortBase = (await resolvedAiBaseUrl()) ?? cfg.baseUrl;
 
   const inbox = await db.select().from(docTemplates).where(and(eq(docTemplates.folder, ""), eq(docTemplates.archived, false))).limit(50);
   const rows = await db.select({ folder: docTemplates.folder }).from(docTemplates).where(eq(docTemplates.archived, false));
@@ -240,7 +242,7 @@ export async function aiSortInbox() {
   for (const t of inbox) {
     if (!t.docText.trim()) { left.push(`${t.name} (no readable text — is it a .docx?)`); continue; }
     try {
-      const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      const res = await fetch(`${sortBase}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
         signal: AbortSignal.timeout(45000),
