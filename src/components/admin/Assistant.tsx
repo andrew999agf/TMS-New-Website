@@ -452,6 +452,30 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
     setPendingImages((p) => [...p, ...shrunk].slice(0, 4));
   }
 
+  // The System report block at the page bottom.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [report, setReport] = useState<string | null>(null);
+  const [reportCopied, setReportCopied] = useState(false);
+  async function loadReport() {
+    setReport(null);
+    try {
+      const r = await fetch("/api/admin/ai-server/report");
+      const j = await r.json().catch(() => ({}));
+      setReport(typeof j.text === "string" ? j.text : `Couldn't build the report (${r.status}).`);
+    } catch {
+      setReport("Couldn't reach the report endpoint.");
+    }
+  }
+  async function toggleReport() {
+    const opening = !reportOpen;
+    setReportOpen(opening);
+    if (opening && !report) await loadReport();
+  }
+  async function copyReport() {
+    if (!report) return;
+    try { await navigator.clipboard.writeText(report); setReportCopied(true); setTimeout(() => setReportCopied(false), 2000); } catch { /* no clipboard */ }
+  }
+
   async function doSwap(target: "vision" | "text") {
     setSwapBusy(true);
     try {
@@ -1237,6 +1261,27 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
             )}
           </div>
           {!saveable && <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">Conversations aren&apos;t being saved — run Settings → Database updates once to turn on saved history.</p>}
+          {/* System report: the copyable 24h diagnostic block — one screenshot
+              of this replaces a whole troubleshooting back-and-forth. */}
+          <div className="mt-2">
+            <button onClick={() => void toggleReport()} className="inline-flex items-center gap-1 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+              <Activity size={11} /> System report {reportOpen ? "▴" : "▾"}
+            </button>
+            {reportOpen && (
+              <div className="mt-1.5 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+                <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-3 py-1.5">
+                  <span className="text-[11px] font-semibold text-[var(--c-ink)]">Last 24 hours — safe to screenshot or copy (no keys inside)</span>
+                  <button onClick={() => void copyReport()} className="ml-auto rounded-md border border-[var(--c-border)] px-2 py-0.5 text-[11px] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
+                    {reportCopied ? "Copied!" : "Copy report"}
+                  </button>
+                  <button onClick={() => void loadReport()} className="rounded-md border border-[var(--c-border)] px-2 py-0.5 text-[11px] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">Refresh</button>
+                </div>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--c-ink)]">
+                  {report ?? "Generating…"}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
