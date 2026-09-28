@@ -1575,6 +1575,11 @@ export const productionDocs = pgTable(
      *  means the whole document. Lets a 700-page client PDF go over in
      *  reviewed slices, with the red tab showing what's already gone. */
     sourcePages: jsonb("source_pages").notNull().default([]),
+    /** Per-current-page Bates NUMBERS (just the numeric part). Empty means
+     *  contiguous from batesStart. Populated once pages are pulled from the
+     *  stamped copy, because the remaining stamps then have gaps and
+     *  position arithmetic stops being the truth. */
+    pageBates: jsonb("page_bates").notNull().default([]),
     /** Per-page text of THIS copy (index 0 = its page 1), so the AI can cite
      *  by Bates number: label of page i = batesPrefix + (batesStart + i). */
     pageText: jsonb("page_text").notNull().default([]),

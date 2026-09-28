@@ -407,7 +407,9 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
     name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
     sections = secList(row.aiSections);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
-    if (row.batesPrefix) batesFor = (i) => `${row.batesPrefix}${String(row.batesStart + i).padStart(6, "0")}`;
+    // A copy that lost pages keeps a per-page Bates list (the run has gaps).
+    const pb = Array.isArray(row.pageBates) ? (row.pageBates as number[]) : [];
+    if (row.batesPrefix) batesFor = (i) => `${row.batesPrefix}${String(pb[i] ?? row.batesStart + i).padStart(6, "0")}`;
   } else {
     const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription, aiSections: discoveryDocs.aiSections }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
     if (!row) return { error: `No discovery document #${docId}.` };
@@ -517,7 +519,8 @@ async function searchDocuments(matter: string, query: string) {
   if (dsets.length) {
     const pdocs = await db!.select().from(productionDocs).where(inArray(productionDocs.setId, dsets.map((s) => s.id)));
     for (const d of pdocs) {
-      const batesFor = d.batesPrefix ? (i: number) => `${d.batesPrefix}${String(d.batesStart + i).padStart(6, "0")}` : undefined;
+      const pb = Array.isArray(d.pageBates) ? (d.pageBates as number[]) : [];
+      const batesFor = d.batesPrefix ? (i: number) => `${d.batesPrefix}${String(pb[i] ?? d.batesStart + i).padStart(6, "0")}` : undefined;
       scan(d.status === "produced" ? "produced" : "staged", d.id, d.name, Array.isArray(d.pageText) ? (d.pageText as string[]) : [], batesFor, Array.isArray(d.pageNotes) ? (d.pageNotes as string[]) : [], `prod:${d.id}`);
     }
   }

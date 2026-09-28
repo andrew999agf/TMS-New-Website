@@ -14,7 +14,7 @@ import { buildCarry, carryPages, carrySectionList } from "@/lib/exhibit-review/c
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
 import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
-import { buildStagedPdf, compressPageRanges, type RedactionMark } from "@/lib/production/subset";
+import { buildStagedPdf, compressPageRanges, remapAfterPull, type RedactionMark } from "@/lib/production/subset";
 import { rasterizeRedactedPages } from "@/lib/production/redact";
 import { FIRM } from "@/lib/firm";
 import { randomBytes } from "crypto";
@@ -1032,6 +1032,58 @@ export async function unstageProductionDoc(id: number) {
   } catch (err) {
     console.error("[discovery-reviewer] unstageProductionDoc failed:", err);
     return { ok: false as const };
+  }
+}
+
+/**
+ * Pull individual pages OUT of a staged Bates copy (caught during yellow-tab
+ * review). The pages come out of the outgoing PDF; the remaining pages keep
+ * the Bates numbers already stamped on them, so the run gets a gap — the
+ * copy's per-page Bates list records the truth. The pulled pages' source
+ * pages unlock in the red tab for re-review or re-staging.
+ */
+export async function deleteStagedPages(setId: number, id: number, pagesIn: number[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [doc] = await db.select().from(productionDocs).where(and(eq(productionDocs.id, id), eq(productionDocs.setId, setId)));
+    if (!doc?.url) return { ok: false as const, error: "Document not found." };
+    if (doc.status !== "staged") return { ok: false as const, error: "Only staged documents can lose pages — this one has been produced." };
+    if (doc.productionId) return { ok: false as const, error: "This document is in a draft production — discard the draft first." };
+
+    const res = await fetch(doc.url);
+    if (!res.ok) return { ok: false as const, error: "Couldn't fetch the staged copy." };
+    const pdf = await PDFDocument.load(new Uint8Array(await res.arrayBuffer()), { ignoreEncryption: true });
+    const total = pdf.getPageCount();
+    const drop = [...new Set((Array.isArray(pagesIn) ? pagesIn : []).map((n) => Math.floor(Number(n))))].filter((n) => Number.isFinite(n) && n >= 1 && n <= total).sort((a, b) => a - b);
+    if (!drop.length) return { ok: false as const, error: "Pick at least one page." };
+    if (drop.length >= total) return { ok: false as const, error: "That would delete every page — use “remove” on the document instead." };
+
+    for (let i = drop.length - 1; i >= 0; i--) pdf.removePage(drop[i] - 1);
+    const bytes = await pdf.save();
+    const blob = await put(`production/${setId}/${(doc.pathname?.split("/").pop() || "doc.pdf").replace(/\.pdf$/i, "")}-p.pdf`, Buffer.from(bytes), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+
+    // Remap every per-page record to the kept positions.
+    const rm = remapAfterPull(doc, total, drop);
+
+    const oldPath = doc.pathname;
+    await db.update(productionDocs).set({
+      url: blob.url, pathname: blob.pathname, sizeBytes: bytes.byteLength, pageCount: rm.kept.length,
+      pageText: rm.pageText, pageNotes: rm.pageNotes,
+      aiSections: rm.aiSections, sourcePages: rm.sourcePages, pageBates: rm.pageBates,
+    }).where(eq(productionDocs.id, id));
+    if (oldPath) { try { await del(oldPath); } catch { /* best-effort */ } }
+
+    const oldBates = Array.isArray(doc.pageBates) ? (doc.pageBates as number[]) : [];
+    const gone = doc.batesStart > 0 ? drop.map((p) => batesLabel(doc.batesPrefix, (oldBates[p - 1] ?? doc.batesStart + p - 1))).join(", ") : `page${drop.length === 1 ? "" : "s"} ${drop.join(", ")}`;
+    await audit(session.email, "update", "production-doc", String(id), `Pulled ${drop.length} page${drop.length === 1 ? "" : "s"} from "${doc.name}" (${gone}) — Bates gap left in place`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, removed: drop.length, gone };
+  } catch (err) {
+    console.error("[discovery-reviewer] deleteStagedPages failed:", err);
+    return { ok: false as const, error: "Couldn't pull those pages." };
   }
 }
 

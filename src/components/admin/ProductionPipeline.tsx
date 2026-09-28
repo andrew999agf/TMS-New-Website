@@ -12,7 +12,7 @@ import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
-  updateAiLabel, setDiscoveryShare, redactProductionDoc,
+  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
@@ -22,7 +22,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -1355,29 +1355,59 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
   const noSel = useMemo(() => new Set<string>(), []);
   const noop = useCallback(() => {}, []);
 
-  // Document-level selection: clicking any page (or the header checkbox)
-  // selects the whole stamped copy — then download the selection, or send
-  // it to the green tab as produced.
-  const [selDocs, setSelDocs] = useState<Set<number>>(new Set());
+  // PAGE-level selection: click one page at a time (shift-click for a range,
+  // the header chip for the whole document). Delete pages pulls just those
+  // pages from the stamped copy; Download and Send to green act on the
+  // documents the selected pages belong to.
+  const [selPages, setSelPages] = useState<Set<string>>(new Set());
   const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
   const [moving, setMoving] = useState(false);
+  const lastPick = useRef<{ key: string; page: number } | null>(null);
+  const pagesOf = useCallback((d: StagedDoc) => {
+    const key = `prod:${d.id}`;
+    return Math.max(pageCounts[key] ?? 0, d.batesStart > 0 && d.batesEnd >= d.batesStart ? d.batesEnd - d.batesStart + 1 : 1);
+  }, [pageCounts]);
+  const togglePage = useCallback((f: ClientFile, page: number, shiftKey?: boolean) => {
+    // Snapshot the anchor NOW — the setState updater runs later (at render
+    // time), after lastPick has already moved to the page just clicked.
+    const anchor = shiftKey && lastPick.current?.key === f.key ? lastPick.current.page : null;
+    setSelPages((prev) => {
+      const nx = new Set(prev);
+      if (anchor != null) {
+        const a = Math.min(anchor, page), b = Math.max(anchor, page);
+        for (let p = a; p <= b; p++) nx.add(pk(f.key, p));
+      } else if (nx.has(pk(f.key, page))) nx.delete(pk(f.key, page));
+      else nx.add(pk(f.key, page));
+      return nx;
+    });
+    lastPick.current = { key: f.key, page };
+  }, []);
   const toggleDoc = useCallback((key: string) => {
     const d = byKey.get(key);
     if (!d) return;
-    setSelDocs((prev) => { const nx = new Set(prev); if (nx.has(d.id)) nx.delete(d.id); else nx.add(d.id); return nx; });
-  }, [byKey]);
-  const selCells = useMemo(() => {
-    const s = new Set<string>();
-    for (const d of rows) {
-      if (!selDocs.has(d.id)) continue;
-      const key = `prod:${d.id}`;
-      const n = Math.max(pageCounts[key] ?? 0, d.batesStart > 0 && d.batesEnd >= d.batesStart ? d.batesEnd - d.batesStart + 1 : 1);
-      for (let p = 1; p <= n; p++) s.add(pk(key, p));
+    const n = pagesOf(d);
+    setSelPages((prev) => {
+      const nx = new Set(prev);
+      let all = true;
+      for (let p = 1; p <= n; p++) if (!nx.has(pk(key, p))) { all = false; break; }
+      for (let p = 1; p <= n; p++) { if (all) nx.delete(pk(key, p)); else nx.add(pk(key, p)); }
+      return nx;
+    });
+  }, [byKey, pagesOf]);
+  // The documents the current selection touches, with their selected pages.
+  const selByDoc = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const cell of selPages) {
+      const hash = cell.lastIndexOf("#");
+      const key = cell.slice(0, hash), page = Number(cell.slice(hash + 1));
+      const d = byKey.get(key);
+      if (d) m.set(d.id, [...(m.get(d.id) ?? []), page]);
     }
-    return s;
-  }, [rows, selDocs, pageCounts]);
+    for (const v of m.values()) v.sort((a, b) => a - b);
+    return m;
+  }, [selPages, byKey]);
   const downloadSelected = () => {
-    const sel = rows.filter((d) => selDocs.has(d.id));
+    const sel = rows.filter((d) => selByDoc.has(d.id));
     sel.forEach((d, i) => setTimeout(() => {
       const a = document.createElement("a");
       a.href = `/admin/discovery-reviewer/${setId}/staged-file/${d.id}?dl=1`;
@@ -1387,14 +1417,47 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
     setNotice(`Downloading ${sel.length} document${sel.length === 1 ? "" : "s"} — each file named by its Bates range.`);
   };
   const sendToGreen = async () => {
-    const sel = rows.filter((d) => selDocs.has(d.id));
+    const sel = rows.filter((d) => selByDoc.has(d.id));
     if (!sel.length) return;
-    if (!confirm(`Mark ${sel.length} document${sel.length === 1 ? "" : "s"} as PRODUCED and move ${sel.length === 1 ? "it" : "them"} to the green tab?\n\nUse this for copies that already went out on their own. For a formal production (merged PDF + cover letter + link for the other side), use "Prepare production" below instead.`)) return;
+    if (!confirm(`Mark ${sel.length} document${sel.length === 1 ? "" : "s"} as PRODUCED and move ${sel.length === 1 ? "it" : "them"} to the green tab?\n\n(The whole document moves — the selection just picks which documents.)\n\nUse this for copies that already went out on their own. For a formal production (merged PDF + cover letter + link for the other side), use "Prepare production" below instead.`)) return;
     setMoving(true);
     const r = await sendStagedToProduced(setId, sel.map((d) => d.id));
     setMoving(false);
     if (!r.ok) setError(("error" in r && r.error) || "Couldn't mark them produced.");
-    else { setSelDocs(new Set()); onMoved(`${r.moved} document${r.moved === 1 ? "" : "s"} moved to Documents produced (${r.label}).`); router.refresh(); }
+    else { setSelPages(new Set()); onMoved(`${r.moved} document${r.moved === 1 ? "" : "s"} moved to Documents produced (${r.label}).`); router.refresh(); }
+  };
+  const batesOf = useCallback((d: StagedDoc, page: number) => {
+    const pb = d.pageBates ?? [];
+    return d.batesStart > 0 ? bates(d.batesPrefix, pb[page - 1] ?? d.batesStart + page - 1) : String(page);
+  }, []);
+  const deleteSelectedPages = async () => {
+    if (!selByDoc.size) return;
+    // A doc losing EVERY page should be removed, not emptied.
+    for (const [docId, pages] of selByDoc) {
+      const d = rows.find((r) => r.id === docId)!;
+      if (pages.length >= pagesOf(d)) { setError(`"${d.name}": that selection is the whole document — use its "remove" button instead.`); return; }
+    }
+    const totalPages = [...selByDoc.values()].reduce((n, v) => n + v.length, 0);
+    const preview = [...selByDoc.entries()].flatMap(([docId, pages]) => {
+      const d = rows.find((r) => r.id === docId)!;
+      return pages.map((p) => batesOf(d, p));
+    });
+    if (!confirm(`Delete ${totalPages} page${totalPages === 1 ? "" : "s"} (${preview.slice(0, 6).join(", ")}${preview.length > 6 ? "…" : ""}) from the staged cop${selByDoc.size === 1 ? "y" : "ies"}?\n\nThe pages come out of the outgoing PDF. Their Bates numbers are skipped — the remaining pages keep the numbers already stamped on them (a gap in the run). The pulled pages unlock in the red tab.`)) return;
+    setMoving(true);
+    let removed = 0;
+    for (const [docId, pages] of selByDoc) {
+      const r = await deleteStagedPages(setId, docId, pages);
+      if (!r.ok) { setError(("error" in r && r.error) || "Couldn't pull those pages."); break; }
+      removed += r.removed;
+    }
+    setMoving(false);
+    if (removed) {
+      setSelPages(new Set());
+      proxies.current.clear();
+      setTick((t) => t + 1);
+      setNotice(`${removed} page${removed === 1 ? "" : "s"} pulled from the staged cop${selByDoc.size === 1 ? "y" : "ies"} — the Bates run keeps its gap, and the source pages are selectable again in the red tab.`);
+      router.refresh();
+    }
   };
 
   // AI.fred's per-page notes on the staged copies (inherited from the source
@@ -1483,9 +1546,9 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
     return (
       <>
         <button onClick={() => toggleDoc(f.key)}
-          title={selDocs.has(d.id) ? "Deselect this document" : "Select this document (download it or send it to the green tab)"}
-          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${selDocs.has(d.id) ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}>
-          {selDocs.has(d.id) ? <CheckSquare size={12} /> : <Square size={12} />} select
+          title={selByDoc.has(d.id) ? "Deselect this document's pages" : "Select every page of this document"}
+          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${selByDoc.has(d.id) ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}>
+          {selByDoc.has(d.id) ? <CheckSquare size={12} /> : <Square size={12} />} select all
         </button>
         <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-yellow-900">
           {d.batesPrefix ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "pre-labeled"}
@@ -1511,21 +1574,28 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
           </div>
         )}
         <GoToPage onGo={goToPage} />
-        {view === "grid" && selDocs.size > 0 && (
+        {view === "grid" && selPages.size > 0 && (
           <span className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 px-2 py-1">
-            <span className="text-xs font-semibold">{selDocs.size} document{selDocs.size === 1 ? "" : "s"} selected</span>
+            <span className="text-xs font-semibold">{selPages.size} page{selPages.size === 1 ? "" : "s"} in {selByDoc.size} document{selByDoc.size === 1 ? "" : "s"}</span>
+            <button onClick={() => void deleteSelectedPages()} disabled={moving}
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              title="Pull just these pages out of the staged copies (their Bates numbers are skipped)">
+              {moving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete page{selPages.size === 1 ? "" : "s"}
+            </button>
             <button onClick={downloadSelected}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-xs hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
-              <Download size={12} /> Download
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-xs hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+              title="Download the documents these pages belong to">
+              <Download size={12} /> Download document{selByDoc.size === 1 ? "" : "s"}
             </button>
             <button onClick={() => void sendToGreen()} disabled={moving}
-              className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+              className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+              title="Move the documents these pages belong to into the green tab">
               {moving ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send to produced (green)
             </button>
-            <button onClick={() => setSelDocs(new Set())} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">clear</button>
+            <button onClick={() => setSelPages(new Set())} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">clear</button>
           </span>
         )}
-        <span className="text-xs text-[var(--c-ink-muted)]">This is the exact copy that goes out — click a page to select the document, double-click to read; the reader&apos;s Tools can burn a late redaction or remove the document.</span>
+        <span className="text-xs text-[var(--c-ink-muted)]">This is the exact copy that goes out — click a page to select it (shift-click for a range), double-click to read; the reader&apos;s Tools can burn a late redaction or remove the document.</span>
       </div>
       {notice && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -1547,13 +1617,12 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
           {files.map((f) => {
             const d = byKey.get(f.key)!;
             return (
-              <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={selCells} pageMark={noMark}
+              <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={selPages} pageMark={noMark}
                 setId={setId} shareToken={shareToken} flash={flash}
-                onTogglePage={(file) => toggleDoc(file.key)} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
+                onTogglePage={togglePage} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)}
-                pageLabel={(page) => (d.batesStart > 0 ? bates(d.batesPrefix, d.batesStart + page - 1) : String(page))}
-                cellTitle="Click to select this document · Double-click to read" />
+                pageLabel={(page) => batesOf(d, page)} />
             );
           })}
         </div>
@@ -1593,9 +1662,13 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
   const mainDoc = likelyMainDoc(rows.length ? rows : staged);
   const linkFor = (e: TocEntry) => (mainDoc?.url ? `${mainDoc.url}#page=${e.from}` : null);
   // Bates entries click straight through to the stamped copy at that page.
+  // A copy that lost pages carries its own per-page Bates list (gaps).
   const batesLink = (prefix: string, n: number) => {
     const d = staged.find((d) => d.url && d.batesPrefix === prefix && d.batesStart <= n && n <= d.batesEnd);
-    return d ? `${d.url}#page=${n - d.batesStart + 1}` : null;
+    if (!d) return null;
+    const pb = d.pageBates ?? [];
+    const page = pb.length ? pb.indexOf(n) + 1 : n - d.batesStart + 1;
+    return page >= 1 ? `${d.url}#page=${page}` : null;
   };
   const stagedForToc = rows.filter((d) => d.batesPrefix && d.batesStart > 0).map((d) => ({ prefix: d.batesPrefix, start: d.batesStart, end: d.batesEnd, name: d.name }));
 
@@ -1702,7 +1775,10 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.stagedToc} notes={contents.stagedNotes} tocFile="" linkFor={linkFor} batesBase={batesBase}
         batesLink={(prefix, n) => {
           const d = staged.find((d) => d.url && d.batesPrefix === prefix && d.batesStart <= n && n <= d.batesEnd);
-          return d ? `${d.url}#page=${n - d.batesStart + 1}` : null;
+          if (!d) return null;
+          const pb = d.pageBates ?? [];
+          const page = pb.length ? pb.indexOf(n) + 1 : n - d.batesStart + 1;
+          return page >= 1 ? `${d.url}#page=${page}` : null;
         }} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <IndexAndLabel setId={setId} docCount={staged.length} />

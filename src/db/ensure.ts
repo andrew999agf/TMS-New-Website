@@ -105,6 +105,7 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE discovery_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE share_files ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS page_bates jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS page_notes jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS ai_label varchar(300) NOT NULL DEFAULT ''`,

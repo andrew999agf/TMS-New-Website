@@ -68,3 +68,39 @@ export function compressPageRanges(pages: number[]): string {
   }
   return out.join(", ");
 }
+
+/**
+ * The record-keeping half of pulling pages OUT of a staged Bates copy: given
+ * the copy's current per-page arrays and the 1-based pages being dropped,
+ * produce every remapped column. Pure so the unit tests can hammer it.
+ *  - pageBates: the kept pages KEEP the numbers already stamped on them, so
+ *    the run gets a gap (materialized from batesStart when not yet tracked).
+ *  - sourcePages: materialized 1:1 for whole-file copies, so the pulled
+ *    pages unlock in the red tab.
+ *  - aiSections: retitled per kept page, contiguous runs collapsed.
+ */
+export function remapAfterPull(
+  doc: { batesStart: number; pageText: unknown; pageNotes: unknown; aiSections: unknown; sourcePages: unknown; pageBates: unknown },
+  total: number,
+  drop: number[],
+): { kept: number[]; pageText: string[]; pageNotes: string[]; aiSections: { from: number; to: number; title: string }[]; sourcePages: number[]; pageBates: number[] } {
+  const dropSet = new Set(drop);
+  const kept: number[] = [];
+  for (let p = 1; p <= total; p++) if (!dropSet.has(p)) kept.push(p);
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const pickStr = (v: unknown): string[] => kept.map((p) => { const x = arr(v)[p - 1]; return typeof x === "string" ? x : ""; });
+  const oldBates = arr(doc.pageBates) as number[];
+  const pageBates = doc.batesStart > 0 ? kept.map((p) => oldBates[p - 1] ?? doc.batesStart + p - 1) : [];
+  const oldSrc = arr(doc.sourcePages) as number[];
+  const sourcePages = kept.map((p) => oldSrc[p - 1] ?? p);
+  const oldSections = arr(doc.aiSections) as { from: number; to: number; title: string }[];
+  const aiSections: { from: number; to: number; title: string }[] = [];
+  kept.forEach((p, i) => {
+    const t = oldSections.find((s) => s && s.from <= p && p <= s.to)?.title;
+    if (!t) return;
+    const last = aiSections[aiSections.length - 1];
+    if (last && last.title === t && last.to === i) last.to = i + 1;
+    else aiSections.push({ from: i + 1, to: i + 1, title: t });
+  });
+  return { kept, pageText: pickStr(doc.pageText), pageNotes: pickStr(doc.pageNotes), aiSections, sourcePages, pageBates };
+}
