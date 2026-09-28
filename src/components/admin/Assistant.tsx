@@ -207,12 +207,21 @@ function MarkdownText({ body }: { body: string }) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
 
-    if (MD_TABLE_LINE.test(line)) {
+    if (MD_TABLE_LINE.test(line) || (line.trimStart().startsWith("|") && MD_TABLE_SEP.test(lines[i + 1] ?? ""))) {
       const rows: string[][] = [];
       let sawSep = false;
-      while (i < lines.length && MD_TABLE_LINE.test(lines[i])) {
+      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
         if (MD_TABLE_SEP.test(lines[i])) { sawSep = true; i++; continue; }
-        rows.push(lines[i].trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()));
+        // Models often split one row's cell content across several lines
+        // (missing the closing pipe) — glue lines until the row terminates,
+        // so the table renders instead of degrading into raw pipes.
+        let row = lines[i];
+        let guard = 0;
+        while (!/\|\s*$/.test(row) && i + 1 < lines.length && guard < 14) {
+          i++; guard++;
+          row += " " + lines[i].trim().replace(/^[-*•]\s+/, "• ");
+        }
+        rows.push(row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()));
         i++;
       }
       const head = sawSep && rows.length > 1 ? rows[0] : null;
