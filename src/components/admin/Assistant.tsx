@@ -408,6 +408,8 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   // deserve to know how long it's actually been and when to worry.
   const [noticeNow, setNoticeNow] = useState(() => Date.now());
   const [noticeMin, setNoticeMin] = useState(false);
+  // Phone/tablet: the power strip's cost/credit details start retracted.
+  const [stripOpen, setStripOpen] = useState(false);
   const prevNoticeMsg = useRef<string | null>(null);
   useEffect(() => {
     const msg = srv?.notice?.message ?? null;
@@ -892,7 +894,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const meta = MODE_META[mode];
 
   return (
-    <div className="relative flex h-[calc(100dvh-10rem)] max-w-6xl overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-sm sm:h-[calc(100vh-11rem)]">
+    <div className="relative flex max-w-6xl overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-sm max-lg:min-h-0 max-lg:w-full max-lg:flex-1 lg:h-[calc(100vh-11rem)]">
       {/* History rail — saved conversations. Always present on desktop; a
           toggled overlay panel on phones. Cream inset so it reads as the
           "shelf" beside the white conversation surface. */}
@@ -1005,10 +1007,31 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Power strip: the GPU server's live state, cost meter, and switch. */}
+        {/* Power strip: the GPU server's live state, cost meter, and switch.
+            Phone/tablet: the credit & money details start RETRACTED behind a
+            one-line status bar — tap Details to expand. Desktop: always full. */}
         {srv?.configured && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 font-medium">
+          <button
+            onClick={() => setStripOpen((o) => !o)}
+            className="flex w-full items-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-1.5 text-left text-xs lg:hidden"
+            title={stripOpen ? "Hide server & cost details" : "Show server & cost details"}
+          >
+            <span className={`h-2 w-2 shrink-0 rounded-full ${srv.state === "ready" ? "bg-green-500" : srv.state === "starting" ? "animate-pulse bg-amber-500" : srv.state === "error" ? "bg-red-500" : "bg-[var(--c-ink-muted)]/40"}`} />
+            <span className="min-w-0 truncate font-medium">
+              {srv.state === "ready" && "AI server on"}
+              {srv.state === "starting" && "Waking up — loading the model…"}
+              {srv.state === "stopped" && "AI server asleep"}
+              {srv.state === "missing" && "Server not found"}
+              {srv.state === "error" && <span className="text-red-600">Can&apos;t reach server controls</span>}
+            </span>
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-[var(--c-ink-muted)]">
+              {stripOpen ? "Hide" : "Details"} {stripOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </span>
+          </button>
+        )}
+        {srv?.configured && (
+          <div className={`${stripOpen ? "flex" : "hidden lg:flex"} flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-2 text-xs`}>
+            <span className="inline-flex items-center gap-1.5 font-medium max-lg:hidden">
               <span className={`h-2 w-2 rounded-full ${srv.state === "ready" ? "bg-green-500" : srv.state === "starting" ? "animate-pulse bg-amber-500" : srv.state === "error" ? "bg-red-500" : "bg-[var(--c-ink-muted)]/40"}`} />
               {srv.state === "ready" && <>AI server on · ${srv.costPerHr?.toFixed(2)}/hr</>}
               {srv.state === "starting" && <>Waking up — loading the model (~3 min)…</>}

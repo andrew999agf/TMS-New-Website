@@ -64,18 +64,22 @@ export default async function AssistantPage() {
   // The lux skin lives ONLY on this tab: a scoped wrapper re-points the
   // admin's CSS variables to the dark/gold palette, so every control inside
   // re-dresses itself while the sidebar and every other tab stay untouched.
+  // Phone/tablet (<lg) work like the ChatGPT/Claude apps: the page is exactly
+  // one viewport tall (no scrolling), the header shrinks to a slim brand bar,
+  // and the chat column flexes to fill whatever is left — composer pinned at
+  // the bottom. Desktop keeps the full lockup and tagline.
   return (
     <div className="aifred-lux">
       <div className="aifred-lux-glow" aria-hidden />
-      <header className="relative flex flex-wrap items-center gap-x-6 gap-y-1 px-4 pb-1 pt-3 sm:px-8">
+      <header className="relative flex shrink-0 flex-wrap items-center gap-x-6 gap-y-1 px-4 pb-1 pt-2 sm:px-8 lg:pt-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, no optimization needed */}
-        <img src="/aifred-logo.webp" alt="AI.fred — AI administrative assistant" className="aifred-logo -my-4 -ml-6 h-32 w-auto select-none mix-blend-screen sm:h-36" draggable={false} />
-        <p className="max-w-xl flex-1 basis-72 text-sm leading-relaxed text-[var(--c-ink-muted)]">
+        <img src="/aifred-logo.webp" alt="AI.fred — AI administrative assistant" className="aifred-logo -my-2 -ml-3 h-16 w-auto select-none mix-blend-screen lg:-my-4 lg:-ml-6 lg:h-36" draggable={false} />
+        <p className="hidden max-w-xl flex-1 basis-72 text-sm leading-relaxed text-[var(--c-ink-muted)] lg:block">
           The firm&apos;s in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site.
         </p>
       </header>
-      <div className="aifred-divider" aria-hidden />
-      <div className="relative p-2 sm:p-6 sm:pt-3">
+      <div className="aifred-divider shrink-0" aria-hidden />
+      <div className="relative p-2 sm:p-6 sm:pt-3 max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:pb-2">
         <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />
       </div>
     </div>

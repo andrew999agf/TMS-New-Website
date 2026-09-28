@@ -428,11 +428,34 @@
     linear-gradient(178deg, #0b101d 0%, #090d17 55%, #0a0e16 100%);
 }
 
+/* Phone/tablet: the AI.fred page is an APP — exactly one viewport tall
+   (100dvh minus the 2.25rem clock strip), header fixed, chat flexing to
+   fill, composer pinned. min-height must drop to 0 here or it would beat
+   the height and reintroduce page scroll. */
+@media not all and (min-width: 64rem) {
+  .aifred-lux {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 2.25rem);
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
 /* The logo PNG carries its own dark background; screen-blending plus an
    elliptical edge fade melts it into the page instead of sitting in a box. */
 .aifred-logo {
-  -webkit-mask-image: radial-gradient(ellipse 72% 80% at 50% 50%, #000 58%, transparent 97%);
-  mask-image: radial-gradient(ellipse 72% 80% at 50% 50%, #000 58%, transparent 97%);
+  /* Two crossed linear fades (intersected) melt ALL four bitmap edges into
+     the page — a radial ellipse can't hug this wide lockup without either
+     clipping the wordmark or leaving hard corners. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, #000 7%, #000 92%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 13%, #000 86%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 0%, #000 7%, #000 92%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 13%, #000 86%, transparent 100%);
+  mask-composite: intersect;
 }
 
 /* Golden light arcs: real gradient-stroked SVG sweeps with bloom and a

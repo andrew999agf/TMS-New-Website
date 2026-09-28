@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TimeClockButton } from "./TimeClockButton";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
   BarChart3,
@@ -38,9 +38,11 @@ import {
   BookUser,
   KeyRound,
   Map as MapIcon,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
@@ -117,6 +119,11 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  // Phone/tablet (<lg): the sidebar lives OFF-CANVAS and slides in — via the
+  // hamburger in the top strip or a swipe in from the left edge, exactly like
+  // the ChatGPT/Claude apps. Swipe left (or tap the backdrop) puts it away.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const allowed = new Set(allowedSections(user.role, user.permissions));
   const websiteTabs = WEBSITE_TABS.filter((t) => allowed.has(t.section));
   const canWebsite = websiteTabs.length > 0;
@@ -130,9 +137,30 @@ export function AdminShell({
   // screens start collapsed to the icon rail regardless of the saved
   // preference — the toggle still expands it on demand.
   useEffect(() => {
+    // Narrow screens use the off-canvas drawer (always full-width labels), so
+    // the icon-rail preference only applies from lg up.
     const small = window.matchMedia("(max-width: 1023px)").matches;
-    setCollapsed(small || localStorage.getItem("tms_admin_sidebar_collapsed") === "1");
+    setCollapsed(!small && localStorage.getItem("tms_admin_sidebar_collapsed") === "1");
   }, []);
+  // Navigating puts the drawer away, like any mobile app.
+  useEffect(() => { setDrawerOpen(false); }, [pathname]);
+  function openDrawer() {
+    setCollapsed(false); // drawer always shows full labels
+    setDrawerOpen(true);
+  }
+  function onTouchStart(e: React.TouchEvent) {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const t = touchStart.current;
+    touchStart.current = null;
+    if (!t) return;
+    const dx = e.changedTouches[0].clientX - t.x;
+    const dy = e.changedTouches[0].clientY - t.y;
+    if (Math.abs(dy) > 80) return; // mostly vertical: a scroll, not a swipe
+    if (!drawerOpen && t.x < 32 && dx > 48) openDrawer();
+    else if (drawerOpen && dx < -48) setDrawerOpen(false);
+  }
   function toggle() {
     setCollapsed((c) => {
       const next = !c;
@@ -142,11 +170,15 @@ export function AdminShell({
   }
 
   return (
-    <div className="min-h-screen flex bg-[var(--c-bg)] text-[var(--c-ink)]">
+    <div className="min-h-screen flex bg-[var(--c-bg)] text-[var(--c-ink)]" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {/* Backdrop behind the mobile drawer — tap anywhere to put it away. */}
+      {drawerOpen && <div className="fixed inset-0 z-40 bg-black/55 lg:hidden" onClick={() => setDrawerOpen(false)} aria-hidden />}
       <aside
         className={`${
           collapsed ? "w-16" : "w-60"
-        } shrink-0 bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-in-out`}
+        } shrink-0 bg-[var(--c-dark-bg)] text-[var(--c-dark-ink)] flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-in-out max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:h-full max-lg:shadow-2xl max-lg:transition-transform ${
+          drawerOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
+        }`}
       >
         <div
           className={`flex items-center border-b border-[var(--c-dark-border)] ${
@@ -172,9 +204,17 @@ export function AdminShell({
             onClick={toggle}
             aria-label={collapsed ? "Expand menu" : "Collapse menu"}
             title={collapsed ? "Expand menu" : "Collapse menu"}
-            className="shrink-0 text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] p-1"
+            className="shrink-0 text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] p-1 max-lg:hidden"
           >
             {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={18} />}
+          </button>
+          {/* Drawer close (phone/tablet only) — swipe left or backdrop tap also work. */}
+          <button
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close menu"
+            className="shrink-0 p-1 text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] lg:hidden"
+          >
+            <X size={18} />
           </button>
         </div>
 
@@ -288,7 +328,11 @@ export function AdminShell({
             render their own header. */}
         {/* On the AI.fred tab the strip joins the lux theme (colors only —
             same element, same behavior everywhere else). */}
-        <div className={`sticky top-0 z-40 flex h-9 items-center justify-end border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6 ${pathname.startsWith("/admin/assistant") ? "aifred-strip" : ""}`}>
+        <div className={`sticky top-0 z-40 flex h-9 items-center justify-end border-b border-[var(--c-border)] bg-[var(--c-surface)] px-3 sm:px-6 ${pathname.startsWith("/admin/assistant") ? "aifred-strip" : ""}`}>
+          {/* Phone/tablet: the sidebar starts off-canvas — this (or an edge swipe) brings it in. */}
+          <button onClick={openDrawer} className="mr-auto rounded p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)] lg:hidden" aria-label="Open menu" title="Menu">
+            <Menu size={17} />
+          </button>
           <AdminClock />
         </div>
         {onWebsite && <WebsiteSubnav tabs={websiteTabs} pathname={pathname} />}
