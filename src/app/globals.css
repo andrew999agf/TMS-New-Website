@@ -407,30 +407,32 @@
    sidebar and every other tab keep the standard theme. Pure styling:
    no functional element is added, removed, or renamed. */
 .aifred-lux {
-  --c-bg: #0a0e17;
-  --c-surface: #10141f;
-  --c-surface-2: #151a29;
-  --c-border: #2a3040;
-  --c-ink: #ece7db;
-  --c-ink-muted: #a29a89;
-  --c-accent: #d0a84e;
-  --c-accent-2: #e3c06c;
-  --c-on-accent: #16110a;
+  --c-bg: #0a0f1c;
+  --c-surface: #0f1626;
+  --c-surface-2: #141c30;
+  --c-border: #2d3652;
+  --c-ink: #f2ecdf;
+  --c-ink-muted: #aaa28d;
+  --c-accent: #d6ae52;
+  --c-accent-2: #ecc973;
+  --c-on-accent: #14100a;
   position: relative;
   isolation: isolate;
   min-height: 100%;
   color: var(--c-ink);
   background:
-    radial-gradient(1100px 420px at 85% -140px, rgba(208, 168, 78, 0.16), transparent 62%),
-    radial-gradient(900px 480px at -160px 108%, rgba(208, 168, 78, 0.10), transparent 60%),
-    linear-gradient(178deg, #0b0f19 0%, #090d15 55%, #0a0d14 100%);
+    radial-gradient(1100px 420px at 85% -140px, rgba(214, 174, 82, 0.17), transparent 62%),
+    radial-gradient(1500px 720px at 55% -280px, rgba(43, 66, 124, 0.22), transparent 65%),
+    radial-gradient(900px 480px at -160px 108%, rgba(214, 174, 82, 0.11), transparent 60%),
+    radial-gradient(1300px 640px at 108% 112%, rgba(36, 54, 102, 0.20), transparent 65%),
+    linear-gradient(178deg, #0b101d 0%, #090d17 55%, #0a0e16 100%);
 }
 
 /* The logo PNG carries its own dark background; screen-blending plus an
    elliptical edge fade melts it into the page instead of sitting in a box. */
 .aifred-logo {
-  -webkit-mask-image: radial-gradient(ellipse 60% 74% at 50% 48%, #000 52%, transparent 90%);
-  mask-image: radial-gradient(ellipse 60% 74% at 50% 48%, #000 52%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse 72% 80% at 50% 50%, #000 58%, transparent 97%);
+  mask-image: radial-gradient(ellipse 72% 80% at 50% 50%, #000 58%, transparent 97%);
 }
 
 /* Golden light arcs: real gradient-stroked SVG sweeps with bloom and a
@@ -441,27 +443,47 @@
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1400 700'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'1' y1%3D'0' x2%3D'0' y2%3D'1'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.9'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23d8a94e' stop-opacity%3D'.35'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'9'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.8'%2F%3E%3Cstop offset%3D'.35' stop-color%3D'%23f0c060' stop-opacity%3D'.25'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'9' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.5'%2F%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'1.8' fill%3D'none'%2F%3E%3Cpath d%3D'M 1480 230 Q 830 130 120 700' stroke%3D'url(%23g)' stroke-width%3D'1.1' fill%3D'none' opacity%3D'.6'%2F%3E%3Ccircle cx%3D'1210' cy%3D'58' r%3D'110' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E"), url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1200 640'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'1' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.85'%2F%3E%3Cstop offset%3D'.45' stop-color%3D'%23d8a94e' stop-opacity%3D'.3'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'8'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.75'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23f0c060' stop-opacity%3D'.22'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'8' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.45'%2F%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'1.4' fill%3D'none'%2F%3E%3Ccircle cx%3D'70' cy%3D'400' r%3D'100' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: right -180px top -120px, left -220px bottom -160px;
-  background-size: 1500px auto, 1250px auto;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  background-position: right -180px top -120px, left -220px bottom -160px, center bottom -210px, left -160px top -30px;
+  background-size: 1500px auto, 1250px auto, 135% auto, 950px auto;
+}
+/* Round-3 flares: a broad sweep across the page's lower band and a pair
+   of hairline arcs gliding past the logo — quiet, not busy. */
+.aifred-lux-glow {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1400 700'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'1' y1%3D'0' x2%3D'0' y2%3D'1'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.9'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23d8a94e' stop-opacity%3D'.35'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'9'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.8'%2F%3E%3Cstop offset%3D'.35' stop-color%3D'%23f0c060' stop-opacity%3D'.25'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'9' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.5'%2F%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'1.8' fill%3D'none'%2F%3E%3Cpath d%3D'M 1480 230 Q 830 130 120 700' stroke%3D'url(%23g)' stroke-width%3D'1.1' fill%3D'none' opacity%3D'.6'%2F%3E%3Ccircle cx%3D'1210' cy%3D'58' r%3D'110' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1200 640'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'1' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.85'%2F%3E%3Cstop offset%3D'.45' stop-color%3D'%23d8a94e' stop-opacity%3D'.3'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'8'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.75'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23f0c060' stop-opacity%3D'.22'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'8' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.45'%2F%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'1.4' fill%3D'none'%2F%3E%3Ccircle cx%3D'70' cy%3D'400' r%3D'100' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1600 520'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'0' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3Cstop offset%3D'.35' stop-color%3D'%23f6cd72' stop-opacity%3D'.7'%2F%3E%3Cstop offset%3D'.75' stop-color%3D'%23d8a94e' stop-opacity%3D'.2'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'9'%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cpath d%3D'M -120 150 Q 820 560 1720 30' stroke%3D'url(%23g)' stroke-width%3D'8' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.4'%2F%3E%3Cpath d%3D'M -120 150 Q 820 560 1720 30' stroke%3D'url(%23g)' stroke-width%3D'1.3' fill%3D'none' opacity%3D'.9'%2F%3E%3Cpath d%3D'M -120 240 Q 820 640 1740 130' stroke%3D'url(%23g)' stroke-width%3D'.9' fill%3D'none' opacity%3D'.45'%2F%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1000 520'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'1' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.55'%2F%3E%3Cstop offset%3D'.5' stop-color%3D'%23d8a94e' stop-opacity%3D'.18'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M -80 470 Q 330 40 1060 150' stroke%3D'url(%23g)' stroke-width%3D'1' fill%3D'none' opacity%3D'.5'%2F%3E%3Cpath d%3D'M -80 540 Q 360 130 1080 250' stroke%3D'url(%23g)' stroke-width%3D'.7' fill%3D'none' opacity%3D'.3'%2F%3E%3C%2Fsvg%3E");
 }
 
 /* Surfaces get a faint gold hairline + deep shadow so the cards float. */
 .aifred-lux .rounded-lg,
 .aifred-lux .rounded-xl {
-  box-shadow: 0 0 0 1px rgba(208, 168, 78, 0.05), 0 10px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 0 1px rgba(214, 174, 82, 0.09), 0 12px 36px rgba(0, 0, 0, 0.5);
 }
 
 /* The gold primary buttons deserve a touch of sheen. */
 .aifred-lux .btn-accent {
-  background-image: linear-gradient(180deg, #e2bd66 0%, #cfa64a 55%, #b98f36 100%);
-  border-color: rgba(226, 189, 102, 0.6);
-  color: #16110a;
+  background-image: linear-gradient(180deg, #f2d284 0%, #ddb35a 52%, #c2973c 100%);
+  border-color: rgba(240, 208, 128, 0.75);
+  color: #14100a;
   text-shadow: none;
 }
 .aifred-lux .btn-accent:hover {
-  background-image: linear-gradient(180deg, #ecc978 0%, #d9b158 55%, #c39a3e 100%);
+  background-image: linear-gradient(180deg, #f8dc92 0%, #e7bf66 52%, #cda246 100%);
+}
+
+/* Secondary buttons: crisp gold hairlines instead of gray. */
+.aifred-lux .btn-outline {
+  border-color: rgba(216, 178, 94, 0.38);
+  color: #eee8d8;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+.aifred-lux .btn-outline:hover {
+  border-color: rgba(236, 201, 115, 0.62);
+  color: #f6f1e4;
+  background-color: rgba(214, 174, 82, 0.08);
 }
 
 /* Light leftovers that don't ride the variables get scoped repaints:
@@ -494,7 +516,7 @@
 .aifred-divider {
   height: 1px;
   margin: 0.25rem 2rem 0.5rem;
-  background: linear-gradient(90deg, transparent, rgba(214, 176, 92, 0.55) 18%, rgba(214, 176, 92, 0.55) 55%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(224, 186, 100, 0.7) 18%, rgba(224, 186, 100, 0.7) 55%, transparent);
 }
 
 /* Deep-polish pass: sheen on raised surfaces, glow on the gold, focus
@@ -504,7 +526,7 @@
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0) 46%);
 }
 .aifred-lux .btn-accent {
-  box-shadow: 0 0 20px rgba(208, 168, 78, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 22px rgba(214, 176, 92, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .aifred-lux :is(input, textarea, select):focus {
   outline: none;
@@ -513,7 +535,7 @@
 }
 .aifred-lux button.rounded-lg:hover,
 .aifred-lux button.rounded-md:hover {
-  border-color: rgba(214, 176, 92, 0.4);
+  border-color: rgba(224, 188, 104, 0.5);
 }
 @keyframes aifredBreathe {
   from { opacity: 0.55; }

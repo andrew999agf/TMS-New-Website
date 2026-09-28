@@ -64,7 +64,7 @@ export default async function AssistantPage() {
       <div className="aifred-lux-glow" aria-hidden />
       <header className="relative flex flex-wrap items-center gap-x-6 gap-y-1 px-4 pb-1 pt-3 sm:px-8">
         {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, no optimization needed */}
-        <img src="/aifred-logo.png" alt="AI.fred — your personal AI assistant" className="aifred-logo -my-3 -ml-6 h-28 w-auto select-none mix-blend-screen sm:h-32" draggable={false} />
+        <img src="/aifred-logo.webp" alt="AI.fred — AI administrative assistant" className="aifred-logo -my-4 -ml-6 h-32 w-auto select-none mix-blend-screen sm:h-36" draggable={false} />
         <p className="max-w-xl flex-1 basis-72 text-sm leading-relaxed text-[var(--c-ink-muted)]">
           The firm&apos;s in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site.
         </p>
