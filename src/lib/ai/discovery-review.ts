@@ -48,6 +48,9 @@ export type SweepResult = {
   /** Case-wide page-note progress — the number people actually watch. */
   pagesDone: number;
   pagesTotal: number;
+  /** Documents carrying ANY label status — moves even mid-document, so the
+   *  stall watchdog can tell real work from a frozen loop. */
+  statusDone: number;
 };
 
 /** Sum of readable pages vs. pages already annotated, across the case. */
@@ -274,6 +277,7 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
     return {
       total: targetsNow.length, labeled: finished, remaining: targetsNow.length - finished,
       errors: 0, needsVision: 0, done: false, ...pageProgress(targetsNow),
+      statusDone: targetsNow.filter((t) => t.aiLabelStatus).length,
       stage: `Reading document text first… ${prog.indexed} of ${prog.total} documents${prog.current ? ` — ${prog.current}` : ""}`,
     };
   }
@@ -392,14 +396,14 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
     }
   } catch { /* notices are a nicety */ }
 
-  return { total, labeled: total - remaining, remaining, errors, needsVision, done, ...pp, ...(done ? {} : stage ? { stage } : {}) };
+  return { total, labeled: total - remaining, remaining, errors, needsVision, done, ...pp, statusDone: after.filter((t) => t.aiLabelStatus).length, ...(done ? {} : stage ? { stage } : {}) };
 }
 
 /** Progress for the UI without doing any work. */
-export async function reviewStatus(setId: number): Promise<{ total: number; remaining: number; errors: number } | { error: string }> {
+export async function reviewStatus(setId: number): Promise<{ total: number; remaining: number; errors: number; pagesDone: number; pagesTotal: number; statusDone: number } | { error: string }> {
   if (!db) return { error: "Database not configured." };
   const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
   if (!set) return { error: `No discovery set #${setId}.` };
   const targets = await reviewTargets(setId, set.matter);
-  return { total: targets.length, remaining: targets.filter(needsWork).length, errors: targets.filter((t) => t.aiLabelStatus === "error").length, ...pageProgress(targets) };
+  return { total: targets.length, remaining: targets.filter(needsWork).length, errors: targets.filter((t) => t.aiLabelStatus === "error").length, ...pageProgress(targets), statusDone: targets.filter((t) => t.aiLabelStatus).length };
 }

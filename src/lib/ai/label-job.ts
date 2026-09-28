@@ -178,7 +178,7 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
       // The stall watchdog: a chunk that reports success but moved no number
       // at all counts against the job. A model that answers with unusable
       // output otherwise loops on the same documents forever.
-      const snapshot = `${result.total}|${result.remaining}|${result.pagesDone}|${result.pagesTotal}`;
+      const snapshot = `${result.total}|${result.remaining}|${result.pagesDone}|${result.pagesTotal}|${result.statusDone}`;
       if (cur.progress === snapshot) {
         cur.stalled = (cur.stalled ?? 0) + 1;
         if (cur.stalled >= MAX_STALLED_CHUNKS) {
@@ -186,7 +186,7 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
           await saveJobs(fresh);
           try {
             await setAiNotice(
-              `Read & label stopped: ${MAX_STALLED_CHUNKS} rounds in a row made no progress — the AI is answering but not producing usable labels or notes. Copy the System report at the bottom of AI.fred for the developer. ${RESUME_LINE}`,
+              `Read & label stopped: ${MAX_STALLED_CHUNKS} rounds in a row made no progress — usually a document that won't open anymore, or AI answers that can't be used. The Read & label box lists documents that couldn't be read (Copy report), and the System report at the bottom of AI.fred has the rest. ${RESUME_LINE}`,
               { chatBlocked: false, minutes: 60, kind: "review" },
             );
           } catch { /* nicety */ }

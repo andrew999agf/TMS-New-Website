@@ -143,10 +143,23 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
     return true;
   } catch (e) {
     console.error(`[text-index] ${row.kind}:${row.id} "${row.name}" failed:`, e);
-    // A document that opened before (partial progress exists) hit transient
-    // trouble — keep it retryable. One that can't even open is a real failure.
-    if (row.pageText.length > 0) return true; // stays pending; next sweep retries
-    await saveProgress(row, [], null, "failed", reasonFrom(e));
+    const reason = reasonFrom(e);
+    // A document that opened before (partial progress exists) may just have
+    // hit transient trouble — but ONLY a few times. Unlimited retries once
+    // froze whole cases: the indexing gate ran this same doomed open every
+    // chunk forever while 650 healthy pages waited. Three strikes → failed,
+    // with the real reason on the row for the failure box.
+    if (row.pageText.length > 0) {
+      const m = /^open-fail:(\d+):/.exec(row.textError || "");
+      const tries = (m ? Number(m[1]) : 0) + 1;
+      if (tries >= 3) {
+        await saveProgress(row, row.pageText, null, "failed", `stored file stopped opening after page ${row.pageText.length} was indexed — ${reason}`);
+        return true;
+      }
+      await saveProgress(row, row.pageText, null, "pending", `open-fail:${tries}:${reason}`);
+      return true;
+    }
+    await saveProgress(row, [], null, "failed", reason);
     return true;
   } finally {
     await handle?.close();
