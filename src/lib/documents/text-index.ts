@@ -123,7 +123,9 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
     handle = await openPdf(row);
     const doc = handle.doc;
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
-    const pages = [...row.pageText];
+    // A healing re-extraction (frozen staged copy) starts over from page 1;
+    // everything else resumes where the last chunk stopped.
+    const pages = row.kind === "production" && row.textError === "reindex-copy" ? [] : [...row.pageText];
     let total = pages.reduce((n, p) => n + p.length, 0);
 
     for (let n = pages.length + 1; n <= pageCount; n++) {
@@ -143,7 +145,9 @@ async function indexOne(row: Row, budgetMs: number): Promise<boolean> {
         pages.push("");
       }
     }
-    await saveProgress(row, pages, doc.numPages, "done");
+    // Production copies get a breadcrumb saying their text came off the
+    // stamped file itself, so the heal in targetsFor never re-runs on them.
+    await saveProgress(row, pages, doc.numPages, "done", row.kind === "production" ? "fulltext-extracted" : "");
     return true;
   } catch (e) {
     console.error(`[text-index] ${row.kind}:${row.id} "${row.name}" failed:`, e);
@@ -185,7 +189,35 @@ async function targetsFor(setId: number): Promise<Row[]> {
     }
   }
   const pdocs = await db!.select().from(productionDocs).where(eq(productionDocs.setId, setId));
-  for (const p of pdocs) out.push({ kind: "production", id: p.id, name: p.name, url: p.url, contentType: p.contentType, sizeBytes: p.sizeBytes, pageText: asPages(p.pageText), textStatus: p.textStatus, textError: p.textError });
+  for (const p of pdocs) {
+    const row: Row = { kind: "production", id: p.id, name: p.name, url: p.url, contentType: p.contentType, sizeBytes: p.sizeBytes, pageText: asPages(p.pageText), textStatus: p.textStatus, textError: p.textError };
+    // Heal frozen copies: a copy staged while its source was still being
+    // indexed carried whatever text existed at that moment and was marked
+    // done — leaving stamped pages unsearchable forever. Re-extract from the
+    // stamped file itself (redactions are burned into it, so nothing removed
+    // can come back). A stamped page always extracts at least its Bates
+    // label, so this converges after one re-extraction per copy.
+    const isPdf = (p.contentType ?? "") === "application/pdf" || /\.pdf$/i.test(p.name);
+    const n = p.pageCount ?? row.pageText.length;
+    // "fulltext-extracted" marks a copy whose text came from the stamped file
+    // itself — heal each copy at most once, or cap-limited giants would
+    // re-extract on every sweep.
+    if (isPdf && p.batesStart > 0 && effectiveStatus(row) === "done" && row.textError === "") {
+      for (let i = 0; i < n; i++) {
+        if (!(row.pageText[i] ?? "").trim()) {
+          // "reindex-copy" tells indexOne to restart extraction from page 1
+          // once the file OPENS (the carried array's length would otherwise
+          // read as "already done" and the holes would stay). The carried
+          // text is only replaced after a successful open, so a transient
+          // fetch failure can't wipe it.
+          row.textStatus = "pending";
+          row.textError = "reindex-copy";
+          break;
+        }
+      }
+    }
+    out.push(row);
+  }
   return out;
 }
 

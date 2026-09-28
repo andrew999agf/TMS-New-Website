@@ -862,6 +862,7 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null;
       pageText: string[]; pageNotes: string[]; aiSections: SrcSection[];
       aiLabel: string; aiDescription: string; aiLabelStatus: string; aiLabeledAt: Date | null;
+      textStatus: string;
     };
     const srcPages = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((p) => (typeof p === "string" ? p : "")) : []);
     const srcSections = (v: unknown): SrcSection[] => (Array.isArray(v) ? (v as SrcSection[]).filter((x) => x && Number.isFinite(x.from) && Number.isFinite(x.to) && x.title) : []);
@@ -884,13 +885,13 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const sources: Source[] = [];
     if (shareIds.length) {
       for (const f of (await db.select().from(shareFiles).where(inArray(shareFiles.id, shareIds))).filter((f) => folderIds.has(f.folderId))) {
-        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), pageNotes: srcPages(f.pageNotes), aiSections: srcSections(f.aiSections), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt });
+        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), pageNotes: srcPages(f.pageNotes), aiSections: srcSections(f.aiSections), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt, textStatus: f.textStatus });
       }
     }
     if (docIds.length) {
       // Documents moved into the client bucket from the opposing pile.
       for (const d of (await db.select().from(discoveryDocs).where(inArray(discoveryDocs.id, docIds))).filter((d) => d.setId === setId && d.bucket === "client")) {
-        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), pageNotes: srcPages(d.pageNotes), aiSections: srcSections(d.aiSections), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt });
+        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), pageNotes: srcPages(d.pageNotes), aiSections: srcSections(d.aiSections), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt, textStatus: d.textStatus });
       }
     }
     if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
@@ -992,7 +993,11 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         pageText: prodText,
         pageNotes: prodNotes,
         aiSections: prodSections,
-        textStatus: prodText.some((p) => p.trim()) || !isPdfSrc ? "done" : "pending",
+        // Index state follows the SOURCE: a copy staged while the source was
+        // still being indexed must stay "pending" so the indexer finishes the
+        // job from the stamped file — a partial carry frozen as "done" is how
+        // staged copies used to lose their searchable text.
+        textStatus: !isPdfSrc || f.textStatus === "done" || (f.textStatus === "" && f.pageText.some((p) => p.trim())) ? "done" : "pending",
         aiLabel: f.aiLabel, aiDescription: f.aiDescription,
         aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt,
         status: "staged",
