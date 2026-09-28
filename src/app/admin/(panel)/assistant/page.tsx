@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AdminHeader } from "@/components/admin/AdminShell";
+
 import { Assistant } from "@/components/admin/Assistant";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath, canUseAssistantCode } from "@/lib/admin-sections";
@@ -56,15 +56,22 @@ export default async function AssistantPage() {
   // everyone else needs the checkbox in User Management).
   const codeAllowed = canUseAssistantCode(session.role, session.permissions);
 
+  // The lux skin lives ONLY on this tab: a scoped wrapper re-points the
+  // admin's CSS variables to the dark/gold palette, so every control inside
+  // re-dresses itself while the sidebar and every other tab stay untouched.
   return (
-    <>
-      <AdminHeader
-        title="AI.fred"
-        description="The firm's in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site."
-      />
-      <div className="p-2 sm:p-6">
+    <div className="aifred-lux">
+      <div className="aifred-lux-glow" aria-hidden />
+      <header className="relative flex flex-col items-center px-6 pb-1 pt-5 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, no optimization needed */}
+        <img src="/aifred-logo.png" alt="AI.fred — your personal AI assistant" className="aifred-logo h-28 w-auto select-none mix-blend-screen sm:h-32" draggable={false} />
+        <p className="mt-1 max-w-3xl text-sm text-[var(--c-ink-muted)]">
+          The firm&apos;s in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site.
+        </p>
+      </header>
+      <div className="relative p-2 sm:p-6 sm:pt-3">
         <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />
       </div>
-    </>
+    </div>
   );
 }

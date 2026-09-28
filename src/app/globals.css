@@ -399,3 +399,102 @@
 .pdf-text-layer ::selection {
   background: rgba(37, 99, 235, 0.35);
 }
+
+/* ------------------------------------------------------------------ */
+/* AI.fred luxury skin — scoped to the assistant tab ONLY. It works by
+   re-pointing the admin's CSS variables inside .aifred-lux, so every
+   control on that page re-dresses itself in dark + gold while the
+   sidebar and every other tab keep the standard theme. Pure styling:
+   no functional element is added, removed, or renamed. */
+.aifred-lux {
+  --c-bg: #0a0e17;
+  --c-surface: #10141f;
+  --c-border: #2a3040;
+  --c-ink: #ece7db;
+  --c-ink-muted: #a29a89;
+  --c-accent: #d0a84e;
+  --c-on-accent: #16110a;
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  color: var(--c-ink);
+  background:
+    radial-gradient(1100px 420px at 85% -140px, rgba(208, 168, 78, 0.16), transparent 62%),
+    radial-gradient(900px 480px at -160px 108%, rgba(208, 168, 78, 0.10), transparent 60%),
+    linear-gradient(178deg, #0b0f19 0%, #090d15 55%, #0a0d14 100%);
+}
+
+/* The logo PNG carries its own dark background; screen-blending plus an
+   elliptical edge fade melts it into the page instead of sitting in a box. */
+.aifred-logo {
+  -webkit-mask-image: radial-gradient(ellipse 60% 74% at 50% 48%, #000 52%, transparent 90%);
+  mask-image: radial-gradient(ellipse 60% 74% at 50% 48%, #000 52%, transparent 90%);
+}
+
+/* Golden light arcs, like the mock: pure decoration behind the content. */
+.aifred-lux-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.aifred-lux-glow::before,
+.aifred-lux-glow::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  border-top-color: rgba(222, 184, 96, 0.5);
+  filter: blur(0.4px) drop-shadow(0 0 14px rgba(222, 184, 96, 0.35));
+  transform: rotate(-16deg);
+}
+.aifred-lux-glow::before {
+  width: 1300px;
+  height: 700px;
+  top: -430px;
+  right: -260px;
+}
+.aifred-lux-glow::after {
+  width: 1000px;
+  height: 560px;
+  bottom: -420px;
+  left: -320px;
+  transform: rotate(-14deg) scaleX(-1);
+}
+
+/* Surfaces get a faint gold hairline + deep shadow so the cards float. */
+.aifred-lux .rounded-lg,
+.aifred-lux .rounded-xl {
+  box-shadow: 0 0 0 1px rgba(208, 168, 78, 0.05), 0 10px 34px rgba(0, 0, 0, 0.42);
+}
+
+/* The gold primary buttons deserve a touch of sheen. */
+.aifred-lux .btn-accent {
+  background-image: linear-gradient(180deg, #e2bd66 0%, #cfa64a 55%, #b98f36 100%);
+  border-color: rgba(226, 189, 102, 0.6);
+  color: #16110a;
+  text-shadow: none;
+}
+.aifred-lux .btn-accent:hover {
+  background-image: linear-gradient(180deg, #ecc978 0%, #d9b158 55%, #c39a3e 100%);
+}
+
+/* Scoped scrollbars to match the dark chrome. */
+.aifred-lux *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.aifred-lux *::-webkit-scrollbar-thumb {
+  background: #2c3346;
+  border-radius: 8px;
+  border: 2px solid #0b0f19;
+}
+.aifred-lux *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Selection tint inside the lux surface. */
+.aifred-lux ::selection {
+  background: rgba(208, 168, 78, 0.35);
+}
