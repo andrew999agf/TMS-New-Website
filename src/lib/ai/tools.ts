@@ -71,7 +71,7 @@ const TOOL_DEFS: ToolDef[] = [
   {
     name: "read_document",
     description:
-      "Read the extracted text of one document, page by page: 'discovery' (opposing/client piles), 'exhibit', 'client' (a client-portal upload, by fileId), or 'production' (a staged/produced Bates copy — each page comes back with its Bates number, so cite those). Use list_discovery_documents or list_exhibits first to find the id. Large documents come back in page ranges — ask for further pages as needed. A document whose text isn't indexed yet says so — tell the user the 'Index text' button (or an AI review) in the Discovery Reviewer will fix it; NEVER tell them to re-OCR or re-upload the file.",
+      "Read one document: 'discovery' (opposing/client piles), 'exhibit', 'client' (a client-portal upload, by fileId), or 'production' (a staged/produced Bates copy — each page comes back with its Bates number, so cite those). Use list_discovery_documents or list_exhibits first to find the id — the listing's sections map tells you WHICH page range to read. TWO SPEEDS: notes_only=true returns just AI.fred's one-line note per page (dozens of pages per call — the right way to SKIM a big binder or a section); the default returns full page text (a few pages per call — for the handful of pages you will actually cite). A document whose text isn't indexed yet says so — tell the user the 'Index text' button (or an AI review) in the Discovery Reviewer will fix it; NEVER tell them to re-OCR or re-upload the file.",
     parameters: {
       type: "object",
       properties: {
@@ -79,6 +79,7 @@ const TOOL_DEFS: ToolDef[] = [
         doc_id: { type: "integer", description: "The document id from a listing tool." },
         page_from: { type: "integer", description: "First page to read (1-based). Default 1." },
         page_to: { type: "integer", description: "Last page to read (inclusive). Default: as many as fit." },
+        notes_only: { type: "boolean", description: "true = skim: only AI.fred's per-page notes, no text — covers far more pages per call." },
       },
       required: ["source", "doc_id"],
     },
@@ -220,7 +221,7 @@ export async function runAssistantTool(name: string, args: Record<string, unknow
       case "get_case": return pack(await getCase(normMatter(args.matter)));
       case "list_discovery_documents": return pack(await listDiscovery(normMatter(args.matter)));
       case "list_exhibits": return pack(await listExhibits(normMatter(args.matter)));
-      case "read_document": return pack(await readDocument(String(args.source), Number(args.doc_id), args.page_from == null ? undefined : Number(args.page_from), args.page_to == null ? undefined : Number(args.page_to)));
+      case "read_document": return pack(await readDocument(String(args.source), Number(args.doc_id), args.page_from == null ? undefined : Number(args.page_from), args.page_to == null ? undefined : Number(args.page_to), args.notes_only === true));
       case "search_documents": return pack(await searchDocuments(normMatter(args.matter), String(args.query ?? "")));
       case "get_pretrial": return pack(await getPretrial(normMatter(args.matter)));
       case "list_intake": return pack(await listIntake(String(args.status ?? ""), Number(args.limit) || 25));
@@ -310,7 +311,7 @@ async function listDiscovery(matter: string) {
   if (!sets.length) return { note: `No discovery sets for matter "${matter}".` };
   const setIds = sets.map((s) => s.id);
   const [docs, marks, pdocs, prods] = await Promise.all([
-    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription, aiLabelStatus: discoveryDocs.aiLabelStatus, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
+    db!.select({ id: discoveryDocs.id, setId: discoveryDocs.setId, name: discoveryDocs.name, bucket: discoveryDocs.bucket, pageCount: discoveryDocs.pageCount, servedAt: discoveryDocs.servedAt, servedBy: discoveryDocs.servedBy, servedTo: discoveryDocs.servedTo, createdAt: discoveryDocs.createdAt, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription, aiLabelStatus: discoveryDocs.aiLabelStatus, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes, aiSections: discoveryDocs.aiSections }).from(discoveryDocs).where(inArray(discoveryDocs.setId, setIds)),
     db!.select({ party: discoveryMarks.party, number: discoveryMarks.number, label: discoveryMarks.label, title: discoveryMarks.title, pages: discoveryMarks.pages }).from(discoveryMarks).where(inArray(discoveryMarks.setId, setIds)),
     db!.select().from(productionDocs).where(inArray(productionDocs.setId, setIds)),
     db!.select().from(productions).where(inArray(productions.setId, setIds)),
@@ -330,13 +331,13 @@ async function listDiscovery(matter: string) {
     }
   } catch { /* share tables optional */ }
   return {
-    sets: sets.map((s) => ({ id: s.id, name: s.name, causeNumber: s.causeNumber })),
-    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
-    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined })),
+    sets: sets.map((s) => ({ id: s.id, name: s.name, causeNumber: s.causeNumber, ...(s.prodToc?.trim() ? { contentsAndNotes: s.prodToc.slice(0, 2000) } : {}) })),
+    opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections), ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
+    receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections) })),
     clientUploadedFiles: clientFiles,
     exhibitDesignations: marks.map((m) => ({ designation: m.label || `${m.party}-${m.number}`, title: m.title, pageCount: Array.isArray(m.pages) ? (m.pages as unknown[]).length : 0 })),
     productionPipeline: {
-      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ docId: d.id, name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)", aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined })),
+      staged: pdocs.filter((d) => d.status !== "produced").map((d) => ({ docId: d.id, name: d.name, request: d.requestLabel || undefined, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : "(as-is, pre-labeled)", aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections) })),
       produced: prods.map((p) => ({ label: p.label, producedAt: p.producedAt?.toISOString().slice(0, 10) ?? null, documents: pdocs.filter((d) => d.productionId === p.id).map((d) => ({ docId: d.id, name: d.name, bates: d.batesPrefix ? `${d.batesPrefix}${String(d.batesStart).padStart(6, "0")}–${d.batesPrefix}${String(d.batesEnd).padStart(6, "0")}` : undefined, aiLabel: d.aiLabel || undefined })) })),
       note: "Read a staged/produced copy with read_document source 'production' (docId above) — its pages carry Bates numbers. Client-portal files: source 'client' with fileId.",
     },
@@ -365,14 +366,19 @@ async function listExhibits(matter: string) {
 }
 
 const hasText = (v: unknown): boolean => Array.isArray(v) && (v as string[]).some((p) => p && p.trim());
+const secList = (v: unknown): { from: number; to: number; title: string }[] | undefined =>
+  Array.isArray(v) && v.length
+    ? (v as { from: number; to: number; title: string }[]).slice(0, 80).map((x) => ({ from: x.from, to: x.to, title: String(x.title ?? "").slice(0, 110) }))
+    : undefined;
 const noteCount = (v: unknown): number => (Array.isArray(v) ? (v as string[]).filter((n) => n && n.trim()).length : 0);
 
 const NOT_INDEXED_NOTE =
   "This document's text hasn't been indexed yet (big files are indexed on demand). The 'Index text' button — or an AI review — in that case's Discovery Reviewer pulls the text in; the file itself is fine and does NOT need re-OCR or re-upload. If it's a photo or a scan with no text layer, the AI review's vision pass labels it instead.";
 
-async function readDocument(source: string, docId: number, pageFrom?: number, pageTo?: number) {
+async function readDocument(source: string, docId: number, pageFrom?: number, pageTo?: number, notesOnly = false) {
   if (!Number.isFinite(docId)) return { error: "doc_id is required." };
   let name = "", pages: string[] = [], pageNotes: string[] = [];
+  let sections: { from: number; to: number; title: string }[] | undefined;
   let batesFor: ((pageIdx: number) => string | undefined) | null = null;
   let label: { aiLabel: string; aiDescription: string } | null = null;
   const asArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
@@ -384,17 +390,20 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
     const [row] = await db!.select().from(shareFiles).where(eq(shareFiles.id, docId));
     if (!row) return { error: `No client-uploaded file #${docId}.` };
     name = row.filename; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
+    sections = secList(row.aiSections);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   } else if (source === "production") {
     const [row] = await db!.select().from(productionDocs).where(eq(productionDocs.id, docId));
     if (!row) return { error: `No production document #${docId}.` };
     name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
+    sections = secList(row.aiSections);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
     if (row.batesPrefix) batesFor = (i) => `${row.batesPrefix}${String(row.batesStart + i).padStart(6, "0")}`;
   } else {
-    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
+    const [row] = await db!.select({ name: discoveryDocs.name, pageText: discoveryDocs.pageText, pageNotes: discoveryDocs.pageNotes, aiLabel: discoveryDocs.aiLabel, aiDescription: discoveryDocs.aiDescription, aiSections: discoveryDocs.aiSections }).from(discoveryDocs).where(eq(discoveryDocs.id, docId));
     if (!row) return { error: `No discovery document #${docId}.` };
     name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
+    sections = secList(row.aiSections);
     if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   }
   if (!pages.some((p) => p && p.trim())) {
@@ -403,20 +412,26 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
   }
   const from = Math.max(1, pageFrom ?? 1);
   const to = Math.min(pages.length, Math.max(from, pageTo ?? pages.length));
-  const out: { page: number; bates?: string; note?: string; text: string }[] = [];
+  const out: { page: number; bates?: string; note?: string; text?: string }[] = [];
   let budget = 11000;
   let last = from - 1;
   for (let p = from; p <= to && budget > 0; p++) {
-    const text = (pages[p - 1] ?? "").slice(0, 3000);
     const note = (pageNotes[p - 1] ?? "").slice(0, 400);
-    budget -= text.length + note.length + 20;
-    out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), ...(note ? { note } : {}), text });
+    if (notesOnly) {
+      budget -= note.length + 14;
+      out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), note: note || "(no note — blank or image page)" });
+    } else {
+      const text = (pages[p - 1] ?? "").slice(0, 3000);
+      budget -= text.length + note.length + 20;
+      out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), ...(note ? { note } : {}), text });
+    }
     last = p;
   }
   return {
-    document: name, totalPages: pages.length, pagesReturned: `${from}–${last}`,
+    document: name, totalPages: pages.length, pagesReturned: `${from}–${last}`, mode: notesOnly ? "notes-only skim" : "full text",
     ...(label ? { aiLabel: label.aiLabel } : {}),
-    ...(last < to || to < pages.length ? { note: `More pages exist — call again with page_from: ${last + 1}.` } : {}),
+    ...(sections?.length ? { sections } : {}),
+    ...(last < to || to < pages.length ? { note: `More pages exist — call again with page_from: ${last + 1}${notesOnly ? "" : " (or notes_only: true to skim faster)"}.` } : {}),
     pages: out,
   };
 }

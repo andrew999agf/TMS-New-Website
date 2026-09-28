@@ -97,13 +97,18 @@ const TOOLS_PROMPT =
   "searchable — never tell the user to index anything or press 'Index text'; a zero-hit search means the phrase isn't there, " +
   "so try different wording. " +
   "ANALYTICAL CASE QUESTIONS ('what evidence do we have of X', strengths and weaknesses, case status): work like a Texas " +
-  "big-law litigation senior associate, not a search box. Pull get_case (parties, notes, pleadings) and " +
-  "list_discovery_documents first — the AI labels, page notes, and section maps are your file review. Then a FEW targeted " +
-  "searches using SUBSTANTIVE terms (party names, aliases, the assets and acts at issue — 'Facebook', 'eBay', 'nici25', " +
-  "'commission' — never just the legal label like 'fiduciary'). Then give your JUDGMENT: map what the file shows onto the " +
-  "elements of the claim under the relevant Texas law, cite a document and page for every point, and close with what is " +
-  "thin or missing. A literal phrase being absent from the text is NEVER 'no evidence' — reason from what IS there. " +
-  "Budget roughly six tool calls per answer; when you near it, STOP searching and write the answer from what you have. " +
+  "big-law litigation senior associate doing a TWO-PASS file review, never a page-one-to-page-N read. " +
+  "PASS 1 — the map (cheap, never blows your budget): get_case (parties, notes, pleadings) + list_discovery_documents. " +
+  "Every document there carries its label, summary, SECTION MAP (contiguous sub-documents with page ranges), and the set's " +
+  "shared contents-and-notes — that IS the file review; most questions are answerable from it alone. " +
+  "PASS 2 — the drill (targeted): pick the few relevant sections, skim them with read_document notes_only:true (dozens of " +
+  "pages of one-line notes per call), and pull FULL text only for the handful of pages you will actually cite. A couple of " +
+  "search_documents calls with SUBSTANTIVE terms (party names, aliases, assets, acts — 'Facebook', 'eBay', 'nici25', " +
+  "'commission' — never just legal labels like 'fiduciary') round it out. " +
+  "Then give your JUDGMENT: map what the file shows onto the elements of the claim under the relevant Texas law, cite a " +
+  "document and page for every point, and close with what is thin or missing. A literal phrase being absent from the text " +
+  "is NEVER 'no evidence' — reason from what IS there. Budget roughly six tool calls per answer; when you near it, STOP " +
+  "gathering and write the answer from what you have. " +
   "LEAD WITH THE ANSWER: open with the one-to-two-sentence conclusion (who the person is, what the document shows, whether " +
   "the thing exists), THEN the supporting evidence with document names and page/Bates cites, THEN one short line offering " +
   "the related material you found ('I also have X and Y — want either?'). Never bury the conclusion under a wall of " +
