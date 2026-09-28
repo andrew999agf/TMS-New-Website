@@ -610,3 +610,10 @@
 .aifred-lux ::selection {
   background: rgba(208, 168, 78, 0.35);
 }
+
+/* The AI-accuracy reminder is GENERATED CONTENT on purpose: text in a
+   ::after pseudo-element cannot be selected or copied in any browser, so
+   this line can never sneak into a Ctrl+A / Ctrl+C paste. */
+.aifred-disclaimer::after {
+  content: "AI.fred can make mistakes — double-check anything that matters.";
+}

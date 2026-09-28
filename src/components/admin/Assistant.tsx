@@ -1365,6 +1365,12 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               </button>
             )}
           </div>
+          {/* AI-accuracy reminder. Deliberately UNCOPYABLE: the words live in
+              a CSS ::after pseudo-element, which no browser can include in a
+              selection or the clipboard — Ctrl+A, drag-select, and every Copy
+              button all skip it by construction. Never move this text into
+              the DOM. */}
+          <p className="aifred-disclaimer mt-1.5 select-none text-center text-[10px] text-[var(--c-ink-muted)]/80" role="note" aria-label="AI.fred can make mistakes — double-check anything that matters." />
           {!saveable && <p className="mt-1.5 text-[10px] text-[var(--c-ink-muted)]">Conversations aren&apos;t being saved — run Settings → Database updates once to turn on saved history.</p>}
           {/* System report: the copyable 24h diagnostic block — one screenshot
               of this replaces a whole troubleshooting back-and-forth. */}

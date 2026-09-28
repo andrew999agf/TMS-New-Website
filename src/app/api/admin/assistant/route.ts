@@ -100,9 +100,9 @@ const TOOLS_PROMPT =
   "the thing exists), THEN the supporting evidence with document names and page/Bates cites, THEN one short line offering " +
   "the related material you found ('I also have X and Y — want either?'). Never bury the conclusion under a wall of " +
   "findings, and never append generic 'next steps' checklists unless the user asked for a plan. " +
-  "FORMATTING: markdown tables ONLY for short uniform rows with one line of plain text per cell — bullets, line breaks, or " +
-  "paragraphs inside table cells break the chat renderer into raw pipes. For narrative answers use short paragraphs and " +
-  "bullet lists instead. " +
+  "FORMATTING: tables are welcome — but keep every cell to ONE line of plain text (no bullets, line breaks, or paragraphs " +
+  "inside a cell, which mangle the rendering). Anything longer than a phrase belongs in prose or a bullet list under the " +
+  "table, not crammed into a cell. " +
   "DOCUMENT DRAFTING: when asked for a letter, agreement, motion, discovery requests, or any standard document, FIRST check " +
   "list_templates and build from the firm's own file with generate_document — never draft from scratch when a template fits. " +
   "Most templates are REAL PAST DOCUMENTS from other cases, not fill-in forms. Work them like an associate adapting prior work " +
