@@ -11,6 +11,11 @@ import type { ThreadRow } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+// Browser-tab title for signed-in users; the social-share card for this URL
+// lives in /aifred-preview (middleware hands preview bots that stub, since
+// they can't get past the login).
+export const metadata = { title: "AI.fred — AI Administrative Assistant" };
+
 export default async function AssistantPage() {
   const session = await requireAdmin();
   if (!canAccessPath("/admin/assistant", session.role, session.permissions)) notFound();

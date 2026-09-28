@@ -18,6 +18,10 @@ const PATRIOT_HOSTS = new Set([
   "www.patriotseriestexas.com",
 ]);
 
+/** The user agents of link-preview scrapers (iMessage rides Facebook's). */
+const PREVIEW_BOTS =
+  /facebookexternalhit|facebot|twitterbot|slackbot|linkedinbot|discordbot|whatsapp|telegrambot|skypeuripreview|pinterest|iframely|embedly|redditbot|vkshare|bitlybot|nuzzel|quora link preview|google-pagerenderer/i;
+
 function hostOf(req: NextRequest): string {
   // Strip any :port and lowercase so localhost testing + real hosts both work.
   return (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
@@ -90,6 +94,14 @@ export async function middleware(req: NextRequest) {
 
   if (pathname.startsWith("/admin/login") || pathname.startsWith("/admin/reset")) {
     return NextResponse.next();
+  }
+
+  // Link-preview bots can't sign in, so the AI.fred page would unfurl as the
+  // login screen. Serve THEM the public branding stub instead (rewrite — the
+  // shared URL stays /admin/assistant). Humans never match and are untouched;
+  // every other page keeps its normal share card.
+  if (pathname === "/admin/assistant" && PREVIEW_BOTS.test(req.headers.get("user-agent") ?? "")) {
+    return NextResponse.rewrite(new URL("/aifred-preview", req.url));
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
