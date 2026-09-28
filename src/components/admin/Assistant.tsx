@@ -235,7 +235,11 @@ function MarkdownText({ body }: { body: string }) {
           i++; guard++;
           row += " " + lines[i].trim().replace(/^[-*•]\s+/, "• ");
         }
-        rows.push(row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()));
+        // A citation token carries its own pipe ([[cite:key:page|label]]) —
+        // mask it before splitting cells, or the chip tears across columns.
+        const masked = row.trim().replace(/^\|/, "").replace(/\|$/, "")
+          .replace(/\[\[cite:[^\]\n]*?\]\]/g, (m) => m.replace(/\|/g, "\u0001"));
+        rows.push(masked.split("|").map((c) => c.trim().replace(/\u0001/g, "|")));
         i++;
       }
       const head = sawSep && rows.length > 1 ? rows[0] : null;

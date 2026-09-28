@@ -417,8 +417,10 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
   }
   const from = Math.max(1, pageFrom ?? 1);
   const to = Math.min(pages.length, Math.max(from, pageTo ?? pages.length));
-  const out: { page: number; bates?: string; note?: string; text?: string }[] = [];
-  let budget = 11000;
+  const out: { page: number; bates?: string; note?: string; text?: string; imageOnlyPage?: true }[] = [];
+  // Skims get a bigger budget: a damages sweep has to cover a whole binder's
+  // notes in a handful of calls.
+  let budget = notesOnly ? 16000 : 11000;
   let last = from - 1;
   for (let p = from; p <= to && budget > 0; p++) {
     const note = (pageNotes[p - 1] ?? "").slice(0, 400);
@@ -428,7 +430,9 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
     } else {
       const text = (pages[p - 1] ?? "").slice(0, 3000);
       budget -= text.length + note.length + 20;
-      out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), ...(note ? { note } : {}), text });
+      // An empty page in an indexed document is an image/scan page — say so,
+      // or the model concludes the whole document "isn't indexed".
+      out.push({ page: p, ...(batesFor ? { bates: batesFor(p - 1) } : {}), ...(note ? { note } : {}), text, ...(text ? {} : { imageOnlyPage: true as const }) });
     }
     last = p;
   }

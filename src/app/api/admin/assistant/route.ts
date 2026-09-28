@@ -95,7 +95,9 @@ const TOOLS_PROMPT =
   "found. The user should never have to say 'look in the discovery'; that is always implied. " +
   "TRUST THE INDEX: when tools report textIndexed, pagesAnnotated, or a scannedPages count, the text IS indexed and " +
   "searchable — never tell the user to index anything or press 'Index text'; a zero-hit search means the phrase isn't there, " +
-  "so try different wording. " +
+  "so try different wording. A single page returning empty text in a full read is an image/scan page — its per-page note IS " +
+  "the record for that page, so use the note; empty pages or zero hits NEVER mean the document 'is not indexed' when the " +
+  "listing says textIndexed. " +
   "ANALYTICAL CASE QUESTIONS ('what evidence do we have of X', strengths and weaknesses, case status): work like a Texas " +
   "big-law litigation senior associate doing a TWO-PASS file review, never a page-one-to-page-N read. " +
   "PASS 1 — the map (cheap, never blows your budget): get_case (parties, notes, pleadings) + list_discovery_documents. " +
@@ -109,6 +111,14 @@ const TOOLS_PROMPT =
   "document and page for every point, and close with what is thin or missing. A literal phrase being absent from the text " +
   "is NEVER 'no evidence' — reason from what IS there. Budget roughly six tool calls per answer; when you near it, STOP " +
   "gathering and write the answer from what you have. " +
+  "DAMAGES & TOTALS: when asked to quantify — damages, disgorgement, wages, an accounting of commissions — the NUMBER is " +
+  "the work product and YOU compute it. Walk the ENTIRE relevant page range with read_document notes_only:true, calling " +
+  "again from where each result stops until the range is covered (the per-page notes carry the amounts), and pull full " +
+  "text only for the summary/total pages. Then do the arithmetic yourself and present: one table row per component with " +
+  "its amount and cite, a bottom-line total, and one line saying what it includes. Where the file leaves a gap, state the " +
+  "total as a floor and say exactly what would raise it. For these questions the six-call budget does NOT apply — cover " +
+  "the range. Never tell the user to index pages or to 'request a targeted read' (running reads is YOUR job, this turn), " +
+  "and never answer that a total 'cannot be extracted automatically'. " +
   "CITATIONS ARE CLICKABLE: cite evidence with the token [[cite:<key>:<page>|<label>]] — it renders as a link that opens " +
   "the cited page in a new tab. <key> is the document's 'cite' field from the tools (doc:N / share:N / prod:N — NEVER " +
   "invent one), <page> the page number within that document, <label> what the reader sees: the Bates number when the page " +
@@ -497,7 +507,7 @@ export async function POST(req: Request) {
   // reject the continuation — which used to surface as an empty "(No
   // response.)". Keep the conversation inside a budget by trimming the
   // OLDEST tool results first; the system prompt and human turns stay whole.
-  const CONVO_BUDGET = 90_000; // chars — comfortably inside the model window
+  const CONVO_BUDGET = 120_000; // chars — comfortably inside the model window
   const convoSize = () =>
     convo.reduce((n, m) => {
       const tc = (m as { tool_calls?: unknown }).tool_calls;
@@ -559,7 +569,9 @@ export async function POST(req: Request) {
         // The agentic loop: each round either finishes the answer or asks for
         // tools; tool results are appended and the model continues. Bounded so
         // a confused model can't spin forever.
-        for (let round = 0; round < 8 && res; round++) {
+        // Enough rounds to walk a whole binder's notes for a damages total,
+        // with the last rounds tool-free so the answer always gets written.
+        for (let round = 0; round < 12 && res; round++) {
           const { content, toolCalls } = await pipeRound(res.body!, emit);
           acc += content;
           if (!useTools || toolCalls.length === 0) break;
@@ -604,7 +616,7 @@ export async function POST(req: Request) {
             shrinkConvo();
             // The last rounds go out WITHOUT tools, so the model must write
             // its answer instead of searching forever.
-            const next = await callUpstream(round < 5);
+            const next = await callUpstream(round < 9);
             if (next.ok && next.body) res = next;
             else emit(sse({ stream_error: `The AI provider errored mid-answer (${next.status}).` }));
           } catch {
