@@ -410,6 +410,15 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const [noticeMin, setNoticeMin] = useState(false);
   // Phone/tablet: the power strip's cost/credit details start retracted.
   const [stripOpen, setStripOpen] = useState(false);
+  // Phone/tablet: shorter helper text (the full hints crowd a small composer).
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const prevNoticeMsg = useRef<string | null>(null);
   useEffect(() => {
     const msg = srv?.notice?.message ?? null;
@@ -632,7 +641,12 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   const messages = threads[mode];
 
   useEffect(() => { setSpeechOk(makeRecognition() !== null); }, []);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [threads, busy, mode]);
+  // Follow the conversation — but never on an empty chat, where scrolling to
+  // the bottom just clips the top of the welcome block on small screens.
+  useEffect(() => {
+    if (!threads[mode]?.length) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [threads, busy, mode]);
   useEffect(() => { voiceChatRef.current = voiceChat; }, [voiceChat]);
   useEffect(() => { busyRef.current = busy; }, [busy]);
   useEffect(() => { speakRef.current = speakReplies; }, [speakReplies]);
@@ -1202,12 +1216,14 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
 
         <div ref={scrollRef} className="aifred-stage flex-1 space-y-5 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
           {messages.length === 0 && (
-            <div className="mx-auto mt-8 max-w-lg text-center">
+            <div className="mx-auto mt-3 max-w-lg text-center lg:mt-8">
               <span className="aifred-medallion mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-accent)]/10">
                 <meta.icon size={22} className="text-[var(--c-accent)]" />
               </span>
               <p className="font-[family-name:var(--font-display)] text-xl text-[var(--c-ink)]">{meta.label}</p>
-              <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-[var(--c-ink-muted)]">{meta.empty}</p>
+              {/* The long how-to paragraph is desktop-only — phones keep just
+                  the medallion, the mode name, and the tappable starters. */}
+              <p className="mx-auto mt-1.5 hidden max-w-md text-sm leading-relaxed text-[var(--c-ink-muted)] lg:block">{meta.empty}</p>
               {/* One-click starters: drop a prompt into the box, ready to edit. */}
               <div className="mt-5 flex flex-col items-center gap-2">
                 {meta.starters.map((s) => (
@@ -1220,7 +1236,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
                   </button>
                 ))}
               </div>
-              {speechOk && <p className="mt-5 text-xs text-[var(--c-ink-muted)]">Tip: the mic dictates into the box; <strong className="text-[var(--c-ink)]">Voice</strong> is a hands-free back-and-forth.</p>}
+              {speechOk && <p className="mt-5 hidden text-xs text-[var(--c-ink-muted)] lg:block">Tip: the mic dictates into the box; <strong className="text-[var(--c-ink)]">Voice</strong> is a hands-free back-and-forth.</p>}
             </div>
           )}
           {messages.map((m, i) => (
@@ -1327,7 +1343,7 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               onKeyDown={onKey}
               rows={1}
               disabled={!!srv?.notice?.chatBlocked}
-              placeholder={srv?.notice?.chatBlocked ? "Chat is paused for a few minutes — see the notice above…" : voiceChat ? "Voice conversation is on — just talk…" : meta.hint}
+              placeholder={srv?.notice?.chatBlocked ? (narrow ? "Chat is paused a few minutes…" : "Chat is paused for a few minutes — see the notice above…") : voiceChat ? "Voice conversation is on — just talk…" : narrow ? "Ask AI.fred anything…" : meta.hint}
               className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--c-ink)] outline-none placeholder:text-[var(--c-ink-muted)]/70 disabled:opacity-50"
             />
             {busy ? (

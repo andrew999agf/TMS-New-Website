@@ -444,19 +444,8 @@
 
 /* The logo PNG carries its own dark background; screen-blending plus an
    elliptical edge fade melts it into the page instead of sitting in a box. */
-.aifred-logo {
-  /* Two crossed linear fades (intersected) melt ALL four bitmap edges into
-     the page — a radial ellipse can't hug this wide lockup without either
-     clipping the wordmark or leaving hard corners. */
-  -webkit-mask-image:
-    linear-gradient(90deg, transparent 0%, #000 7%, #000 92%, transparent 100%),
-    linear-gradient(180deg, transparent 0%, #000 13%, #000 86%, transparent 100%);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(90deg, transparent 0%, #000 7%, #000 92%, transparent 100%),
-    linear-gradient(180deg, transparent 0%, #000 13%, #000 86%, transparent 100%);
-  mask-composite: intersect;
-}
+/* (The logo asset now carries its own alpha channel — no mask or blend
+   tricks needed, and Safari renders it identically to desktop Chrome.) */
 
 /* Golden light arcs: real gradient-stroked SVG sweeps with bloom and a
    lens hot-spot, drawn in code (no image assets) behind the content. */
