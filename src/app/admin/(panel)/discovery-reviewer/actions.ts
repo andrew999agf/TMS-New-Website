@@ -625,6 +625,52 @@ export async function getPageNotes(setId: number, fileKey: string) {
   }
 }
 
+/** Staff edit of one page's note — AI.fred wrote the first draft, but the
+ *  note is the FIRM'S case memory, so people can correct or extend it. The
+ *  edit lands on whichever copy is open (red original or yellow/green staged
+ *  copy); the assistant reads the same rows. */
+export async function updatePageNote(setId: number, fileKey: string, page: number, noteIn: string) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!validFileKey(fileKey)) return { ok: false as const, error: "Bad file key." };
+  const p = Math.floor(Number(page));
+  if (!Number.isFinite(p) || p < 1 || p > 5000) return { ok: false as const, error: "Bad page number." };
+  const note = String(noteIn ?? "").trim().slice(0, 600);
+  const id = Number(fileKey.split(":")[1]);
+  const shape = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((x) => (typeof x === "string" ? x : "")) : []);
+  try {
+    let notes: string[];
+    if (fileKey.startsWith("doc:")) {
+      const [d] = await db.select({ n: discoveryDocs.pageNotes }).from(discoveryDocs).where(and(eq(discoveryDocs.id, id), eq(discoveryDocs.setId, setId)));
+      if (!d) return { ok: false as const, error: "Document not found." };
+      notes = shape(d.n);
+      while (notes.length < p) notes.push("");
+      notes[p - 1] = note;
+      await db.update(discoveryDocs).set({ pageNotes: notes }).where(eq(discoveryDocs.id, id));
+    } else if (fileKey.startsWith("prod:")) {
+      const [d] = await db.select({ n: productionDocs.pageNotes }).from(productionDocs).where(and(eq(productionDocs.id, id), eq(productionDocs.setId, setId)));
+      if (!d) return { ok: false as const, error: "Document not found." };
+      notes = shape(d.n);
+      while (notes.length < p) notes.push("");
+      notes[p - 1] = note;
+      await db.update(productionDocs).set({ pageNotes: notes }).where(eq(productionDocs.id, id));
+    } else {
+      const [d] = await db.select({ n: shareFiles.pageNotes }).from(shareFiles).where(eq(shareFiles.id, id));
+      if (!d) return { ok: false as const, error: "File not found." };
+      notes = shape(d.n);
+      while (notes.length < p) notes.push("");
+      notes[p - 1] = note;
+      await db.update(shareFiles).set({ pageNotes: notes }).where(eq(shareFiles.id, id));
+    }
+    await audit(session.email, "update", "page-note", `${fileKey} p.${p}`, note.slice(0, 120));
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, notes };
+  } catch (err) {
+    console.error("[discovery-reviewer] updatePageNote failed:", err);
+    return { ok: false as const, error: "Couldn't save the note." };
+  }
+}
+
 /** All marks on one client document, for the reader overlay. */
 export async function listFileAnnotations(setId: number, fileKey: string) {
   await guard();
@@ -793,21 +839,40 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
           .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))
       : [];
     const folderIds = new Set(folders.map((f) => f.id));
+    type SrcSection = { from: number; to: number; title: string };
     type Source = {
       key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null;
-      pageText: string[]; aiLabel: string; aiDescription: string; aiLabelStatus: string; aiLabeledAt: Date | null;
+      pageText: string[]; pageNotes: string[]; aiSections: SrcSection[];
+      aiLabel: string; aiDescription: string; aiLabelStatus: string; aiLabeledAt: Date | null;
     };
     const srcPages = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((p) => (typeof p === "string" ? p : "")) : []);
+    const srcSections = (v: unknown): SrcSection[] => (Array.isArray(v) ? (v as SrcSection[]).filter((x) => x && Number.isFinite(x.from) && Number.isFinite(x.to) && x.title) : []);
+    // A page-sliced copy renumbers its pages, so the source's section map is
+    // remapped: each new page keeps the title of the section its SOURCE page
+    // belonged to, and contiguous runs collapse back into ranges.
+    const remapSections = (sections: SrcSection[], includedPages: number[]): SrcSection[] => {
+      if (!sections.length || !includedPages.length) return [];
+      const titleFor = (src: number) => sections.find((x) => src >= x.from && src <= x.to)?.title ?? "";
+      const out: SrcSection[] = [];
+      includedPages.forEach((src, i) => {
+        const t = titleFor(src);
+        if (!t) return;
+        const lastSec = out[out.length - 1];
+        if (lastSec && lastSec.title === t && lastSec.to === i) lastSec.to = i + 1;
+        else out.push({ from: i + 1, to: i + 1, title: t });
+      });
+      return out.slice(0, 80);
+    };
     const sources: Source[] = [];
     if (shareIds.length) {
       for (const f of (await db.select().from(shareFiles).where(inArray(shareFiles.id, shareIds))).filter((f) => folderIds.has(f.folderId))) {
-        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt });
+        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), pageNotes: srcPages(f.pageNotes), aiSections: srcSections(f.aiSections), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt });
       }
     }
     if (docIds.length) {
       // Documents moved into the client bucket from the opposing pile.
       for (const d of (await db.select().from(discoveryDocs).where(inArray(discoveryDocs.id, docIds))).filter((d) => d.setId === setId && d.bucket === "client")) {
-        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt });
+        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), pageNotes: srcPages(d.pageNotes), aiSections: srcSections(d.aiSections), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt });
       }
     }
     if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
@@ -865,6 +930,8 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       let sourcePages: number[] = [];
       let nameSuffix = "";
       let prodText: string[] = [];
+      let prodNotes: string[] = [];
+      let prodSections: SrcSection[] = [];
       if (isPdfSrc) {
         const built = await buildStagedPdf(bytes, requested, [...cov.pages], redsByKey.get(f.key) ?? []).catch(() => null);
         if (!built) { skipped.push(`${f.filename} (those pages are already staged, or the PDF couldn't be read)`); continue; }
@@ -882,6 +949,10 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         // The copy's text index: the source's per-page text for the included
         // pages, with redacted pages blanked (their text no longer exists).
         prodText = built.includedPages.map((srcPage) => (redPages?.has(srcPage) ? "" : f.pageText[srcPage - 1] ?? ""));
+        // AI.fred's page notes follow the pages into the copy (a note could
+        // describe what a redaction just removed, so redacted pages blank).
+        prodNotes = built.includedPages.map((srcPage) => (redPages?.has(srcPage) ? "" : f.pageNotes[srcPage - 1] ?? ""));
+        prodSections = remapSections(f.aiSections, built.includedPages);
       }
       const stamped = await stampToPdf(bytes, f.contentType, f.filename, prefix, next, bates, opts.stamp);
       if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
@@ -901,6 +972,8 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         // yellow/green tabs and the chat can cite by Bates number. Internal
         // only — none of this reaches the opposing-counsel page.
         pageText: prodText,
+        pageNotes: prodNotes,
+        aiSections: prodSections,
         textStatus: prodText.some((p) => p.trim()) || !isPdfSrc ? "done" : "pending",
         aiLabel: f.aiLabel, aiDescription: f.aiDescription,
         aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt,

@@ -10,7 +10,7 @@ import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
-import { addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
+import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
   updateAiLabel, setDiscoveryShare, redactProductionDoc,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
@@ -325,14 +325,24 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
   const loadedNotes = useRef(new Set<string>());
   const ensureNotes = useCallback(async (key: string) => {
-    if (loadedNotes.current.has(key)) return;
+    if (!key || loadedNotes.current.has(key)) return;
     loadedNotes.current.add(key);
     const r = await getPageNotes(setId, key);
     if (r.ok && r.notes.length) setPgNotes((prev) => ({ ...prev, [key]: r.notes }));
     else loadedNotes.current.delete(key); // nothing yet — re-ask after a labeling run
   }, [setId]);
   const noteFor = useCallback((f: ClientFile, page: number) => pgNotes[f.key]?.[page - 1] ?? "", [pgNotes]);
+  // Staff can rewrite any page note — it's the firm's memory, AI.fred only
+  // drafts it. Saves to the open copy (original or staged) and the cache.
+  const saveNote = useCallback(async (f: ClientFile, page: number, text: string) => {
+    const r = await updatePageNote(setId, f.key, page, text);
+    if (r.ok) setPgNotes((prev) => ({ ...prev, [f.key]: r.notes }));
+    return r;
+  }, [setId]);
   const pagesKnown = useCallback((key: string, n: number) => { notePages(key, n); void ensureNotes(key); }, [notePages, ensureNotes]);
+  // Entering the reader straight from the toolbar (never having opened the
+  // grid) must still show the open document's notes.
+  useEffect(() => { if (view === "reader") void ensureNotes(files[Math.min(reader.docIdx, files.length - 1)]?.key ?? ""); }, [view, reader.docIdx, files, ensureNotes]);
 
   /** Direct uploads into the red pile — for when the firm itself has the
    *  client's documents in hand (the client portal remains the other door). */
@@ -569,7 +579,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
           </p>
         ) : view === "reader" ? (
           <ClientReader files={files} state={reader} setState={setReader} selected={selected} pageMark={pageMark}
-            setId={setId} shareToken={shareToken} noteFor={noteFor}
+            setId={setId} shareToken={shareToken} noteFor={noteFor} onEditNote={saveNote}
             onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl}
             annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
             onStageFromTools={(f) => {
@@ -907,7 +917,7 @@ type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
 
 const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
 
-function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, variant = "received", onRemove, onBurnRedact }: {
+function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, onEditNote, variant = "received", onRemove, onBurnRedact }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
@@ -924,6 +934,8 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   onStageFromTools: (f: ClientFile) => void;
   /** AI.fred's note for a page (internal), shown above the page. */
   noteFor?: (f: ClientFile, page: number) => string;
+  /** Staff edit of that note — saves to whichever copy is open. */
+  onEditNote?: (f: ClientFile, page: number, text: string) => Promise<{ ok: boolean; error?: string }>;
   /** "staged" = the yellow tab's review surface: no page selection, remove
    *  instead of stage, and redactions burn into the staged copy on confirm. */
   variant?: "received" | "staged";
@@ -948,6 +960,11 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   const [pendingBurn, setPendingBurn] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [burnBusy, setBurnBusy] = useState(false);
   const [burnError, setBurnError] = useState("");
+  // Inline edit of the page's AI note (staff correction of case memory).
+  const [noteEdit, setNoteEdit] = useState<string | null>(null);
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteErr, setNoteErr] = useState("");
+  useEffect(() => { setNoteEdit(null); setNoteErr(""); }, [f.key, state.page]);
   // Zoom re-RENDERS the page at the larger size (not a CSS stretch), so it
   // stays sharp; 1 = fit width. Resets when the document changes.
   const [zoom, setZoom] = useState(1);
@@ -1151,10 +1168,45 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
         // The page's own context first; a binder's whole-file summary would
         // read as if it described THIS page, so it lives behind a disclosure.
         const sec = (f.aiSections ?? []).find((x) => state.page >= x.from && state.page <= x.to);
-        if (!pageNote && !sec && !f.aiDescription) return null;
+        if (!pageNote && !sec && !f.aiDescription && !onEditNote) return null;
+        const startEdit = () => { setNoteErr(""); setNoteEdit(pageNote); };
+        const saveEdit = async () => {
+          if (!onEditNote || noteEdit == null) return;
+          setNoteBusy(true);
+          const r = await onEditNote(f, state.page, noteEdit);
+          setNoteBusy(false);
+          if (r.ok) setNoteEdit(null);
+          else setNoteErr(r.error ?? "Couldn't save the note.");
+        };
         return (
           <div className="mx-auto mb-2 max-w-[940px] rounded-md border border-amber-300/50 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed">
-            {pageNote && <p><strong className="text-amber-800 dark:text-amber-300">p.{state.page}:</strong> {pageNote}</p>}
+            {noteEdit != null ? (
+              <div>
+                <p className="mb-1 font-semibold text-amber-800 dark:text-amber-300">Page {state.page} note (the firm&apos;s case memory — AI.fred answers from it):</p>
+                <textarea value={noteEdit} onChange={(e) => setNoteEdit(e.target.value)} rows={3} maxLength={600} autoFocus
+                  className="w-full rounded-md border border-amber-400/60 bg-[var(--c-surface)] p-2 text-xs leading-relaxed text-[var(--c-ink)] outline-none focus:border-amber-500" />
+                {noteErr && <p className="mt-1 text-red-600">{noteErr}</p>}
+                <div className="mt-1.5 flex justify-end gap-2">
+                  <button onClick={() => setNoteEdit(null)} disabled={noteBusy} className="rounded-md border border-[var(--c-border)] px-2.5 py-1 hover:border-[var(--c-accent)]">Cancel</button>
+                  <button onClick={() => void saveEdit()} disabled={noteBusy} className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+                    {noteBusy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Save note
+                  </button>
+                </div>
+              </div>
+            ) : pageNote ? (
+              <p>
+                <strong className="text-amber-800 dark:text-amber-300">p.{state.page}:</strong> {pageNote}
+                {onEditNote && (
+                  <button onClick={startEdit} className="ml-1.5 inline-flex align-middle text-amber-700/70 hover:text-amber-700 dark:text-amber-300/70 dark:hover:text-amber-300" title="Edit this page's note">
+                    <Pencil size={11} />
+                  </button>
+                )}
+              </p>
+            ) : onEditNote ? (
+              <button onClick={startEdit} className="inline-flex items-center gap-1 text-amber-700/80 hover:text-amber-700 dark:text-amber-300/80" title="Write a note for this page">
+                <Pencil size={11} /> Add a note for p.{state.page}
+              </button>
+            ) : null}
             {sec && (
               <p className={pageNote ? "mt-1 border-t border-amber-300/30 pt-1" : ""}>
                 <strong className="text-amber-800 dark:text-amber-300">Part of:</strong> {sec.title} — pp. {sec.from}–{sec.to}
@@ -1296,14 +1348,20 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
   const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
   const loadedNotes = useRef(new Set<string>());
   const ensureNotes = useCallback(async (key: string) => {
-    if (loadedNotes.current.has(key)) return;
+    if (!key || loadedNotes.current.has(key)) return;
     loadedNotes.current.add(key);
     const r = await getPageNotes(setId, key);
     if (r.ok && r.notes.length) setPgNotes((prev) => ({ ...prev, [key]: r.notes }));
     else loadedNotes.current.delete(key);
   }, [setId]);
   const noteFor = useCallback((f: ClientFile, page: number) => pgNotes[f.key]?.[page - 1] ?? "", [pgNotes]);
+  const saveNote = useCallback(async (f: ClientFile, page: number, text: string) => {
+    const r = await updatePageNote(setId, f.key, page, text);
+    if (r.ok) setPgNotes((prev) => ({ ...prev, [f.key]: r.notes }));
+    return r;
+  }, [setId]);
   const noPages = useCallback((key: string, _n: number) => { void _n; void ensureNotes(key); }, [ensureNotes]);
+  useEffect(() => { if (view === "reader") void ensureNotes(files[Math.min(reader.docIdx, files.length - 1)]?.key ?? ""); }, [view, reader.docIdx, files, ensureNotes]);
 
   useEffect(() => {
     if (!flash) return;
@@ -1406,7 +1464,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
       {view === "reader" ? (
         <ClientReader files={files} state={reader} setState={setReader} selected={noSel} pageMark={noMark}
           setId={setId} shareToken={shareToken} onTogglePage={noop} getDoc={getDoc} proxyUrl={proxyUrl}
-          annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno} noteFor={noteFor}
+          annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno} noteFor={noteFor} onEditNote={saveNote}
           onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact} />
       ) : (
         <div className="space-y-6">
