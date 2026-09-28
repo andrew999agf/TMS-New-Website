@@ -168,13 +168,27 @@ function splitBlocks(text: string): { type: "text" | "code"; lang: string; body:
 /** Inline markdown: **bold**, *italic*, `code`, [links](/safe/urls). */
 function inlineMd(text: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]\n]+\]\((?:https?:\/\/|\/)[^)\s]+\))/g;
+  // [[cite:doc:3:597|HOLO_000597]] → a link that opens the cited page of the
+  // cited document in a new tab (resolved server-side by /admin/discovery-cite).
+  const re = /(\[\[cite:[a-z]+:\d+:\d+\|[^\]\n|]{1,90}\]\]|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]\n]+\]\((?:https?:\/\/|\/)[^)\s]+\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
     const t = m[0];
-    if (t.startsWith("**")) out.push(<strong key={out.length} className="font-semibold">{t.slice(2, -2)}</strong>);
+    if (t.startsWith("[[cite:")) {
+      const cm = /^\[\[cite:([a-z]+:\d+):(\d+)\|([^\]|]+)\]\]$/.exec(t);
+      if (cm) {
+        out.push(
+          <a key={out.length} href={`/admin/discovery-cite/${encodeURIComponent(cm[1])}/${cm[2]}`} target="_blank" rel="noopener noreferrer"
+            title="Open the cited page in a new tab"
+            className="mx-0.5 inline-flex items-center gap-0.5 rounded border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/10 px-1.5 py-0.5 align-baseline text-[0.85em] font-medium text-[var(--c-accent)] no-underline hover:border-[var(--c-accent)] hover:bg-[var(--c-accent)]/20">
+            {cm[3]}
+          </a>,
+        );
+      } else out.push(t);
+    }
+    else if (t.startsWith("**")) out.push(<strong key={out.length} className="font-semibold">{t.slice(2, -2)}</strong>);
     else if (t.startsWith("`")) out.push(<code key={out.length} className="rounded bg-[var(--c-surface-2)] px-1 py-0.5 text-[0.85em]">{t.slice(1, -1)}</code>);
     else if (t.startsWith("[")) {
       const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(t);

@@ -109,6 +109,16 @@ const TOOLS_PROMPT =
   "document and page for every point, and close with what is thin or missing. A literal phrase being absent from the text " +
   "is NEVER 'no evidence' — reason from what IS there. Budget roughly six tool calls per answer; when you near it, STOP " +
   "gathering and write the answer from what you have. " +
+  "CITATIONS ARE CLICKABLE: cite evidence with the token [[cite:<key>:<page>|<label>]] — it renders as a link that opens " +
+  "the cited page in a new tab. <key> is the document's 'cite' field from the tools (doc:N / share:N / prod:N — NEVER " +
+  "invent one), <page> the page number within that document, <label> what the reader sees: the Bates number when the page " +
+  "has one (e.g. HOLO_000478), otherwise a short 'name p.N'. Example: 'Nicole signed the transfer authorization " +
+  "[[cite:prod:2:12|HOLO_000478]].' Use these tokens for EVERY evidence cite. " +
+  "CITE PRIORITY: prefer the produced record copies (ours and opposing counsel's — search source 'produced', Bates-labeled) " +
+  "first, staged intend-to-produce copies (source 'staged') second, and the general file (discovery documents, " +
+  "client files, pleadings) third. Bates-labeled pages are the preferred cite form, but always cite an unlabeled document " +
+  "when that is where the evidence lives. When key evidence exists ONLY in an unproduced document, flag it plainly: " +
+  "'unproduced — consider staging this for production.' " +
   "LEAD WITH THE ANSWER: open with the one-to-two-sentence conclusion (who the person is, what the document shows, whether " +
   "the thing exists), THEN the supporting evidence with document names and page/Bates cites, THEN one short line offering " +
   "the related material you found ('I also have X and Y — want either?'). Never bury the conclusion under a wall of " +
