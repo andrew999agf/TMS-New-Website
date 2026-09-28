@@ -1179,6 +1179,52 @@ export async function finalizeProduction(productionId: number) {
   }
 }
 
+/**
+ * Send SELECTED staged copies straight to the green tab: record them as a
+ * production (Bates range, OC token) and mark them produced, without the
+ * merged-PDF/letter machinery — for documents that went out the door on
+ * their own. Documents already in a draft production are refused (finish
+ * or discard the draft first).
+ */
+export async function sendStagedToProduced(setId: number, idsIn: number[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const ids = [...new Set((Array.isArray(idsIn) ? idsIn : []).map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n)))];
+    if (!ids.length) return { ok: false as const, error: "Select at least one document." };
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const docs = await db.select().from(productionDocs)
+      .where(and(eq(productionDocs.setId, setId), inArray(productionDocs.id, ids)));
+    if (docs.length !== ids.length) return { ok: false as const, error: "Some selected documents weren't found in this case." };
+    const notStaged = docs.filter((d) => d.status !== "staged");
+    if (notStaged.length) return { ok: false as const, error: `Already produced: ${notStaged.map((d) => d.name).slice(0, 3).join(", ")}${notStaged.length > 3 ? "…" : ""}.` };
+    const inDraft = docs.filter((d) => d.productionId);
+    if (inDraft.length) return { ok: false as const, error: "Some selected documents are in a draft production — finish or discard the draft first." };
+
+    const prior = await db.select({ seq: productions.seq }).from(productions).where(eq(productions.setId, setId));
+    const seq = Math.max(0, ...prior.map((r) => r.seq)) + 1;
+    const labeled = docs.filter((d) => d.batesPrefix && d.batesStart > 0);
+    const prefix = labeled[0]?.batesPrefix ?? "";
+    const token = randomBytes(24).toString("base64url");
+    const [row] = await db.insert(productions).values({
+      setId, seq, label: `${ordinal(seq)} Production`,
+      batesPrefix: prefix,
+      batesStart: labeled.length ? Math.min(...labeled.map((d) => d.batesStart)) : 0,
+      batesEnd: labeled.length ? Math.max(...labeled.map((d) => d.batesEnd)) : 0,
+      token, createdBy: session.email, producedAt: new Date(),
+    }).returning({ id: productions.id });
+    await db.update(productionDocs).set({ productionId: row.id, status: "produced" }).where(inArray(productionDocs.id, ids));
+
+    await audit(session.email, "update", "production", String(row.id), `Marked ${docs.length} staged document${docs.length === 1 ? "" : "s"} produced (${ordinal(seq)} Production) in "${set.name}"`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, moved: docs.length, label: `${ordinal(seq)} Production` };
+  } catch (err) {
+    console.error("[discovery-reviewer] sendStagedToProduced failed:", err);
+    return { ok: false as const, error: "Couldn't mark those documents produced." };
+  }
+}
+
 /** Throw a draft production away (documents drop back to staged). */
 export async function discardProductionDraft(productionId: number) {
   const session = await guard();

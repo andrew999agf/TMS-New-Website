@@ -31,10 +31,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);
   if (!upstream.ok || !upstream.body) return NextResponse.json({ error: "File unavailable." }, { status: 502 });
 
-  const base = (doc.name || "document").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  // ?dl=1 downloads the copy (named by its Bates range) instead of viewing it.
+  const asDownload = new URL(req.url).searchParams.get("dl") === "1";
+  const batesName = doc.batesPrefix && doc.batesStart > 0
+    ? `${doc.batesPrefix}${String(doc.batesStart).padStart(6, "0")}${doc.batesEnd > doc.batesStart ? `-${doc.batesPrefix}${String(doc.batesEnd).padStart(6, "0")}` : ""}`
+    : "";
+  const base = ((asDownload && batesName) || doc.name || "document").replace(/\.pdf$/i, "").replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
   const headers = new Headers();
   headers.set("Content-Type", doc.contentType || "application/pdf");
-  headers.set("Content-Disposition", `inline; filename="${base}.pdf"`);
+  headers.set("Content-Disposition", `${asDownload ? "attachment" : "inline"}; filename="${base}.pdf"`);
   headers.set("Accept-Ranges", "bytes");
   const contentRange = upstream.headers.get("content-range");
   if (contentRange) headers.set("Content-Range", contentRange);

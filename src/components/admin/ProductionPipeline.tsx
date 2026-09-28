@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
-  BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
+  BookOpen, Check, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
-  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, updateRequestDeadlines, setDiscoveryDocBucket,
+  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
   updateAiLabel, setDiscoveryShare, redactProductionDoc,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -726,7 +726,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -741,6 +741,10 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   headerExtra?: React.ReactNode;
   /** AI.fred's note for a page (internal), shown under the page cell. */
   noteFor?: (f: ClientFile, page: number) => string;
+  /** Corner-badge text per page (the yellow tab shows Bates numbers). */
+  pageLabel?: (page: number) => string;
+  /** Tooltip for unmarked cells (the yellow tab selects whole documents). */
+  cellTitle?: string;
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -826,7 +830,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
                 <ClientPageCell f={f} page={page} renderW={renderW}
                   selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
                   flash={!!flash && flash.key === f.key && flash.page === page}
-                  onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)} />
+                  onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)}
+                  label={pageLabel?.(page)} cellTitle={cellTitle} />
                 {note && cols <= 7 && (
                   <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-[var(--c-ink-muted)]" title={note}>{note}</p>
                 )}
@@ -843,10 +848,14 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   );
 }
 
-function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen }: {
+function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle }: {
   f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark; flash?: boolean;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   onClick: (shiftKey: boolean) => void; onOpen: () => void;
+  /** Overrides the little corner badge (e.g. the page's Bates number). */
+  label?: string;
+  /** Overrides the hover tooltip (yellow tab: clicking selects the DOCUMENT). */
+  cellTitle?: string;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -897,7 +906,7 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
     <div ref={holder} id={cellId(f.key, page)} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} // shift-click shouldn't drag-select text
       className={`group relative aspect-[8.5/11] overflow-hidden rounded-md border bg-white shadow-sm ${mark ? "cursor-default" : "cursor-pointer"} ${flash ? "ring-4 ring-amber-400" : selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${selected && !flash ? "border-[var(--c-accent)]" : ""} ${!mark && !selected && !flash ? "hover:ring-1 hover:ring-[var(--c-accent)]/50" : ""}`}
-      title={mark === "produced" ? "Already produced" : mark === "staged" ? "Already staged — see the yellow tab" : "Click to select this page · Shift-click for a range · Double-click to read"}>
+      title={mark === "produced" ? "Already produced" : mark === "staged" ? "Already staged — see the yellow tab" : cellTitle ?? "Click to select this page · Shift-click for a range · Double-click to read"}>
       <canvas ref={canvasRef} className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} />
       {state === "idle" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
       {state === "error" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)] text-xs text-[var(--c-ink-muted)]">page {page}</div>}
@@ -906,7 +915,7 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
           {mark === "produced" ? "PROD" : "TBP →"}
         </span>
       )}
-      <span className="absolute bottom-1 right-1.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">{page}</span>
+      <span className={`absolute bottom-1 right-1.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white ${label ? "font-mono" : ""}`}>{label ?? page}</span>
     </div>
   );
 }
@@ -1305,9 +1314,12 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
  * instead: remove a document from staging, or burn a late-caught redaction
  * straight into the staged copy.
  */
-function StagedGallery({ setId, rows, shareToken, view, setView }: {
+function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
   setId: number; rows: StagedDoc[]; shareToken: string | null;
   view: "grid" | "reader"; setView: (v: "grid" | "reader") => void;
+  /** Success notice hoisted to StagedView — this gallery unmounts when the
+   *  last staged document moves to the green tab. */
+  onMoved: (msg: string) => void;
 }) {
   const router = useRouter();
   const [cols, setCols] = useState(5);
@@ -1343,6 +1355,48 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
   const noSel = useMemo(() => new Set<string>(), []);
   const noop = useCallback(() => {}, []);
 
+  // Document-level selection: clicking any page (or the header checkbox)
+  // selects the whole stamped copy — then download the selection, or send
+  // it to the green tab as produced.
+  const [selDocs, setSelDocs] = useState<Set<number>>(new Set());
+  const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
+  const [moving, setMoving] = useState(false);
+  const toggleDoc = useCallback((key: string) => {
+    const d = byKey.get(key);
+    if (!d) return;
+    setSelDocs((prev) => { const nx = new Set(prev); if (nx.has(d.id)) nx.delete(d.id); else nx.add(d.id); return nx; });
+  }, [byKey]);
+  const selCells = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of rows) {
+      if (!selDocs.has(d.id)) continue;
+      const key = `prod:${d.id}`;
+      const n = Math.max(pageCounts[key] ?? 0, d.batesStart > 0 && d.batesEnd >= d.batesStart ? d.batesEnd - d.batesStart + 1 : 1);
+      for (let p = 1; p <= n; p++) s.add(pk(key, p));
+    }
+    return s;
+  }, [rows, selDocs, pageCounts]);
+  const downloadSelected = () => {
+    const sel = rows.filter((d) => selDocs.has(d.id));
+    sel.forEach((d, i) => setTimeout(() => {
+      const a = document.createElement("a");
+      a.href = `/admin/discovery-reviewer/${setId}/staged-file/${d.id}?dl=1`;
+      a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
+    }, i * 500));
+    setNotice(`Downloading ${sel.length} document${sel.length === 1 ? "" : "s"} — each file named by its Bates range.`);
+  };
+  const sendToGreen = async () => {
+    const sel = rows.filter((d) => selDocs.has(d.id));
+    if (!sel.length) return;
+    if (!confirm(`Mark ${sel.length} document${sel.length === 1 ? "" : "s"} as PRODUCED and move ${sel.length === 1 ? "it" : "them"} to the green tab?\n\nUse this for copies that already went out on their own. For a formal production (merged PDF + cover letter + link for the other side), use "Prepare production" below instead.`)) return;
+    setMoving(true);
+    const r = await sendStagedToProduced(setId, sel.map((d) => d.id));
+    setMoving(false);
+    if (!r.ok) setError(("error" in r && r.error) || "Couldn't mark them produced.");
+    else { setSelDocs(new Set()); onMoved(`${r.moved} document${r.moved === 1 ? "" : "s"} moved to Documents produced (${r.label}).`); router.refresh(); }
+  };
+
   // AI.fred's per-page notes on the staged copies (inherited from the source
   // slice at staging, or written by Read & label on the copy itself).
   const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
@@ -1360,7 +1414,10 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
     if (r.ok) setPgNotes((prev) => ({ ...prev, [f.key]: r.notes }));
     return r;
   }, [setId]);
-  const noPages = useCallback((key: string, _n: number) => { void _n; void ensureNotes(key); }, [ensureNotes]);
+  const noPages = useCallback((key: string, n: number) => {
+    setPageCounts((prev) => (prev[key] === n ? prev : { ...prev, [key]: n }));
+    void ensureNotes(key);
+  }, [ensureNotes]);
   useEffect(() => { if (view === "reader") void ensureNotes(files[Math.min(reader.docIdx, files.length - 1)]?.key ?? ""); }, [view, reader.docIdx, files, ensureNotes]);
 
   useEffect(() => {
@@ -1425,6 +1482,11 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
     const d = byKey.get(f.key)!;
     return (
       <>
+        <button onClick={() => toggleDoc(f.key)}
+          title={selDocs.has(d.id) ? "Deselect this document" : "Select this document (download it or send it to the green tab)"}
+          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${selDocs.has(d.id) ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}>
+          {selDocs.has(d.id) ? <CheckSquare size={12} /> : <Square size={12} />} select
+        </button>
         <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-yellow-900">
           {d.batesPrefix ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "pre-labeled"}
         </span>
@@ -1449,7 +1511,21 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
           </div>
         )}
         <GoToPage onGo={goToPage} />
-        <span className="text-xs text-[var(--c-ink-muted)]">This is the exact copy that goes out — double-click a page to read; the reader&apos;s Tools can burn a late redaction or remove the document.</span>
+        {view === "grid" && selDocs.size > 0 && (
+          <span className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 px-2 py-1">
+            <span className="text-xs font-semibold">{selDocs.size} document{selDocs.size === 1 ? "" : "s"} selected</span>
+            <button onClick={downloadSelected}
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-xs hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
+              <Download size={12} /> Download
+            </button>
+            <button onClick={() => void sendToGreen()} disabled={moving}
+              className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+              {moving ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send to produced (green)
+            </button>
+            <button onClick={() => setSelDocs(new Set())} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">clear</button>
+          </span>
+        )}
+        <span className="text-xs text-[var(--c-ink-muted)]">This is the exact copy that goes out — click a page to select the document, double-click to read; the reader&apos;s Tools can burn a late redaction or remove the document.</span>
       </div>
       {notice && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -1468,13 +1544,18 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
           onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact} />
       ) : (
         <div className="space-y-6">
-          {files.map((f) => (
-            <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={noSel} pageMark={noMark}
-              setId={setId} shareToken={shareToken} flash={flash}
-              onTogglePage={noop} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
-              onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
-              getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)} />
-          ))}
+          {files.map((f) => {
+            const d = byKey.get(f.key)!;
+            return (
+              <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={selCells} pageMark={noMark}
+                setId={setId} shareToken={shareToken} flash={flash}
+                onTogglePage={(file) => toggleDoc(file.key)} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
+                onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
+                getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)}
+                pageLabel={(page) => (d.batesStart > 0 ? bates(d.batesPrefix, d.batesStart + page - 1) : String(page))}
+                cellTitle="Click to select this document · Double-click to read" />
+            );
+          })}
         </div>
       )}
     </div>
@@ -1492,6 +1573,9 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<ProductionRow | null>(draft);
   const [copied, setCopied] = useState(false);
+  // Lives here, not in the gallery: moving the LAST staged doc to green
+  // unmounts the gallery, and the confirmation must survive that.
+  const [movedNotice, setMovedNotice] = useState<string | null>(null);
 
   async function prepare() {
     setBusy(true);
@@ -1537,6 +1621,11 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
         </button>
       </div>
       {error && <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+      {movedNotice && (
+        <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          <Check size={15} className="mt-0.5 shrink-0" /> {movedNotice} <button onClick={() => setMovedNotice(null)} className="ml-auto"><X size={14} /></button>
+        </p>
+      )}
 
       {draft && review && (
         <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4">
@@ -1564,7 +1653,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
           Nothing staged. Select documents under <strong>Received from Client</strong> and click <strong>Intend to produce</strong>.
         </p>
       ) : view !== "list" ? (
-        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} />
+        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} />
       ) : (
         <div className="divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
           {rows.map((d) => (
