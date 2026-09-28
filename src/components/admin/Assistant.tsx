@@ -1147,10 +1147,10 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
+        <div ref={scrollRef} className="aifred-stage flex-1 space-y-5 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
           {messages.length === 0 && (
             <div className="mx-auto mt-8 max-w-lg text-center">
-              <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-accent)]/10">
+              <span className="aifred-medallion mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--c-accent)]/10">
                 <meta.icon size={22} className="text-[var(--c-accent)]" />
               </span>
               <p className="font-[family-name:var(--font-display)] text-xl text-[var(--c-ink)]">{meta.label}</p>

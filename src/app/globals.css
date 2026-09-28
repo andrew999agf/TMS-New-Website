@@ -433,36 +433,18 @@
   mask-image: radial-gradient(ellipse 60% 74% at 50% 48%, #000 52%, transparent 90%);
 }
 
-/* Golden light arcs, like the mock: pure decoration behind the content. */
+/* Golden light arcs: real gradient-stroked SVG sweeps with bloom and a
+   lens hot-spot, drawn in code (no image assets) behind the content. */
 .aifred-lux-glow {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
-}
-.aifred-lux-glow::before,
-.aifred-lux-glow::after {
-  content: "";
-  position: absolute;
-  border-radius: 9999px;
-  border: 1.5px solid transparent;
-  border-top-color: rgba(222, 184, 96, 0.5);
-  filter: blur(0.4px) drop-shadow(0 0 14px rgba(222, 184, 96, 0.35));
-  transform: rotate(-16deg);
-}
-.aifred-lux-glow::before {
-  width: 1300px;
-  height: 700px;
-  top: -430px;
-  right: -260px;
-}
-.aifred-lux-glow::after {
-  width: 1000px;
-  height: 560px;
-  bottom: -420px;
-  left: -320px;
-  transform: rotate(-14deg) scaleX(-1);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1400 700'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'1' y1%3D'0' x2%3D'0' y2%3D'1'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.9'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23d8a94e' stop-opacity%3D'.35'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'9'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.8'%2F%3E%3Cstop offset%3D'.35' stop-color%3D'%23f0c060' stop-opacity%3D'.25'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'9' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.5'%2F%3E%3Cpath d%3D'M 1480 90 Q 760 -30 -60 560' stroke%3D'url(%23g)' stroke-width%3D'1.8' fill%3D'none'%2F%3E%3Cpath d%3D'M 1480 230 Q 830 130 120 700' stroke%3D'url(%23g)' stroke-width%3D'1.1' fill%3D'none' opacity%3D'.6'%2F%3E%3Ccircle cx%3D'1210' cy%3D'58' r%3D'110' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E"), url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1200 640'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'1' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.85'%2F%3E%3Cstop offset%3D'.45' stop-color%3D'%23d8a94e' stop-opacity%3D'.3'%2F%3E%3Cstop offset%3D'.9' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'8'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.75'%2F%3E%3Cstop offset%3D'.4' stop-color%3D'%23f0c060' stop-opacity%3D'.22'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'8' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.45'%2F%3E%3Cpath d%3D'M -80 380 Q 420 640 1260 300' stroke%3D'url(%23g)' stroke-width%3D'1.4' fill%3D'none'%2F%3E%3Ccircle cx%3D'70' cy%3D'400' r%3D'100' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: right -180px top -120px, left -220px bottom -160px;
+  background-size: 1500px auto, 1250px auto;
 }
 
 /* Surfaces get a faint gold hairline + deep shadow so the cards float. */
@@ -534,18 +516,57 @@
   border-color: rgba(214, 176, 92, 0.4);
 }
 @keyframes aifredBreathe {
-  from { opacity: 0.45; }
-  to { opacity: 0.95; }
+  from { opacity: 0.55; }
+  to { opacity: 1; }
 }
-.aifred-lux-glow::before,
-.aifred-lux-glow::after {
+.aifred-lux-glow {
   animation: aifredBreathe 9s ease-in-out infinite alternate;
 }
 @media (prefers-reduced-motion: reduce) {
-  .aifred-lux-glow::before,
-  .aifred-lux-glow::after {
+  .aifred-lux-glow {
     animation: none;
   }
+}
+
+/* The conversation stage carries its own cinematic sweep — the arc lives
+   INSIDE the panel like the mock, hot-spot in the lower-left. */
+.aifred-lux .aifred-stage {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox%3D'0 0 1200 620'%3E%3Cdefs%3E%3ClinearGradient id%3D'g' x1%3D'0' y1%3D'1' x2%3D'1' y2%3D'0'%3E%3Cstop offset%3D'0' stop-color%3D'%23f6cd72' stop-opacity%3D'.95'%2F%3E%3Cstop offset%3D'.38' stop-color%3D'%23d8a94e' stop-opacity%3D'.4'%2F%3E%3Cstop offset%3D'.85' stop-color%3D'%23d8a94e' stop-opacity%3D'0'%2F%3E%3C%2FlinearGradient%3E%3Cfilter id%3D'b' x%3D'-30%25' y%3D'-30%25' width%3D'160%25' height%3D'160%25'%3E%3CfeGaussianBlur stdDeviation%3D'7'%2F%3E%3C%2Ffilter%3E%3CradialGradient id%3D'f'%3E%3Cstop offset%3D'0' stop-color%3D'%23ffe9b0' stop-opacity%3D'.85'%2F%3E%3Cstop offset%3D'.35' stop-color%3D'%23f0c060' stop-opacity%3D'.3'%2F%3E%3Cstop offset%3D'1' stop-color%3D'%23f0c060' stop-opacity%3D'0'%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Cpath d%3D'M -90 660 Q 430 60 1260 -60' stroke%3D'url(%23g)' stroke-width%3D'8' fill%3D'none' filter%3D'url(%23b)' opacity%3D'.55'%2F%3E%3Cpath d%3D'M -90 660 Q 430 60 1260 -60' stroke%3D'url(%23g)' stroke-width%3D'1.6' fill%3D'none'%2F%3E%3Ccircle cx%3D'58' cy%3D'528' r%3D'95' fill%3D'url(%23f)'%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: left -70px bottom -90px;
+  background-size: 120% auto;
+}
+
+/* The mode medallion: a gold ring lit unevenly (conic gradient border),
+   deep-shadowed core, halo, and a tiny satellite spark — pure CSS. */
+.aifred-lux .aifred-medallion {
+  position: relative;
+  height: 4.25rem;
+  width: 4.25rem;
+  border: 1.5px solid transparent;
+  border-radius: 9999px;
+  background:
+    radial-gradient(120% 120% at 32% 26%, #182031 0%, #0b0f1a 62%) padding-box,
+    conic-gradient(from 130deg, rgba(246, 205, 114, 0.95), rgba(122, 94, 40, 0.15) 28%, rgba(246, 205, 114, 0.3) 52%, rgba(255, 228, 150, 1) 76%, rgba(246, 205, 114, 0.95)) border-box;
+  box-shadow:
+    0 0 28px rgba(214, 176, 92, 0.3),
+    0 0 5px rgba(246, 205, 114, 0.45),
+    inset 0 0 18px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.aifred-lux .aifred-medallion::after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  bottom: 0;
+  height: 5px;
+  width: 5px;
+  border-radius: 9999px;
+  background: #f6cd72;
+  box-shadow: 0 0 9px 2.5px rgba(246, 205, 114, 0.75);
+}
+.aifred-lux .aifred-medallion svg {
+  color: #efe9dc;
 }
 
 /* Scoped scrollbars to match the dark chrome. */
