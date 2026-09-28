@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STYLE_PRESETS, DEFAULT_STYLE_KEY } from "@/lib/ai/styles";
 import {
-  Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2,
+  Send, Loader2, Trash2, Bot, User, AlertCircle, MessageSquare, FileText, Code2, ChevronUp, ChevronDown,
   Copy, Check, Download, Mic, MicOff, Volume2, VolumeX, AudioLines, History,
   Plus, Pencil, Square, RefreshCw, X, Scale, Activity, Power, Share2, Settings2,
   ImagePlus, Eye,
@@ -407,6 +407,16 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
   // A visible clock for the notice toast: users watching "starting up…"
   // deserve to know how long it's actually been and when to worry.
   const [noticeNow, setNoticeNow] = useState(() => Date.now());
+  const [noticeMin, setNoticeMin] = useState(false);
+  const prevNoticeMsg = useRef<string | null>(null);
+  useEffect(() => {
+    const msg = srv?.notice?.message ?? null;
+    // A NEW message (e.g. "finished reading & labeling…") re-opens a
+    // minimized bar so completions and errors are never missed.
+    if (msg && prevNoticeMsg.current && msg !== prevNoticeMsg.current) setNoticeMin(false);
+    if (!msg) setNoticeMin(false);
+    prevNoticeMsg.current = msg;
+  }, [srv?.notice?.message]);
   useEffect(() => {
     if (!srv?.notice) return;
     const t = setInterval(() => setNoticeNow(Date.now()), 1000);
@@ -940,9 +950,29 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       {/* Background-work toast: drops in from the top right when the AI is
           doing something the user should know about (a model swap, a batch
           vision job). Red-amber + grayed chat when sending must pause. */}
-      {srv?.notice && (
+      {srv?.notice && noticeMin && (() => {
+        const started = new Date(srv.notice.startedAt).getTime();
+        const secs = Math.max(0, Math.floor((noticeNow - started) / 1000));
+        const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+        return (
+          <button onClick={() => setNoticeMin(false)}
+            className="absolute right-3 top-3 z-40 flex w-80 max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-amber-500/50 bg-amber-50 px-3 py-1 text-left shadow-lg dark:bg-amber-950/90"
+            title="Background work is still running — click for details">
+            <Loader2 size={12} className="shrink-0 animate-spin text-amber-600" />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-amber-900 dark:text-amber-100">{srv.notice.message}</span>
+            <span className="shrink-0 font-mono text-[10px] text-amber-800 dark:text-amber-200">{clock}</span>
+            <ChevronDown size={12} className="shrink-0 text-amber-700 dark:text-amber-300" />
+          </button>
+        );
+      })()}
+      {srv?.notice && !noticeMin && (
         <div className="absolute right-3 top-3 z-40 w-80 max-w-[calc(100%-1.5rem)] animate-[slideDown_.25s_ease-out] rounded-lg border border-amber-500/50 bg-amber-50 p-3 shadow-lg dark:bg-amber-950/90">
-          <div className="flex items-start gap-2">
+          <button onClick={() => setNoticeMin(true)}
+            className="absolute right-1.5 top-1.5 rounded p-0.5 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+            title="Minimize — keeps a slim progress bar; pops back open when this finishes">
+            <ChevronUp size={13} />
+          </button>
+          <div className="flex items-start gap-2 pr-5">
             <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-amber-600" />
             <div className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
               <p className="font-semibold">{srv.notice.message}</p>

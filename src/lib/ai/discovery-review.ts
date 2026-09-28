@@ -45,7 +45,22 @@ export type SweepResult = {
   done: boolean;
   /** Progress line for the dialog when the chunk did prep work. */
   stage?: string;
+  /** Case-wide page-note progress — the number people actually watch. */
+  pagesDone: number;
+  pagesTotal: number;
 };
+
+/** Sum of readable pages vs. pages already annotated, across the case. */
+function pageProgress(targets: ReviewRow[]): { pagesDone: number; pagesTotal: number } {
+  let pagesDone = 0, pagesTotal = 0;
+  for (const t of targets) {
+    const total = t.pageText.length;
+    if (!total) continue;
+    pagesTotal += total;
+    pagesDone += Math.min(t.pageNotes.length, total);
+  }
+  return { pagesDone, pagesTotal };
+}
 
 type ReviewKind = "doc" | "share" | "production";
 type ReviewRow = {
@@ -258,8 +273,8 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
     const finished = targetsNow.filter((t) => !needsWork(t)).length;
     return {
       total: targetsNow.length, labeled: finished, remaining: targetsNow.length - finished,
-      errors: 0, needsVision: 0, done: false,
-      stage: `Reading document text first… ${prog.indexed} of ${prog.total} documents indexed`,
+      errors: 0, needsVision: 0, done: false, ...pageProgress(targetsNow),
+      stage: `Reading document text first… ${prog.indexed} of ${prog.total} documents${prog.current ? ` — ${prog.current}` : ""}`,
     };
   }
 
@@ -364,19 +379,20 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
   const after = await reviewTargets(setId, set.matter);
   const remaining = after.filter(needsWork).length;
   const total = after.length;
+  const pp = pageProgress(after);
   // Done when everything has a status — or when a chunk can make no progress
   // at all (every pending document needs the vision model, which isn't
   // loaded). The caller sees needsVision > 0 and can offer the swap.
   const done = remaining === 0 || (progressed === 0 && pending.length > 0);
   try {
     if (!done) {
-      await setAiNotice(`AI.fred is reviewing "${set.name}" — ${total - remaining} of ${total} documents labeled.`, { chatBlocked: false, minutes: 15, kind: "review" });
+      await setAiNotice(`AI.fred is reading "${set.name}" — ${pp.pagesDone} of ${pp.pagesTotal} pages annotated (${total - remaining}/${total} documents).`, { chatBlocked: false, minutes: 15, kind: "review" });
     } else {
       await clearAiNotice();
     }
   } catch { /* notices are a nicety */ }
 
-  return { total, labeled: total - remaining, remaining, errors, needsVision, done, ...(done ? {} : stage ? { stage } : {}) };
+  return { total, labeled: total - remaining, remaining, errors, needsVision, done, ...pp, ...(done ? {} : stage ? { stage } : {}) };
 }
 
 /** Progress for the UI without doing any work. */
@@ -385,5 +401,5 @@ export async function reviewStatus(setId: number): Promise<{ total: number; rema
   const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
   if (!set) return { error: `No discovery set #${setId}.` };
   const targets = await reviewTargets(setId, set.matter);
-  return { total: targets.length, remaining: targets.filter(needsWork).length, errors: targets.filter((t) => t.aiLabelStatus === "error").length };
+  return { total: targets.length, remaining: targets.filter(needsWork).length, errors: targets.filter((t) => t.aiLabelStatus === "error").length, ...pageProgress(targets) };
 }

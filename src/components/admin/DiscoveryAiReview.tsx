@@ -19,8 +19,8 @@ import { Copy, Loader2, ScanText, X } from "lucide-react";
 type Srv = { configured: boolean; state?: string };
 type FailedDoc = { kind: string; id: number; name: string; sizeBytes: number | null; reason: string };
 type IndexChunk = { total: number; indexed: number; remaining: number; failed: number; done: boolean; current?: string; failedDocs: FailedDoc[]; error?: string };
-type LabelChunk = { total: number; labeled: number; remaining: number; errors: number; needsVision: number; done: boolean; stage?: string; error?: string };
-type JobStatus = { total: number; remaining: number; errors: number; jobActive?: boolean; chunk?: LabelChunk; note?: string; error?: string };
+type LabelChunk = { total: number; labeled: number; remaining: number; errors: number; needsVision: number; done: boolean; stage?: string; error?: string; pagesDone?: number; pagesTotal?: number };
+type JobStatus = { total: number; remaining: number; errors: number; jobActive?: boolean; chunk?: LabelChunk; note?: string; error?: string; pagesDone?: number; pagesTotal?: number };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,7 +64,7 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
   const [labelErrors, setLabelErrors] = useState(0);
   const [copied, setCopied] = useState(false);
   const [jobLive, setJobLive] = useState(false); // a background job exists for this case
-  const [jobProgress, setJobProgress] = useState<{ done: number; total: number } | null>(null);
+  const [jobProgress, setJobProgress] = useState<{ done: number; total: number; pagesDone?: number; pagesTotal?: number } | null>(null);
   const running = phase === "waking" || phase === "working";
   const stopped = useRef(false);
 
@@ -77,7 +77,7 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
         const j = (await r.json()) as JobStatus;
         if (!alive) return;
         setJobLive(!!j.jobActive);
-        if (j.jobActive && typeof j.total === "number") setJobProgress({ done: j.total - j.remaining, total: j.total });
+        if (j.jobActive && typeof j.total === "number") setJobProgress({ done: j.total - j.remaining, total: j.total, pagesDone: j.pagesDone, pagesTotal: j.pagesTotal });
         if (!j.jobActive) setJobProgress(null);
       } catch { /* transient */ }
     };
@@ -109,9 +109,17 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
       if (!ok) { setLine(j.error ?? "Labeling failed — the background job keeps retrying; safe to close."); }
       else {
         const done = j.total - j.remaining;
-        setJobProgress({ done, total: j.total });
-        setLine(j.chunk?.stage ?? (j.note === "waiting-for-server" || j.note === "waking-server" ? "Waiting for the AI server to come up…" : `Working… ${done} of ${j.total} documents`));
-        setPct(j.total ? Math.round((done / j.total) * 100) : null);
+        const pDone = j.chunk?.pagesDone ?? j.pagesDone ?? 0;
+        const pTotal = j.chunk?.pagesTotal ?? j.pagesTotal ?? 0;
+        setJobProgress({ done, total: j.total, pagesDone: pDone, pagesTotal: pTotal });
+        const pages = pTotal > 0 ? `${pDone} of ${pTotal} pages` : "";
+        setLine(
+          j.chunk?.stage ? (pages ? `${j.chunk.stage} · ${pages} case-wide` : j.chunk.stage)
+          : j.note === "waiting-for-server" || j.note === "waking-server" ? "Waiting for the AI server to come up…"
+          : pages ? `Working… ${pages} annotated (${done} of ${j.total} documents)`
+          : `Working… ${done} of ${j.total} documents`,
+        );
+        setPct(pTotal > 0 ? Math.round((pDone / pTotal) * 100) : j.total ? Math.round((done / j.total) * 100) : null);
         router.refresh();
         if (!j.jobActive) { await finish(j); return; }
       }
@@ -154,7 +162,7 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
         className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${jobLive ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
         title={jobLive ? "AI.fred is reading & labeling in the background — click for progress" : "AI.fred reads every document's text and writes a label, notes, and a note for every readable page — its permanent memory of this case"}>
         {jobLive ? <Loader2 size={14} className="animate-spin" /> : <ScanText size={14} />}
-        {jobLive ? `Reading & labeling…${jobProgress ? ` ${jobProgress.done}/${jobProgress.total}` : ""}` : "Read & label"}
+        {jobLive ? `Reading & labeling…${jobProgress ? (jobProgress.pagesTotal ? ` ${jobProgress.pagesDone}/${jobProgress.pagesTotal} pp.` : ` ${jobProgress.done}/${jobProgress.total}`) : ""}` : "Read & label"}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (phase !== "waking") { stopped.current = true; setOpen(false); } }}>
