@@ -16,7 +16,7 @@ import { PopMenu } from "./PopMenu";
 import { ReadAloudButton } from "./ReadAloud";
 import { PdfThumb } from "@/components/site/PdfThumb";
 import {
-  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, setSetAccess,
+  addExhibitDoc, updateExhibitDoc, deleteExhibitDoc, replaceExhibitFile, setExhibitHiRes, setExhibitListDoc, searchExhibitSet, getDocPages, getDocAi, type DocAiRecord, setSetAccess,
   addExhibitWitness, deleteExhibitWitness, addExhibitClaim, deleteExhibitClaim, addExhibitElement, deleteExhibitElement,
   addExhibitRecipient, resendExhibitInvite, setExhibitRecipientRevoked, deleteExhibitRecipient, setOcShare, buildPrintCopy, decideColorPage, setExhibitOmitted, setExhibitOfferStatusBulk, setExhibitOmittedBulk, setShareSides,
   type SetSearchHit,
@@ -1232,6 +1232,16 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
     if (current?.id) getDocPages(current.id).then((p) => { if (alive) setDocPages(p); });
     return () => { alive = false; };
   }, [current?.id]);
+
+  // The AI record carried from the discovery file (internal only) — page
+  // notes, section map, source label/description. Loaded alongside the text.
+  const [docAi, setDocAi] = useState<DocAiRecord | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setDocAi(null);
+    if (current?.id) getDocAi(current.id).then((r) => { if (alive) setDocAi(r); });
+    return () => { alive = false; };
+  }, [current?.id]);
   useEffect(() => {
     const q = docQuery.trim().toLowerCase();
     if (q.length < 2 || docPages.length === 0) { setDocMatches([]); setMatchPos(0); return; }
@@ -1717,6 +1727,28 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <div className="truncate text-[11px] text-[var(--c-ink-muted)]">
                     {batesRange(current.bates, current.batesEnd) ? `${batesRange(current.bates, current.batesEnd)} · ` : ""}{current.pageCount ? `${current.pageCount} page${current.pageCount === 1 ? "" : "s"}` : ""}{current.sizeBytes ? ` · ${fmtSize(current.sizeBytes)}` : ""}
                   </div>
+                  {/* AI record carried from the discovery file. Internal work
+                      product — this block never appears on any share link. */}
+                  {docAi && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer select-none text-[11px] font-medium text-amber-700 hover:underline dark:text-amber-400">
+                        AI record from the discovery file{docAi.notes.length ? ` — ${docAi.notes.length} page note${docAi.notes.length === 1 ? "" : "s"}` : ""} (internal)
+                      </summary>
+                      <div className="mt-1 max-h-44 space-y-1 overflow-auto rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] leading-snug text-[var(--c-ink)]">
+                        {(docAi.label || docAi.description) && (
+                          <p>{docAi.label && <strong>{docAi.label}</strong>}{docAi.label && docAi.description ? " — " : ""}{docAi.description}</p>
+                        )}
+                        {docAi.sections.length > 0 && (
+                          <p className="text-[var(--c-ink-muted)]">
+                            {docAi.sections.map((s) => `pp. ${s.from}${s.to > s.from ? `–${s.to}` : ""}: ${s.title}`).join(" · ")}
+                          </p>
+                        )}
+                        {docAi.notes.map((n) => (
+                          <p key={n.page}><span className="font-mono font-semibold">p.{n.page}</span> — {n.note}</p>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
 
                 <div className="relative inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-1">

@@ -10,6 +10,7 @@ import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitEleme
 import { asc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import { isVideoFile } from "@/lib/exhibit-review/media";
+import { backfillExhibitAi } from "@/lib/exhibit-review/carry";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,11 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
 
   const [set] = await db.select().from(exhibitSets).where(eq(exhibitSets.id, id));
   if (!set) notFound();
+
+  // Catch-up: exhibits assembled in the Discovery Reviewer before the AI
+  // record carried over get it rebuilt from the designation's page list.
+  // No-op after the first pass; never throws.
+  await backfillExhibitAi(id);
 
   // Note: pageText is intentionally NOT sent to the client — it can be large.
   // Search runs through server actions instead.

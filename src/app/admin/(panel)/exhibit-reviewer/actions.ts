@@ -12,6 +12,7 @@ import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { carryPages, carrySectionList } from "@/lib/exhibit-review/carry";
 import { isVideoFile } from "@/lib/exhibit-review/media";
 import { buildPrintOptimized, type ColorOverrides } from "@/lib/exhibit-review/printcopy";
 import { sendEmail } from "@/lib/email";
@@ -752,6 +753,34 @@ export async function getDocPages(docId: number): Promise<string[]> {
     return Array.isArray(row?.pageText) ? (row!.pageText as string[]) : [];
   } catch {
     return [];
+  }
+}
+
+export type DocAiRecord = {
+  label: string;
+  description: string;
+  sections: { from: number; to: number; title: string }[];
+  notes: { page: number; note: string }[];
+};
+
+/** The AI record carried from the discovery file — internal work product for
+ *  the reviewer's own screen; the exhibit share links never see it. */
+export async function getDocAi(docId: number): Promise<DocAiRecord | null> {
+  await guard();
+  if (!db) return null;
+  try {
+    const [row] = await db
+      .select({ aiLabel: exhibitDocs.aiLabel, aiDescription: exhibitDocs.aiDescription, aiSections: exhibitDocs.aiSections, pageNotes: exhibitDocs.pageNotes })
+      .from(exhibitDocs).where(eq(exhibitDocs.id, docId));
+    if (!row) return null;
+    const sections = carrySectionList(row.aiSections);
+    const notes = carryPages(row.pageNotes)
+      .map((note, i) => ({ page: i + 1, note }))
+      .filter((n) => n.note);
+    if (!row.aiLabel && !row.aiDescription && !sections.length && !notes.length) return null;
+    return { label: row.aiLabel, description: row.aiDescription, sections, notes };
+  } catch {
+    return null;
   }
 }
 

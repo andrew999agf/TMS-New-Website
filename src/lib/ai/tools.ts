@@ -350,7 +350,7 @@ async function listExhibits(matter: string) {
   const sets = await db!.select().from(exhibitSets).where(and(eq(exhibitSets.matter, matter), eq(exhibitSets.archived, false)));
   if (!sets.length) return { note: `No exhibit sets for matter "${matter}".` };
   const docs = await db!
-    .select({ id: exhibitDocs.id, setId: exhibitDocs.setId, side: exhibitDocs.side, label: exhibitDocs.label, number: exhibitDocs.number, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, trialStatus: exhibitDocs.trialStatus, offerStatus: exhibitDocs.offerStatus, omitted: exhibitDocs.omitted, pageCount: exhibitDocs.pageCount })
+    .select({ id: exhibitDocs.id, setId: exhibitDocs.setId, side: exhibitDocs.side, label: exhibitDocs.label, number: exhibitDocs.number, title: exhibitDocs.title, description: exhibitDocs.description, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, trialStatus: exhibitDocs.trialStatus, offerStatus: exhibitDocs.offerStatus, omitted: exhibitDocs.omitted, pageCount: exhibitDocs.pageCount, aiLabel: exhibitDocs.aiLabel, aiDescription: exhibitDocs.aiDescription, pageNotes: exhibitDocs.pageNotes, aiSections: exhibitDocs.aiSections })
     .from(exhibitDocs).where(inArray(exhibitDocs.setId, sets.map((s) => s.id)));
   return {
     sets: sets.map((s) => ({ id: s.id, name: s.name })),
@@ -362,6 +362,8 @@ async function listExhibits(matter: string) {
         bates: d.bates ? (d.batesEnd ? `${d.bates}–${d.batesEnd}` : d.bates) : undefined,
         pages: d.pageCount ?? undefined, trialStatus: d.trialStatus !== "none" ? d.trialStatus : undefined,
         offerPlan: d.offerStatus || undefined, omitted: d.omitted || undefined,
+        aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined,
+        pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections),
       })),
   };
 }
@@ -384,9 +386,11 @@ async function readDocument(source: string, docId: number, pageFrom?: number, pa
   let label: { aiLabel: string; aiDescription: string } | null = null;
   const asArr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
   if (source === "exhibit") {
-    const [row] = await db!.select({ name: exhibitDocs.title, pageText: exhibitDocs.pageText }).from(exhibitDocs).where(eq(exhibitDocs.id, docId));
+    const [row] = await db!.select({ name: exhibitDocs.title, pageText: exhibitDocs.pageText, pageNotes: exhibitDocs.pageNotes, aiSections: exhibitDocs.aiSections, aiLabel: exhibitDocs.aiLabel, aiDescription: exhibitDocs.aiDescription }).from(exhibitDocs).where(eq(exhibitDocs.id, docId));
     if (!row) return { error: `No exhibit document #${docId}.` };
-    name = row.name; pages = asArr(row.pageText);
+    name = row.name; pages = asArr(row.pageText); pageNotes = asArr(row.pageNotes);
+    sections = secList(row.aiSections);
+    if (row.aiLabel) label = { aiLabel: row.aiLabel, aiDescription: row.aiDescription };
   } else if (source === "client") {
     const [row] = await db!.select().from(shareFiles).where(eq(shareFiles.id, docId));
     if (!row) return { error: `No client-uploaded file #${docId}.` };
@@ -480,8 +484,12 @@ async function searchDocuments(matter: string, query: string) {
     }
   }
   if (esets.length) {
-    const docs = await db!.select({ id: exhibitDocs.id, label: exhibitDocs.label, title: exhibitDocs.title, pageText: exhibitDocs.pageText }).from(exhibitDocs).where(inArray(exhibitDocs.setId, esets.map((s) => s.id)));
-    for (const d of docs) scan("exhibit", d.id, `${d.label ? d.label + " — " : ""}${d.title}`, Array.isArray(d.pageText) ? (d.pageText as string[]) : []);
+    const docs = await db!.select({ id: exhibitDocs.id, label: exhibitDocs.label, title: exhibitDocs.title, pageText: exhibitDocs.pageText, pageNotes: exhibitDocs.pageNotes, aiLabel: exhibitDocs.aiLabel, aiDescription: exhibitDocs.aiDescription }).from(exhibitDocs).where(inArray(exhibitDocs.setId, esets.map((s) => s.id)));
+    for (const d of docs) {
+      scan("exhibit", d.id, `${d.label ? d.label + " — " : ""}${d.title}`, Array.isArray(d.pageText) ? (d.pageText as string[]) : [], undefined, Array.isArray(d.pageNotes) ? (d.pageNotes as string[]) : []);
+      const labelText = [d.aiLabel, d.aiDescription].filter(Boolean).join(" — ");
+      if (labelText && hits.length < 30 && labelText.toLowerCase().includes(q)) hits.push({ source: "exhibit (AI label)", docId: d.id, document: `${d.label ? d.label + " — " : ""}${d.title}`, page: 1, snippet: labelText.slice(0, 220) });
+    }
   }
   // Client-portal uploads (the red tab's share-folder files).
   try {

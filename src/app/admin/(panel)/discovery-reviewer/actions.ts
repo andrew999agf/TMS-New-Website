@@ -10,6 +10,7 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
+import { buildCarry, carryPages, carrySectionList } from "@/lib/exhibit-review/carry";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
 import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
@@ -301,6 +302,19 @@ export async function saveDesignation(setId: number, input: SaveDesignationInput
     // Index the assembled exhibit's text so it's searchable in the reviewer.
     const extracted = await extractPdfText(blob.url, bytes.byteLength);
 
+    // Carry the AI record with the pages: per-page notes, the section map
+    // remapped to the exhibit's own numbering, and (for a single-source
+    // exhibit) the document's label/description. Internal columns only —
+    // exhibit share links never read these.
+    const carry = buildCarry(pages, new Map(docs.map((d) => [d.id, {
+      name: d.name,
+      pageNotes: carryPages(d.pageNotes),
+      aiSections: carrySectionList(d.aiSections),
+      aiLabel: d.aiLabel,
+      aiDescription: d.aiDescription,
+      pageText: carryPages(d.pageText),
+    }])));
+
     const docNames = new Map(docs.map((d) => [d.id, d.name]));
     const title = str(input.title, 255);
     const [exhibitDoc] = await db.insert(exhibitDocs).values({
@@ -312,7 +326,11 @@ export async function saveDesignation(setId: number, input: SaveDesignationInput
       description: `Assembled in the Discovery Reviewer from ${describePages(pages, docNames)}.`,
       url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: bytes.byteLength,
       pageCount: extracted.pageCount || pages.length,
-      pageText: extracted.pages,
+      pageText: carry.textFor(extracted.pages),
+      pageNotes: carry.notes,
+      aiSections: carry.sections,
+      aiLabel: carry.aiLabel,
+      aiDescription: carry.aiDescription,
       sort: number,
     }).returning({ id: exhibitDocs.id });
 

@@ -1284,6 +1284,14 @@ export const exhibitDocs = pgTable(
     pageCount: integer("page_count"),
     /** Per-page extracted text (truncated) that powers content search. */
     pageText: jsonb("page_text").notNull().default([]),
+    /** AI record carried from the discovery file when the exhibit was
+     *  assembled there: per-page notes, the section map (remapped to the
+     *  exhibit's own pages), and the source document's label/description.
+     *  INTERNAL ONLY — never sent to any exhibit share link. */
+    pageNotes: jsonb("page_notes").notNull().default([]),
+    aiSections: jsonb("ai_sections").notNull().default([]),
+    aiLabel: varchar("ai_label", { length: 300 }).notNull().default(""),
+    aiDescription: text("ai_description").notNull().default(""),
     sort: integer("sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
