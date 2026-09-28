@@ -66,6 +66,8 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS prod_toc text NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS prod_notes text NOT NULL DEFAULT ''`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS prod_toc_file text NOT NULL DEFAULT ''`,
+  `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS staged_toc text NOT NULL DEFAULT ''`,
+  `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS staged_notes text NOT NULL DEFAULT ''`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS source_pages jsonb NOT NULL DEFAULT '[]'`,
   `CREATE TABLE IF NOT EXISTS discovery_annotations (
     id serial PRIMARY KEY,

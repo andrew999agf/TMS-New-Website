@@ -240,7 +240,7 @@ export function RequestTracker({ requests }: { requests: RequestRow[] }) {
 
 /* ---------------------------- pipeline views ------------------------------ */
 
-export type PipelineContents = { toc: string; notes: string; tocFile: string };
+export type PipelineContents = { toc: string; notes: string; tocFile: string; stagedToc: string; stagedNotes: string };
 
 export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareTokens }: {
   mode: "received" | "staged" | "produced";
@@ -1508,10 +1508,16 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
 
   const mainDoc = likelyMainDoc(rows.length ? rows : staged);
   const linkFor = (e: TocEntry) => (mainDoc?.url ? `${mainDoc.url}#page=${e.from}` : null);
+  // Bates entries click straight through to the stamped copy at that page.
+  const batesLink = (prefix: string, n: number) => {
+    const d = staged.find((d) => d.url && d.batesPrefix === prefix && d.batesStart <= n && n <= d.batesEnd);
+    return d ? `${d.url}#page=${n - d.batesStart + 1}` : null;
+  };
+  const stagedForToc = rows.filter((d) => d.batesPrefix && d.batesStart > 0).map((d) => ({ prefix: d.batesPrefix, start: d.batesStart, end: d.batesEnd, name: d.name }));
 
   return (
     <div className="p-4">
-      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} /></div>
+      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.stagedToc} notes={contents.stagedNotes} tocFile="" linkFor={linkFor} batesLink={batesLink} stagedDocs={stagedForToc} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <p className="text-sm text-[var(--c-ink-muted)]">Bates-labeled and under review — nothing here has gone to the other side yet.</p>
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
@@ -1604,7 +1610,11 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
       : null;
   return (
     <div className="p-4">
-      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile} linkFor={linkFor} batesBase={batesBase} /></div>
+      <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="produced" toc={contents.stagedToc} notes={contents.stagedNotes} tocFile="" linkFor={linkFor} batesBase={batesBase}
+        batesLink={(prefix, n) => {
+          const d = staged.find((d) => d.url && d.batesPrefix === prefix && d.batesStart <= n && n <= d.batesEnd);
+          return d ? `${d.url}#page=${n - d.batesStart + 1}` : null;
+        }} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <IndexAndLabel setId={setId} docCount={staged.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />

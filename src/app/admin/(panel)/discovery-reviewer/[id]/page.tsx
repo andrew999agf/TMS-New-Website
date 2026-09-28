@@ -207,7 +207,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
         staged={staged}
         prods={prods}
         batesDefaults={batesDefaults}
-        contents={{ toc: set.prodToc ?? "", notes: set.prodNotes ?? "", tocFile: set.prodTocFile ?? "" }}
+        contents={{ toc: set.prodToc ?? "", notes: set.prodNotes ?? "", tocFile: set.prodTocFile ?? "", stagedToc: set.stagedToc ?? "", stagedNotes: set.stagedNotes ?? "" }}
         shareTokens={{ received: set.shareTokenReceived ?? null, staged: set.shareTokenStaged ?? null, produced: set.shareTokenProduced ?? null }}
       />
     </div>

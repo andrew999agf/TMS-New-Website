@@ -1456,6 +1456,13 @@ export const discoverySets = pgTable(
     prodToc: text("prod_toc").notNull().default(""),
     prodNotes: text("prod_notes").notNull().default(""),
     prodTocFile: text("prod_toc_file").notNull().default(""),
+    /** The yellow/green tabs' OWN contents & notes, organized by Bates number.
+     *  The red contents above refers to source-file page numbers, which stop
+     *  meaning anything once documents are Bates-stamped — so the staged and
+     *  produced views keep a separate map (e.g. "SMITH000131-SMITH000200
+     *  Payroll records") written against the record copies. */
+    stagedToc: text("staged_toc").notNull().default(""),
+    stagedNotes: text("staged_notes").notNull().default(""),
     /** Friendly-parties share links — ONE PER TAB, each independently on/off
      *  (null = off), so a link never exposes more than its own pile. NEVER
      *  for opposing counsel — productions have their own OC link — and the

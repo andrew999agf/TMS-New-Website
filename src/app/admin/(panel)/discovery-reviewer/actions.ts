@@ -1195,20 +1195,22 @@ export async function discardProductionDraft(productionId: number) {
   }
 }
 
-/** Save the pipeline's shared "Contents & notes": the table of contents that
- *  follows the client documents from received to produced, the free notes
- *  under it, and which file the page numbers refer to. */
-export async function saveProductionContents(setId: number, input: { toc: string; notes: string; tocFile: string }) {
+/** Save a pipeline "Contents & notes". Two separate maps: the red tab's
+ *  (scope "received") refers to source-file page numbers; the yellow/green
+ *  tabs share their own (scope "staged"), organized by Bates number, because
+ *  source page numbers stop meaning anything once copies are Bates-stamped. */
+export async function saveProductionContents(setId: number, input: { toc: string; notes: string; tocFile: string; scope?: "received" | "staged" }) {
   const session = await guard();
   if (!db) return { ok: false as const };
   try {
+    const staged = input.scope === "staged";
     await db.update(discoverySets).set({
-      prodToc: String(input.toc ?? "").slice(0, 20000),
-      prodNotes: String(input.notes ?? "").slice(0, 20000),
-      prodTocFile: String(input.tocFile ?? "").slice(0, 512),
+      ...(staged
+        ? { stagedToc: String(input.toc ?? "").slice(0, 20000), stagedNotes: String(input.notes ?? "").slice(0, 20000) }
+        : { prodToc: String(input.toc ?? "").slice(0, 20000), prodNotes: String(input.notes ?? "").slice(0, 20000), prodTocFile: String(input.tocFile ?? "").slice(0, 512) }),
       updatedAt: new Date(),
     }).where(eq(discoverySets.id, setId));
-    await audit(session.email, "update", "discovery-set", String(setId), "Updated production contents/notes");
+    await audit(session.email, "update", "discovery-set", String(setId), staged ? "Updated staged/produced contents/notes" : "Updated production contents/notes");
     return { ok: true as const };
   } catch {
     return { ok: false as const };

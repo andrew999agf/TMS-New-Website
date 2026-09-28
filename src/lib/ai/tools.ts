@@ -332,7 +332,11 @@ async function listDiscovery(matter: string) {
     }
   } catch { /* share tables optional */ }
   return {
-    sets: sets.map((s) => ({ id: s.id, name: s.name, causeNumber: s.causeNumber, ...(s.prodToc?.trim() ? { contentsAndNotes: s.prodToc.slice(0, 2000) } : {}) })),
+    sets: sets.map((s) => ({
+      id: s.id, name: s.name, causeNumber: s.causeNumber,
+      ...(s.prodToc?.trim() ? { contentsAndNotes: s.prodToc.slice(0, 2000) } : {}),
+      ...(s.stagedToc?.trim() ? { stagedContentsByBates: s.stagedToc.slice(0, 2000) } : {}),
+    })),
     opposingProduction: docs.filter((d) => d.bucket !== "client").map((d) => ({ docId: d.id, cite: `doc:${d.id}`, name: d.name, pages: d.pageCount, servedAt: d.servedAt || undefined, servedBy: d.servedBy || undefined, servedTo: d.servedTo || undefined, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections), ...(d.aiLabelStatus === "illegible" ? { aiNote: "flagged for human review" } : {}) })),
     receivedFromClientViaOpposingTab: docs.filter((d) => d.bucket === "client").map((d) => ({ docId: d.id, cite: `doc:${d.id}`, name: d.name, pages: d.pageCount, aiLabel: d.aiLabel || undefined, aiNotes: d.aiDescription ? d.aiDescription.slice(0, 500) : undefined, textIndexed: hasText(d.pageText), pagesAnnotated: noteCount(d.pageNotes) || undefined, sections: secList(d.aiSections) })),
     clientUploadedFiles: clientFiles,
