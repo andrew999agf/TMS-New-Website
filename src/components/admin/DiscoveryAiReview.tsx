@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Loader2, ScanText, X } from "lucide-react";
 
@@ -20,6 +20,7 @@ type Srv = { configured: boolean; state?: string };
 type FailedDoc = { kind: string; id: number; name: string; sizeBytes: number | null; reason: string };
 type IndexChunk = { total: number; indexed: number; remaining: number; failed: number; done: boolean; current?: string; failedDocs: FailedDoc[]; error?: string };
 type LabelChunk = { total: number; labeled: number; remaining: number; errors: number; needsVision: number; done: boolean; stage?: string; error?: string };
+type JobStatus = { total: number; remaining: number; errors: number; jobActive?: boolean; chunk?: LabelChunk; note?: string; error?: string };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,17 +56,71 @@ async function waitReady(maxTries = 90): Promise<boolean> {
 export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [phase, setPhase] = useState<"confirm" | "waking" | "indexing" | "labeling" | "done" | "error">("confirm");
+  const [phase, setPhase] = useState<"confirm" | "waking" | "working" | "done" | "error">("confirm");
   const [line, setLine] = useState("");
   const [pct, setPct] = useState<number | null>(null);
   const [failedDocs, setFailedDocs] = useState<FailedDoc[]>([]);
   const [leftForLater, setLeftForLater] = useState(0);
   const [labelErrors, setLabelErrors] = useState(0);
   const [copied, setCopied] = useState(false);
-  const running = phase === "waking" || phase === "indexing" || phase === "labeling";
+  const [jobLive, setJobLive] = useState(false); // a background job exists for this case
+  const [jobProgress, setJobProgress] = useState<{ done: number; total: number } | null>(null);
+  const running = phase === "waking" || phase === "working";
+  const stopped = useRef(false);
+
+  // Is a background job already running for this case? Show it on the button.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const r = await fetch(`/api/admin/discovery/review?setId=${setId}`);
+        const j = (await r.json()) as JobStatus;
+        if (!alive) return;
+        setJobLive(!!j.jobActive);
+        if (j.jobActive && typeof j.total === "number") setJobProgress({ done: j.total - j.remaining, total: j.total });
+        if (!j.jobActive) setJobProgress(null);
+      } catch { /* transient */ }
+    };
+    void check();
+    const t = setInterval(check, 15_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [setId]);
+
+  async function finish(last: LabelChunk | JobStatus | null) {
+    try {
+      const r = await fetch(`/api/admin/discovery/index-text?setId=${setId}`);
+      const j = (await r.json()) as IndexChunk;
+      setFailedDocs(j.failedDocs ?? []);
+    } catch { /* fine */ }
+    setLeftForLater((last && "chunk" in last ? last.chunk?.needsVision : (last as LabelChunk | null)?.needsVision) ?? 0);
+    setLabelErrors((last && "errors" in last ? last.errors : 0) ?? 0);
+    setJobLive(false);
+    setPhase("done");
+    router.refresh();
+  }
+
+  /** After kickoff the job is the SERVER'S: the per-minute heartbeat keeps
+   *  it moving even if this tab closes. While the dialog stays open it also
+   *  nudges the job along faster and shows live progress. */
+  async function watchLoop() {
+    setPhase("working");
+    for (let i = 0; i < 2000 && !stopped.current; i++) {
+      const { ok, j } = await post<JobStatus>("/api/admin/discovery/review", { setId, background: true });
+      if (!ok) { setLine(j.error ?? "Labeling failed — the background job keeps retrying; safe to close."); }
+      else {
+        const done = j.total - j.remaining;
+        setJobProgress({ done, total: j.total });
+        setLine(j.chunk?.stage ?? (j.note === "waiting-for-server" || j.note === "waking-server" ? "Waiting for the AI server to come up…" : `Working… ${done} of ${j.total} documents`));
+        setPct(j.total ? Math.round((done / j.total) * 100) : null);
+        router.refresh();
+        if (!j.jobActive) { await finish(j); return; }
+      }
+      await sleep(5000);
+    }
+  }
 
   async function start() {
-    // Phase 0: server up (indexing is free, but labeling needs the model).
+    // Server up first (indexing is free, but labeling needs the model).
     const s = await getSrv();
     if (!s?.configured) { setLine("Server controls aren't configured (RUNPOD_API_KEY / RUNPOD_POD_ID)."); setPhase("error"); return; }
     if (s.state !== "ready") {
@@ -77,38 +132,12 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
       }
       if (!(await waitReady())) { setLine("The server didn't come up — check the power strip in AI.fred."); setPhase("error"); return; }
     }
-
-    // Phase 1: read every document's text (streamed, resumable, free).
-    setPhase("indexing");
-    setPct(null);
-    let fails: FailedDoc[] = [];
-    for (let i = 0; i < 300; i++) {
-      const { ok, j } = await post<IndexChunk>("/api/admin/discovery/index-text", { setId, retryFailed: i === 0 });
-      if (!ok) { setLine(j.error ?? "Text reading failed."); setPhase("error"); return; }
-      setLine(`Reading text… ${j.indexed} of ${j.total} documents${j.current ? ` — ${j.current}` : ""}`);
-      setPct(j.total ? Math.round((j.indexed / j.total) * 100) : null);
-      fails = j.failedDocs ?? [];
-      if (j.done) break;
-    }
-    setFailedDocs(fails);
-
-    // Phase 2: label + page notes from text. No vision, no model switching.
-    setPhase("labeling");
-    setPct(null);
-    let last: LabelChunk | null = null;
-    for (let i = 0; i < 600; i++) {
-      const { ok, j } = await post<LabelChunk>("/api/admin/discovery/review", { setId, retryErrors: i === 0 });
-      if (!ok) { setLine(j.error ?? "Labeling failed."); setPhase("error"); return; }
-      last = j;
-      setLine(j.stage ?? `Labeling… ${j.labeled} of ${j.total} documents`);
-      setPct(j.total ? Math.round((j.labeled / j.total) * 100) : null);
-      router.refresh(); // labels and page notes appear as they land
-      if (j.done) break;
-    }
-    setLeftForLater(last?.needsVision ?? 0);
-    setLabelErrors(last?.errors ?? 0);
-    setPhase("done");
-    router.refresh();
+    // Register the background job; retry previously-errored docs once.
+    const { ok, j } = await post<JobStatus>("/api/admin/discovery/review", { setId, background: true, retryErrors: true });
+    if (!ok) { setLine(j.error ?? "Couldn't start the job."); setPhase("error"); return; }
+    setJobLive(true);
+    if (!j.jobActive) { await finish(j); return; }
+    void watchLoop();
   }
 
   const report = () =>
@@ -121,18 +150,19 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
 
   return (
     <>
-      <button onClick={() => { setPhase("confirm"); setLine(""); setFailedDocs([]); setOpen(true); }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
-        title="AI.fred reads every document's text and writes a label, notes, and a note for every readable page — its permanent memory of this case">
-        <ScanText size={14} /> Read &amp; label
+      <button onClick={() => { stopped.current = false; if (jobLive) { setPhase("working"); setOpen(true); void watchLoop(); } else { setPhase("confirm"); setLine(""); setFailedDocs([]); setOpen(true); } }}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${jobLive ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
+        title={jobLive ? "AI.fred is reading & labeling in the background — click for progress" : "AI.fred reads every document's text and writes a label, notes, and a note for every readable page — its permanent memory of this case"}>
+        {jobLive ? <Loader2 size={14} className="animate-spin" /> : <ScanText size={14} />}
+        {jobLive ? `Reading & labeling…${jobProgress ? ` ${jobProgress.done}/${jobProgress.total}` : ""}` : "Read & label"}
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !running && setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (phase !== "waking") { stopped.current = true; setOpen(false); } }}>
           <div className="w-full max-w-md rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <ScanText size={16} className="text-[var(--c-accent)]" />
               <span className="font-[family-name:var(--font-display)] text-base">Read &amp; label this case&apos;s documents</span>
-              {!running && <button onClick={() => setOpen(false)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>}
+              {phase !== "waking" && <button onClick={() => { stopped.current = true; setOpen(false); }} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={15} /></button>}
             </div>
 
             {phase === "confirm" && (
@@ -157,7 +187,7 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
                     <div className="h-full rounded-full bg-[var(--c-accent)] transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 )}
-                <p className="text-[11px] text-[var(--c-ink-muted)]">Leave this open — it works in resumable steps, so nothing is lost if it stops. Labels and page notes appear as they land.</p>
+                <p className="text-[11px] text-[var(--c-ink-muted)]">{phase === "waking" ? "One moment — starting the server." : "Runs on the SERVER in the background — safe to close this box or leave the page entirely. The button shows live progress, AI.fred posts a note when it finishes, and labels appear as they land."}</p>
               </div>
             )}
 
