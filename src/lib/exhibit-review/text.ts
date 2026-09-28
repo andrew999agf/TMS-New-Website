@@ -42,7 +42,9 @@ export type ExtractedText = {
   skipped?: boolean;
 };
 
-const clean = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_PAGE);
+// NUL (\u0000) and friends come through OCR text layers and make Postgres
+// jsonb reject the whole write — scrub control characters before anything.
+const clean = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_PAGE);
 const SKIP: ExtractedText = { pageCount: 0, pages: [], skipped: true };
 
 async function doExtract(url: string): Promise<ExtractedText> {

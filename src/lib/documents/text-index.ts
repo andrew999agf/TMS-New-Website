@@ -56,7 +56,10 @@ export type IndexSweepResult = {
 
 const isPdf = (ct: string | null, name: string) => (!!ct && ct.includes("pdf")) || /\.pdf$/i.test(name);
 const asPages = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((p) => (typeof p === "string" ? p : "")) : []);
-const clean = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, PAGE_CHAR_CAP);
+// Strip control characters FIRST: OCR layers love hiding NUL (\u0000) in the
+// text, and Postgres jsonb refuses to store it ("unsupported Unicode escape
+// sequence") — which failed whole documents that had read perfectly.
+const clean = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim().slice(0, PAGE_CHAR_CAP);
 
 function reasonFrom(e: unknown): string {
   const name = (e as { name?: string })?.name ?? "";
