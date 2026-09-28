@@ -48,6 +48,13 @@ const nextConfig: NextConfig = {
   // runtime instead of bundling (@napi-rs/canvas ships a .node binary; the
   // discovery AI review renders scanned PDF pages with it server-side).
   serverExternalPackages: ["@napi-rs/canvas", "pdfjs-dist"],
+  // pdfjs loads its worker with a dynamic import the file tracer can't see;
+  // without this, pdf.worker.mjs is missing from the serverless bundle and
+  // every PDF open in production fails ("Setting up fake worker failed").
+  // Belt to ensurePdfWorker()'s suspenders — covers every route.
+  outputFileTracingIncludes: {
+    "/**": ["node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

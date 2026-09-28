@@ -12,6 +12,7 @@ import "server-only";
 
 export async function renderPdfPages(bytes: Uint8Array, pageNumbers: number[], maxDim = 1400): Promise<string[]> {
   try {
+    await (await import("@/lib/documents/pdf-worker")).ensurePdfWorker();
     const [{ getDocument }, { createCanvas }] = await Promise.all([
       import("pdfjs-dist/legacy/build/pdf.mjs"),
       import("@napi-rs/canvas"),
@@ -39,6 +40,7 @@ export async function renderPdfPages(bytes: Uint8Array, pageNumbers: number[], m
 /** How many pages a PDF has, or null if it can't be opened. */
 export async function pdfPageCount(bytes: Uint8Array): Promise<number | null> {
   try {
+    await (await import("@/lib/documents/pdf-worker")).ensurePdfWorker();
     const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const doc = await getDocument({ data: bytes }).promise;
     const n = doc.numPages;

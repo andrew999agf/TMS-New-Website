@@ -16,6 +16,7 @@ export async function rasterizeRedactedPages(bytes: Uint8Array, pageNumbers: num
   const targets = [...new Set(pageNumbers)].filter((n) => n >= 1);
   if (!targets.length) return bytes;
 
+  await (await import("@/lib/documents/pdf-worker")).ensurePdfWorker();
   const [{ getDocument }, { createCanvas }] = await Promise.all([
     import("pdfjs-dist/legacy/build/pdf.mjs"),
     import("@napi-rs/canvas"),

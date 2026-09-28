@@ -79,6 +79,7 @@ type PdfProxy = { numPages: number; getPage: (n: number) => Promise<{ getTextCon
 /** Open a PDF for reading: ranged streaming first (no memory footprint),
  *  full download as the fallback for hosts that refuse ranged reads. */
 async function openPdf(row: Row): Promise<{ doc: PdfProxy; close: () => Promise<void> }> {
+  await (await import("@/lib/documents/pdf-worker")).ensurePdfWorker();
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   try {
     const task = getDocument({ url: row.url!, useSystemFonts: true, disableAutoFetch: true, rangeChunkSize: 1 << 20 });
