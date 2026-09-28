@@ -38,6 +38,22 @@ export default async function SharedSinglePage({ params }: { params: Promise<{ t
         {f.pages != null && page < f.pages && <Link href={`/discovery/${token}/d/${key}/p/${page + 1}`} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><ChevronRight size={14} /></Link>}
       </header>
       <iframe src={`/discovery/${token}/file/${key}/page/${page}`} title={`Page ${page}`} className="min-h-0 w-full flex-1 border-0 bg-white" />
+      {/* The page's own text, in the HTML itself — so this link is readable
+          by AI tools (which can't see inside the PDF frame above) and the
+          text is copyable without opening the PDF. This is the document's
+          content only; labels and notes never appear on shared pages. */}
+      <details className="shrink-0 border-t border-[var(--c-border)] bg-[var(--c-surface)]">
+        <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+          Page text {bates ? `(${bates})` : ""}
+        </summary>
+        <div className="max-h-64 overflow-y-auto px-4 pb-3">
+          {(f.pageText[page - 1] ?? "").trim() ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--c-ink)]">{f.pageText[page - 1]}</p>
+          ) : (
+            <p className="text-sm text-[var(--c-ink-muted)]">No machine-readable text on this page (photo or scan without a text layer).</p>
+          )}
+        </div>
+      </details>
     </main>
   );
 }

@@ -106,7 +106,12 @@ export async function getSharedDiscoveryCase(token: string): Promise<SharedCase 
 }
 
 /** Resolve a share key to its file — ONLY within the token's own scope. */
-export async function resolveSharedFile(token: string, key: string): Promise<{ name: string; url: string; contentType: string | null; pathname: string | null; pages: number | null; batesPrefix?: string; batesStart?: number } | null> {
+/** The document's own extracted page text (index copied out of the PDF).
+ *  This is the file's content — the same thing the link already serves as
+ *  a PDF — NEVER AI labels or notes, which stay off every shared surface. */
+const asPages = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map((p) => (typeof p === "string" ? p : "")) : []);
+
+export async function resolveSharedFile(token: string, key: string): Promise<{ name: string; url: string; contentType: string | null; pathname: string | null; pages: number | null; batesPrefix?: string; batesStart?: number; pageText: string[] } | null> {
   const hit = await setForToken(token);
   if (!hit) return null;
   const m = key.match(/^(doc|share|prod)-(\d{1,10})$/);
@@ -117,16 +122,16 @@ export async function resolveSharedFile(token: string, key: string): Promise<{ n
     const [d] = await db!.select().from(productionDocs).where(and(eq(productionDocs.id, id), eq(productionDocs.setId, hit.set.id)));
     if (!d?.url) return null;
     if (hit.scope === "produced" ? d.status !== "produced" : d.status === "produced") return null;
-    return { name: d.name, url: d.url, contentType: d.contentType, pathname: d.pathname, pages: d.pageCount, batesPrefix: d.batesPrefix || undefined, batesStart: d.batesPrefix ? d.batesStart : undefined };
+    return { name: d.name, url: d.url, contentType: d.contentType, pathname: d.pathname, pages: d.pageCount, batesPrefix: d.batesPrefix || undefined, batesStart: d.batesPrefix ? d.batesStart : undefined, pageText: asPages(d.pageText) };
   }
   if (hit.scope !== "received") return null;
   if (m[1] === "doc") {
     const [d] = await db!.select().from(discoveryDocs).where(and(eq(discoveryDocs.id, id), eq(discoveryDocs.setId, hit.set.id), eq(discoveryDocs.bucket, "client")));
-    return d?.url ? { name: d.name, url: d.url, contentType: d.contentType, pathname: d.pathname, pages: d.pageCount } : null;
+    return d?.url ? { name: d.name, url: d.url, contentType: d.contentType, pathname: d.pathname, pages: d.pageCount, pageText: asPages(d.pageText) } : null;
   }
   if (!hit.set.matter) return null;
   const [f] = await db!.select().from(shareFiles).where(eq(shareFiles.id, id));
   if (!f?.url) return null;
   const [folder] = await db!.select().from(shareFolders).where(and(eq(shareFolders.id, f.folderId), eq(shareFolders.matter, hit.set.matter), eq(shareFolders.type, "client")));
-  return folder ? { name: f.filename, url: f.url, contentType: f.contentType, pathname: f.pathname, pages: f.pageCount } : null;
+  return folder ? { name: f.filename, url: f.url, contentType: f.contentType, pathname: f.pathname, pages: f.pageCount, pageText: asPages(f.pageText) } : null;
 }
