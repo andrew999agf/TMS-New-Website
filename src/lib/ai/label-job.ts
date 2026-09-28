@@ -19,6 +19,9 @@ import { reviewDiscoveryChunk, type SweepResult } from "@/lib/ai/discovery-revie
 const JOBS_KEY = "ai.labelJobs";
 const LOCK_MS = 90_000;
 const MAX_CONSECUTIVE_ERRORS = 30;
+/** Chunks that "succeed" but move NOTHING (a model answering with unusable
+ *  output) end the job too — otherwise it spins forever on a paid GPU. */
+const MAX_STALLED_CHUNKS = Math.max(2, Number(process.env.LABEL_STALL_CHUNKS ?? "20"));
 /** Nothing runs forever: a job gets at most this much wall-clock time… */
 const MAX_JOB_AGE_MS = 8 * 3600 * 1000;
 /** …and at most this long waiting for a server that won't come up. */
@@ -34,6 +37,9 @@ export type LabelJob = {
   consecutiveErrors?: number;
   /** Set while the job is stuck waiting for the AI server. */
   waitingSince?: string;
+  /** Fingerprint of the last chunk's progress + how many chunks it froze. */
+  progress?: string;
+  stalled?: number;
 };
 
 type JobMap = Record<string, LabelJob>;
@@ -61,6 +67,15 @@ export async function clearLabelJob(setId: number) {
   const jobs = await getLabelJobs();
   delete jobs[String(setId)];
   await saveJobs(jobs);
+}
+
+/** The user's stop button: end the job NOW (the heartbeat stops waking the
+ *  server for it), keep everything already written, say so in a notice. */
+export async function stopLabelJob(setId: number, byEmail: string) {
+  await clearLabelJob(setId);
+  try {
+    await setAiNotice(`Read & label stopped by ${byEmail}. Everything done so far is saved — press Read & label to resume any time.`, { chatBlocked: false, minutes: 10, kind: "review" });
+  } catch { /* nicety */ }
 }
 
 export type JobChunkOutcome =
@@ -141,15 +156,46 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
       await saveJobs(fresh);
       try {
         const [set] = db ? await db.select({ name: discoverySets.name }).from(discoverySets).where(eq(discoverySets.id, setId)) : [];
-        await setAiNotice(
-          `AI.fred finished reading & labeling "${set?.name ?? `case #${setId}`}" — ${result.labeled} of ${result.total} documents done${result.needsVision ? ` (${result.needsVision} photo/scan left for later)` : ""}.`,
-          { chatBlocked: false, minutes: 15, kind: "review" },
-        );
+        const name = set?.name ?? `case #${setId}`;
+        // A "finished" run where the model erred on documents and labeled
+        // nothing new is a failure — say so instead of celebrating.
+        if (result.errors > 0 && result.remaining > 0) {
+          await setAiNotice(
+            `Read & label stopped on "${name}" — ${result.labeled} of ${result.total} documents done, ${result.errors} hit model errors. Copy the System report at the bottom of AI.fred for the developer. ${RESUME_LINE}`,
+            { chatBlocked: false, minutes: 60, kind: "review" },
+          );
+        } else {
+          await setAiNotice(
+            `AI.fred finished reading & labeling "${name}" — ${result.labeled} of ${result.total} documents done${result.needsVision ? ` (${result.needsVision} photo/scan left for later)` : ""}.`,
+            { chatBlocked: false, minutes: 15, kind: "review" },
+          );
+        }
       } catch { /* nicety */ }
     } else if (cur) {
       cur.lockUntil = 0;
       cur.lastRunAt = new Date().toISOString();
       cur.consecutiveErrors = 0;
+      // The stall watchdog: a chunk that reports success but moved no number
+      // at all counts against the job. A model that answers with unusable
+      // output otherwise loops on the same documents forever.
+      const snapshot = `${result.total}|${result.remaining}|${result.pagesDone}|${result.pagesTotal}`;
+      if (cur.progress === snapshot) {
+        cur.stalled = (cur.stalled ?? 0) + 1;
+        if (cur.stalled >= MAX_STALLED_CHUNKS) {
+          delete fresh[key];
+          await saveJobs(fresh);
+          try {
+            await setAiNotice(
+              `Read & label stopped: ${MAX_STALLED_CHUNKS} rounds in a row made no progress — the AI is answering but not producing usable labels or notes. Copy the System report at the bottom of AI.fred for the developer. ${RESUME_LINE}`,
+              { chatBlocked: false, minutes: 60, kind: "review" },
+            );
+          } catch { /* nicety */ }
+          return { ran: false, note: "gave-up" };
+        }
+      } else {
+        cur.progress = snapshot;
+        cur.stalled = 0;
+      }
       await saveJobs(fresh);
     }
     return { ran: true, result, done: result.done };

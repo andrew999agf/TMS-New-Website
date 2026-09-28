@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { reviewDiscoveryChunk, reviewStatus } from "@/lib/ai/discovery-review";
-import { startLabelJob, getLabelJob, runLabelJobChunk } from "@/lib/ai/label-job";
+import { startLabelJob, getLabelJob, runLabelJobChunk, stopLabelJob } from "@/lib/ai/label-job";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,7 +22,7 @@ async function guard(): Promise<{ email: string } | NextResponse> {
 export async function POST(req: Request) {
   const session = await guard();
   if (session instanceof NextResponse) return session;
-  let body: { setId?: number; retryErrors?: boolean; background?: boolean };
+  let body: { setId?: number; retryErrors?: boolean; background?: boolean; stop?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -31,6 +31,14 @@ export async function POST(req: Request) {
   const setId = Number(body.setId);
   if (!Number.isFinite(setId)) return NextResponse.json({ error: "setId is required." }, { status: 400 });
   await ensureDiscoveryTables();
+
+  // The stop button: end the background job right now (progress stays saved,
+  // the heartbeat stops waking the server for it).
+  if (body.stop) {
+    await stopLabelJob(setId, session.email);
+    const status = await reviewStatus(setId);
+    return NextResponse.json({ ...("error" in status ? {} : status), jobActive: false, stopped: true });
+  }
 
   // Background mode: register the job (the cron keeps it moving even after
   // the browser leaves), then advance it one chunk right now if free.

@@ -127,6 +127,22 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
     }
   }
 
+  /** End the background job now. Everything already written stays; the
+   *  button goes back to "Read & label", which resumes where it stopped. */
+  async function stopJob() {
+    const { ok } = await post<JobStatus>("/api/admin/discovery/review", { setId, stop: true });
+    if (ok) {
+      stopped.current = true;
+      setJobLive(false);
+      setJobProgress(null);
+      setOpen(false);
+      setPhase("confirm");
+      router.refresh();
+    } else {
+      setLine("Couldn't stop the job — try again.");
+    }
+  }
+
   async function start() {
     // Server up first (indexing is free, but labeling needs the model).
     const s = await getSrv();
@@ -196,6 +212,15 @@ export function IndexAndLabel({ setId, docCount }: { setId: number; docCount: nu
                   </div>
                 )}
                 <p className="text-[11px] text-[var(--c-ink-muted)]">{phase === "waking" ? "One moment — starting the server." : "Runs on the SERVER in the background — safe to close this box or leave the page entirely. The button shows live progress, AI.fred posts a note when it finishes, and labels appear as they land."}</p>
+                {phase === "working" && (
+                  <div className="flex justify-end pt-1">
+                    <button onClick={() => void stopJob()}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-red-400/50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                      title="Ends the background job right now (the heartbeat stops too). Everything already labeled is saved — Read & label resumes from here.">
+                      <X size={12} /> Stop this run
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
