@@ -409,10 +409,12 @@
 .aifred-lux {
   --c-bg: #0a0e17;
   --c-surface: #10141f;
+  --c-surface-2: #151a29;
   --c-border: #2a3040;
   --c-ink: #ece7db;
   --c-ink-muted: #a29a89;
   --c-accent: #d0a84e;
+  --c-accent-2: #e3c06c;
   --c-on-accent: #16110a;
   position: relative;
   isolation: isolate;
@@ -478,6 +480,72 @@
 }
 .aifred-lux .btn-accent:hover {
   background-image: linear-gradient(180deg, #ecc978 0%, #d9b158 55%, #c39a3e 100%);
+}
+
+/* Light leftovers that don't ride the variables get scoped repaints:
+   the background-work toast and its amber text family. */
+.aifred-lux .bg-amber-50 {
+  background-color: #191305;
+  border-color: rgba(224, 186, 100, 0.45);
+}
+.aifred-lux .text-amber-900 {
+  color: #f0dcab;
+}
+.aifred-lux .text-amber-800 {
+  color: #e8d29a;
+}
+.aifred-lux .text-amber-700 {
+  color: #dcc487;
+}
+
+/* The clock strip joins the theme on this tab only (AdminShell adds the
+   class when the pathname is /admin/assistant — colors, nothing else). */
+.aifred-strip {
+  --c-surface: #05070d;
+  --c-border: #1e2434;
+  --c-ink: #ece7db;
+  --c-ink-muted: #8f8875;
+  color: #a99f8a;
+}
+
+/* Gold hairline divider under the header lockup. */
+.aifred-divider {
+  height: 1px;
+  margin: 0.25rem 2rem 0.5rem;
+  background: linear-gradient(90deg, transparent, rgba(214, 176, 92, 0.55) 18%, rgba(214, 176, 92, 0.55) 55%, transparent);
+}
+
+/* Deep-polish pass: sheen on raised surfaces, glow on the gold, focus
+   rings worthy of the palette, and a slow breathing shimmer on the arcs. */
+.aifred-lux .rounded-lg,
+.aifred-lux .rounded-xl {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0) 46%);
+}
+.aifred-lux .btn-accent {
+  box-shadow: 0 0 20px rgba(208, 168, 78, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.aifred-lux :is(input, textarea, select):focus {
+  outline: none;
+  border-color: rgba(224, 186, 100, 0.65);
+  box-shadow: 0 0 0 3px rgba(208, 168, 78, 0.16);
+}
+.aifred-lux button.rounded-lg:hover,
+.aifred-lux button.rounded-md:hover {
+  border-color: rgba(214, 176, 92, 0.4);
+}
+@keyframes aifredBreathe {
+  from { opacity: 0.45; }
+  to { opacity: 0.95; }
+}
+.aifred-lux-glow::before,
+.aifred-lux-glow::after {
+  animation: aifredBreathe 9s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aifred-lux-glow::before,
+  .aifred-lux-glow::after {
+    animation: none;
+  }
 }
 
 /* Scoped scrollbars to match the dark chrome. */

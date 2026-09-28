@@ -286,7 +286,9 @@ export function AdminShell({
         {/* Slim strip carrying the DFW clock. Lives in the shell rather than in
             AdminHeader so it is present on every page, including the couple that
             render their own header. */}
-        <div className="sticky top-0 z-40 flex h-9 items-center justify-end border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6">
+        {/* On the AI.fred tab the strip joins the lux theme (colors only —
+            same element, same behavior everywhere else). */}
+        <div className={`sticky top-0 z-40 flex h-9 items-center justify-end border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6 ${pathname.startsWith("/admin/assistant") ? "aifred-strip" : ""}`}>
           <AdminClock />
         </div>
         {onWebsite && <WebsiteSubnav tabs={websiteTabs} pathname={pathname} />}

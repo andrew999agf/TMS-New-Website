@@ -62,13 +62,14 @@ export default async function AssistantPage() {
   return (
     <div className="aifred-lux">
       <div className="aifred-lux-glow" aria-hidden />
-      <header className="relative flex flex-col items-center px-6 pb-1 pt-5 text-center">
+      <header className="relative flex flex-wrap items-center gap-x-6 gap-y-1 px-4 pb-1 pt-3 sm:px-8">
         {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, no optimization needed */}
-        <img src="/aifred-logo.png" alt="AI.fred — your personal AI assistant" className="aifred-logo h-28 w-auto select-none mix-blend-screen sm:h-32" draggable={false} />
-        <p className="mt-1 max-w-3xl text-sm text-[var(--c-ink-muted)]">
+        <img src="/aifred-logo.png" alt="AI.fred — your personal AI assistant" className="aifred-logo -my-3 -ml-6 h-28 w-auto select-none mix-blend-screen sm:h-32" draggable={false} />
+        <p className="max-w-xl flex-1 basis-72 text-sm leading-relaxed text-[var(--c-ink-muted)]">
           The firm&apos;s in-house AI — at your service. General questions, document drafting, case lookups, and coding, with saved conversations and voice. Admin-only, kept off the public site.
         </p>
       </header>
+      <div className="aifred-divider" aria-hidden />
       <div className="relative p-2 sm:p-6 sm:pt-3">
         <Assistant configured={configured} label={label} initialThreads={threads} saveable={saveable} codeAllowed={codeAllowed} matters={matters} />
       </div>
