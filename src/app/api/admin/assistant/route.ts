@@ -96,6 +96,14 @@ const TOOLS_PROMPT =
   "TRUST THE INDEX: when tools report textIndexed, pagesAnnotated, or a scannedPages count, the text IS indexed and " +
   "searchable — never tell the user to index anything or press 'Index text'; a zero-hit search means the phrase isn't there, " +
   "so try different wording. " +
+  "ANALYTICAL CASE QUESTIONS ('what evidence do we have of X', strengths and weaknesses, case status): work like a Texas " +
+  "big-law litigation senior associate, not a search box. Pull get_case (parties, notes, pleadings) and " +
+  "list_discovery_documents first — the AI labels, page notes, and section maps are your file review. Then a FEW targeted " +
+  "searches using SUBSTANTIVE terms (party names, aliases, the assets and acts at issue — 'Facebook', 'eBay', 'nici25', " +
+  "'commission' — never just the legal label like 'fiduciary'). Then give your JUDGMENT: map what the file shows onto the " +
+  "elements of the claim under the relevant Texas law, cite a document and page for every point, and close with what is " +
+  "thin or missing. A literal phrase being absent from the text is NEVER 'no evidence' — reason from what IS there. " +
+  "Budget roughly six tool calls per answer; when you near it, STOP searching and write the answer from what you have. " +
   "LEAD WITH THE ANSWER: open with the one-to-two-sentence conclusion (who the person is, what the document shows, whether " +
   "the thing exists), THEN the supporting evidence with document names and page/Bates cites, THEN one short line offering " +
   "the related material you found ('I also have X and Y — want either?'). Never bury the conclusion under a wall of " +
@@ -469,6 +477,26 @@ export async function POST(req: Request) {
     } catch { /* best-effort */ }
   };
 
+  // Tool results accumulate fast (a 689-page binder's searches, case notes,
+  // pleadings digests) and an over-long conversation makes the model server
+  // reject the continuation — which used to surface as an empty "(No
+  // response.)". Keep the conversation inside a budget by trimming the
+  // OLDEST tool results first; the system prompt and human turns stay whole.
+  const CONVO_BUDGET = 90_000; // chars — comfortably inside the model window
+  const convoSize = () =>
+    convo.reduce((n, m) => {
+      const tc = (m as { tool_calls?: unknown }).tool_calls;
+      return n + (typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length) + (tc ? JSON.stringify(tc).length : 0);
+    }, 0);
+  const shrinkConvo = () => {
+    for (const m of convo) {
+      if (convoSize() <= CONVO_BUDGET) return;
+      if (m.role === "tool" && typeof m.content === "string" && m.content.length > 1600) {
+        m.content = m.content.slice(0, 1600) + " …[trimmed to fit the model's context — call the tool again with a narrower ask if this mattered]";
+      }
+    }
+  };
+
   // Fail fast (before streaming headers go out) on the first upstream call so
   // configuration problems surface as a normal error message in the UI.
   const callUpstream = (withTools: boolean) =>
@@ -558,7 +586,10 @@ export async function POST(req: Request) {
 
           res = null;
           try {
-            const next = await callUpstream(true);
+            shrinkConvo();
+            // The last rounds go out WITHOUT tools, so the model must write
+            // its answer instead of searching forever.
+            const next = await callUpstream(round < 5);
             if (next.ok && next.body) res = next;
             else emit(sse({ stream_error: `The AI provider errored mid-answer (${next.status}).` }));
           } catch {
@@ -567,6 +598,25 @@ export async function POST(req: Request) {
           if (res && content) { acc += "\n\n"; emit(sseText("\n\n")); } // separate any pre-tool remarks from the continuation
         }
       } catch { /* aborted or upstream died — keep what we have */ }
+      // NEVER end on "(No response.)": if the loop produced no text (round
+      // cap, a mid-answer provider error, an over-long context), force one
+      // final tool-free completion that answers from what was gathered.
+      if (!acc.trim() && !req.signal.aborted) {
+        try {
+          convo.push({ role: "system", content: "Tool time is over. Write your best final answer NOW from the tool results above: lead with the conclusion, cite the document names and pages you already gathered, and say plainly what you could not verify. Do not request any tools." });
+          shrinkConvo();
+          const last = await callUpstream(false);
+          if (last.ok && last.body) {
+            const { content } = await pipeRound(last.body, emit);
+            acc += content;
+          }
+        } catch { /* upstream gone */ }
+        if (!acc.trim()) {
+          const msg = "I gathered material but ran out of room before writing the answer — ask again (or narrow the question) and I'll go straight to the summary.";
+          acc = msg;
+          emit(sseText(msg));
+        }
+      }
       await persist();
       emit(enc.encode("data: [DONE]\n\n"));
       try { controller.close(); } catch { /* already closed */ }
