@@ -271,9 +271,24 @@ async function getCase(matter: string) {
   ]);
   const setIds = dsets.map((s) => s.id);
   const prods = setIds.length ? await db!.select().from(productions).where(inArray(productions.setId, setIds)) : [];
+  // The pleadings bucket: what this lawsuit is ABOUT. Read these (source
+  // "client", the file id) before judging what evidence is relevant.
+  let pleadings: { fileId: number; name: string; pages: number | null; aiLabel?: string; aiNotes?: string; textIndexed: boolean }[] = [];
+  try {
+    const pfolder = folders.find((f) => f.type === "pleadings");
+    if (pfolder) {
+      const pfiles = await db!.select().from(shareFiles).where(eq(shareFiles.folderId, pfolder.id));
+      pleadings = pfiles.map((f) => ({
+        fileId: f.id, name: f.filename, pages: f.pageCount,
+        aiLabel: f.aiLabel || undefined, aiNotes: f.aiDescription ? f.aiDescription.slice(0, 700) : undefined,
+        textIndexed: hasText(f.pageText),
+      }));
+    }
+  } catch { /* share tables optional */ }
   return {
     matter: hub.matter, name: hub.name, causeNumber: hub.causeNumber, court: hub.court, county: hub.county,
     notes: hub.notes || undefined, parties,
+    ...(pleadings.length ? { pleadings, pleadingsNote: "Read these first for case context (read_document with source \"client\" and the fileId) when judging what evidence means or matters." } : {}),
     discoverySets: dsets,
     exhibitSets: esets,
     preTrial: trials[0] ?? null,
@@ -452,13 +467,15 @@ async function searchDocuments(matter: string, query: string) {
   }
   // Client-portal uploads (the red tab's share-folder files).
   try {
-    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, matter), eq(shareFolders.type, "client")));
+    const folders = await db!.select({ id: shareFolders.id, type: shareFolders.type }).from(shareFolders).where(and(eq(shareFolders.matter, matter), inArray(shareFolders.type, ["client", "pleadings"])));
     if (folders.length) {
       const files = await db!.select().from(shareFiles).where(inArray(shareFiles.folderId, folders.map((f) => f.id)));
+      const ftype = new Map(folders.map((f) => [f.id, f.type]));
       for (const f of files) {
-        scan("client file", f.id, f.filename, Array.isArray(f.pageText) ? (f.pageText as string[]) : [], undefined, Array.isArray(f.pageNotes) ? (f.pageNotes as string[]) : []);
+        const src = ftype.get(f.folderId) === "pleadings" ? "pleading" : "client file";
+        scan(src, f.id, f.filename, Array.isArray(f.pageText) ? (f.pageText as string[]) : [], undefined, Array.isArray(f.pageNotes) ? (f.pageNotes as string[]) : []);
         const labelText = [f.aiLabel, f.aiDescription].filter(Boolean).join(" — ");
-        if (labelText && hits.length < 30 && labelText.toLowerCase().includes(q)) hits.push({ source: "client file (AI label)", docId: f.id, document: f.filename, page: 1, snippet: labelText.slice(0, 220) });
+        if (labelText && hits.length < 30 && labelText.toLowerCase().includes(q)) hits.push({ source: `${src} (AI label)`, docId: f.id, document: f.filename, page: 1, snippet: labelText.slice(0, 220) });
       }
     }
   } catch { /* share tables optional */ }

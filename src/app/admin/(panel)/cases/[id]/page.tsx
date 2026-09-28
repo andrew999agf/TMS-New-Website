@@ -5,7 +5,8 @@ import { CaseDetail } from "@/components/admin/CaseDetail";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { caseHub, trialCases, discoverySets, exhibitSets, shareFolders, type CaseParty } from "@/db/schema";
+import { caseHub, trialCases, discoverySets, exhibitSets, shareFolders, shareFiles, type CaseParty } from "@/db/schema";
+import { PleadingsBucket, type PleadingRow } from "@/components/admin/PleadingsBucket";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -49,6 +50,25 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
   const links = await resolveToolLinks(c.matter);
 
+  // The pleadings bucket: AI.fred's understanding of what this lawsuit is about.
+  let pleadings: PleadingRow[] = [];
+  if (c.matter) {
+    try {
+      const [folder] = await db.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, c.matter), eq(shareFolders.type, "pleadings")));
+      if (folder) {
+        const rows = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
+        pleadings = rows
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .map((f) => ({
+            id: f.id, filename: f.filename, url: f.url, pages: f.pageCount,
+            uploadedAt: f.createdAt.toISOString(),
+            textIndexed: Array.isArray(f.pageText) && (f.pageText as string[]).some((t) => t && t.trim()),
+            aiLabel: f.aiLabel ?? "",
+          }));
+      }
+    } catch { /* share tables pending Database updates */ }
+  }
+
   const tools = [
     { label: "Pre-Trial Checklist", icon: CalendarClock, href: links.pretrial ? `/admin/pre-trial/${links.pretrial}` : "/admin/pre-trial", found: !!links.pretrial },
     { label: "Discovery Reviewer", icon: FileStack, href: links.discovery ? `/admin/discovery-reviewer/${links.discovery}` : "/admin/discovery-reviewer", found: !!links.discovery },
@@ -83,6 +103,8 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300">in progress</span>
         </span>
       </div>
+
+      <PleadingsBucket caseId={c.id} matter={c.matter} initial={pleadings} />
 
       <CaseDetail
         caseRow={{

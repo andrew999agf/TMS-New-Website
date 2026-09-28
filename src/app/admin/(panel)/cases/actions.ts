@@ -212,3 +212,45 @@ export async function deleteCase(id: number) {
     return { ok: false as const };
   }
 }
+/* ------------------------- pleadings bucket ------------------------- */
+
+/**
+ * The case's PLEADINGS bucket: petition, answer, counterclaims, key motions.
+ * AI.fred reads these to understand what the lawsuit is ABOUT, so it can
+ * judge what discovery evidence is relevant to (e.g., a Facebook-page
+ * authorization matters because the pleadings claim the page was withheld).
+ * Stored as a share folder of type "pleadings" — indexed and labeled by
+ * Read & label like everything else, but NEVER exposed on any share link
+ * (all public surfaces filter to type "client").
+ */
+export async function ensurePleadingsFolder(matterIn: string) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const { shareFolders } = await import("@/db/schema");
+  const { and: andOp, eq: eqOp } = await import("drizzle-orm");
+  const matter = str(matterIn, 500);
+  if (!matter) return { ok: false as const, error: "This case has no matter number yet." };
+  const [existing] = await db.select({ id: shareFolders.id }).from(shareFolders).where(andOp(eqOp(shareFolders.matter, matter), eqOp(shareFolders.type, "pleadings")));
+  if (existing) return { ok: true as const, folderId: existing.id };
+  const [row] = await db.insert(shareFolders).values({ name: "Pleadings (AI case context)", matter, type: "pleadings" }).returning({ id: shareFolders.id });
+  return { ok: true as const, folderId: row.id };
+}
+
+export async function deletePleading(fileId: number, caseId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const { shareFiles, shareFolders } = await import("@/db/schema");
+  const { eq: eqOp } = await import("drizzle-orm");
+  const [f] = await db.select().from(shareFiles).where(eqOp(shareFiles.id, fileId));
+  if (!f) return { ok: false as const, error: "File not found." };
+  const [folder] = await db.select().from(shareFolders).where(eqOp(shareFolders.id, f.folderId));
+  if (folder?.type !== "pleadings") return { ok: false as const, error: "Not a pleadings file." };
+  try {
+    const { del } = await import("@vercel/blob");
+    if (f.pathname) await del(f.pathname).catch(() => {});
+  } catch { /* blob delete is best-effort */ }
+  await db.delete(shareFiles).where(eqOp(shareFiles.id, fileId));
+  await audit(session.email, "case.pleading.delete", `${f.filename} (#${fileId})`);
+  revalidatePath(`/admin/cases/${caseId}`);
+  return { ok: true as const };
+}

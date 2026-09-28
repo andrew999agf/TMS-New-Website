@@ -178,7 +178,7 @@ async function targetsFor(setId: number): Promise<Row[]> {
   const docs = await db!.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId));
   for (const d of docs) out.push({ kind: "discovery", id: d.id, name: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: asPages(d.pageText), textStatus: d.textStatus, textError: d.textError });
   if (set.matter) {
-    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")));
+    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), inArray(shareFolders.type, ["client", "pleadings"])));
     if (folders.length) {
       const files = await db!.select().from(shareFiles).where(inArray(shareFiles.folderId, folders.map((f) => f.id)));
       for (const f of files) out.push({ kind: "share", id: f.id, name: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: asPages(f.pageText), textStatus: f.textStatus, textError: f.textError });

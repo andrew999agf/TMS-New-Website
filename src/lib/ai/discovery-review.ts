@@ -168,7 +168,7 @@ async function reviewTargets(setId: number, matter: string): Promise<ReviewRow[]
   const docs = await db!.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId));
   for (const d of docs) out.push({ kind: "doc", id: d.id, name: d.name, url: d.url, contentType: d.contentType, pageText: asPages(d.pageText), pageNotes: asPages(d.pageNotes), pageCount: d.pageCount, aiLabelStatus: d.aiLabelStatus, aiDescription: d.aiDescription });
   if (matter) {
-    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, matter), eq(shareFolders.type, "client")));
+    const folders = await db!.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, matter), inArray(shareFolders.type, ["client", "pleadings"])));
     if (folders.length) {
       const files = await db!.select().from(shareFiles).where(inArray(shareFiles.folderId, folders.map((f) => f.id)));
       for (const f of files) out.push({ kind: "share", id: f.id, name: f.filename, url: f.url, contentType: f.contentType, pageText: asPages(f.pageText), pageNotes: asPages(f.pageNotes), pageCount: f.pageCount, aiLabelStatus: f.aiLabelStatus, aiDescription: f.aiDescription });
@@ -319,13 +319,30 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
   if (!active) return { error: "The AI isn't configured yet." };
   const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
   if (!set) return { error: `No discovery set #${setId}.` };
-  const caseLine = [set.name, set.matter, set.causeNumber].filter(Boolean).join(" · ");
+  let caseLine = [set.name, set.matter, set.causeNumber].filter(Boolean).join(" · ");
+  // The pleadings bucket (Matters/Cases) is the lawsuit's own story — feed
+  // its digests into every label and page note, so the AI can say WHY a page
+  // matters to the claims instead of describing it in a vacuum.
+  try {
+    if (set.matter) {
+      const pf = await db.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "pleadings")));
+      if (pf.length) {
+        const pfiles = await db.select({ filename: shareFiles.filename, aiLabel: shareFiles.aiLabel, aiDescription: shareFiles.aiDescription }).from(shareFiles).where(inArray(shareFiles.folderId, pf.map((f) => f.id)));
+        const bg = pfiles
+          .map((f) => [f.aiLabel, f.aiDescription].filter(Boolean).join(": ") || f.filename)
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 1500);
+        if (bg) caseLine += `\nWhat this lawsuit is about (from the pleadings): ${bg}`;
+      }
+    }
+  } catch { /* pleadings context is a bonus, never a blocker */ }
 
   if (opts.retryErrors) {
     await db.update(discoveryDocs).set({ aiLabelStatus: "" }).where(and(eq(discoveryDocs.setId, setId), inArray(discoveryDocs.aiLabelStatus, ["error"])));
     await db.update(productionDocs).set({ aiLabelStatus: "" }).where(and(eq(productionDocs.setId, setId), inArray(productionDocs.aiLabelStatus, ["error"])));
     if (set.matter) {
-      const folders = await db.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")));
+      const folders = await db.select({ id: shareFolders.id }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), inArray(shareFolders.type, ["client", "pleadings"])));
       if (folders.length) await db.update(shareFiles).set({ aiLabelStatus: "" }).where(and(inArray(shareFiles.folderId, folders.map((f) => f.id)), inArray(shareFiles.aiLabelStatus, ["error"])));
     }
   }
