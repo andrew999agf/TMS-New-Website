@@ -19,8 +19,9 @@ import type { StampStyle } from "@/lib/production/build";
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; textStatus: string; kindHint?: "pdf" | "image" | "other" };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string };
+export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -155,6 +156,19 @@ function LabelChip({ setId, target, label, description, muted }: { setId: number
       )}
     </>
   );
+}
+
+/** Truthful per-document AI status, derived server-side from the rows —
+ *  so a run that was cut off shows exactly which documents are finished
+ *  ("AI ✓"), half-done ("AI 412/900 pp."), untouched, waiting on the future
+ *  vision pass, or unreadable. Pressing Read & label resumes the gaps. */
+function AiStateChip({ state, done, total, issue }: { state?: AiDocState; done?: number; total?: number; issue?: string }) {
+  if (!state) return null;
+  if (state === "done") return <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300" title="AI.fred read this document: label + a note on every page">AI ✓</span>;
+  if (state === "partial") return <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300" title="Read & label was interrupted here — press it again and it resumes exactly where it stopped">AI {done ?? 0}/{total ?? 0} pp.</span>;
+  if (state === "photo") return <span className="rounded-full bg-[var(--c-border)]/70 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--c-ink-muted)]" title="No readable text — waits for the vision pass (later), as planned">photo — AI later</span>;
+  if (state === "failed") return <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-300" title={issue || "This file couldn't be read"}>AI couldn&apos;t read</span>;
+  return <span className="rounded-full border border-dashed border-[var(--c-border)] px-1.5 py-0.5 text-[10px] text-[var(--c-ink-muted)]" title="Not read yet — press Read & label">AI pending</span>;
 }
 
 /** "Go to page N" — type a number, hit Enter. */
@@ -764,6 +778,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
             {selCount > 0 && <span className="rounded-full bg-[var(--c-accent)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--c-accent)]">{selCount} pp. selected</span>}
           </>
         )}
+        <AiStateChip state={f.aiState} done={f.aiNotesDone} total={f.aiNotesTotal} issue={f.aiIssue} />
         <LabelChip setId={setId} target={labelTargetFor(f)} label={f.aiLabel} description={f.aiDescription} />
         <span className="text-xs text-[var(--c-ink-muted)]">{kind === "pdf" ? (failed ? "couldn't open" : pages ? `${pages} page${pages === 1 ? "" : "s"}` : "opening…") : ""}</span>
         <span className="ml-auto inline-flex items-center gap-2">
@@ -1313,6 +1328,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
         <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-yellow-900">
           {d.batesPrefix ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "pre-labeled"}
         </span>
+        <AiStateChip state={d.aiState} done={d.aiNotesDone} total={d.aiNotesTotal} issue={d.aiIssue} />
         <button onClick={() => void removeDoc(f)} disabled={!!d.productionId}
           title={d.productionId ? "In a draft production — discard the draft first" : "Remove from Documents to be produced (pages unlock in the red tab)"}
           className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600 disabled:opacity-40">

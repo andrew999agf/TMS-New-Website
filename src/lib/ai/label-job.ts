@@ -19,7 +19,11 @@ import { reviewDiscoveryChunk, type SweepResult } from "@/lib/ai/discovery-revie
 const JOBS_KEY = "ai.labelJobs";
 const LOCK_MS = 90_000;
 const MAX_CONSECUTIVE_ERRORS = 30;
-const MAX_JOB_AGE_MS = 24 * 3600 * 1000;
+/** Nothing runs forever: a job gets at most this much wall-clock time… */
+const MAX_JOB_AGE_MS = 8 * 3600 * 1000;
+/** …and at most this long waiting for a server that won't come up. */
+const MAX_WAIT_MS = 30 * 60 * 1000;
+const RESUME_LINE = "Nothing is lost — press Read & label to pick up exactly where it left off.";
 
 export type LabelJob = {
   setId: number;
@@ -28,6 +32,8 @@ export type LabelJob = {
   lastRunAt?: string;
   lockUntil?: number;
   consecutiveErrors?: number;
+  /** Set while the job is stuck waiting for the AI server. */
+  waitingSince?: string;
 };
 
 type JobMap = Record<string, LabelJob>;
@@ -72,16 +78,29 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
   const job = jobs[key];
   if (!job) return { ran: false, note: "no-job" };
 
-  if (Date.now() - new Date(job.startedAt).getTime() > MAX_JOB_AGE_MS) {
+  const giveUp = async (why: string) => {
     delete jobs[key];
     await saveJobs(jobs);
-    return { ran: false, note: "gave-up" };
+    try { await setAiNotice(`Read & label stopped: ${why} ${RESUME_LINE}`, { chatBlocked: false, minutes: 60, kind: "review" }); } catch { /* nicety */ }
+    return { ran: false as const, note: "gave-up" as const };
+  };
+
+  if (Date.now() - new Date(job.startedAt).getTime() > MAX_JOB_AGE_MS) {
+    return giveUp("it hit the 8-hour safety limit.");
   }
   if (job.lockUntil && job.lockUntil > Date.now()) return { ran: false, note: "locked" };
 
   // The model has to be up. The user's confirmation covered waking it, so
-  // the background job may start a stopped server itself.
+  // the background job may start a stopped server itself — but it will not
+  // wait forever on a server that never comes up.
   if (!(await aiEndpointReady())) {
+    if (job.waitingSince && Date.now() - new Date(job.waitingSince).getTime() > MAX_WAIT_MS) {
+      return giveUp("the AI server didn't come up within 30 minutes.");
+    }
+    if (!job.waitingSince) {
+      job.waitingSince = new Date().toISOString();
+      await saveJobs(jobs);
+    }
     if (opts.wakeServer) {
       const cfg = await resolvedRunpodConfig();
       if (cfg) {
@@ -96,6 +115,7 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
     }
     return { ran: false, note: "waiting-for-server" };
   }
+  if (job.waitingSince) { delete job.waitingSince; await saveJobs(jobs); }
 
   job.lockUntil = Date.now() + LOCK_MS;
   await saveJobs(jobs);
@@ -110,7 +130,7 @@ export async function runLabelJobChunk(setId: number, opts: { wakeServer?: boole
         cur.lastRunAt = new Date().toISOString();
         if (cur.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
           delete fresh[key];
-          try { await setAiNotice(`Read & label stopped: ${result.error}`, { chatBlocked: false, minutes: 30, kind: "review" }); } catch { /* nicety */ }
+          try { await setAiNotice(`Read & label stopped after repeated errors: ${result.error} ${RESUME_LINE}`, { chatBlocked: false, minutes: 60, kind: "review" }); } catch { /* nicety */ }
         }
         await saveJobs(fresh);
       }
