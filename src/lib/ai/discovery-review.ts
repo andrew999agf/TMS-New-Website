@@ -248,9 +248,12 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
   }
 
   // TEXT FIRST: pull any un-indexed text before deciding what needs eyes.
+  // A run started with retryErrors also revives previously-FAILED documents
+  // — the streaming reader gets its shot at files the old indexer gave up
+  // on, and any new failure records its actual reason.
   const idx = await indexStatusFor(setId);
-  if (idx.remaining > 0) {
-    const prog = await indexTextChunk(setId);
+  if (idx.remaining > 0 || (opts.retryErrors && idx.failed > 0)) {
+    const prog = await indexTextChunk(setId, { retryFailed: !!opts.retryErrors });
     const targetsNow = await reviewTargets(setId, set.matter);
     const finished = targetsNow.filter((t) => !needsWork(t)).length;
     return {

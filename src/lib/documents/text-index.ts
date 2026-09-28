@@ -198,14 +198,27 @@ export async function indexTextChunk(setId: number, opts: { retryFailed?: boolea
   const rows = await targetsFor(setId);
   let current: string | undefined;
 
+  // An explicit retry flips every failed row back to "pending" ON DISK
+  // first, so the retry survives across however many chunks the sweep
+  // takes — later chunks (and the background heartbeat) see plain pending
+  // work instead of skipping "failed" rows they were never asked to retry.
+  if (opts.retryFailed) {
+    for (const row of rows) {
+      if (effectiveStatus(row) === "failed") {
+        row.textStatus = "pending";
+        row.textError = "";
+        await saveProgress(row, row.pageText, null, "pending");
+      }
+    }
+  }
+
   for (const row of rows) {
     const st = effectiveStatus(row);
     if (st === "done") { if (row.textStatus !== "done") await saveProgress(row, row.pageText, null, "done"); continue; }
-    if (st === "failed" && !opts.retryFailed) continue;
+    if (st === "failed") continue; // only an explicit retry (above) revives these
     const left = SWEEP_BUDGET_MS - (Date.now() - started);
     if (left < 4_000) { current = row.name; break; }
     current = row.name;
-    if (st === "failed") row.textStatus = ""; // explicit retry
     await indexOne(row, left);
   }
 
