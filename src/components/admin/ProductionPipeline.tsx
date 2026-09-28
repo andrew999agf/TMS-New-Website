@@ -20,8 +20,9 @@ import type { StampStyle } from "@/lib/production/build";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
+export type DocSection = { from: number; to: number; title: string };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -947,6 +948,11 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   const [pendingBurn, setPendingBurn] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [burnBusy, setBurnBusy] = useState(false);
   const [burnError, setBurnError] = useState("");
+  // Zoom re-RENDERS the page at the larger size (not a CSS stretch), so it
+  // stays sharp; 1 = fit width. Resets when the document changes.
+  const [zoom, setZoom] = useState(1);
+  const outerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setZoom(1); }, [f.key]);
 
   useEffect(() => { if (kind === "pdf") void ensureAnnos(f.key); }, [kind, f.key, ensureAnnos]);
 
@@ -969,9 +975,13 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
         const canvas = canvasRef.current;
         if (!canvas) return;
         const base = pdfPage.getViewport({ scale: 1 });
-        const cssW = Math.min(940, Math.max(480, (canvas.parentElement?.clientWidth ?? 800) - 16));
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
-        const viewport = pdfPage.getViewport({ scale: (cssW / base.width) * dpr });
+        // Fit width comes from the stable OUTER column (the page frame is
+        // w-fit, so measuring it would compound with each zoom).
+        const fitW = Math.min(940, Math.max(480, (outerRef.current?.clientWidth ?? 800) - 16));
+        const cssW = Math.round(fitW * zoom);
+        const dpr = Math.min(3, Math.max(1.5, window.devicePixelRatio || 1));
+        const renderPx = Math.min(4000, Math.round(cssW * dpr)); // sharp, but bounded
+        const viewport = pdfPage.getViewport({ scale: renderPx / base.width });
         taskRef.current?.cancel();
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
@@ -1001,7 +1011,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
         if (seq === renderSeq.current) setRendering(false);
       }
     })();
-  }, [kind, f, state.page, getDoc]);
+  }, [kind, f, state.page, getDoc, zoom]);
 
   const prev = () => {
     if (state.page > 1) setState({ ...state, page: state.page - 1 });
@@ -1061,7 +1071,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   );
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div ref={outerRef} className="mx-auto max-w-5xl">
       <div className="mb-3 flex flex-wrap items-center justify-center gap-3">
         <button onClick={prev} disabled={state.docIdx === 0 && state.page <= 1} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]"><ChevronLeft size={16} /></button>
         <span className="text-sm">
@@ -1112,6 +1122,21 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
             </>
           )}
         </div>
+        {kind === "pdf" && (
+          <div className="inline-flex items-center rounded-md border border-[var(--c-border)]">
+            <button onClick={() => setZoom((z) => Math.max(1, +(z / 1.25).toFixed(2)))} disabled={zoom <= 1}
+              className="px-2 py-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-40" title="Zoom out">
+              <ZoomOut size={14} />
+            </button>
+            <button onClick={() => setZoom(1)} className="min-w-11 px-1 py-1.5 text-center text-xs tabular-nums text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Back to fit-width">
+              {Math.round(zoom * 100)}%
+            </button>
+            <button onClick={() => setZoom((z) => Math.min(4, +(z * 1.25).toFixed(2)))} disabled={zoom >= 4}
+              className="px-2 py-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-40" title="Zoom in — re-renders sharp, never stretches">
+              <ZoomIn size={14} />
+            </button>
+          </div>
+        )}
         <LabelChip setId={setId} target={labelTargetFor(f)} label={f.aiLabel} description={f.aiDescription} />
         {shareToken && (
           <button onClick={async () => { if (await copyText(shareUrl(shareToken, shareKeyFor(f.key), state.page))) { setPageLinkCopied(true); setTimeout(() => setPageLinkCopied(false), 2000); } }}
@@ -1123,14 +1148,30 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
       </div>
       {(() => {
         const pageNote = noteFor?.(f, state.page) ?? "";
-        if (!pageNote && !f.aiDescription) return null;
+        // The page's own context first; a binder's whole-file summary would
+        // read as if it described THIS page, so it lives behind a disclosure.
+        const sec = (f.aiSections ?? []).find((x) => state.page >= x.from && state.page <= x.to);
+        if (!pageNote && !sec && !f.aiDescription) return null;
         return (
           <div className="mx-auto mb-2 max-w-[940px] rounded-md border border-amber-300/50 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed">
             {pageNote && <p><strong className="text-amber-800 dark:text-amber-300">p.{state.page}:</strong> {pageNote}</p>}
-            {f.aiDescription && <p className={`text-[var(--c-ink-muted)] ${pageNote ? "mt-1 border-t border-amber-300/30 pt-1" : ""}`}><strong>Document:</strong> {f.aiDescription}</p>}
+            {sec && (
+              <p className={pageNote ? "mt-1 border-t border-amber-300/30 pt-1" : ""}>
+                <strong className="text-amber-800 dark:text-amber-300">Part of:</strong> {sec.title} — pp. {sec.from}–{sec.to}
+                {sec.to > sec.from ? ` (this is page ${state.page - sec.from + 1} of ${sec.to - sec.from + 1})` : ""}
+              </p>
+            )}
+            {f.aiDescription && (
+              <details className={`text-[var(--c-ink-muted)] ${pageNote || sec ? "mt-1 border-t border-amber-300/30 pt-1" : ""}`}>
+                <summary className="cursor-pointer font-semibold hover:text-[var(--c-ink)]">About the whole file{pages ? ` (${pages} pp.)` : ""}</summary>
+                <p className="mt-1">{f.aiDescription}</p>
+              </details>
+            )}
           </div>
         );
       })()}
+      {/* Scroll container: a zoomed page pans here instead of clipping. */}
+      <div className="overflow-auto" style={{ maxHeight: "80vh" }}>
       <div className={`relative mx-auto w-fit overflow-hidden rounded-md border bg-white shadow ${isSel ? "ring-2 ring-[var(--c-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
         {kind === "pdf" ? (
           <>
@@ -1162,7 +1203,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
                 {mk === "produced" ? "PROD" : "TBP →"}
               </span>
             )}
-            {rendering && <div className="absolute inset-0 flex items-center justify-center bg-white/60"><Loader2 size={20} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
+            {rendering && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60"><Loader2 size={20} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
           </>
         ) : kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -1170,6 +1211,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
         ) : (
           <p className="p-10 text-sm text-[var(--c-ink-muted)]">No preview for this file type — <a href={proxyUrl(f)} className="text-[var(--c-accent)] underline" target="_blank" rel="noreferrer">open the original</a>.</p>
         )}
+      </div>
       </div>
       {pendingBurn && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !burnBusy) setPendingBurn(null); }}>
@@ -1227,7 +1269,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView }: {
 
   const files: ClientFile[] = useMemo(() => rows.map((d) => ({
     key: `prod:${d.id}`, name: d.name, dir: d.requestLabel, folderId: null, folderName: "",
-    createdAt: "", status: "" as const, aiLabel: d.aiLabel, aiDescription: d.aiDescription, textStatus: "", kindHint: "pdf" as const,
+    createdAt: "", status: "" as const, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiSections: d.aiSections, textStatus: "", kindHint: "pdf" as const,
   })), [rows]);
   const byKey = useMemo(() => new Map(rows.map((d) => [`prod:${d.id}` as string, d])), [rows]);
 

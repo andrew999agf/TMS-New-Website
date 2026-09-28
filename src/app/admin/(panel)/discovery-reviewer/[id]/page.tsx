@@ -15,6 +15,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
+const asSections = (v: unknown) => (Array.isArray(v) ? (v as { from: number; to: number; title: string }[]) : undefined);
+
 export default async function DiscoverySetPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin();
   if (!canAccessPath("/admin/discovery-reviewer", session.role, session.permissions)) notFound();
@@ -96,7 +98,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
               folderName: byId.get(x.folderId) ?? "",
               createdAt: x.createdAt.toISOString(),
               status: "" as const,
-              aiLabel: x.aiLabel ?? "", aiDescription: x.aiDescription ?? "",
+              aiLabel: x.aiLabel ?? "", aiDescription: x.aiDescription ?? "", aiSections: asSections(x.aiSections),
               textStatus: x.textStatus ?? "",
               ...aiStateOf({ name: x.filename, contentType: x.contentType, pageCount: x.pageCount, pageText: x.pageText, pageNotes: x.pageNotes, aiLabelStatus: x.aiLabelStatus ?? "", textStatus: x.textStatus ?? "", textError: x.textError ?? "" }),
             };
@@ -119,7 +121,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       createdAt: d.createdAt.toISOString(),
       status: "",
       movedFromOpposing: true,
-      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "",
+      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       textStatus: d.textStatus ?? "",
       ...aiStateOf({ name: d.name, contentType: d.contentType, pageCount: d.pageCount, pageText: d.pageText, pageNotes: d.pageNotes, aiLabelStatus: d.aiLabelStatus ?? "", textStatus: d.textStatus ?? "", textError: d.textError ?? "" }),
     });
@@ -130,7 +132,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
     staged = pdocs.map((d) => ({
       id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
       sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
-      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "",
+      aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       ...aiStateOf({ name: d.name, contentType: d.contentType, pageCount: d.pageCount, pageText: d.pageText, pageNotes: d.pageNotes, aiLabelStatus: d.aiLabelStatus ?? "", textStatus: d.textStatus ?? "", textError: d.textError ?? "" }),
     }));
     // Whole-document rows lock their source in the red tab; page-slice rows

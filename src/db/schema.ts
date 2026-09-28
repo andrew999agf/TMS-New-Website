@@ -480,6 +480,9 @@ export const shareFiles = pgTable(
     aiDescription: text("ai_description").notNull().default(""),
     aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
     aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
+    /** Contiguous sub-documents inside a compiled binder, mapped by the AI
+     *  from the finished page notes: [{ from, to, title }]. */
+    aiSections: jsonb("ai_sections").notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ folderIdx: index("share_files_folder_idx").on(t.folderId) }),
@@ -1501,6 +1504,9 @@ export const discoveryDocs = pgTable(
     aiDescription: text("ai_description").notNull().default(""),
     aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
     aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
+    /** Contiguous sub-documents inside a compiled binder, mapped by the AI
+     *  from the finished page notes: [{ from, to, title }]. */
+    aiSections: jsonb("ai_sections").notNull().default([]),
     sort: integer("sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1571,6 +1577,9 @@ export const productionDocs = pgTable(
     aiDescription: text("ai_description").notNull().default(""),
     aiLabelStatus: varchar("ai_label_status", { length: 24 }).notNull().default(""),
     aiLabeledAt: timestamp("ai_labeled_at", { withTimezone: true }),
+    /** Contiguous sub-documents inside a compiled binder, mapped by the AI
+     *  from the finished page notes: [{ from, to, title }]. */
+    aiSections: jsonb("ai_sections").notNull().default([]),
     /** staged (pale yellow) | produced (pale green). */
     status: varchar("status", { length: 12 }).notNull().default("staged"),
     productionId: integer("production_id"),

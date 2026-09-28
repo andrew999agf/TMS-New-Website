@@ -192,6 +192,12 @@ async function saveReview(row: ReviewRow, patch: { aiLabel?: string; aiDescripti
   else await db!.update(productionDocs).set(set).where(eq(productionDocs.id, row.id));
 }
 
+async function saveSections(row: ReviewRow, sections: DocSection[]) {
+  if (row.kind === "doc") await db!.update(discoveryDocs).set({ aiSections: sections }).where(eq(discoveryDocs.id, row.id));
+  else if (row.kind === "share") await db!.update(shareFiles).set({ aiSections: sections }).where(eq(shareFiles.id, row.id));
+  else await db!.update(productionDocs).set({ aiSections: sections }).where(eq(productionDocs.id, row.id));
+}
+
 async function savePageNotes(row: ReviewRow, notes: string[]) {
   if (row.kind === "doc") await db!.update(discoveryDocs).set({ pageNotes: notes }).where(eq(discoveryDocs.id, row.id));
   else if (row.kind === "share") await db!.update(shareFiles).set({ pageNotes: notes }).where(eq(shareFiles.id, row.id));
@@ -200,6 +206,65 @@ async function savePageNotes(row: ReviewRow, notes: string[]) {
 
 const NOTE_BATCH = 8;
 const NOTE_MIN_TEXT = 15;
+/** Rebuild the document summary from page notes once a doc this big finishes. */
+const SUMMARY_FROM_NOTES_MIN_PAGES = 8;
+
+/**
+ * Once every page of a document has its note, rebuild the DOCUMENT summary
+ * from those notes. The first-pass summary comes from a sampled excerpt, so
+ * on a big mixed compilation it latches onto one theme ("expense sheets")
+ * and misses the rest; the notes see every page, so the rollup can map the
+ * sections with page ranges — which later feeds exhibit descriptions too.
+ */
+export type DocSection = { from: number; to: number; title: string };
+
+async function askDocSummary(model: string, caseLine: string, doc: ReviewRow, notes: string[]): Promise<{ description: string; sections: DocSection[] } | null> {
+  const cfg = aiConfig();
+  if (!cfg) return null;
+  const base = (await resolvedAiBaseUrl()) ?? cfg.baseUrl;
+  // Every note, budgeted: shrink per-note length until the whole map fits.
+  const entries = notes.map((n, i) => ({ n: i + 1, t: (n || "").trim() })).filter((e) => e.t);
+  if (!entries.length) return null;
+  const per = Math.max(40, Math.floor(9000 / entries.length));
+  const lines = entries.map((e) => `p.${e.n}: ${e.t.slice(0, per)}`).join("\n");
+  const system =
+    "You maintain a law firm's permanent memory of its discovery documents. Many files are COMPILED BINDERS — many separate underlying documents scanned into one PDF. From the per-page notes provided, do two things and reply with ONLY a JSON object, no prose: " +
+    '{"description": string, "sections": [{"from": number, "to": number, "title": string}, …]}. ' +
+    '"sections": split the file into its contiguous underlying documents in page order (an IRS letter, a formation filing, a run of expense sheets, an eBay-listing series, a text-message thread…). Each section: first page "from", last page "to", and a specific ≤90-character title with the key names/dates/amounts. Adjacent pages of the same underlying document belong in ONE section; do not exceed 60 sections — group runs of like items. ' +
+    '"description": 3–8 sentences reading like the binder\'s table of contents ("pp. 11–130 itemized expense sheets for Nicole Fisher; pp. 141–160 eBay listings…"), keeping the most load-bearing specifics. Cover the WHOLE file, never just its largest section.';
+  const user =
+    `DOC_SUMMARY_REQUEST\nCase: ${caseLine}\nDocument: ${doc.name} (${doc.pageText.length} pages)${doc.bates ? `, Bates ${doc.bates}` : ""}\n` +
+    `Per-page notes:\n${lines}`;
+  try {
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+      signal: AbortSignal.timeout(90_000),
+      body: JSON.stringify({ model, stream: false, temperature: 0.1, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const raw = String(j?.choices?.[0]?.message?.content ?? "");
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { description?: unknown; sections?: unknown };
+    const description = String(parsed.description ?? "").trim().slice(0, 4000);
+    const total = doc.pageText.length;
+    const sections: DocSection[] = (Array.isArray(parsed.sections) ? parsed.sections : [])
+      .map((x) => {
+        const o = x as { from?: unknown; to?: unknown; title?: unknown };
+        const from = Math.max(1, Math.floor(Number(o.from)));
+        const to = Math.min(total, Math.floor(Number(o.to)));
+        const title = String(o.title ?? "").trim().slice(0, 120);
+        return Number.isFinite(from) && Number.isFinite(to) && to >= from && title ? { from, to, title } : null;
+      })
+      .filter((sec): sec is DocSection => !!sec)
+      .sort((a, b) => a.from - b.from)
+      .slice(0, 80);
+    if (!description && !sections.length) return null;
+    return { description, sections };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * One short note per page, written WITH the surrounding document context, so
@@ -328,6 +393,20 @@ export async function reviewDiscoveryChunk(setId: number, opts: { retryErrors?: 
         await savePageNotes(doc, notes);
         doc.pageNotes = notes;
         progressed++;
+        // Every page annotated → replace the sampled-excerpt summary with a
+        // rollup written FROM the notes, so a mixed compilation reads like a
+        // table of contents instead of a description of its biggest section.
+        if (!stuck && notes.length >= doc.pageText.length && doc.pageText.length >= SUMMARY_FROM_NOTES_MIN_PAGES) {
+          stage = `Mapping the binder's sections from its notes — "${doc.name}"`;
+          const digest = await askDocSummary(active.model, caseLine, doc, notes);
+          if (digest) {
+            if (digest.description) {
+              await saveReview(doc, { aiDescription: digest.description, aiLabelStatus: doc.aiLabelStatus });
+              doc.aiDescription = digest.description;
+            }
+            if (digest.sections.length) await saveSections(doc, digest.sections);
+          }
+        }
       }
       stage = `Writing page notes — "${doc.name}" (${Math.min(notes.length, doc.pageText.length)} of ${doc.pageText.length} pages)`;
       if (stuck) continue;
