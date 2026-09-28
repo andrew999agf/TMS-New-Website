@@ -554,17 +554,6 @@
     inset 0 0 18px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-.aifred-lux .aifred-medallion::after {
-  content: "";
-  position: absolute;
-  left: 4%;
-  bottom: 0;
-  height: 5px;
-  width: 5px;
-  border-radius: 9999px;
-  background: #f6cd72;
-  box-shadow: 0 0 9px 2.5px rgba(246, 205, 114, 0.75);
-}
 .aifred-lux .aifred-medallion svg {
   color: #efe9dc;
 }
