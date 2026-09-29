@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import { CASE_RESULTS } from "@/lib/content/defaults/results";
 
 /**
  * Databases provisioned before the result-page feature lack the has_page /
@@ -286,6 +287,17 @@ export function ensureResultsPageColumns(): Promise<void> {
         sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`,
       );
       await db!.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`);
+      // One-time content catch-up: when results are DB-managed, the Bosque
+      // verdict's detail page (seeded in the defaults file) is applied to the
+      // matching row too — but only while the row has no page of its own, so
+      // an admin edit is never overwritten.
+      const bosque = CASE_RESULTS.find((r) => r.hasPage && r.cite?.includes("CV24-162"));
+      if (bosque?.pageBody) {
+        await db!.execute(sql`
+          UPDATE case_results SET has_page = true, page_body = ${bosque.pageBody}
+          WHERE title = ${bosque.title} AND has_page = false AND coalesce(page_body, '') = ''
+        `);
+      }
     })().catch(() => {
       // Lack of DDL rights (or a transient failure) must never take down a
       // page render; the select falls back to seed content as before, and

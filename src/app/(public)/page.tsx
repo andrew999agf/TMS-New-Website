@@ -380,7 +380,7 @@ export default async function HomePage() {
           retire it. */}
       <NewResultBadge
         label="New jury verdict — click for details"
-        href={`/results#result-${slugify("Plaintiff's verdict after a four-day jury trial")}`}
+        href={`/results/${slugify("Plaintiff's verdict after a four-day jury trial")}`}
         storageKey="badge-bosque-verdict-2026"
       />
     </>
