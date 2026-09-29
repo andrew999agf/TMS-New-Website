@@ -345,11 +345,16 @@ export function ensureResultsPageColumns(): Promise<void> {
           "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.",
           P3,
         ].join("\n\n");
+        const prior4 = [
+          "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. The dispute concerned a road used by our client and his predecessors — a road the jury found to be a public road.",
+          "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and tried the case through to the end with the utmost professionalism.",
+          P3,
+        ].join("\n\n");
         await db!.execute(sql`
           UPDATE case_results SET has_page = true, page_body = ${bosque.pageBody}
           WHERE title = ${bosque.title}
             AND ((has_page = false AND coalesce(page_body, '') = '')
-              OR page_body = ${prior1} OR page_body = ${prior2} OR page_body = ${prior3})
+              OR page_body = ${prior1} OR page_body = ${prior2} OR page_body = ${prior3} OR page_body = ${prior4})
         `);
       }
     })().catch(() => {
