@@ -25,6 +25,25 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
+/** Render inline [text](url) links inside a page-body paragraph; everything
+ *  else stays plain text. Links open in a new tab. */
+function renderInline(text: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  let last = 0, k = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(
+      <a key={k++} href={m[2]} target="_blank" rel="noopener noreferrer" className="text-[var(--c-accent)] underline underline-offset-2 hover:opacity-80">
+        {m[1]}
+      </a>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 export default async function ResultDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [result, footer, practices] = await Promise.all([
@@ -76,7 +95,7 @@ export default async function ResultDetailPage({ params }: { params: Promise<{ s
           {paragraphs.length > 0 && (
             <div className="mt-10 space-y-5">
               {paragraphs.map((p, i) => (
-                <p key={i} className="leading-relaxed">{p}</p>
+                <p key={i} className="leading-relaxed">{renderInline(p)}</p>
               ))}
             </div>
           )}

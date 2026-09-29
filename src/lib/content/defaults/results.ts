@@ -50,13 +50,13 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     summary:
       "Four-day jury trial in Bosque County over a contested public road. After two hours of deliberation, the jury returned a verdict in favor of our client.",
     detail:
-      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial over a public road confirmed under Chapter 258 of the Texas Transportation Code; the jury returned a verdict in favor of our client on September 18, 2026, after two hours of deliberation. Post-trial proceedings pending.",
+      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial over a contested public road; the jury returned a verdict in favor of our client on September 18, 2026, after two hours of deliberation, confirming the road as a public road. Post-trial proceedings pending.",
     cite: "Cause No. CV24-162, 220th Judicial District Court, Bosque County",
     practiceSlug: "civil-commercial-litigation",
     hasPage: true,
     pageBody: [
-      "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — a public road, confirmed under Chapter 258 of the Texas Transportation Code and commonly used by the traveling public.",
-      "The trial itself became part of the story. While the case was being tried, the Hydra Fire was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.",
+      "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — commonly used by the traveling public, and confirmed as a public road by the jury's verdict.",
+      "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.",
       "After four days of evidence and argument, the jury deliberated for two hours and returned its verdict in favor of our client.",
     ].join("\n\n"),
     sort: 2,

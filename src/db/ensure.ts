@@ -329,12 +329,14 @@ export function ensureResultsPageColumns(): Promise<void> {
       if (bosque?.pageBody) {
         // Also upgrades a row holding the exact text of an EARLIER backfill —
         // that text was never touched by an admin, so replacing it is safe.
-        const prior =
+        const prior1 =
           "The case was tried to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — a public road, confirmed under Chapter 258 of the Texas Transportation Code and commonly used by the traveling public.\n\nThe trial itself became part of the story. While the case was being tried, the Hydra Fire was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, we came back and finished the job — fully, and professionally, to the end.\n\nAfter four days of evidence and argument, the jury deliberated for two hours and returned its verdict in favor of our client.";
+        const prior2 =
+          "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — a public road, confirmed under Chapter 258 of the Texas Transportation Code and commonly used by the traveling public.\n\nThe trial itself became part of the story. While the case was being tried, the Hydra Fire was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.\n\nAfter four days of evidence and argument, the jury deliberated for two hours and returned its verdict in favor of our client.";
         await db!.execute(sql`
           UPDATE case_results SET has_page = true, page_body = ${bosque.pageBody}
           WHERE title = ${bosque.title}
-            AND ((has_page = false AND coalesce(page_body, '') = '') OR page_body = ${prior})
+            AND ((has_page = false AND coalesce(page_body, '') = '') OR page_body = ${prior1} OR page_body = ${prior2})
         `);
       }
     })().catch(() => {
