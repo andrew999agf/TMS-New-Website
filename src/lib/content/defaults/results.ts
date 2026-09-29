@@ -55,8 +55,8 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     practiceSlug: "civil-commercial-litigation",
     hasPage: true,
     pageBody: [
-      "The case was tried to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — a public road, confirmed under Chapter 258 of the Texas Transportation Code and commonly used by the traveling public.",
-      "The trial itself became part of the story. While the case was being tried, the Hydra Fire was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, we came back and finished the job — fully, and professionally, to the end.",
+      "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — a public road, confirmed under Chapter 258 of the Texas Transportation Code and commonly used by the traveling public.",
+      "The trial itself became part of the story. While the case was being tried, the Hydra Fire was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.",
       "After four days of evidence and argument, the jury deliberated for two hours and returned its verdict in favor of our client.",
     ].join("\n\n"),
     sort: 2,
