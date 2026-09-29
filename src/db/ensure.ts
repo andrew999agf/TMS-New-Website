@@ -107,6 +107,20 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE share_files ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS page_bates jsonb NOT NULL DEFAULT '[]'`,
+  // engagement_letters is created by Database Sync — the e-sign columns are
+  // added only when the table exists, so a fresh environment can't wedge the
+  // whole ensure list on a missing table.
+  `DO $$ BEGIN
+    IF to_regclass('engagement_letters') IS NOT NULL THEN
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS sign_token varchar(64);
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS sent_to varchar(255) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS email_template varchar(24) NOT NULL DEFAULT 'engagement';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_name varchar(191) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_email varchar(255) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_ip varchar(64) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_user_agent varchar(500) NOT NULL DEFAULT '';
+    END IF;
+  END $$;`,
   `CREATE TABLE IF NOT EXISTS lit_files (
     id serial PRIMARY KEY,
     filename varchar(255) NOT NULL,

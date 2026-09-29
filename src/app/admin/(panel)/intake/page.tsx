@@ -125,6 +125,9 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
           openUntil: l.openUntil ? l.openUntil.toISOString() : null,
           status: l.status as LetterRow["status"],
           sentAt: l.sentAt ? l.sentAt.toISOString() : null,
+          sentTo: l.sentTo ?? "",
+          signedAt: l.signedAt ? l.signedAt.toISOString() : null,
+          signerName: l.signerName ?? "",
           createdAt: l.createdAt.toISOString(),
         });
       }

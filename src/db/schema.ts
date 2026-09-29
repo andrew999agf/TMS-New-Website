@@ -838,6 +838,16 @@ export const engagementLetters = pgTable(
     status: engagementStatus("status").notNull().default("draft"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     signedAt: timestamp("signed_at", { withTimezone: true }),
+    /** Unguessable token for the client-facing e-sign page at /engage/<token>. */
+    signToken: varchar("sign_token", { length: 64 }),
+    /** Where + how the letter went out from the portal. */
+    sentTo: varchar("sent_to", { length: 255 }).notNull().default(""),
+    emailTemplate: varchar("email_template", { length: 24 }).notNull().default("engagement"),
+    /** E-signature record captured on the signing page. */
+    signerName: varchar("signer_name", { length: 191 }).notNull().default(""),
+    signerEmail: varchar("signer_email", { length: 255 }).notNull().default(""),
+    signerIp: varchar("signer_ip", { length: 64 }).notNull().default(""),
+    signerUserAgent: varchar("signer_user_agent", { length: 500 }).notNull().default(""),
     createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

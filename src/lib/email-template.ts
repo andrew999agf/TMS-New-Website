@@ -162,3 +162,46 @@ export function brandedEmailHtml({
     </table>
   </body></html>`;
 }
+
+/**
+ * The firm's full email signature block + confidentiality boilerplate, as it
+ * appears on outgoing firm mail (managing-attorney signature, all three
+ * offices, ECPA/attorney-client confidentiality notice). Verbatim from Max —
+ * change only on his instruction.
+ */
+export function firmSignatureHtml(colors: { ink: string; inkMuted: string; accent: string; border: string }): string {
+  const line = (s: string) => `<div>${s}</div>`;
+  const office = (title: string, lines: string[]) =>
+    `<td valign="top" style="padding:0 14px 10px 0;font-size:12px;line-height:1.5;color:${colors.inkMuted}">
+      <div style="font-weight:bold;color:${colors.ink}">${title}</div>${lines.map(line).join("")}
+    </td>`;
+  return `
+  <div style="margin-top:22px;padding-top:14px;border-top:1px solid ${colors.border};font-size:13px;line-height:1.55;color:${colors.ink}">
+    <p style="margin:0 0 10px">Thank you,</p>
+    <p style="margin:0 0 2px;font-weight:bold;letter-spacing:.02em">THOMAS MAXWELL SMITH, MANAGING ATTORNEY</p>
+    <p style="margin:0 0 8px;font-weight:bold">T. Maxwell Smith, PLLC</p>
+    <p style="margin:0 0 10px;color:${colors.inkMuted}">
+      Email: <a href="mailto:max@texaslawsmith.com" style="color:${colors.accent};text-decoration:none">max@texaslawsmith.com</a><br/>
+      Telephone: (254) 435-4288<br/>
+      Telephone: (817) 348-8325<br/>
+      Facsimile: (817) 348-8328<br/>
+      <a href="https://www.texaslawsmith.com" style="color:${colors.accent};text-decoration:none">www.texaslawsmith.com</a>
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+      ${office("Bosque County (Primary)", ["115 W. River Street", "Meridian, Texas 76665", "PO Box 123 (mailing address)", "Meridian, Texas 76665"])}
+      ${office("Tarrant County", ["1612 Summit Avenue, Suite 200", "Fort Worth, TX 76102", "PO Box 11009 (Mailing Address)", "Fort Worth, Texas 76110"])}
+      ${office("Parker County", ["100 Austin Avenue, Suite 101", "Weatherford, Texas 76086", "PO Box 11009 (Mailing Address)", "Fort Worth, Texas 76110"])}
+    </tr></table>
+    <p style="margin:12px 0 0;font-size:11px;line-height:1.5;color:${colors.inkMuted}">
+      This electronic transmission (and attachments) may contain confidential information belonging to the sender that is
+      protected by the Electronic Communications Privacy Act, 18 U.S.C. Sections 2510 and 2521 and may be legally privileged.
+      This message (and any associated files) is intended only for the use of the individual or entity to which it is addressed
+      and may contain information that is confidential, subject to copyright or constitutes a trade secret. If you are not the
+      intended recipient you are hereby notified that any dissemination, copying or distribution of this message, or files
+      associated with this message, is strictly prohibited. If you have received this communication in error, please notify
+      T. Maxwell Smith, PLLC, 817-475-5522, and destroy the original message. These emails may be monitored. If this email is
+      between my office and any client or potential client of my office, the contents of this message should be considered to
+      be CONFIDENTIAL under the attorney-client privilege.
+    </p>
+  </div>`;
+}

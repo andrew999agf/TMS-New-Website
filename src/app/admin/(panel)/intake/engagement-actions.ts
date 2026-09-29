@@ -6,6 +6,12 @@ import { db } from "@/db";
 import { engagementLetters, intakeSubmissions, type EngagementFees } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { centralTime, type EngagementOffice, type EngagementSide } from "@/lib/engagement/config";
+import { randomBytes } from "crypto";
+import { ensureDiscoveryTables } from "@/db/ensure";
+import { buildEngagementLetter, letterFileName } from "@/lib/engagement/letter";
+import { buildEngagementEmail, DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email";
+import { sendEmail, emailConfigured } from "@/lib/email";
+import { FIRM } from "@/lib/firm";
 
 export type EngagementInput = {
   id?: number;
@@ -139,4 +145,98 @@ export async function deleteEngagementLetter(id: number): Promise<{ ok: boolean 
   await audit(session.email, "delete", "engagement-letter", String(id), "Deleted engagement letter");
   revalidatePath("/admin/intake");
   return { ok: true };
+}
+
+/* ------------------- Send from the portal + e-sign link ------------------ */
+
+const siteOrigin = () => (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
+
+async function ensureSignToken(id: number, existing: string | null): Promise<string> {
+  if (existing) return existing;
+  const token = randomBytes(24).toString("base64url");
+  await db!.update(engagementLetters).set({ signToken: token }).where(eq(engagementLetters.id, id));
+  return token;
+}
+
+/** The client-facing e-sign URL for a letter (creates the token on first ask). */
+export async function getEngagementSignLink(id: number): Promise<{ ok: boolean; url?: string; error?: string }> {
+  await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  await ensureDiscoveryTables();
+  const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.id, id));
+  if (!letter) return { ok: false, error: "Letter not found." };
+  const token = await ensureSignToken(id, letter.signToken);
+  return { ok: true, url: `${siteOrigin()}/engage/${token}` };
+}
+
+export type SendEngagementOpts = {
+  to: string;
+  template: EngagementEmailTemplate;
+  criminalNote: boolean;
+  debtNote: boolean;
+  paymentLink: string;
+};
+
+/**
+ * The "automatedly" button: emails the client the firm's standard engagement
+ * (or fee-agreement) email with the generated letter attached as .docx and
+ * the e-sign link inline, then flips the letter to "sent". The intake lead
+ * moves to "letter-sent" the same way the manual lifecycle did.
+ */
+export async function sendEngagementLetterEmail(id: number, opts: SendEngagementOpts): Promise<{ ok: boolean; error?: string; signUrl?: string }> {
+  const session = await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  if (!emailConfigured) return { ok: false, error: "Email is not configured on this deployment (SMTP_USER/SMTP_PASS)." };
+  const to = String(opts.to ?? "").trim().slice(0, 255);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { ok: false, error: "Enter the client's email address." };
+  await ensureDiscoveryTables();
+  try {
+    const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.id, id));
+    if (!letter) return { ok: false, error: "Letter not found." };
+
+    const buf = await buildEngagementLetter({
+      clientName: letter.clientName, businessName: letter.businessName, officerTitle: letter.officerTitle,
+      andIndividually: letter.andIndividually, email: letter.email, street: letter.street, city: letter.city,
+      state: letter.state, zip: letter.zip, county: letter.county,
+      office: letter.office as EngagementOffice, side: letter.side as EngagementSide,
+      generalDescription: letter.generalDescription, caseNumber: letter.caseNumber, caseStyling: letter.caseStyling,
+      phase1Custom: letter.phase1Custom, phase2Custom: letter.phase2Custom,
+      phase1: letter.phase1, phase2: letter.phase2, fees: letter.fees, openUntil: letter.openUntil,
+    });
+
+    const token = await ensureSignToken(id, letter.signToken);
+    const signUrl = `${siteOrigin()}/engage/${token}`;
+    const template: EngagementEmailTemplate = opts.template === "fee-agreement" ? "fee-agreement" : "engagement";
+    const paymentLink = (String(opts.paymentLink ?? "").trim() || DEFAULT_PAYMENT_LINK).slice(0, 600);
+    const { subject, html } = await buildEngagementEmail({
+      template, office: letter.office as EngagementOffice, clientName: letter.clientName,
+      signUrl, paymentLink, criminalNote: Boolean(opts.criminalNote), debtNote: Boolean(opts.debtNote),
+    });
+
+    const res = await sendEmail({
+      to,
+      subject,
+      html,
+      fromName: FIRM.name,
+      attachments: [{
+        filename: letterFileName(letter),
+        content: buf,
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }],
+    });
+    if (!res.sent) return { ok: false, error: `Email failed: ${res.reason ?? "unknown"}` };
+
+    await db.update(engagementLetters).set({
+      status: "sent", sentAt: new Date(), sentTo: to, emailTemplate: template, updatedAt: new Date(),
+    }).where(eq(engagementLetters.id, id));
+    if (letter.intakeId) {
+      try { await db.update(intakeSubmissions).set({ status: "letter-sent" }).where(eq(intakeSubmissions.id, letter.intakeId)); } catch { /* lead may be gone */ }
+    }
+    await audit(session.email, "update", "engagement-letter", String(id), `Emailed ${template === "fee-agreement" ? "fee agreement" : "engagement letter"} to ${to} with e-sign link`);
+    revalidatePath("/admin/intake");
+    return { ok: true, signUrl };
+  } catch (err) {
+    console.error("[engagement] sendEngagementLetterEmail failed:", err);
+    return { ok: false, error: "Couldn't send the letter." };
+  }
 }

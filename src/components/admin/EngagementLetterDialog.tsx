@@ -2,8 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye } from "lucide-react";
-import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
+import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye, Link2, Loader2, Mail } from "lucide-react";
+import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, sendEngagementLetterEmail, getEngagementSignLink, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
+import { DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email-shared";
 import {
   resolveOffice, defaultFees, defaultOpenUntil, OFFICE_INFO,
   PHASE1_STANDARD, PHASE2_STANDARD,
@@ -26,6 +27,9 @@ export type LetterRow = {
   openUntil: string | null;
   status: "draft" | "sent" | "signed" | "declined";
   sentAt: string | null;
+  sentTo: string;
+  signedAt: string | null;
+  signerName: string;
   createdAt: string;
 };
 
@@ -152,6 +156,44 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
 
   const others = letters.filter((l) => l.id !== id);
 
+  /* ------------------ Send-to-client (email + e-sign) ------------------ */
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendTo, setSendTo] = useState("");
+  const [sendTemplate, setSendTemplate] = useState<EngagementEmailTemplate>("engagement");
+  const [criminalNote, setCriminalNote] = useState(false);
+  const [debtNote, setDebtNote] = useState(false);
+  const [paymentLink, setPaymentLink] = useState(DEFAULT_PAYMENT_LINK);
+  const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState<number | null>(null);
+
+  function sendNow() {
+    setError(null); setSendMsg(null);
+    start(async () => {
+      // Always send exactly what's on screen: save first, then email.
+      const saved = await saveEngagementLetter(payload());
+      if (!saved.ok || !saved.id) { setError(saved.error ?? "Save failed."); return; }
+      setId(saved.id);
+      const r = await sendEngagementLetterEmail(saved.id, {
+        to: sendTo || form.email, template: sendTemplate,
+        criminalNote: sendTemplate === "fee-agreement" && criminalNote,
+        debtNote: sendTemplate === "fee-agreement" && debtNote,
+        paymentLink,
+      });
+      if (!r.ok) { setError(r.error ?? "Send failed."); return; }
+      setSendMsg(`Sent to ${sendTo || form.email} with the letter attached and the e-sign link. The lead is now "Letter sent".`);
+      router.refresh();
+    });
+  }
+
+  function copySignLink(letterId: number) {
+    start(async () => {
+      const r = await getEngagementSignLink(letterId);
+      if (r.ok && r.url) {
+        try { await navigator.clipboard.writeText(r.url); setLinkCopied(letterId); setTimeout(() => setLinkCopied(null), 2000); } catch { /* no clipboard */ }
+      }
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
@@ -171,7 +213,16 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                 <span className="font-medium">{l.businessName || l.clientName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CHIP[l.status].cls}`}>{STATUS_CHIP[l.status].label}</span>
                 <span className="text-xs text-[var(--c-ink-muted)]">{new Date(l.createdAt).toLocaleDateString()}</span>
+                {l.status === "sent" && l.sentTo && <span className="text-xs text-[var(--c-ink-muted)]">→ {l.sentTo}</span>}
+                {l.status === "signed" && l.signerName && (
+                  <span className="text-xs text-green-700" title={l.signedAt ? `Signed ${new Date(l.signedAt).toLocaleString()}` : undefined}>
+                    by {l.signerName}{l.signedAt ? ` · ${new Date(l.signedAt).toLocaleDateString()}` : ""}
+                  </span>
+                )}
                 <span className="ml-auto flex items-center gap-1.5">
+                  <button onClick={() => copySignLink(l.id)} title="Copy the client's e-sign link" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
+                    {linkCopied === l.id ? <Check size={15} className="text-emerald-600" /> : <Link2 size={15} />}
+                  </button>
                   <button onClick={() => download(l.id)} title="Download .docx" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Download size={15} /></button>
                   {l.status === "draft" && (
                     <button onClick={() => lifecycle(l.id, "sent")} className="text-xs text-[var(--c-accent)] hover:underline">Mark sent</button>
@@ -331,6 +382,50 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
             <Field label="Offer open until (date)"><input type="date" className={input} value={form.openUntilDate} onChange={(e) => set("openUntilDate", e.target.value)} /></Field>
             <Field label="Time (Central)"><input type="time" className={input} value={form.openUntilTime} onChange={(e) => set("openUntilTime", e.target.value)} /></Field>
           </div>
+        </div>
+
+        {/* Send it from here: the firm's standard email, letter attached,
+            e-sign link inline. Saves the on-screen letter first so the client
+            gets exactly what's shown. */}
+        <div className="mt-5 rounded-md border border-[var(--c-border)]">
+          <button onClick={() => { setSendOpen((o) => !o); if (!sendTo) setSendTo(form.email); }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold hover:text-[var(--c-accent)]">
+            <Mail size={15} className="text-[var(--c-accent)]" /> Send to client (email + e-sign link)
+            <span className="ml-auto text-xs font-normal text-[var(--c-ink-muted)]">{sendOpen ? "hide" : "open"}</span>
+          </button>
+          {sendOpen && (
+            <div className="space-y-3 border-t border-[var(--c-border)] p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Send to (client email)"><input className={input} type="email" value={sendTo} onChange={(e) => setSendTo(e.target.value)} placeholder={form.email || "client@example.com"} /></Field>
+                <Field label="Email template">
+                  <select className={input} value={sendTemplate} onChange={(e) => setSendTemplate(e.target.value as EngagementEmailTemplate)}>
+                    <option value="engagement">Engagement letter (sign · retainer · driver license)</option>
+                    <option value="fee-agreement">Fee agreement (info sheet · payment in full / auto draft)</option>
+                  </select>
+                </Field>
+              </div>
+              {sendTemplate === "fee-agreement" && (
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="inline-flex items-center gap-2"><input type="checkbox" checked={criminalNote} onChange={(e) => setCriminalNote(e.target.checked)} /> Criminal-case warning</label>
+                  <label className="inline-flex items-center gap-2"><input type="checkbox" checked={debtNote} onChange={(e) => setDebtNote(e.target.checked)} /> Debt-case fraud notice</label>
+                </div>
+              )}
+              <Field label="Payment link"><input className={input} value={paymentLink} onChange={(e) => setPaymentLink(e.target.value)} /></Field>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={sendNow} disabled={pending}
+                  className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+                  {pending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Save &amp; send now
+                </button>
+                {id && (
+                  <button onClick={() => copySignLink(id)} className="btn btn-outline inline-flex items-center gap-1.5 text-sm py-2 px-3">
+                    {linkCopied === id ? <Check size={13} className="text-emerald-600" /> : <Link2 size={13} />} Copy e-sign link
+                  </button>
+                )}
+                <p className="text-xs text-[var(--c-ink-muted)]">Attaches the letter as .docx; the client signs at the link and the lead flips to Converted automatically.</p>
+              </div>
+              {sendMsg && <p className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300"><Check size={14} /> {sendMsg}</p>}
+            </div>
+          )}
         </div>
 
         {error && <p className="mt-4 text-sm text-[var(--c-error)]">{error}</p>}
