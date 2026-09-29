@@ -48,15 +48,15 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     statLabel: "Plaintiff's verdict returned by the jury",
     year: "2026",
     summary:
-      "Four-day jury trial in Bosque County over a contested public road. After two hours of deliberation, the jury returned a verdict in favor of our client.",
+      "Four-day jury trial in Bosque County. After two hours of deliberation, the jury returned a verdict in favor of our client.",
     detail:
-      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial over a contested public road; the jury returned a verdict in favor of our client on September 18, 2026, after two hours of deliberation, confirming the road as a public road. Post-trial proceedings pending.",
+      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial; on September 18, 2026, after two hours of deliberation, the jury returned a verdict in favor of our client, finding the road used by our client and his predecessors to be a public road. Post-trial proceedings pending.",
     cite: "Cause No. CV24-162, 220th Judicial District Court, Bosque County",
     practiceSlug: "civil-commercial-litigation",
     hasPage: true,
     pageBody: [
-      "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. At the center of the four-day trial was a road — commonly used by the traveling public, and confirmed as a public road by the jury's verdict.",
-      "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and finished the job — fully, and professionally, to the end.",
+      "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County. The dispute concerned a road used by our client and his predecessors — a road the jury found to be a public road.",
+      "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and tried the case through to the end with the utmost professionalism.",
       "After four days of evidence and argument, the jury deliberated for two hours and returned its verdict in favor of our client.",
     ].join("\n\n"),
     sort: 2,
