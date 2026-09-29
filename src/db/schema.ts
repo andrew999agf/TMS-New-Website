@@ -1657,6 +1657,39 @@ export const productions = pgTable(
   (t) => ({ setIdx: index("productions_set_idx").on(t.setId), tokenIdx: index("productions_token_idx").on(t.token) }),
 );
 
+/* -------------------- Litigation Support Services -------------------- */
+
+/** The Word "template" bucket: PLAIN files (a user or the AI opens one,
+ *  Saves As, and builds the new document from it). Deliberately NOT the
+ *  merge-field template bank — this is the firm's standing convention
+ *  unless Max says otherwise for a specific tool. */
+export const litFiles = pgTable("lit_files", {
+  id: serial("id").primaryKey(),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  url: text("url").notNull(),
+  pathname: text("pathname"),
+  contentType: varchar("content_type", { length: 128 }),
+  sizeBytes: integer("size_bytes"),
+  notes: varchar("notes", { length: 500 }).notNull().default(""),
+  uploadedBy: varchar("uploaded_by", { length: 191 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A saved DWQ / records-subpoena package: the form inputs live in `data`
+ *  and the Word document regenerates from them at any time. */
+export const dwqPackages = pgTable("dwq_packages", {
+  id: serial("id").primaryKey(),
+  matter: varchar("matter", { length: 64 }).notNull().default(""),
+  entity: varchar("entity", { length: 255 }).notNull().default(""),
+  data: jsonb("data").notNull().default({}),
+  createdBy: varchar("created_by", { length: 191 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type LitFile = typeof litFiles.$inferSelect;
+export type DwqPackage = typeof dwqPackages.$inferSelect;
+
 export type ProductionDoc = typeof productionDocs.$inferSelect;
 export type Production = typeof productions.$inferSelect;
 

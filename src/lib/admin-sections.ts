@@ -31,6 +31,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "contacts", label: "Contacts", href: "/admin/contacts", toggleable: true },
   { key: "discovery-reviewer", label: "Discovery Reviewer", href: "/admin/discovery-reviewer", toggleable: true },
   { key: "exhibit-reviewer", label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", toggleable: true },
+  { key: "litigation-support", label: "Litigation Support", href: "/admin/litigation-support", toggleable: true },
   { key: "case-portal", label: "Case Portal", href: "/admin/case-portal", toggleable: true },
   { key: "assistant", label: "AI.fred (Assistant)", href: "/admin/assistant", toggleable: true },
   { key: "map-overlay", label: "Map Overlay", href: "/admin/map-overlay", toggleable: true },

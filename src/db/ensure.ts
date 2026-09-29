@@ -107,6 +107,26 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE share_files ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE production_docs ADD COLUMN IF NOT EXISTS page_bates jsonb NOT NULL DEFAULT '[]'`,
+  `CREATE TABLE IF NOT EXISTS lit_files (
+    id serial PRIMARY KEY,
+    filename varchar(255) NOT NULL,
+    url text NOT NULL,
+    pathname text,
+    content_type varchar(128),
+    size_bytes integer,
+    notes varchar(500) NOT NULL DEFAULT '',
+    uploaded_by varchar(191) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS dwq_packages (
+    id serial PRIMARY KEY,
+    matter varchar(64) NOT NULL DEFAULT '',
+    entity varchar(255) NOT NULL DEFAULT '',
+    data jsonb NOT NULL DEFAULT '{}',
+    created_by varchar(191) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS page_notes jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS ai_sections jsonb NOT NULL DEFAULT '[]'`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS ai_label varchar(300) NOT NULL DEFAULT ''`,

@@ -95,6 +95,7 @@ const CASE_TOOLS = [
   { label: "Pre-Trial Checklist", href: "/admin/pre-trial", icon: CalendarClock },
   { label: "Discovery Reviewer", href: "/admin/discovery-reviewer", icon: FileStack },
   { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
+  { label: "Litigation Support", href: "/admin/litigation-support", icon: Gavel },
   { label: "Docs & Templates", href: "/admin/documents", icon: FileSignature },
   { label: "Case Portal", href: "/admin/case-portal", icon: Briefcase },
   { label: "AI.fred", href: "/admin/assistant", icon: Bot },
