@@ -50,13 +50,13 @@ export const CASE_RESULTS: CaseResultSeed[] = [
     summary:
       "Four-day jury trial in Bosque County, September 15–18, 2026. After two hours of deliberation, the jury returned a verdict in our client's favor.",
     detail:
-      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial, September 15–18, 2026. The jury found the road used by our client and his predecessors to be a public road, returning a verdict in our client's favor after two hours of deliberation. Post-trial proceedings pending.",
+      "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. Four-day jury trial, September 15–18, 2026. The jury found the road used by our client and his predecessors to be a public road, returning a verdict in our client's favor after two hours of deliberation.",
     cite: "Cause No. CV24-162, 220th Judicial District Court, Bosque County",
     practiceSlug: "civil-commercial-litigation",
     hasPage: true,
     pageBody: [
       "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County, over four days — September 15 through September 18, 2026. The dispute concerned a road used by our client and his predecessors; the jury found it to be a public road.",
-      "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and tried the case through to the end with the utmost professionalism.",
+      "While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our team continued its representation of our client — exhibiting the utmost professionalism in trying the case to verdict.",
       "After four days of evidence and argument, the jury deliberated for two hours and returned its verdict in our client's favor.",
     ].join("\n\n"),
     sort: 2,

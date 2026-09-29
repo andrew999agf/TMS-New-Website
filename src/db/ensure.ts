@@ -350,12 +350,37 @@ export function ensureResultsPageColumns(): Promise<void> {
           "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and tried the case through to the end with the utmost professionalism.",
           P3,
         ].join("\n\n");
+        const prior5 = [
+          "Our trial team tried the case to a jury in the 220th Judicial District Court in Meridian, the county seat of Bosque County, over four days — September 15 through September 18, 2026. The dispute concerned a road used by our client and his predecessors; the jury found it to be a public road.",
+          "The trial itself became part of the story. While the case was being tried, [the Hydra Fire](https://www.kwtx.com/2026/09/16/hydra-fire-bosque-county-grows-1100-acres-now-25-contained/) was burning two miles outside Meridian, and the town was evacuated on the first day of trial. When the courthouse doors reopened, our trial team came back and tried the case through to the end with the utmost professionalism.",
+          "After four days of evidence and argument, the jury deliberated for two hours and returned its verdict in our client's favor.",
+        ].join("\n\n");
         await db!.execute(sql`
           UPDATE case_results SET has_page = true, page_body = ${bosque.pageBody}
           WHERE title = ${bosque.title}
             AND ((has_page = false AND coalesce(page_body, '') = '')
-              OR page_body = ${prior1} OR page_body = ${prior2} OR page_body = ${prior3} OR page_body = ${prior4})
+              OR page_body = ${prior1} OR page_body = ${prior2} OR page_body = ${prior3} OR page_body = ${prior4} OR page_body = ${prior5})
         `);
+        // Same guarded catch-up for the citation blurb: every earlier seeded
+        // version ended with "Post-trial proceedings pending.", which is now
+        // dropped. Only rows still holding one of those exact seeded strings
+        // are touched — an admin-edited blurb passes by untouched.
+        if (bosque.detail) {
+          const head = "Smith v. Morgan, Cause No. CV24-162, 220th Judicial District Court, Bosque County, Texas. ";
+          const priorDetails = [
+            head + "Four-day jury trial; the jury returned a verdict in favor of our client on September 18, 2026. Post-trial proceedings pending.",
+            head + "Four-day jury trial over a public road confirmed under Chapter 258 of the Texas Transportation Code; the jury returned a verdict in favor of our client on September 18, 2026, after two hours of deliberation. Post-trial proceedings pending.",
+            head + "Four-day jury trial over a contested public road; the jury returned a verdict in favor of our client on September 18, 2026, after two hours of deliberation, confirming the road as a public road. Post-trial proceedings pending.",
+            head + "Four-day jury trial; on September 18, 2026, after two hours of deliberation, the jury returned a verdict in favor of our client, finding the road used by our client and his predecessors to be a public road. Post-trial proceedings pending.",
+            head + "Four-day jury trial, September 15–18, 2026. The jury found the road used by our client and his predecessors to be a public road, returning a verdict in our client's favor after two hours of deliberation. Post-trial proceedings pending.",
+          ];
+          await db!.execute(sql`
+            UPDATE case_results SET detail = ${bosque.detail}
+            WHERE title = ${bosque.title}
+              AND (detail = ${priorDetails[0]} OR detail = ${priorDetails[1]} OR detail = ${priorDetails[2]}
+                OR detail = ${priorDetails[3]} OR detail = ${priorDetails[4]})
+          `);
+        }
       }
     })().catch(() => {
       // Lack of DDL rights (or a transient failure) must never take down a
