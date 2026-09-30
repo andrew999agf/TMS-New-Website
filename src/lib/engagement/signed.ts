@@ -3,7 +3,7 @@ import type { engagementLetters } from "@/db/schema";
 import type { EngagementOffice, EngagementSide } from "./config";
 import type { LetterData } from "./letter";
 import { buildEngagementLetter } from "./letter";
-import { appendSignaturePageToPdf, stampSignatureOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
+import { appendSignaturePageToPdf, stampSignatureOnPdf, stampTextOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
 import { docxToPdf } from "./docx2pdf";
 import { engagementDefaultRates } from "./rates";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
@@ -45,10 +45,15 @@ function signerLineText(letter: LetterDbRow): string {
   return letter.clientName.trim() + (letter.businessName.trim() && letter.andIndividually ? ", Individually" : "");
 }
 
-/** Signature onto the line where one exists, and the record page always. */
-async function applySignature(buf: Buffer, sig: SignatureRecord, anchor: string): Promise<Buffer> {
-  const stamped = await stampSignatureOnPdf(buf, sig, anchor);
-  return appendSignaturePageToPdf(stamped.buf, sig);
+/** Signature onto the "Sign:" line when the letter has one (searching from
+ *  the last page), else above the signer's printed name; the record page is
+ *  appended either way. */
+async function applySignature(buf: Buffer, sig: SignatureRecord, signerLine: string): Promise<Buffer> {
+  let stamped = await stampSignatureOnPdf(buf, sig, "Sign:", { dx: 34, dy: 3 });
+  if (!stamped.stamped) stamped = await stampSignatureOnPdf(buf, sig, signerLine);
+  const when = sig.signedAt.toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "long", day: "numeric", year: "numeric" });
+  const dated = await stampTextOnPdf(stamped.buf, when, "Date:", { dx: 34, dy: 4 });
+  return appendSignaturePageToPdf(dated.buf, sig);
 }
 
 /**

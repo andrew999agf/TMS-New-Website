@@ -93,39 +93,209 @@ async function launchBrowser() {
   }
 }
 
+/* ------------------- headers & footers, the Word way ------------------- *
+ * docx-preview lays a section's header/footer out once per SECTION, not once
+ * per printed page — so a flowing letter got its letterhead footer at the end
+ * of the document instead of on every page. The fix keeps fidelity absolute:
+ * each header/footer part is itself rendered by docx-preview (same styles,
+ * same images, same fonts, from the SAME template file), screenshotted, and
+ * stamped onto every printed page at Word's own header/footer distances.
+ * "Page X of Y" fields are filled with the real numbers per page.           */
+
+type SectionInfo = {
+  pgW: number; pgH: number; // twips
+  marL: number; marR: number;
+  headerDist: number; footerDist: number;
+  titlePg: boolean;
+  refs: Partial<Record<"headerFirst" | "headerDefault" | "footerFirst" | "footerDefault", string>>; // part path in zip
+};
+
+const TW = (v: string | undefined, d: number) => {
+  const n = parseFloat(v ?? "");
+  return Number.isFinite(n) ? n : d;
+};
+
+async function analyzeSection(zip: JSZipNS): Promise<SectionInfo> {
+  const doc = await zip.file("word/document.xml")!.async("string");
+  const sect = doc.slice(doc.lastIndexOf("<w:sectPr"));
+  const attr = (tag: string, a: string) => sect.match(new RegExp(`<w:${tag}[^>]*w:${a}="([^"]+)"`))?.[1];
+  const rels = await zip.file("word/_rels/document.xml.rels")!.async("string");
+  const relMap = new Map([...rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [m[1], m[2].replace(/^\/?(word\/)?/, "word/")]));
+  const refs: SectionInfo["refs"] = {};
+  for (const m of sect.matchAll(/<w:(header|footer)Reference[^>]*r:id="([^"]+)"[^>]*w:type="(\w+)"/g)) {
+    const target = relMap.get(m[2]);
+    if (!target) continue;
+    if (m[3] === "first") refs[m[1] === "header" ? "headerFirst" : "footerFirst"] = target;
+    if (m[3] === "default") refs[m[1] === "header" ? "headerDefault" : "footerDefault"] = target;
+  }
+  return {
+    pgW: TW(attr("pgSz", "w"), 12240), pgH: TW(attr("pgSz", "h"), 15840),
+    marL: TW(attr("pgMar", "left"), 1440), marR: TW(attr("pgMar", "right"), 1440),
+    headerDist: TW(attr("pgMar", "header"), 720), footerDist: TW(attr("pgMar", "footer"), 720),
+    titlePg: /<w:titlePg(?:\s|\/)/.test(sect),
+    refs,
+  };
+}
+
+type JSZipNS = Awaited<ReturnType<(typeof import("jszip"))["loadAsync"]>>;
+
+/** Turn one header/footer part into a standalone mini-docx that renders JUST
+ *  that part — same styles, media, and relationships as the original. */
+async function buildPartDocx(zip: JSZipNS, partPath: string, pageNo?: number, pageCount?: number): Promise<Buffer> {
+  const JSZip = (await import("jszip")).default;
+  const original = await zip.file("word/document.xml")!.async("string");
+  const rootTag = original.slice(original.indexOf("<w:document"), original.indexOf(">", original.indexOf("<w:document")) + 1);
+  let part = await zip.file(partPath)!.async("string");
+  // Fill PAGE / NUMPAGES fields with literal numbers (docx-preview can't):
+  // each instrText becomes a literal text run in place, and the field-char
+  // markers drop away — works whatever run shape the field arrived in.
+  if (pageNo !== undefined) {
+    part = part
+      .replace(/<w:instrText[^>]*>([\s\S]*?)<\/w:instrText>/g, (_m, instr: string) => {
+        const value = /NUMPAGES/.test(instr) ? String(pageCount ?? pageNo) : /PAGE/.test(instr) ? String(pageNo) : "";
+        return `<w:t xml:space="preserve">${value}</w:t>`;
+      })
+      .replace(/<w:fldChar[^>]*\/>/g, "");
+  }
+  const inner = part.slice(part.indexOf(">", part.indexOf("<w:hdr") >= 0 ? part.indexOf("<w:hdr") : part.indexOf("<w:ftr")) + 1, Math.max(part.lastIndexOf("</w:hdr>"), part.lastIndexOf("</w:ftr>")));
+  const sect = (await zip.file("word/document.xml")!.async("string")).slice(original.lastIndexOf("<w:sectPr"));
+  const pgSz = sect.match(/<w:pgSz[^>]*\/>/)?.[0] ?? `<w:pgSz w:w="12240" w:h="15840"/>`;
+  const pgMar = sect.match(/<w:pgMar[^>]*\/>/)?.[0]?.replace(/w:top="[^"]*"/, 'w:top="0"').replace(/w:bottom="[^"]*"/, 'w:bottom="0"') ?? "";
+  const out = new JSZip();
+  for (const [name, file] of Object.entries(zip.files)) {
+    if (file.dir || name === "word/document.xml" || name === "word/_rels/document.xml.rels") continue;
+    out.file(name, await file.async("uint8array"));
+  }
+  out.file("word/document.xml", `${original.slice(0, original.indexOf("<w:document"))}${rootTag}<w:body>${inner}<w:sectPr>${pgSz}${pgMar}</w:sectPr></w:body></w:document>`);
+  const partRels = await zip.file(`word/_rels/${partPath.split("/").pop()}.rels`)?.async("string");
+  out.file("word/_rels/document.xml.rels", partRels ?? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`);
+  return Buffer.from(await out.generateAsync({ type: "uint8array" }));
+}
+
 export async function docxToPdf(docx: Buffer): Promise<Buffer> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(docx);
+  const sec = await analyzeSection(zip);
+  const pageWpt = sec.pgW / 20 || 612;
+  const pageHpt = sec.pgH / 20 || 792;
+  const pageWpx = Math.round(pageWpt / 0.75);
+
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${PAGE_CSS}</style></head>
-<body><div id="out"></div>
+    await page.setViewport({ width: pageWpx + 200, height: 1400, deviceScaleFactor: 2 });
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${PAGE_CSS}
+      /* Body print: horizontal margins come from the section, vertical ones
+         from @page so EVERY page gets them, not just the first. */
+      #out .docx-wrapper > section.docx { padding-top: 0 !important; padding-bottom: 0 !important; min-height: 0 !important; height: auto !important; }
+      /* Part capture: an opaque page-width band, nothing bleeding through. */
+      #part { position: absolute; left: 0; top: 0; width: ${pageWpx}px; overflow: hidden; background: #fff; }
+      #part .docx-wrapper { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+      #part section.docx { background: #fff !important; box-shadow: none !important; margin: 0 !important; min-height: 0 !important; height: auto !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+      @media print { #part { display: none !important; } }
+    </style><style id="pg"></style></head>
+<body><div id="out"></div><div id="part"></div>
 <script src="data:text/javascript;base64,${JSZIP_MIN_B64}"></script>
 <script src="data:text/javascript;base64,${DOCX_PREVIEW_MIN_B64}"></script>
 </body></html>`;
     await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
-    await page.evaluate(async (b64: string) => {
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      // @ts-expect-error docx-preview attaches itself as window.docx
-      await window.docx.renderAsync(bytes.buffer, document.getElementById("out"), undefined, {
-        inWrapper: true,
-        ignoreLastRenderedPageBreak: false,
-        renderHeaders: true,
-        renderFooters: true,
-        renderFootnotes: true,
-      });
-      await (document as Document & { fonts: FontFaceSet }).fonts.ready;
-    }, docx.toString("base64"));
-    // The Word page carries its own size + margins; print at CSS-decided size.
-    const pdf = await page.pdf({
-      printBackground: true,
-      preferCSSPageSize: false,
-      format: "letter",
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      timeout: 60_000,
-    });
-    return Buffer.from(pdf);
+
+    const render = async (b64: string, target: "out" | "part") => {
+      await page.evaluate(async (data: string, id: string) => {
+        const bin = atob(data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const el = document.getElementById(id)!;
+        el.innerHTML = "";
+        // @ts-expect-error docx-preview attaches itself as window.docx
+        await window.docx.renderAsync(bytes.buffer, el, undefined, {
+          inWrapper: true,
+          ignoreLastRenderedPageBreak: false,
+          renderHeaders: false,
+          renderFooters: false,
+          renderFootnotes: true,
+        });
+        await (document as Document & { fonts: FontFaceSet }).fonts.ready;
+      }, b64, target);
+    };
+
+    type Shot = { png: Buffer; cssW: number; cssH: number };
+    /** Render one letterhead part to an opaque page-width PNG strip. The
+     *  letter itself is hidden while shooting so nothing shows through. */
+    const shoot = async (partPath: string, pageNo: number, pageCount?: number): Promise<Shot | null> => {
+      try {
+        const bytes = await buildPartDocx(zip, partPath, pageNo, pageCount);
+        await page.evaluate(() => { (document.getElementById("out") as HTMLElement).style.display = "none"; });
+        await render(bytes.toString("base64"), "part");
+        const h = await page.evaluate(() => {
+          const el = document.querySelector("#part section.docx") as HTMLElement | null;
+          return el ? el.getBoundingClientRect().height : 0;
+        });
+        if (h < 2) return null;
+        const png = await page.screenshot({ clip: { x: 0, y: 0, width: pageWpx, height: h } });
+        return { png: Buffer.from(png), cssW: pageWpx, cssH: h };
+      } catch (err) {
+        console.error(`[docx2pdf] letterhead part ${partPath} failed to render:`, err);
+        return null;
+      } finally {
+        await page.evaluate(() => {
+          (document.getElementById("part") as HTMLElement).innerHTML = "";
+          (document.getElementById("out") as HTMLElement).style.display = "";
+        }).catch(() => undefined);
+      }
+    };
+
+    // 1) Measure the letterhead parts FIRST — the body's per-page margins
+    //    must clear them so no contract text ever hides behind a stamp.
+    const h1Path = sec.titlePg ? (sec.refs.headerFirst ?? sec.refs.headerDefault) : sec.refs.headerDefault;
+    const f1Path = sec.titlePg ? (sec.refs.footerFirst ?? sec.refs.footerDefault) : sec.refs.footerDefault;
+    const h1Shot = h1Path ? await shoot(h1Path, 1) : null;
+    const f1Shot = f1Path ? await shoot(f1Path, 1) : null;
+    const hDefProbe = sec.refs.headerDefault ? await shoot(sec.refs.headerDefault, 2) : null;
+    const fDefProbe = sec.refs.footerDefault ? await shoot(sec.refs.footerDefault, 2) : null;
+
+    const marTop = 1440 / 20; // Word top/bottom margins (the template uses 1")
+    const marBot = 1440 / 20;
+    const band = (dist: number, shotH: number | undefined, base: number) =>
+      Math.max(base, shotH ? dist / 20 + shotH * 0.75 + 4 : 0);
+    const topFirst = band(sec.headerDist, h1Shot?.cssH, marTop);
+    const botFirst = band(sec.footerDist, f1Shot?.cssH, marBot);
+    const topDef = band(sec.headerDist, hDefProbe?.cssH, marTop);
+    const botDef = band(sec.footerDist, fDefProbe?.cssH, marBot);
+    await page.evaluate((css: string) => { document.getElementById("pg")!.textContent = css; },
+      `@page { size: ${pageWpt}pt ${pageHpt}pt; margin: ${topDef}pt 0 ${botDef}pt 0; }
+       @page :first { margin-top: ${topFirst}pt; margin-bottom: ${botFirst}pt; }`);
+
+    // 2) Print the letter body with those margins on EVERY page.
+    await render(docx.toString("base64"), "out");
+    const bodyPdf = await page.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 60_000 });
+
+    const { PDFDocument } = await import("pdf-lib");
+    const pdf = await PDFDocument.load(bodyPdf);
+    const pageCount = pdf.getPageCount();
+
+    const stamp = async (pageIdx: number, shotP: Shot | null, at: "top" | "bottom") => {
+      if (!shotP) return;
+      const img = await pdf.embedPng(shotP.png);
+      const w = shotP.cssW * 0.75; // CSS px → pt (shot is exactly page-wide)
+      const h = shotP.cssH * 0.75;
+      const y = at === "top" ? pageHpt - sec.headerDist / 20 - h : sec.footerDist / 20;
+      pdf.getPage(pageIdx).drawImage(img, { x: 0, y, width: w, height: h });
+    };
+
+    // 3) Page one gets the first-page letterhead; later pages the default
+    //    header/footer, re-rendered per page when they carry page numbers.
+    const hasFields = async (p?: string) => (p ? /fldChar/.test(await zip.file(p)!.async("string")) : false);
+    const hDefFields = await hasFields(sec.refs.headerDefault);
+    const fDefFields = await hasFields(sec.refs.footerDefault);
+    await stamp(0, h1Shot ? (await hasFields(h1Path)) ? await shoot(h1Path!, 1, pageCount) : h1Shot : null, "top");
+    await stamp(0, f1Shot ? (await hasFields(f1Path)) ? await shoot(f1Path!, 1, pageCount) : f1Shot : null, "bottom");
+    for (let i = 1; i < pageCount; i++) {
+      if (sec.refs.headerDefault) await stamp(i, hDefFields ? await shoot(sec.refs.headerDefault, i + 1, pageCount) : hDefProbe, "top");
+      if (sec.refs.footerDefault) await stamp(i, fDefFields ? await shoot(sec.refs.footerDefault, i + 1, pageCount) : fDefProbe, "bottom");
+    }
+
+    return Buffer.from(await pdf.save());
   } finally {
     await browser.close().catch(() => undefined);
   }

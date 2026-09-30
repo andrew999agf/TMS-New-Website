@@ -136,7 +136,7 @@ export async function buildEngagementLetterPdf(d: LetterData, sig?: SignatureRec
  * is never matched) and draw the signature just above it. Returns whether
  * the anchor was found; callers append the record page either way.
  */
-export async function stampSignatureOnPdf(pdfBytes: Buffer, sig: SignatureRecord, anchorText: string): Promise<{ buf: Buffer; stamped: boolean }> {
+export async function stampSignatureOnPdf(pdfBytes: Buffer, sig: SignatureRecord, anchorText: string, offset: { dx?: number; dy?: number } = {}): Promise<{ buf: Buffer; stamped: boolean }> {
   let found: { page: number; x: number; y: number } | null = null;
   // Whitespace-insensitive: Word's small-caps runs come back letter-spaced
   // ("W A N D A …"), so both sides are compared with spaces stripped.
@@ -179,20 +179,57 @@ export async function stampSignatureOnPdf(pdfBytes: Buffer, sig: SignatureRecord
 
   const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const page = pdf.getPage(found.page - 1);
+  const dx = offset.dx ?? 0;
+  const dy = offset.dy ?? 6;
   if (sig.kind === "drawn" && sig.imagePngBase64) {
     try {
       const png = await pdf.embedPng(Buffer.from(sig.imagePngBase64, "base64"));
       const h = 38;
       const w = (png.width / png.height) * h;
-      page.drawImage(png, { x: found.x, y: found.y + 6, width: Math.min(w, 220), height: h });
+      page.drawImage(png, { x: found.x + dx, y: found.y + dy - 6, width: Math.min(w, 220), height: h });
     } catch {
       const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
-      page.drawText(safe(sig.typedName || sig.signerName), { x: found.x, y: found.y + 10, size: 19, font: italic, color: INK });
+      page.drawText(safe(sig.typedName || sig.signerName), { x: found.x + dx, y: found.y + dy, size: 19, font: italic, color: INK });
     }
   } else {
     const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
-    page.drawText(safe(sig.typedName || sig.signerName), { x: found.x, y: found.y + 10, size: 19, font: italic, color: INK });
+    page.drawText(safe(sig.typedName || sig.signerName), { x: found.x + dx, y: found.y + dy, size: 19, font: italic, color: INK });
   }
+  return { buf: Buffer.from(await pdf.save()), stamped: true };
+}
+
+/** Stamp plain text (e.g. the signing date) onto an anchored line, same
+ *  last-page-first anchor search as the signature stamp. */
+export async function stampTextOnPdf(pdfBytes: Buffer, text: string, anchorText: string, offset: { dx?: number; dy?: number } = {}): Promise<{ buf: Buffer; stamped: boolean }> {
+  let found: { page: number; x: number; y: number } | null = null;
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const needle = norm(safe(anchorText)).slice(0, 15);
+  if (needle.length >= 4) {
+    try {
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(pdfBytes), useSystemFonts: true }).promise;
+      for (let i = doc.numPages; i >= 1 && !found; i--) {
+        const tc = await (await doc.getPage(i)).getTextContent();
+        const lines = new Map<number, { x: number; y: number; text: string }>();
+        for (const raw of tc.items) {
+          const it = raw as { str?: string; transform?: number[] };
+          if (!it.str || !it.transform) continue;
+          const key = Math.round(it.transform[5] * 2) / 2;
+          const line = lines.get(key);
+          if (line) { line.text += it.str; line.x = Math.min(line.x, it.transform[4]); }
+          else lines.set(key, { x: it.transform[4], y: it.transform[5], text: it.str });
+        }
+        for (const line of lines.values()) {
+          if (norm(line.text).startsWith(needle)) { found = { page: i, x: line.x, y: line.y }; break; }
+        }
+      }
+      await (doc as unknown as { destroy?: () => Promise<void> }).destroy?.();
+    } catch { found = null; }
+  }
+  if (!found) return { buf: pdfBytes, stamped: false };
+  const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  const times = await pdf.embedFont(StandardFonts.TimesRoman);
+  pdf.getPage(found.page - 1).drawText(safe(text), { x: found.x + (offset.dx ?? 0), y: found.y + (offset.dy ?? 4), size: 12, font: times, color: INK });
   return { buf: Buffer.from(await pdf.save()), stamped: true };
 }
 
