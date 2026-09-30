@@ -321,6 +321,8 @@ export function ensureResultsPageColumns(): Promise<void> {
         sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`,
       );
       await db!.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`);
+      await db!.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS hero_image text`);
+      await db!.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS hero_focal varchar(16)`);
       // One-time content catch-up: when results are DB-managed, the Bosque
       // verdict's detail page (seeded in the defaults file) is applied to the
       // matching row too — but only while the row has no page of its own, so

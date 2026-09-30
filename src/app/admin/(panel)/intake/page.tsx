@@ -9,6 +9,7 @@ import type { LetterRow } from "@/components/admin/EngagementLetterDialog";
 import { IntakeRecipientsManager } from "@/components/admin/IntakeRecipientsManager";
 import { ReferralAttorneysManager, type ReferralAttorneyRow } from "@/components/admin/ReferralAttorneysManager";
 import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
+import { AddLeadManually } from "@/components/admin/AddLeadManually";
 import { QuestionnairesPanel } from "@/components/admin/QuestionnairesPanel";
 import { db, hasDb } from "@/db";
 import { intakeSubmissions, referralAttorneys, engagementLetters } from "@/db/schema";
@@ -149,7 +150,12 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
       <AdminHeader
         title="Intake"
         description="Consultation requests. Manage who gets notified, filter, update status, and export."
-        actions={<SendIntakeRequest branches={branches} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <AddLeadManually branches={branches} />
+            <SendIntakeRequest branches={branches} />
+          </div>
+        }
       />
       <div className="p-8">
         <IntakeRecipientsManager

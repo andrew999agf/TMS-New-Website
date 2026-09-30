@@ -26,6 +26,8 @@ export default async function ResultsAdmin() {
     featuredHome: boolean;
     hasPage?: boolean;
     pageBody?: string;
+    heroImage?: string;
+    heroFocal?: string;
   }> = [];
 
   if (db) {
@@ -47,6 +49,8 @@ export default async function ResultsAdmin() {
         featuredHome: r.featuredHome,
         hasPage: r.hasPage,
         pageBody: r.pageBody ?? undefined,
+        heroImage: r.heroImage ?? undefined,
+        heroFocal: r.heroFocal ?? undefined,
       }));
     } catch {
       results = [];
@@ -69,6 +73,8 @@ export default async function ResultsAdmin() {
       featuredHome: r.featuredHome ?? false,
       hasPage: r.hasPage ?? false,
       pageBody: r.pageBody,
+      heroImage: r.heroImage,
+      heroFocal: r.heroFocal,
     }));
   }
 

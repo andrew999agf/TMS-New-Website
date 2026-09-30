@@ -69,6 +69,8 @@ export default async function ResultDetailPage({ params }: { params: Promise<{ s
         eyebrow={practice?.title ?? "The Record"}
         title={result.title}
         lead={result.summary}
+        bgImage={result.heroImage || undefined}
+        focal={result.heroFocal}
       />
 
       <div className="container-page py-16 lg:py-24">

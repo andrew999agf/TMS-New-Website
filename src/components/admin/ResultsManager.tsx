@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { Plus, Pencil, Trash2, Check, X, FileText } from "lucide-react";
 import { saveResult, deleteResult, type ResultInput } from "@/app/admin/(panel)/results/actions";
+import { ImageUploadField } from "./ImageUploadField";
+import { FocalSelect } from "./FocalSelect";
 import { slugify } from "@/lib/utils";
 
 type Result = ResultInput & { id: number };
@@ -154,6 +156,24 @@ function ResultForm({ initial, practices, onClose }: { initial: ResultInput; pra
               rows={6}
               className={cls}
             />
+            <div>
+              <p className="text-sm font-medium mb-1.5">Banner photo (optional — e.g. the courthouse where the case was tried)</p>
+              <p className="text-xs text-[var(--c-ink-muted)] mb-2">Shown behind the navy header at the top of the page, under a dark scrim so the title stays readable.</p>
+              <ImageUploadField
+                value={form.heroImage ?? ""}
+                onChange={(url) => setForm((f) => ({ ...f, heroImage: url }))}
+                slot="practiceHero"
+                folder="results"
+              />
+              {form.heroImage && (
+                <div className="mt-2.5">
+                  <FocalSelect
+                    value={form.heroFocal ?? "center"}
+                    onChange={(v) => setForm((f) => ({ ...f, heroFocal: v }))}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
         {error && <p className="text-sm text-[var(--c-error)]">{error}</p>}

@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { updateCaseInfo, addCaseParty, updateCaseParty, removeCaseParty } from "@/app/admin/(panel)/cases/actions";
+import { Archive, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { updateCaseInfo, addCaseParty, updateCaseParty, removeCaseParty, setCaseArchived } from "@/app/admin/(panel)/cases/actions";
 import { PartyContactButton } from "./PartyContact";
 import type { CaseParty } from "@/db/schema";
 
@@ -16,13 +16,52 @@ export const PARTY_ROLES = [
   "Cross-Claimant", "Garnishee", "Other",
 ];
 
-type CaseRow = { id: number; matter: string; name: string; causeNumber: string; court: string; county: string; notes: string; parties: CaseParty[] };
+type CaseRow = { id: number; matter: string; name: string; causeNumber: string; court: string; county: string; notes: string; parties: CaseParty[]; archived: boolean };
 
 export function CaseDetail({ caseRow }: { caseRow: CaseRow }) {
   return (
-    <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-2">
-      <CaseInfoCard caseRow={caseRow} />
-      <PartiesCard caseRow={caseRow} />
+    <>
+      <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-2">
+        <CaseInfoCard caseRow={caseRow} />
+        <PartiesCard caseRow={caseRow} />
+      </div>
+      <CloseCaseFooter caseRow={caseRow} />
+    </>
+  );
+}
+
+/** Low-profile close/reopen control at the bottom of the case. Closing keeps
+ *  every record — the case just moves to the "Closed cases" section of the list. */
+function CloseCaseFooter({ caseRow }: { caseRow: CaseRow }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
+  function toggle() {
+    const msg = caseRow.archived
+      ? `Reopen the case for matter ${caseRow.matter}? It moves back into the open cases list.`
+      : `Close the case for matter ${caseRow.matter}? Nothing is deleted — it moves to the Closed cases section, and you can reopen it here any time.`;
+    if (!confirm(msg)) return;
+    start(async () => {
+      await setCaseArchived(caseRow.id, !caseRow.archived);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-8 flex items-center justify-between border-t border-[var(--c-border)] pt-4">
+      {caseRow.archived ? (
+        <p className="text-sm text-[var(--c-ink-muted)]">This case is closed. All records are kept.</p>
+      ) : (
+        <p className="text-xs text-[var(--c-ink-muted)]">Done with this matter? Closing keeps every record and moves it out of the open list.</p>
+      )}
+      <button
+        onClick={toggle}
+        disabled={pending}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${caseRow.archived ? "border-[var(--c-accent)] text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"}`}
+      >
+        {pending ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+        {caseRow.archived ? "Reopen case" : "Close case"}
+      </button>
     </div>
   );
 }

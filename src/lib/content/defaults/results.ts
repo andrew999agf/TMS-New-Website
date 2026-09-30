@@ -22,6 +22,10 @@ export type CaseResultSeed = {
   hasPage?: boolean;
   /** Longer write-up for that page; blank lines separate paragraphs. */
   pageBody?: string;
+  /** Banner photo behind the navy header on that page (e.g. the courthouse). */
+  heroImage?: string;
+  /** Crop position for the banner photo: center | top | bottom | left | right. */
+  heroFocal?: string;
   sort: number;
 };
 

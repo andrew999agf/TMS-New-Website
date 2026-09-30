@@ -23,6 +23,8 @@ export type ResultInput = {
   featuredHome: boolean;
   hasPage?: boolean;
   pageBody?: string;
+  heroImage?: string;
+  heroFocal?: string;
 };
 
 export async function saveResult(input: ResultInput) {
@@ -45,6 +47,8 @@ export async function saveResult(input: ResultInput) {
     featuredHome: input.featuredHome,
     hasPage: input.hasPage ?? false,
     pageBody: input.pageBody || null,
+    heroImage: input.heroImage || null,
+    heroFocal: input.heroFocal || null,
     updatedAt: new Date(),
   };
 

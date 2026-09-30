@@ -199,6 +199,23 @@ export async function removeCaseParty(id: number, index: number) {
   }
 }
 
+/** Close or reopen a case. A closed case keeps every record — it just moves
+ *  out of the main list into the low-profile "Closed cases" section. */
+export async function setCaseArchived(id: number, archived: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.update(caseHub).set({ archived }).where(eq(caseHub.id, id));
+    await audit(session.email, "update", "case", String(id), archived ? "Case closed" : "Case reopened");
+    revalidatePath("/admin/cases");
+    revalidatePath(`/admin/cases/${id}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[cases] setCaseArchived failed:", err);
+    return { ok: false as const, error: "Couldn't update the case." };
+  }
+}
+
 export async function deleteCase(id: number) {
   const session = await guard();
   if (!db) return { ok: false as const };

@@ -200,6 +200,9 @@ export const caseResults = pgTable("case_results", {
   hasPage: boolean("has_page").notNull().default(false),
   /** Longer write-up shown only on the result's own page. */
   pageBody: text("page_body"),
+  /** Banner photo behind the navy header on the result's own page (e.g. the courthouse). */
+  heroImage: text("hero_image"),
+  heroFocal: varchar("hero_focal", { length: 16 }),
   visible: boolean("visible").notNull().default(true),
   sort: integer("sort").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

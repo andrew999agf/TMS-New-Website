@@ -152,6 +152,8 @@ function normalizeResult(r: CaseResult): CaseResultSeed {
     featuredHome: r.featuredHome,
     hasPage: r.hasPage,
     pageBody: r.pageBody ?? undefined,
+    heroImage: r.heroImage ?? undefined,
+    heroFocal: r.heroFocal ?? undefined,
     sort: r.sort,
   };
 }

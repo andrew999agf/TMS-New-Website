@@ -5,6 +5,69 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
+import { BRANCHES } from "@/lib/intake/config";
+
+export type ManualLeadInput = {
+  branch: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  county?: string;
+  isUrgent?: boolean;
+  deadline?: string;
+  referralSource?: string;
+  referrerName?: string;
+  notes?: string;
+};
+
+/**
+ * Receptionist path: a caller who never filled out the web form gets a lead
+ * row typed in directly. No "new lead" notification emails fire — the person
+ * entering it already knows about the call.
+ */
+export async function addManualLead(input: ManualLeadInput) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const name = input.name.trim();
+  if (!name) return { ok: false as const, error: "Enter the caller's name." };
+  const branch = BRANCHES.find((b) => b.id === input.branch);
+  if (!branch) return { ok: false as const, error: "Pick what they're calling about." };
+
+  const source = input.referralSource?.trim() || "Phone call";
+  const referrer = input.referrerName?.trim() ?? "";
+  const answers: Record<string, unknown> = { manualEntry: true, enteredBy: session.email };
+  if (input.notes?.trim()) answers.callNotes = input.notes.trim();
+  // Mirror the web form's answer keys so the referral analytics pick these up.
+  answers.referralSource = source;
+  if (referrer) {
+    if (source === "Referred by another attorney") answers.referrerAttorney = referrer;
+    else answers.referrerName = referrer;
+  }
+
+  try {
+    const [row] = await db
+      .insert(intakeSubmissions)
+      .values({
+        branch: branch.id,
+        practiceSlug: branch.practiceSlug ?? null,
+        answers,
+        name,
+        email: input.email?.trim() || null,
+        phone: input.phone?.trim() || null,
+        county: input.county?.trim() || null,
+        deadline: input.deadline?.trim() || null,
+        isUrgent: !!input.isUrgent,
+        message: input.notes?.trim() || null,
+        referralSource: source,
+      })
+      .returning({ id: intakeSubmissions.id });
+    await audit(session.email, "create", "intake", String(row.id), `Manual lead entered: ${name}`);
+    revalidatePath("/admin/intake");
+    return { ok: true as const, id: row.id };
+  } catch (err) {
+    return { ok: false as const, error: (err as Error).message };
+  }
+}
 
 const STATUS_LABEL: Record<string, string> = {
   new: "New", contacted: "Contacted", scheduled: "Scheduled", declined: "Declined", "referred-out": "Referred out", "client-declined": "Client declined",

@@ -85,6 +85,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
         <h1 className="min-w-0 break-words font-[family-name:var(--font-display)] text-2xl">{c.name || `Matter ${c.matter}`}</h1>
         <span className="text-sm text-[var(--c-ink-muted)]">Matter {c.matter}</span>
         {c.causeNumber && <span className="text-sm text-[var(--c-ink-muted)]">{c.causeNumber}</span>}
+        {c.archived && <span className="rounded bg-[var(--c-bg)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--c-ink-muted)] border border-[var(--c-border)]">Closed</span>}
       </div>
 
       {/* The horizontal tool bar: this case's work everywhere else. */}
@@ -109,7 +110,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       <CaseDetail
         caseRow={{
           id: c.id, matter: c.matter, name: c.name, causeNumber: c.causeNumber, court: c.court,
-          county: c.county, notes: c.notes, parties: (c.parties as CaseParty[]) ?? [],
+          county: c.county, notes: c.notes, parties: (c.parties as CaseParty[]) ?? [], archived: c.archived,
         }}
       />
     </div>
