@@ -302,3 +302,56 @@ export async function listGeneratedDocs(matter?: string) {
     return [];
   }
 }
+
+/**
+ * "Report for Claude" — a plain-text dump of everything in the template bank
+ * (plus the practice areas and intake branches) that Max pastes into a Claude
+ * session so Claude can see what templates exist and wire them up (e.g. tying
+ * engagement letters to practice areas). Content is capped so it always fits
+ * in a chat message.
+ */
+export async function buildClaudeTemplatesReport(): Promise<{ ok: boolean; report?: string; error?: string }> {
+  await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const { docTemplates } = await import("@/db/schema");
+  const { getPracticeAreas } = await import("@/lib/content");
+  const { BRANCHES } = await import("@/lib/intake/config");
+  const { asc } = await import("drizzle-orm");
+  try {
+    const [templates, practices] = await Promise.all([
+      db.select().from(docTemplates).orderBy(asc(docTemplates.folder), asc(docTemplates.name)),
+      getPracticeAreas(),
+    ]);
+    const L: string[] = [];
+    L.push("=== CLAUDE TEMPLATES REPORT ===");
+    L.push(`Generated ${new Date().toISOString()} — Docs & Templates tab (doc_templates table)`);
+    L.push("");
+    L.push("--- PRACTICE AREAS (site) ---");
+    for (const p of practices) L.push(`- ${p.slug} :: ${p.title}`);
+    L.push("");
+    L.push("--- INTAKE BRANCHES (consultation form) ---");
+    for (const b of BRANCHES) L.push(`- ${b.id} :: ${b.label} -> practiceSlug=${b.practiceSlug ?? "(none)"}`);
+    L.push("");
+    L.push(`--- TEMPLATE BANK (${templates.length} documents) ---`);
+    for (const t of templates) {
+      L.push(`#${t.id} "${t.name}"${t.archived ? " [ARCHIVED]" : ""}`);
+      L.push(`  folder: ${t.folder || "(inbox)"} | docType: ${t.docType} | ${t.contentType ?? "?"} | ${t.sizeBytes ?? "?"} bytes | uploaded ${t.createdAt.toISOString().slice(0, 10)} by ${t.createdBy ?? "?"}`);
+      if (t.description) L.push(`  description: ${t.description.slice(0, 300)}`);
+      const fields = (t.fields as string[]) ?? [];
+      L.push(`  merge fields (${fields.length}): ${fields.slice(0, 60).join(", ") || "(none detected — plain document)"}`);
+      const text = (t.docText || "").replace(/\s+/g, " ").trim();
+      L.push(`  text head: ${text.slice(0, 700) || "(no text extracted)"}`);
+      L.push("");
+    }
+    L.push("--- CURRENT ENGAGEMENT-LETTER WIRING ---");
+    L.push("The intake engagement generator uses ONE built-in template: Max's basic litigation letter,");
+    L.push("embedded in code at src/lib/engagement/template-docx.ts (tokenized copy of the original .docx,");
+    L.push("letterhead intact), filled per-lead and printed to PDF. It is NOT yet reading from this bank.");
+    L.push("Goal: tokenize the engagement letters in this bank and let the user tie each to practice areas.");
+    let report = L.join("\n");
+    if (report.length > 180_000) report = report.slice(0, 180_000) + "\n…(truncated)";
+    return { ok: true, report };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}

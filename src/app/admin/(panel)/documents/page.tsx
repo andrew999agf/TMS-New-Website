@@ -1,6 +1,7 @@
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { DocumentGenerator } from "@/components/admin/DocumentGenerator";
 import { TemplateLibrary } from "@/components/admin/TemplateLibrary";
+import { ClaudeReportFab } from "@/components/admin/ClaudeReportFab";
 import { listTemplateBank } from "./actions";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/db";
@@ -49,6 +50,7 @@ export default async function DocumentsPage() {
         <h2 className="mb-3 border-t border-[var(--c-border)] pt-6 font-[family-name:var(--font-display)] text-lg">Estate document generator</h2>
         <DocumentGenerator submissions={submissions} docMeta={LEGAL_DOC_META} intakeUrl={intakeUrl} />
       </div>
+      <ClaudeReportFab />
     </>
   );
 }
