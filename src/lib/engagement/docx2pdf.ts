@@ -39,9 +39,28 @@ async function launchBrowser() {
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
     });
   }
-  const chromium = (await import("@sparticuz/chromium")).default;
+  // Vercel's Node 20/22 functions don't carry the AWS env markers that
+  // @sparticuz/chromium checks, so it extracted the browser but SKIPPED the
+  // shared libraries (libnss3 & co.) → "cannot open shared object file".
+  // Claim the AL2023 runtime explicitly BEFORE importing the package, and
+  // pin the library/font paths ourselves so nothing depends on import order
+  // or a warm sandbox that extracted only the binary.
+  process.env["AWS_LAMBDA_JS_RUNTIME"] ??= "nodejs22.x";
+  const { existsSync, rmSync } = await import("node:fs");
+  if (existsSync("/tmp/chromium") && !existsSync("/tmp/al2023/lib")) {
+    // A half-extracted warm sandbox: drop the binary so the full extraction
+    // (binary + libraries + fonts) runs again.
+    try { rmSync("/tmp/chromium", { force: true }); } catch { /* re-extract below */ }
+  }
+  const mod = await import("@sparticuz/chromium");
+  const chromium = (mod.default ?? mod) as typeof mod.default;
+  const executablePath = await chromium.executablePath();
+  process.env["FONTCONFIG_PATH"] ??= "/tmp/fonts";
+  if (!(process.env["LD_LIBRARY_PATH"] ?? "").includes("/tmp/al2023/lib")) {
+    process.env["LD_LIBRARY_PATH"] = ["/tmp/al2023/lib", process.env["LD_LIBRARY_PATH"]].filter(Boolean).join(":");
+  }
   return puppeteer.launch({
-    executablePath: await chromium.executablePath(),
+    executablePath,
     args: [...chromium.args, "--font-render-hinting=none"],
     defaultViewport: chromium.defaultViewport,
   });
