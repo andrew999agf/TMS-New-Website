@@ -8,7 +8,7 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { centralTime, type EngagementOffice, type EngagementSide } from "@/lib/engagement/config";
 import { randomBytes } from "crypto";
 import { ensureDiscoveryTables } from "@/db/ensure";
-import { buildEngagementLetter, letterFileName } from "@/lib/engagement/letter";
+import { buildEngagementLetter, buildEngagementLetterPreview, letterFileName, type LetterData, type LetterPreviewPara } from "@/lib/engagement/letter";
 import { buildEngagementEmail, DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
@@ -56,6 +56,48 @@ function cleanFees(f: EngagementFees): EngagementFees {
     minTrustBalance: num(f.minTrustBalance, 5000),
     trialRetainer: num(f.trialRetainer, 20000),
   };
+}
+
+/** The dialog's form payload → the letter builder's input, normalized the
+ *  same way saveEngagementLetter stores it. */
+function letterDataFromInput(input: EngagementInput): LetterData {
+  return {
+    clientName: input.clientName.trim(),
+    businessName: input.businessName.trim(),
+    officerTitle: input.officerTitle.trim(),
+    andIndividually: Boolean(input.andIndividually),
+    email: input.email.trim(),
+    street: input.street.trim(),
+    city: input.city.trim(),
+    state: input.state.trim() || "Texas",
+    zip: input.zip.trim(),
+    county: input.county.trim(),
+    office: input.office === "meridian" ? "meridian" : "fort-worth",
+    side: input.side === "defendant" ? "defendant" : "plaintiff",
+    generalDescription: input.generalDescription.trim(),
+    caseNumber: input.caseNumber.trim(),
+    caseStyling: input.caseStyling.trim(),
+    phase1Custom: input.phase1Custom.trim(),
+    phase2Custom: input.phase2Custom.trim(),
+    phase1: Boolean(input.phase1),
+    phase2: Boolean(input.phase2),
+    fees: cleanFees(input.fees),
+    openUntil: /^\d{4}-\d{2}-\d{2}$/.test(input.openUntilDate)
+      ? centralTime(input.openUntilDate, /^\d{2}:\d{2}$/.test(input.openUntilTime) ? input.openUntilTime : "17:00")
+      : null,
+  };
+}
+
+/** Live preview for the dialog: the exact letter the current form values
+ *  would produce, paragraph by paragraph. Nothing is saved. */
+export async function previewEngagementLetter(input: EngagementInput): Promise<{ ok: boolean; paras?: LetterPreviewPara[]; error?: string }> {
+  await requireAdmin();
+  if (!input.phase1 && !input.phase2) return { ok: false, error: "Keep at least one phase in the engagement." };
+  try {
+    return { ok: true, paras: await buildEngagementLetterPreview(letterDataFromInput(input)) };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }
 
 /** Create or update a letter (status stays whatever it already is; new = draft). */
@@ -141,6 +183,9 @@ export async function setEngagementStatus(id: number, status: "draft" | "sent" |
 export async function deleteEngagementLetter(id: number): Promise<{ ok: boolean }> {
   const session = await requireAdmin();
   if (!db) return { ok: false };
+  // A signed letter is a record of an executed agreement — it never deletes.
+  const [letter] = await db.select({ status: engagementLetters.status }).from(engagementLetters).where(eq(engagementLetters.id, id));
+  if (letter?.status === "signed") return { ok: false };
   await db.delete(engagementLetters).where(eq(engagementLetters.id, id));
   await audit(session.email, "delete", "engagement-letter", String(id), "Deleted engagement letter");
   revalidatePath("/admin/intake");

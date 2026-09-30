@@ -185,6 +185,39 @@ export function letterFileName(d: Pick<LetterData, "clientName" | "businessName"
   return `Engagement Letter - ${who} - ${mmddyyyy}.docx`;
 }
 
+/* ------------------------------ live preview ------------------------------ */
+
+export type LetterPreviewPara = { text: string; bold: boolean; center: boolean; indent: boolean };
+
+const unesc = (s: string) =>
+  s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+
+/**
+ * The on-screen preview is the REAL letter: we run the exact same template
+ * fill as the .docx download, then read the finished document's paragraphs
+ * back out (text + bold/centered/indented), so what the preview shows is
+ * word-for-word what the client's Word file will say.
+ */
+export async function buildEngagementLetterPreview(d: LetterData): Promise<LetterPreviewPara[]> {
+  const buf = await buildEngagementLetter(d);
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file("word/document.xml")!.async("string");
+  const out: LetterPreviewPara[] = [];
+  const pRe = /<w:p(?:[ >][\s\S]*?)?<\/w:p>|<w:p\/>/g;
+  let m: RegExpExecArray | null;
+  while ((m = pRe.exec(xml))) {
+    const p = m[0];
+    const text = unesc([...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => t[1]).join(""));
+    out.push({
+      text,
+      bold: /<w:b\s*\/>/.test(p),
+      center: /<w:jc w:val="center"/.test(p),
+      indent: /<w:ind [^>]*w:left="[1-9]/.test(p),
+    });
+  }
+  return out;
+}
+
 export async function buildEngagementLetter(d: LetterData): Promise<Buffer> {
   if (!d.phase1 && !d.phase2) throw new Error("engagement letter needs at least one phase");
   const zip = await JSZip.loadAsync(Buffer.from(ENGAGEMENT_TEMPLATE_B64, "base64"));

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye, Link2, Loader2, Mail } from "lucide-react";
-import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, sendEngagementLetterEmail, getEngagementSignLink, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
+import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye, Link2, Loader2, Mail, FilePen, Plus } from "lucide-react";
+import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, sendEngagementLetterEmail, getEngagementSignLink, previewEngagementLetter, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
+import type { LetterPreviewPara } from "@/lib/engagement/letter";
 import { DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email-shared";
 import {
   resolveOffice, defaultFees, defaultOpenUntil, OFFICE_INFO,
@@ -154,7 +155,42 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
     });
   }
 
-  const others = letters.filter((l) => l.id !== id);
+  /** Load a saved letter into the editor (any status — the chip up top says
+   *  what you're editing). Discards unsaved changes after a confirm. */
+  function loadLetter(l: LetterRow) {
+    if (!confirm(`Open "${l.businessName || l.clientName}" (${STATUS_CHIP[l.status].label.toLowerCase()}) in the editor? Unsaved changes to the letter currently on screen are discarded.`)) return;
+    setId(l.id);
+    setOffice(l.office);
+    setFees(l.fees);
+    setForm({
+      clientName: l.clientName, businessName: l.businessName, officerTitle: l.officerTitle, andIndividually: l.andIndividually,
+      email: l.email, street: l.street, city: l.city, state: l.state, zip: l.zip, county: l.county,
+      side: l.side, generalDescription: l.generalDescription, caseNumber: l.caseNumber, caseStyling: l.caseStyling,
+      phase1Custom: l.phase1Custom, phase2Custom: l.phase2Custom, phase1: l.phase1, phase2: l.phase2,
+      openUntilDate: l.openUntil ? ymdCT(new Date(l.openUntil)) : ymdCT(openDefault),
+      openUntilTime: l.openUntil ? hmCT(new Date(l.openUntil)) : "17:00",
+    });
+    setSaved(false); setError(null); setSendMsg(null);
+  }
+
+  /** Clear the editor to start a second (or third…) letter on this lead. */
+  function startNewLetter() {
+    if (!confirm("Start a new letter for this lead? Unsaved changes to the letter on screen are discarded.")) return;
+    setId(null);
+    const o = resolveOffice(presetCounty);
+    setOffice(o); setFees(defaultFees(o));
+    setForm({
+      clientName: presetName, businessName: pre.businessName, officerTitle: "", andIndividually: true,
+      email: presetEmail, street: pre.street, city: pre.city, state: pre.state, zip: pre.zip, county: presetCounty,
+      side: (pre.side ?? "plaintiff") as EngagementSide, generalDescription: pre.description,
+      caseNumber: pre.caseNumber, caseStyling: pre.caseStyling,
+      phase1Custom: "", phase2Custom: "", phase1: !pre.activeCase, phase2: true,
+      openUntilDate: ymdCT(openDefault), openUntilTime: "17:00",
+    });
+    setSaved(false); setError(null); setSendMsg(null);
+  }
+
+  const editing = letters.find((l) => l.id === id) ?? null;
 
   /* ------------------ Send-to-client (email + e-sign) ------------------ */
   const [sendOpen, setSendOpen] = useState(false);
@@ -194,12 +230,29 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
     });
   }
 
+  /* ---------------- Live letter preview (side pane) ---------------- */
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [preview, setPreview] = useState<LetterPreviewPara[] | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  useEffect(() => {
+    if (!previewOpen) return;
+    // Debounced: refresh the rendered letter half a second after typing stops.
+    const t = setTimeout(() => {
+      setPreviewBusy(true);
+      previewEngagementLetter({ id: id ?? undefined, intakeId, office, fees, ...form })
+        .then((r) => { if (r.ok && r.paras) setPreview(r.paras); })
+        .finally(() => setPreviewBusy(false));
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewOpen, form, office, fees]);
+
   // Deliberately NO close-on-backdrop here: this dialog holds a lot of typed
   // work, and a text-selection drag released over the gray used to throw it
   // all away. Only the X / Close buttons dismiss it.
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+      <div className={`bg-[var(--c-surface)] rounded-lg w-full ${previewOpen ? "max-w-6xl" : "max-w-3xl"} max-h-[90vh] flex flex-col p-6 shadow-2xl`}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-[family-name:var(--font-display)] text-lg flex items-center gap-2"><FileSignature size={18} className="text-[var(--c-accent)]" /> Engagement letter</h3>
           <button onClick={onClose} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]"><X size={18} /></button>
@@ -208,13 +261,21 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
           Basic litigation letter. The county picks the office — Bosque, Hamilton, Coryell, or Somervell go to Meridian; everything else Fort Worth — and the fees below default from that. Change anything you need.
         </p>
 
-        {/* Previously issued letters on this lead */}
-        {others.length > 0 && (
-          <div className="mb-5 rounded-md border border-[var(--c-border)] divide-y divide-[var(--c-border)]">
-            {others.map((l) => (
-              <div key={l.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+        <div className="flex min-h-0 flex-1 gap-5">
+        <div className="min-w-0 flex-1 overflow-y-auto pr-1">
+
+        {/* Every saved letter on this lead — open one to view/edit it below. */}
+        {letters.length > 0 && (
+          <div className="mb-5 rounded-md border border-[var(--c-border)]">
+            <div className="border-b border-[var(--c-border)] bg-[var(--c-surface-2)]/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">
+              Saved letters on this lead ({letters.length})
+            </div>
+            <div className="divide-y divide-[var(--c-border)]">
+            {letters.map((l) => (
+              <div key={l.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${l.id === id ? "bg-[var(--c-accent)]/[0.06]" : ""}`}>
                 <span className="font-medium">{l.businessName || l.clientName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CHIP[l.status].cls}`}>{STATUS_CHIP[l.status].label}</span>
+                {l.id === id && <span className="rounded-full border border-[var(--c-accent)] px-2 py-0.5 text-[11px] text-[var(--c-accent)]">Open in editor</span>}
                 <span className="text-xs text-[var(--c-ink-muted)]">{new Date(l.createdAt).toLocaleDateString()}</span>
                 {l.status === "sent" && l.sentTo && <span className="text-xs text-[var(--c-ink-muted)]">→ {l.sentTo}</span>}
                 {l.status === "signed" && l.signerName && (
@@ -223,6 +284,11 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                   </span>
                 )}
                 <span className="ml-auto flex items-center gap-1.5">
+                  {l.id !== id && (
+                    <button onClick={() => loadLetter(l)} title="Open this letter in the editor to view or change it" className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline">
+                      <FilePen size={13} /> Open
+                    </button>
+                  )}
                   <button onClick={() => copySignLink(l.id)} title="Copy the client's e-sign link" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
                     {linkCopied === l.id ? <Check size={15} className="text-emerald-600" /> : <Link2 size={15} />}
                   </button>
@@ -236,14 +302,38 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                       <button onClick={() => lifecycle(l.id, "declined")} className="text-xs text-red-600 hover:underline">Declined</button>
                     </>
                   )}
-                  {l.status === "draft" && (
-                    <button onClick={() => { if (confirm("Delete this draft letter?")) start(async () => { await deleteEngagementLetter(l.id); router.refresh(); }); }} title="Delete draft" className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"><Trash2 size={14} /></button>
+                  {l.status !== "signed" && (
+                    <button
+                      onClick={() => {
+                        const warn = l.status === "sent"
+                          ? "Delete this SENT letter? The e-sign link the client received will stop working. This can't be undone."
+                          : "Delete this letter? This can't be undone.";
+                        if (confirm(warn)) start(async () => { await deleteEngagementLetter(l.id); if (l.id === id) setId(null); router.refresh(); });
+                      }}
+                      title={l.status === "sent" ? "Delete (kills the client's e-sign link)" : "Delete this letter"}
+                      className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)]"
+                    ><Trash2 size={14} /></button>
                   )}
                 </span>
               </div>
             ))}
+            </div>
           </div>
         )}
+
+        {/* What the editor below is holding right now */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface-2)]/50 px-2.5 py-1">
+            {editing
+              ? <>Editing: <b>{editing.businessName || editing.clientName}</b> · {STATUS_CHIP[editing.status].label.toLowerCase()} · saved {new Date(editing.createdAt).toLocaleDateString()}</>
+              : <>Editing: <b>new letter</b> — not saved yet</>}
+          </span>
+          {letters.length > 0 && (
+            <button onClick={startNewLetter} className="inline-flex items-center gap-1 text-[var(--c-accent)] hover:underline">
+              <Plus size={13} /> Start a new letter for this lead
+            </button>
+          )}
+        </div>
 
         <div className="space-y-4">
           {/* Who */}
@@ -398,6 +488,13 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
           </button>
           {sendOpen && (
             <div className="space-y-3 border-t border-[var(--c-border)] p-3">
+              {/* Exactly which letter goes out — never a mystery. */}
+              <p className="rounded-md bg-[var(--c-accent)]/[0.06] px-3 py-2 text-xs">
+                Sending the letter that&apos;s <b>open in the editor</b>: <b>{form.businessName || form.clientName || "—"}</b>
+                {editing ? ` (${STATUS_CHIP[editing.status].label.toLowerCase()}, saved ${new Date(editing.createdAt).toLocaleDateString()})` : " (new — saved when you hit send)"}.
+                {letters.length > 1 && <> This lead has <b>{letters.length} saved letters</b> — use &ldquo;Open&rdquo; in the list above to switch which one you&apos;re sending.</>}
+                {" "}What&apos;s on screen is saved first, so the client gets exactly what you see{previewOpen ? "" : " — hit Preview to read it"}.
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Send to (client email)"><input className={input} type="email" value={sendTo} onChange={(e) => setSendTo(e.target.value)} placeholder={form.email || "client@example.com"} /></Field>
                 <Field label="Email template">
@@ -434,7 +531,15 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
         {error && <p className="mt-4 text-sm text-[var(--c-error)]">{error}</p>}
         {saved && !error && <p className="mt-4 text-sm text-[var(--c-success)] flex items-center gap-1"><Check size={14} /> Saved.</p>}
 
-        <div className="mt-6 flex flex-wrap gap-2 justify-end border-t border-[var(--c-border)] pt-4">
+        <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--c-border)] pt-4">
+          <button
+            onClick={() => setPreviewOpen((v) => !v)}
+            title="Show the finished letter beside the form — it re-renders as you type"
+            className={`btn text-sm py-2 px-4 inline-flex items-center gap-1.5 ${previewOpen ? "btn-accent" : "btn-outline"}`}
+          >
+            <Eye size={15} /> {previewOpen ? "Hide preview" : "Preview"}
+          </button>
+          <span className="flex-1" />
           <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Close</button>
           <button onClick={() => save()} disabled={pending} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">Save draft</button>
           <button onClick={() => save((sid) => download(sid))} disabled={pending} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50"><Download size={15} /> Save &amp; download .docx</button>
@@ -446,6 +551,32 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
           >
             <Send size={15} /> Mark sent
           </button>
+        </div>
+        </div>
+
+        {/* Live letter preview: the real template, filled with what's on
+            screen, re-rendered ~half a second after you stop typing. */}
+        {previewOpen && (
+          <aside className="hidden w-[420px] shrink-0 flex-col lg:flex">
+            <div className="mb-2 flex items-center gap-2 text-xs text-[var(--c-ink-muted)]">
+              <Eye size={13} className="text-[var(--c-accent)]" /> Letter preview — updates as you edit
+              {previewBusy && <Loader2 size={12} className="animate-spin" />}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--c-border)] bg-white p-6 text-[12.5px] leading-relaxed text-black shadow-inner">
+              {!preview && <p className="text-sm text-neutral-500">Rendering the letter…</p>}
+              {preview?.map((p, i) =>
+                p.text.trim() === ""
+                  ? <div key={i} className="h-2.5" />
+                  : (
+                    <p key={i} className={`mb-1.5 whitespace-pre-wrap ${p.center ? "text-center" : ""} ${p.bold ? "font-semibold" : ""} ${p.indent ? "pl-6" : ""}`}>
+                      {p.text}
+                    </p>
+                  ),
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] text-[var(--c-ink-muted)]">Word-for-word the .docx the client gets; only the letterhead styling differs on screen.</p>
+          </aside>
+        )}
         </div>
       </div>
     </div>
