@@ -63,7 +63,8 @@ export async function saveResult(input: ResultInput) {
     revalidatePath("/results");
     revalidatePath("/");
     revalidatePath("/admin/results");
-    if (values.hasPage) revalidatePath(`/results/${slugify(input.title)}`);
+    revalidatePath(`/blog/results/${slugify(input.title)}`);
+    revalidatePath("/blog");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };

@@ -65,17 +65,15 @@ function Row({ result, onEdit, dbEnabled }: { result: Result; onEdit: () => void
         {result.cite && <div className="text-xs text-[var(--c-ink-muted)] truncate">{result.cite}</div>}
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        {result.hasPage && (
-          <a
-            href={`/results/${slugify(result.title)}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Has its own page — open it"
-            className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
-          >
-            <FileText size={15} />
-          </a>
-        )}
+        <a
+          href={`/blog/results/${slugify(result.title)}`}
+          target="_blank"
+          rel="noreferrer"
+          title="Open this result's detail page"
+          className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+        >
+          <FileText size={15} />
+        </a>
         {result.stat && <span className="text-sm text-[var(--c-accent)]">{result.stat}</span>}
         <button onClick={onEdit} disabled={!dbEnabled} aria-label={`Edit ${result.title}`} className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-40"><Pencil size={15} /></button>
         <button onClick={() => startTransition(() => { void deleteResult(result.id); })} disabled={pending || !dbEnabled} aria-label={`Delete ${result.title}`} className="text-[var(--c-ink-muted)] hover:text-[var(--c-error)] disabled:opacity-40"><Trash2 size={15} /></button>
@@ -142,13 +140,13 @@ function ResultForm({ initial, practices, onClose }: { initial: ResultInput; pra
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.hasPage ?? false} onChange={(e) => setForm({ ...form, hasPage: e.target.checked })} className="accent-[var(--c-accent)]" />
-          Give this result its own page
+          Add a full write-up &amp; banner photo to its page
         </label>
+        <p className="text-xs text-[var(--c-ink-muted)]">
+          Every result gets a simple detail page at <span className="font-mono">/blog/results/{slugify(form.title) || "…"}</span> (stat, summary, citation). Check the box to build it out.
+        </p>
         {form.hasPage && (
           <div className="space-y-2 border-l-2 border-[var(--c-accent)] pl-3">
-            <p className="text-xs text-[var(--c-ink-muted)]">
-              Will publish at <span className="font-mono">/results/{slugify(form.title) || "…"}</span>
-            </p>
             <textarea
               value={form.pageBody ?? ""}
               onChange={(e) => setForm({ ...form, pageBody: e.target.value })}

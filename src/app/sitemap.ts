@@ -59,14 +59,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly" as const,
       priority: 0.5,
     })),
-    ...results
-      .filter((r) => r.hasPage)
-      .map((r) => ({
-        url: `${base}/results/${slugify(r.title)}`,
-        lastModified: now,
-        changeFrequency: "yearly" as const,
-        priority: 0.6,
-      })),
+    ...results.map((r) => ({
+      url: `${base}/blog/results/${slugify(r.title)}`,
+      lastModified: now,
+      changeFrequency: "yearly" as const,
+      priority: 0.6,
+    })),
   ];
   return entries;
 }
