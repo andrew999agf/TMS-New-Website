@@ -47,7 +47,10 @@ const nextConfig: NextConfig = {
   // Native/asset-heavy server deps the bundler must load from node_modules at
   // runtime instead of bundling (@napi-rs/canvas ships a .node binary; the
   // discovery AI review renders scanned PDF pages with it server-side).
-  serverExternalPackages: ["@napi-rs/canvas", "pdfjs-dist"],
+  // @sparticuz/chromium + puppeteer-core print engagement letters (docx →
+  // PDF) in a headless browser; the brotli-packed Chromium binary must load
+  // from node_modules at runtime, never be webpack-bundled.
+  serverExternalPackages: ["@napi-rs/canvas", "pdfjs-dist", "@sparticuz/chromium", "puppeteer-core"],
   // pdfjs loads its worker with a dynamic import the file tracer can't see;
   // without this, pdf.worker.mjs is missing from the serverless bundle and
   // every PDF open in production fails ("Setting up fake worker failed").

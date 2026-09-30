@@ -2,7 +2,9 @@ import "server-only";
 import type { engagementLetters } from "@/db/schema";
 import type { EngagementOffice, EngagementSide } from "./config";
 import type { LetterData } from "./letter";
-import { buildEngagementLetterPdf, appendSignaturePageToPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
+import { buildEngagementLetter } from "./letter";
+import { buildEngagementLetterPdf, appendSignaturePageToPdf, stampSignatureOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
+import { docxToPdf } from "./docx2pdf";
 import { engagementDefaultRates } from "./rates";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
 
@@ -38,21 +40,45 @@ export function signatureFromDbRow(letter: LetterDbRow): SignatureRecord | null 
 
 const isPdf = (b64: string) => b64.startsWith("JVBERi"); // "%PDF"
 
+/** The printed line under the signature — the anchor the e-signature lands on. */
+function signerLineText(letter: LetterDbRow): string {
+  return letter.clientName.trim() + (letter.businessName.trim() && letter.andIndividually ? ", Individually" : "");
+}
+
+/** Signature onto the line where one exists, and the record page always. */
+async function applySignature(buf: Buffer, sig: SignatureRecord, anchor: string): Promise<Buffer> {
+  const stamped = await stampSignatureOnPdf(buf, sig, anchor);
+  return appendSignaturePageToPdf(stamped.buf, sig);
+}
+
 /**
- * The letter as the client-facing PDF: an uploaded edited copy (when it's a
- * PDF) or the generated letter, with the signature page appended once signed.
+ * The letter as the client-facing PDF: the attorney's Word letter printed to
+ * PDF (docx-preview + headless Chromium — real letterhead, real layout), or
+ * an uploaded edited PDF. Once signed, the signature is drawn on the
+ * signature line and the electronic-signature record page is appended.
  */
 export async function letterPdf(letter: LetterDbRow): Promise<{ buf: Buffer; fileName: string } | null> {
   const sig = signatureFromDbRow(letter);
   if (letter.customDocx && isPdf(letter.customDocx)) {
     let buf: Buffer = Buffer.from(letter.customDocx, "base64");
-    if (sig) buf = await appendSignaturePageToPdf(buf, sig);
+    if (sig) buf = await applySignature(buf, sig, signerLineText(letter));
     const base = (letter.customDocxName || "Engagement Letter.pdf").replace(/\.(docx|pdf)$/i, "");
     return { buf, fileName: `${base}${sig ? " (signed)" : ""}.pdf` };
   }
   if (letter.customDocx) return null; // legacy Word upload — no PDF to serve
   const data = letterDataFromDbRow(letter, await engagementDefaultRates());
-  return { buf: await buildEngagementLetterPdf(data, sig ?? undefined), fileName: letterPdfFileName(letter, !!sig) };
+  let buf: Buffer;
+  try {
+    // The real thing: the filled Word document, printed.
+    buf = await docxToPdf(await buildEngagementLetter(data));
+  } catch (err) {
+    // Never fail a send or a signing over the printer — the typeset fallback
+    // carries the identical text while the Chromium path is investigated.
+    console.error("[engagement] docx→PDF print failed; using typeset fallback:", err);
+    return { buf: await buildEngagementLetterPdf(data, sig ?? undefined), fileName: letterPdfFileName(letter, !!sig) };
+  }
+  if (sig) buf = await applySignature(buf, sig, signerLineText(letter));
+  return { buf, fileName: letterPdfFileName(letter, !!sig) };
 }
 
 /**

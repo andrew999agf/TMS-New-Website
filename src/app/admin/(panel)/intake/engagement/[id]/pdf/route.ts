@@ -7,6 +7,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { letterPdf } from "@/lib/engagement/signed";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /** The letter as the client-facing PDF — including the signature page once
  *  signed. Opens inline so it reads like a document, not a download. */

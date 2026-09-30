@@ -6,6 +6,7 @@ import { ensureDiscoveryTables } from "@/db/ensure";
 import { letterPdf } from "@/lib/engagement/signed";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * The client's copy of the letter — always a PDF (never an editable Word

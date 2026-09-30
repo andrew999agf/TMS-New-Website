@@ -10,6 +10,7 @@ import { SignForm } from "./sign-form";
 
 export const metadata: Metadata = { title: `Engagement Letter — ${FIRM.name}`, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const CT = { timeZone: "America/Chicago" } as const;
 

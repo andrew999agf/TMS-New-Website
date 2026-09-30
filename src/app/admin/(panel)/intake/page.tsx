@@ -20,6 +20,7 @@ import { emailConfigured } from "@/lib/email";
 import { BRANCHES } from "@/lib/intake/config";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function IntakeAdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
