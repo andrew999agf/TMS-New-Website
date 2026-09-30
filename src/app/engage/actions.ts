@@ -21,7 +21,7 @@ import { buildSignedCopyEmail } from "@/lib/engagement/email";
  */
 export async function signEngagement(
   token: string,
-  input: { name: string; email: string; agree: boolean; signature?: { kind: "typed" | "drawn"; image?: string } },
+  input: { name: string; email: string; agree: boolean; initials?: string; signature?: { kind: "typed" | "drawn"; image?: string } },
 ) {
   if (!db) return { ok: false as const, error: "Temporarily unavailable — please call the office." };
   const t = String(token ?? "").slice(0, 64);
@@ -31,6 +31,9 @@ export async function signEngagement(
   if (!input.agree) return { ok: false as const, error: "Please check the agreement box to sign." };
   if (name.length < 3) return { ok: false as const, error: "Please type your full legal name." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false as const, error: "Please enter a valid email address." };
+  // Initials fill the letter's "Client Initials:" blanks; default from the name.
+  let initials = String(input.initials ?? "").replace(/[^A-Za-z.]/g, "").slice(0, 8).toUpperCase();
+  if (!initials) initials = name.split(/\s+/).map((w) => w[0] ?? "").join("").replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase();
 
   // The drawn signature arrives as a small PNG data URL from the canvas.
   let signatureKind: "typed" | "drawn" = "typed";
@@ -61,7 +64,7 @@ export async function signEngagement(
     await db.update(engagementLetters).set({
       status: "signed", signedAt,
       signerName: name, signerEmail: email, signerIp: ip, signerUserAgent: ua,
-      signatureKind, signatureImage,
+      signatureKind, signatureImage, signatureInitials: initials,
       updatedAt: new Date(),
     }).where(eq(engagementLetters.id, letter.id));
     if (letter.intakeId) {
@@ -69,7 +72,7 @@ export async function signEngagement(
     }
     try { await audit(email, "update", "engagement-letter", String(letter.id), `E-signed by ${name} (${ip}, ${signatureKind})`); } catch { /* never block the signature */ }
 
-    const signedRow = { ...letter, status: "signed" as const, signedAt, signerName: name, signerEmail: email, signerIp: ip, signatureKind, signatureImage };
+    const signedRow = { ...letter, status: "signed" as const, signedAt, signerName: name, signerEmail: email, signerIp: ip, signatureKind, signatureImage, signatureInitials: initials };
 
     // A signed engagement is a real case — it appears in Matters/Cases now.
     try { await ensureCaseForSignedLetter(signedRow); } catch { /* best-effort; the letter record stands */ }

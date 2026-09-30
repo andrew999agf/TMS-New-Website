@@ -16,6 +16,15 @@ export function SignForm({ token, clientName, presetEmail, officePhone }: {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState(presetEmail);
+  const [initials, setInitials] = useState("");
+  const [initialsTouched, setInitialsTouched] = useState(false);
+  /** Initials follow the typed name until the client edits them directly. */
+  function nameChanged(v: string) {
+    setName(v);
+    if (!initialsTouched) {
+      setInitials(v.trim().split(/\s+/).map((w) => w[0] ?? "").join("").replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase());
+    }
+  }
   const [agree, setAgree] = useState(false);
   const [mode, setMode] = useState<"typed" | "drawn">("typed");
   const [busy, setBusy] = useState(false);
@@ -67,7 +76,7 @@ export function SignForm({ token, clientName, presetEmail, officePhone }: {
     const signature = mode === "drawn"
       ? { kind: "drawn" as const, image: canvasRef.current?.toDataURL("image/png") }
       : { kind: "typed" as const };
-    const r = await signEngagement(token, { name, email, agree, signature });
+    const r = await signEngagement(token, { name, email, agree, initials, signature });
     setBusy(false);
     if (!r.ok) { setError(r.error ?? "Something went wrong."); return; }
     router.refresh();
@@ -84,16 +93,22 @@ export function SignForm({ token, clientName, presetEmail, officePhone }: {
         Please read the full engagement letter above before signing. By signing you accept the engagement on the terms
         stated in the letter, including the fees and retainers it describes.
       </p>
-      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+      <div className="mb-3 grid gap-3 sm:grid-cols-[1fr,1fr,110px]">
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Your full legal name</span>
-          <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder={clientName} autoComplete="name" required />
+          <input className={input} value={name} onChange={(e) => nameChanged(e.target.value)} placeholder={clientName} autoComplete="name" required />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Your email address</span>
           <input className={input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
         </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">Your initials</span>
+          <input className={input} value={initials} maxLength={8}
+            onChange={(e) => { setInitialsTouched(true); setInitials(e.target.value.replace(/[^A-Za-z.]/g, "").toUpperCase()); }} required />
+        </label>
       </div>
+      <p className="-mt-1 mb-3 text-xs text-neutral-500">Your initials are placed at each &ldquo;Client Initials&rdquo; blank in the letter, including the one on every page.</p>
 
       {/* How would you like to sign? */}
       <div className="mb-3 flex gap-2">
@@ -137,11 +152,12 @@ export function SignForm({ token, clientName, presetEmail, officePhone }: {
         <span>
           I have read the engagement letter and agree to its terms. I consent to conduct this transaction electronically,
           and I agree that the signature I provide above — typed or drawn — together with submitting this form constitutes
-          my electronic signature on the engagement letter, with the same force and effect as a handwritten signature.
+          my electronic signature on the engagement letter, with the same force and effect as a handwritten signature, and
+          that my initials as entered above may be placed at each place in the letter where initials are indicated.
         </span>
       </label>
       {error && <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <button type="submit" disabled={busy || !agree || name.trim().length < 3 || (mode === "drawn" && !hasDrawn)}
+      <button type="submit" disabled={busy || !agree || name.trim().length < 3 || initials.trim().length < 1 || (mode === "drawn" && !hasDrawn)}
         className="rounded-md bg-[#7a1f2b] px-6 py-2.5 font-semibold text-white hover:opacity-90 disabled:opacity-50">
         {busy ? <Loader2 size={16} className="inline animate-spin" /> : "Sign the engagement letter"}
       </button>

@@ -1,4 +1,5 @@
 import "server-only";
+import { rgb } from "pdf-lib";
 import {
   JSZIP_MIN_B64, DOCX_PREVIEW_MIN_B64,
   TINOS_400_B64, TINOS_700_B64, TINOS_400I_B64, TINOS_700I_B64,
@@ -172,7 +173,7 @@ async function buildPartDocx(zip: JSZipNS, partPath: string, pageNo?: number, pa
   return Buffer.from(await out.generateAsync({ type: "uint8array" }));
 }
 
-export async function docxToPdf(docx: Buffer): Promise<Buffer> {
+export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } = {}): Promise<Buffer> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(docx);
   const sec = await analyzeSection(zip);
@@ -192,6 +193,8 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
       #part { position: absolute; left: 0; top: 0; width: ${pageWpx}px; overflow: hidden; background: #fff; }
       #part .docx-wrapper { background: #fff !important; padding: 0 !important; margin: 0 !important; }
       #part section.docx { background: #fff !important; box-shadow: none !important; margin: 0 !important; min-height: 0 !important; height: auto !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+      /* Letterhead tables (the offices footer) center on the page, as drafted. */
+      #part section.docx table { margin-left: auto !important; margin-right: auto !important; }
       @media print { #part { display: none !important; } }
     </style><style id="pg"></style></head>
 <body><div id="out"></div><div id="part"></div>
@@ -219,7 +222,7 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
       }, b64, target);
     };
 
-    type Shot = { png: Buffer; cssW: number; cssH: number };
+    type Shot = { png: Buffer; cssW: number; cssH: number; initialsAt?: { x: number; y: number; h: number } };
     /** Render one letterhead part to an opaque page-width PNG strip. The
      *  letter itself is hidden while shooting so nothing shows through. */
     const shoot = async (partPath: string, pageNo: number, pageCount?: number): Promise<Shot | null> => {
@@ -227,13 +230,36 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
         const bytes = await buildPartDocx(zip, partPath, pageNo, pageCount);
         await page.evaluate(() => { (document.getElementById("out") as HTMLElement).style.display = "none"; });
         await render(bytes.toString("base64"), "part");
-        const h = await page.evaluate(() => {
+        const m = await page.evaluate(() => {
           const el = document.querySelector("#part section.docx") as HTMLElement | null;
-          return el ? el.getBoundingClientRect().height : 0;
+          if (!el) return null;
+          const h = el.getBoundingClientRect().height;
+          // Where does a "Client Initials:" label end inside this strip? The
+          // initials get typed right after it on every page.
+          let initialsAt: { x: number; y: number; h: number } | null = null;
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let node: Node | null;
+          while ((node = walker.nextNode())) {
+            const t = node.textContent ?? "";
+            const m = t.match(/initials\s*:?/i);
+            if (m && m.index !== undefined) {
+              const range = document.createRange();
+              range.setStart(node, m.index);
+              range.setEnd(node, m.index + m[0].length);
+              const r = range.getBoundingClientRect();
+              initialsAt = { x: r.right, y: r.top, h: r.height };
+              break;
+            }
+          }
+          // Some letterhead tables draw a touch wider than the page; capture
+          // the real width so the stamp can scale-to-fit instead of clipping.
+          const w = Math.max(el.getBoundingClientRect().width, el.scrollWidth);
+          return { h, w, initialsAt };
         });
-        if (h < 2) return null;
-        const png = await page.screenshot({ clip: { x: 0, y: 0, width: pageWpx, height: h } });
-        return { png: Buffer.from(png), cssW: pageWpx, cssH: h };
+        if (!m || m.h < 2) return null;
+        const clipW = Math.min(Math.max(m.w, pageWpx), pageWpx + 190);
+        const png = await page.screenshot({ clip: { x: 0, y: 0, width: clipW, height: m.h } });
+        return { png: Buffer.from(png), cssW: clipW, cssH: m.h, initialsAt: m.initialsAt ?? undefined };
       } catch (err) {
         console.error(`[docx2pdf] letterhead part ${partPath} failed to render:`, err);
         return null;
@@ -274,13 +300,25 @@ export async function docxToPdf(docx: Buffer): Promise<Buffer> {
     const pdf = await PDFDocument.load(bodyPdf);
     const pageCount = pdf.getPageCount();
 
+    const italic = opts.footerInitials ? await pdf.embedFont((await import("pdf-lib")).StandardFonts.TimesRomanItalic) : null;
     const stamp = async (pageIdx: number, shotP: Shot | null, at: "top" | "bottom") => {
       if (!shotP) return;
       const img = await pdf.embedPng(shotP.png);
-      const w = shotP.cssW * 0.75; // CSS px → pt (shot is exactly page-wide)
-      const h = shotP.cssH * 0.75;
+      // Scale-to-fit: a strip wider than the page shrinks (a few percent at
+      // most) and centers, so nothing gets cut at the paper edge.
+      const scale = Math.min(1, pageWpt / (shotP.cssW * 0.75));
+      const w = shotP.cssW * 0.75 * scale;
+      const h = shotP.cssH * 0.75 * scale;
+      const x = (pageWpt - w) / 2;
       const y = at === "top" ? pageHpt - sec.headerDist / 20 - h : sec.footerDist / 20;
-      pdf.getPage(pageIdx).drawImage(img, { x: 0, y, width: w, height: h });
+      const pg = pdf.getPage(pageIdx);
+      pg.drawImage(img, { x, y, width: w, height: h });
+      // The signed letter carries the client's initials in every footer blank.
+      if (opts.footerInitials && italic && shotP.initialsAt) {
+        const ix = x + (shotP.initialsAt.x * 0.75 + 6) * scale;
+        const iy = y + h - (shotP.initialsAt.y + shotP.initialsAt.h) * 0.75 * scale + 2;
+        pg.drawText(opts.footerInitials, { x: ix, y: iy, size: 11 * scale, font: italic, color: rgb(0.1, 0.1, 0.12) });
+      }
     };
 
     // 3) Page one gets the first-page letterhead; later pages the default

@@ -16,6 +16,8 @@ export type SignatureRecord = {
   typedName?: string;
   /** PNG (base64, no data: prefix) for a drawn signature. */
   imagePngBase64?: string;
+  /** Typed initials, stamped at every "Client Initials:" blank. */
+  initials?: string;
   signerName: string;
   signerEmail: string;
   signedAt: Date;
@@ -233,6 +235,44 @@ export async function stampTextOnPdf(pdfBytes: Buffer, text: string, anchorText:
   return { buf: Buffer.from(await pdf.save()), stamped: true };
 }
 
+/** Stamp text on EVERY line that starts with the anchor, on every page —
+ *  used to drop the client's initials into each "Client Initials:" blank in
+ *  the letter body. Italic, sized to sit in the blank. */
+export async function stampTextOnAllAnchors(pdfBytes: Buffer, text: string, anchorText: string, offset: { dx?: number; dy?: number } = {}): Promise<{ buf: Buffer; count: number }> {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const needle = norm(safe(anchorText)).slice(0, 15);
+  const hits: { page: number; x: number; y: number }[] = [];
+  if (needle.length >= 4) {
+    try {
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(pdfBytes), useSystemFonts: true }).promise;
+      for (let i = 1; i <= doc.numPages; i++) {
+        const tc = await (await doc.getPage(i)).getTextContent();
+        const lines = new Map<number, { x: number; y: number; text: string }>();
+        for (const raw of tc.items) {
+          const it = raw as { str?: string; transform?: number[] };
+          if (!it.str || !it.transform) continue;
+          const key = Math.round(it.transform[5] * 2) / 2;
+          const line = lines.get(key);
+          if (line) { line.text += it.str; line.x = Math.min(line.x, it.transform[4]); }
+          else lines.set(key, { x: it.transform[4], y: it.transform[5], text: it.str });
+        }
+        for (const line of lines.values()) {
+          if (norm(line.text).startsWith(needle)) hits.push({ page: i, x: line.x, y: line.y });
+        }
+      }
+      await (doc as unknown as { destroy?: () => Promise<void> }).destroy?.();
+    } catch { /* no hits — nothing stamped */ }
+  }
+  if (!hits.length) return { buf: pdfBytes, count: 0 };
+  const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
+  for (const h of hits) {
+    pdf.getPage(h.page - 1).drawText(safe(text), { x: h.x + (offset.dx ?? 86), y: h.y + (offset.dy ?? 2), size: 13, font: italic, color: INK });
+  }
+  return { buf: Buffer.from(await pdf.save()), count: hits.length };
+}
+
 /** Append an e-signature page to ANY letter PDF (generated or uploaded). */
 export async function appendSignaturePageToPdf(pdfBytes: Buffer, sig: SignatureRecord): Promise<Buffer> {
   const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
@@ -282,6 +322,7 @@ async function appendSignature(
   y -= 18;
   line(sig.signerName, f.timesBold, SIZE, 15);
   line(sig.signerEmail, f.times, 10.5, 15);
+  if (sig.initials) line(`Initials applied at each initial blank: ${sig.initials}`, f.times, 10.5, 15);
   const when = sig.signedAt.toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "long", timeStyle: "short" });
   line(`Signed electronically on ${when} (Central)${sig.ip ? ` from IP ${sig.ip}` : ""}.`, f.times, 10.5, 15);
   line("The signer affirmed that this electronic signature has the same force and effect as a handwritten signature.", f.times, 9.5, 14);

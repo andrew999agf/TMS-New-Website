@@ -3,7 +3,7 @@ import type { engagementLetters } from "@/db/schema";
 import type { EngagementOffice, EngagementSide } from "./config";
 import type { LetterData } from "./letter";
 import { buildEngagementLetter } from "./letter";
-import { appendSignaturePageToPdf, stampSignatureOnPdf, stampTextOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
+import { appendSignaturePageToPdf, stampSignatureOnPdf, stampTextOnPdf, stampTextOnAllAnchors, letterPdfFileName, type SignatureRecord } from "./pdf";
 import { docxToPdf } from "./docx2pdf";
 import { engagementDefaultRates } from "./rates";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
@@ -31,6 +31,7 @@ export function signatureFromDbRow(letter: LetterDbRow): SignatureRecord | null 
     kind: letter.signatureKind === "drawn" && letter.signatureImage ? "drawn" : "typed",
     typedName: letter.signerName,
     imagePngBase64: letter.signatureImage ?? undefined,
+    initials: letter.signatureInitials || undefined,
     signerName: letter.signerName,
     signerEmail: letter.signerEmail,
     signedAt: letter.signedAt ?? new Date(),
@@ -53,7 +54,11 @@ async function applySignature(buf: Buffer, sig: SignatureRecord, signerLine: str
   if (!stamped.stamped) stamped = await stampSignatureOnPdf(buf, sig, signerLine);
   const when = sig.signedAt.toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "long", day: "numeric", year: "numeric" });
   const dated = await stampTextOnPdf(stamped.buf, when, "Date:", { dx: 34, dy: 4 });
-  return appendSignaturePageToPdf(dated.buf, sig);
+  // The client's initials fill every "Client Initials:" blank in the body
+  // (the per-page footer blanks are filled at print time).
+  let out = dated.buf;
+  if (sig.initials) out = (await stampTextOnAllAnchors(out, sig.initials, "Client Initials:", { dx: 88, dy: 2 })).buf;
+  return appendSignaturePageToPdf(out, sig);
 }
 
 /**
@@ -83,7 +88,7 @@ export async function letterPdf(letter: LetterDbRow): Promise<{ buf: Buffer; fil
   // The letter IS the filled Word document, printed. If the print engine is
   // down, callers surface the error — the firm's letter never gets replaced
   // with a re-typeset stand-in.
-  let buf = await docxToPdf(await buildEngagementLetter(data));
+  let buf = await docxToPdf(await buildEngagementLetter(data), { footerInitials: sig?.initials });
   if (sig) buf = await applySignature(buf, sig, signerLineText(letter));
   const out = { buf, fileName: letterPdfFileName(letter, !!sig) };
   if (sig) await freezeSignedPdf(letter.id, out); // first successful render after signing becomes THE document
