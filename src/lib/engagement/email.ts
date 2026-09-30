@@ -107,6 +107,9 @@ export async function buildEngagementEmail(o: EngagementEmailOpts): Promise<{ su
     logoDark: globals["global.logoDark"] || undefined,
     firmName,
     bodyHtml: parts.join(""),
+    // The signature block above already lists every office — the template's
+    // own office footer would just repeat it all.
+    footer: false,
   });
   return { subject, html };
 }

@@ -16,6 +16,15 @@ const tel = (p: string) => {
 };
 const fam = (name: string) => name.trim().replace(/\s+/g, "+");
 
+/** Zero-width spaces between digits stop Gmail/Apple from auto-linking
+ *  addresses and stray numbers into blue underlined links. Invisible, and
+ *  the text still copies fine. */
+const zw = (s: string) => s.replace(/\d(?=\d)/g, "$&​");
+
+/** Crisp, professional sans stack for message bodies — the serif stays for
+ *  the wordmark only. */
+const PRO_SANS = `'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif`;
+
 export function brandedEmailHtml({
   colors,
   fonts,
@@ -23,6 +32,7 @@ export function brandedEmailHtml({
   logoDark,
   firmName,
   bodyHtml,
+  footer: withFooter = true,
 }: {
   colors: ColorTokens;
   fonts?: { display?: string; body?: string };
@@ -30,6 +40,9 @@ export function brandedEmailHtml({
   logoDark?: string;
   firmName: string;
   bodyHtml: string;
+  /** false drops the office-listing footer — for emails whose body already
+   *  ends with the firm's full signature block, so nothing repeats. */
+  footer?: boolean;
 }): string {
   const displayFam = fonts?.display?.trim();
   const bodyFam = fonts?.body?.trim();
@@ -85,7 +98,7 @@ export function brandedEmailHtml({
       : "";
     return `<td class="tms-ftr-text" style="vertical-align:top;padding:0 14px 14px 0;font-family:${SANS};font-size:12px;line-height:1.55;color:${colors.inkMuted};width:33%">
       <div class="tms-ftr-strong" style="color:${colors.ink};font-weight:bold;font-family:${SANS};font-size:13px;margin-bottom:5px">${esc(o.name)}</div>
-      ${esc(o.street)}<br/>${esc(o.city)}, ${esc(o.state)} ${esc(o.zip)}<br/>${phone}
+      ${zw(esc(o.street))}<br/>${esc(o.city)}, ${esc(o.state)} ${zw(esc(o.zip))}<br/>${phone}
     </td>`;
   }).join("");
 
@@ -99,7 +112,9 @@ export function brandedEmailHtml({
   // The footer is painted on the SAME locked white as the logo band, and flips
   // to the same dark band in dark mode — so the two ends of the email always
   // match each other instead of the footer reading as a separate pale card.
-  const footer = `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="${CREAM}" style="background-color:${CREAM};background:${CREAM}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`;
+  const footer = withFooter
+    ? `<tr><td style="padding:0"><table role="presentation" class="tms-ftr" width="100%" cellpadding="0" cellspacing="0" bgcolor="${CREAM}" style="background-color:${CREAM};background:${CREAM}"><tr><td style="padding:28px 32px">${footerInner}</td></tr></table></td></tr>`
+    : "";
 
   return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -155,7 +170,7 @@ export function brandedEmailHtml({
         <table role="presentation" class="tms-card" width="600" cellpadding="0" cellspacing="0" bgcolor="${CARD}" style="width:600px;max-width:600px;background-color:${CARD};border:1px solid ${RULE};border-radius:10px;overflow:hidden">
           ${header}
           ${accent}
-          <tr><td class="tms-body" style="padding:32px;font-family:${SERIF};color:${INK};font-size:15px;line-height:1.6">${bodyHtml}</td></tr>
+          <tr><td class="tms-body" style="padding:32px;font-family:${PRO_SANS};color:${INK};font-size:15px;line-height:1.6">${bodyHtml}</td></tr>
           ${footer}
         </table>
       </td></tr>
@@ -170,21 +185,26 @@ export function brandedEmailHtml({
  * change only on his instruction.
  */
 export function firmSignatureHtml(colors: { ink: string; inkMuted: string; accent: string; border: string }): string {
-  const line = (s: string) => `<div>${s}</div>`;
+  // Addresses are digit-broken (zw) so mail clients can't turn them into blue
+  // underlined map links; phone numbers are deliberate tel: anchors styled to
+  // match the surrounding text, which also stops the client restyling them.
+  const phone = (p: string) =>
+    `<a href="${tel(p)}" style="color:${colors.inkMuted};text-decoration:none">${zw(esc(p))}</a>`;
+  const line = (s: string) => `<div>${zw(esc(s))}</div>`;
   const office = (title: string, lines: string[]) =>
-    `<td valign="top" style="padding:0 14px 10px 0;font-size:12px;line-height:1.5;color:${colors.inkMuted}">
+    `<td valign="top" style="padding:0 14px 10px 0;font-family:${PRO_SANS};font-size:12px;line-height:1.5;color:${colors.inkMuted}">
       <div style="font-weight:bold;color:${colors.ink}">${title}</div>${lines.map(line).join("")}
     </td>`;
   return `
-  <div style="margin-top:22px;padding-top:14px;border-top:1px solid ${colors.border};font-size:13px;line-height:1.55;color:${colors.ink}">
+  <div style="margin-top:22px;padding-top:14px;border-top:1px solid ${colors.border};font-family:${PRO_SANS};font-size:13px;line-height:1.55;color:${colors.ink}">
     <p style="margin:0 0 10px">Thank you,</p>
     <p style="margin:0 0 2px;font-weight:bold;letter-spacing:.02em">THOMAS MAXWELL SMITH, MANAGING ATTORNEY</p>
     <p style="margin:0 0 8px;font-weight:bold">T. Maxwell Smith, PLLC</p>
     <p style="margin:0 0 10px;color:${colors.inkMuted}">
       Email: <a href="mailto:max@texaslawsmith.com" style="color:${colors.accent};text-decoration:none">max@texaslawsmith.com</a><br/>
-      Telephone: (254) 435-4288<br/>
-      Telephone: (817) 348-8325<br/>
-      Facsimile: (817) 348-8328<br/>
+      Telephone: ${phone("(254) 435-4288")}<br/>
+      Telephone: ${phone("(817) 348-8325")}<br/>
+      Facsimile: ${phone("(817) 348-8328")}<br/>
       <a href="https://www.texaslawsmith.com" style="color:${colors.accent};text-decoration:none">www.texaslawsmith.com</a>
     </p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
@@ -199,7 +219,7 @@ export function firmSignatureHtml(colors: { ink: string; inkMuted: string; accen
       and may contain information that is confidential, subject to copyright or constitutes a trade secret. If you are not the
       intended recipient you are hereby notified that any dissemination, copying or distribution of this message, or files
       associated with this message, is strictly prohibited. If you have received this communication in error, please notify
-      T. Maxwell Smith, PLLC, 817-475-5522, and destroy the original message. These emails may be monitored. If this email is
+      T. Maxwell Smith, PLLC, ${zw("817-475-5522")}, and destroy the original message. These emails may be monitored. If this email is
       between my office and any client or potential client of my office, the contents of this message should be considered to
       be CONFIDENTIAL under the attorney-client privilege.
     </p>
