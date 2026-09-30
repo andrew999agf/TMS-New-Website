@@ -106,7 +106,7 @@ function EditDialog({ row, onClose }: { row: ReferralAttorneyRow; onClose: () =>
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-[family-name:var(--font-display)] text-lg">{f.id ? "Edit referral attorney" : "Add referral attorney"}</h3>

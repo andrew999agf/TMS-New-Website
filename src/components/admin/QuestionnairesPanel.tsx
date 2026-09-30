@@ -83,7 +83,7 @@ export function QuestionnairePickerDialog({ presetName, presetEmail, onClose }: 
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><ClipboardList size={17} className="text-[var(--c-accent)]" /> Send a questionnaire</h3>
@@ -154,7 +154,7 @@ function SendQuestionnaireDialog({ q, onClose }: { q: ClientQuestionnaire; onClo
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Send: {q.label}</h3>

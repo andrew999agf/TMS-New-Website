@@ -329,7 +329,7 @@ function GenerateDialog({ template, standardFields, onClose }: { template: BankT
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-4 py-3">
           <Wand2 size={15} className="text-[var(--c-accent)]" />

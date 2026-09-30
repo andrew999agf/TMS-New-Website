@@ -280,7 +280,7 @@ function AskEmailClientDialog({ matterId, kind, count, onClose }: { matterId: nu
     });
   }
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Mail size={17} className="text-[var(--c-accent)]" /> Email the client?</h3>
         {result ? (

@@ -351,7 +351,7 @@ function ShareDialog({ setId, access, token, recipients, docs, ocEnabled, ocToke
   const btn = "rounded border border-[var(--c-border)] px-2 py-1 text-[11px] hover:bg-[var(--c-surface2)]";
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="my-6 w-full max-w-lg rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Share2 size={16} className="text-[var(--c-accent)]" /> Share exhibits</h3>

@@ -237,7 +237,7 @@ function OpenConfirmDialog({ f, onClose, onGo }: { f: FolderRow; onClose: () => 
     ["Last modified", fmtD(f.updatedAt)],
   ];
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="mb-1 flex items-center justify-between">
           <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><FolderOpen size={18} className="text-[var(--c-accent)]" /> You&apos;re about to open</h3>
@@ -270,7 +270,7 @@ function OpenConfirmDialog({ f, onClose, onGo }: { f: FolderRow; onClose: () => 
 function ArchiveConfirmDialog({ f, onClose }: { f: FolderRow; onClose: () => void }) {
   const [pending, start] = useTransition();
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-6 shadow-2xl">
         <h3 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-lg"><Archive size={18} className="text-[var(--c-accent)]" /> Archive this folder?</h3>
         <p className="mt-3 text-sm text-[var(--c-ink-muted)]">

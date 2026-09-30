@@ -238,7 +238,7 @@ export function TurnbackDialog({ row, attorneys, onClose }: { row: IntakeRow; at
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-[var(--c-surface)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--c-border)] px-5 py-3">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Turn-back email</h3>

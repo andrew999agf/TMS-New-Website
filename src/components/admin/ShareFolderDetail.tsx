@@ -808,7 +808,7 @@ function DirLinkDialog({ folderId, folderName, scope, onClose }: { folderId: num
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-md rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
         <h3 className="mb-1.5 inline-flex items-center gap-2 font-[family-name:var(--font-display)] text-base">
           <Link2 size={16} className="text-[var(--c-accent)]" /> View link — {dirName}
@@ -871,7 +871,7 @@ function TocDialog({ folderId, scope, onClose }: { folderId: number; scope: stri
 
   const scopeLabel = scope ? scope.split("/").pop() : "the whole folder";
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-sm rounded-lg bg-[var(--c-surface)] p-5 shadow-2xl">
         <div className="mb-1.5 flex items-center gap-2">
           <ListOrdered size={16} className="text-[var(--c-accent)]" />

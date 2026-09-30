@@ -310,7 +310,7 @@ function ReferralModal({ row, attorneys, onClose }: { row: IntakeRow; attorneys:
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-md p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Refer out</h3>

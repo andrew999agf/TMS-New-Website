@@ -194,8 +194,11 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
     });
   }
 
+  // Deliberately NO close-on-backdrop here: this dialog holds a lot of typed
+  // work, and a text-selection drag released over the gray used to throw it
+  // all away. Only the X / Close buttons dismiss it.
   return (
-    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4">
       <div className="bg-[var(--c-surface)] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-[family-name:var(--font-display)] text-lg flex items-center gap-2"><FileSignature size={18} className="text-[var(--c-accent)]" /> Engagement letter</h3>

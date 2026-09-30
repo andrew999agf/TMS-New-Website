@@ -49,7 +49,7 @@ export function LinkTreeDialog({ folderId, folderName, files, publicToken, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-lg overflow-hidden rounded-lg bg-[var(--c-surface)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--c-border)] px-5 py-3">
           <h3 className="font-[family-name:var(--font-display)] text-lg">Download link tree</h3>

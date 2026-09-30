@@ -102,7 +102,7 @@ function ResultForm({ initial, practices, onClose }: { initial: ResultInput; pra
   return (
     <div
       className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5 space-y-3">
         <div className="flex items-center justify-between">
