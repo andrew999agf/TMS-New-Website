@@ -119,6 +119,9 @@ export const DISCOVERY_DDL = [
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_email varchar(255) NOT NULL DEFAULT '';
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_ip varchar(64) NOT NULL DEFAULT '';
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signer_user_agent varchar(500) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx text;
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx_name varchar(255) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx_at timestamptz;
     END IF;
   END $$;`,
   `CREATE TABLE IF NOT EXISTS lit_files (

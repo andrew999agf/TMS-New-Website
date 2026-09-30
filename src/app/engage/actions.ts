@@ -7,6 +7,7 @@ import { engagementLetters, intakeSubmissions } from "@/db/schema";
 import { audit } from "@/lib/auth";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
+import { getIntakeRecipients } from "@/lib/content";
 
 /**
  * Client-side e-signature for an engagement letter, reached only through the
@@ -51,8 +52,13 @@ export async function signEngagement(token: string, input: { name: string; email
 
     if (emailConfigured) {
       try {
+        // The whole intake team hears about a signature, not just the inbox.
+        let team: string[] = [];
+        try {
+          team = [...new Set((await getIntakeRecipients(true)).map((r) => r.email.trim().toLowerCase()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)))];
+        } catch { /* fall back to the firm inbox */ }
         await sendEmail({
-          to: FIRM.email,
+          to: team.length ? team : FIRM.email,
           subject: `Engagement letter SIGNED — ${letter.businessName || letter.clientName}`,
           fromName: "Engagement e-sign",
           html: `<p><strong>${letter.businessName || letter.clientName}</strong>'s engagement letter was just signed electronically.</p>

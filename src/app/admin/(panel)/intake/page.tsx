@@ -14,7 +14,8 @@ import { QuestionnairesPanel } from "@/components/admin/QuestionnairesPanel";
 import { db, hasDb } from "@/db";
 import { intakeSubmissions, referralAttorneys, engagementLetters } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
-import { getIntakeRecipients } from "@/lib/content";
+import { getIntakeRecipients, getBlocks } from "@/lib/content";
+import { EngagementDefaults } from "@/components/admin/EngagementDefaults";
 import { emailConfigured } from "@/lib/email";
 import { BRANCHES } from "@/lib/intake/config";
 
@@ -26,6 +27,18 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   const recipients = await getIntakeRecipients(false);
   const branches = BRANCHES.map((b) => ({ id: b.id, label: b.label }));
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
+  // The firm's standard hourly rates: shown beside the engagement dialog's
+  // rate fields; typing below one strikes it through in the letter.
+  const consultBlocks = await getBlocks("consultation");
+  const rate = (k: string, fallback: number) => {
+    const v = parseFloat(consultBlocks[k] ?? "");
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  const defaultRates = {
+    attorneyRate: rate("engagement.rate.attorney", 425),
+    associateRate: rate("engagement.rate.associate", 425),
+    staffRate: rate("engagement.rate.staff", 145),
+  };
 
   let rows: IntakeRow[] = [];
   let leads: LeadPoint[] = [];
@@ -129,6 +142,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
           sentTo: l.sentTo ?? "",
           signedAt: l.signedAt ? l.signedAt.toISOString() : null,
           signerName: l.signerName ?? "",
+          customDocxName: l.customDocx ? (l.customDocxName || "edited copy.docx") : "",
           createdAt: l.createdAt.toISOString(),
         });
       }
@@ -166,13 +180,14 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
           senderFrom={senderFrom}
         />
         <ReferralAttorneysManager initial={referralRows} />
+        <EngagementDefaults initial={defaultRates} />
         <QuestionnairesPanel />
         <LeadSources leads={leads} />
         <IntakeOutcomes points={outcomes} />
         <AmountMetrics points={amounts} />
         <ReferralSources referrers={referrers} />
         <OutboundReferrals referrals={outbound} />
-        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} />
+        <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />
       </div>
     </>
   );

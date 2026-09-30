@@ -39,6 +39,10 @@ export type LetterData = {
   phase2: boolean;
   fees: EngagementFees;
   openUntil: Date | null;
+  /** The firm's standard hourly rates. When a letter's rate is BELOW the
+   *  standard, the letter prints the standard struck through, then the
+   *  reduced rate — no commentary; the client sees the break. */
+  defaultRates?: { attorneyRate: number; associateRate: number; staffRate: number };
 };
 
 const esc = (s: string) =>
@@ -171,6 +175,29 @@ function expandItems(xml: string, token: string, bullets: string[]): string {
   return xml.slice(0, start) + paras + xml.slice(end);
 }
 
+/**
+ * Replace a {{TOKEN}} with two runs: the standard figure struck through,
+ * then the reduced figure — splitting the token's run while keeping its
+ * formatting on both sides.
+ */
+function swapTokenStruck(xml: string, token: string, struck: string, current: string): string {
+  const idx = xml.indexOf(token);
+  if (idx < 0) return xml;
+  const rStart = Math.max(xml.lastIndexOf("<w:r>", idx), xml.lastIndexOf("<w:r ", idx));
+  const rEnd = xml.indexOf("</w:r>", idx) + "</w:r>".length;
+  if (rStart < 0 || rEnd < "</w:r>".length) return xml;
+  const run = xml.slice(rStart, rEnd);
+  const t = run.indexOf(token);
+  const rPr = run.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+  const strikeRPr = rPr ? rPr.replace("</w:rPr>", "<w:strike/></w:rPr>") : "<w:rPr><w:strike/></w:rPr>";
+  const pieces =
+    run.slice(0, t) + `</w:t></w:r>` + // close the prefix's text + run
+    `<w:r>${strikeRPr}<w:t xml:space="preserve">${esc(struck)}</w:t></w:r>` +
+    `<w:r>${rPr}<w:t xml:space="preserve"> ${esc(current)}</w:t></w:r>` +
+    `<w:r>${rPr}<w:t xml:space="preserve">` + run.slice(t + token.length); // reopen for the suffix
+  return xml.slice(0, rStart) + pieces + xml.slice(rEnd);
+}
+
 /** Custom scope text → clean bullet lines (one per line, tidy punctuation). */
 function customLines(text: string): string[] {
   return text
@@ -187,7 +214,11 @@ export function letterFileName(d: Pick<LetterData, "clientName" | "businessName"
 
 /* ------------------------------ live preview ------------------------------ */
 
-export type LetterPreviewPara = { text: string; bold: boolean; center: boolean; indent: boolean };
+export type LetterPreviewPara = {
+  text: string; bold: boolean; center: boolean; indent: boolean;
+  /** Present only when the paragraph has struck-through text (reduced rates). */
+  segs?: { text: string; strike: boolean }[];
+};
 
 const unesc = (s: string) =>
   s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
@@ -208,11 +239,21 @@ export async function buildEngagementLetterPreview(d: LetterData): Promise<Lette
   while ((m = pRe.exec(xml))) {
     const p = m[0];
     const text = unesc([...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => t[1]).join(""));
+    // Per-run segments only where strikethrough appears (reduced rates), so
+    // the preview can draw the strike the way the letter will.
+    let segs: LetterPreviewPara["segs"];
+    if (/<w:strike\s*\/>/.test(p)) {
+      segs = [...p.matchAll(/<w:r(?:[ >][\s\S]*?)?<\/w:r>/g)].map((r) => ({
+        text: unesc([...r[0].matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => t[1]).join("")),
+        strike: /<w:strike\s*\/>/.test(r[0]),
+      })).filter((s) => s.text !== "");
+    }
     out.push({
       text,
       bold: /<w:b\s*\/>/.test(p),
       center: /<w:jc w:val="center"/.test(p),
       indent: /<w:ind [^>]*w:left="[1-9]/.test(p),
+      ...(segs && segs.length ? { segs } : {}),
     });
   }
   return out;
@@ -246,6 +287,21 @@ export async function buildEngagementLetter(d: LetterData): Promise<Buffer> {
   // Phase scope items: standard language for the side + case-specific lines.
   if (d.phase1) xml = expandItems(xml, "{{PHASE1_ITEM}}", [...PHASE1_STANDARD[d.side], ...customLines(d.phase1Custom)]);
   if (d.phase2) xml = expandItems(xml, "{{PHASE2_ITEM}}", [...PHASE2_STANDARD[d.side], ...customLines(d.phase2Custom)]);
+
+  // Reduced rates: print the standard rate struck through, then the reduced
+  // one. Handled before the generic replace, which then skips these tokens.
+  if (d.defaultRates) {
+    const rateTokens = [
+      ["attorneyRate", "{{ATTORNEY_RATE}}"],
+      ["associateRate", "{{ASSOCIATE_RATE}}"],
+      ["staffRate", "{{STAFF_RATE}}"],
+    ] as const;
+    for (const [key, token] of rateTokens) {
+      const std = d.defaultRates[key];
+      const cur = d.fees[key];
+      if (std > 0 && cur > 0 && cur < std) xml = swapTokenStruck(xml, token, money(std), money(cur));
+    }
+  }
 
   const values: Record<string, string> = {
     TODAY: longDate(new Date()),

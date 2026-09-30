@@ -851,6 +851,11 @@ export const engagementLetters = pgTable(
     signerEmail: varchar("signer_email", { length: 255 }).notNull().default(""),
     signerIp: varchar("signer_ip", { length: 64 }).notNull().default(""),
     signerUserAgent: varchar("signer_user_agent", { length: 500 }).notNull().default(""),
+    /** An attorney-edited .docx (base64) that replaces the generated letter
+     *  in sends and downloads until it's removed. */
+    customDocx: text("custom_docx"),
+    customDocxName: varchar("custom_docx_name", { length: 255 }).notNull().default(""),
+    customDocxAt: timestamp("custom_docx_at", { withTimezone: true }),
     createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -44,7 +44,7 @@ function statusLabel(r: IntakeRow): string {
   return `Referred Out — ${r.referredTo ?? "?"} (${fee})`;
 }
 
-export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId = null, letters = {} }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[]; initialLeadId?: number | null; letters?: Record<number, LetterRow[]> }) {
+export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId = null, letters = {}, defaultRates }: { rows: IntakeRow[]; attorneys: string[]; referralAttorneys: ReferralAttorneyRow[]; initialLeadId?: number | null; letters?: Record<number, LetterRow[]>; defaultRates?: { attorneyRate: number; associateRate: number; staffRate: number } }) {
   const [status, setStatus] = useState<string>("all");
   const [practice, setPractice] = useState<string>("all");
   const [urgentOnly, setUrgentOnly] = useState(false);
@@ -281,6 +281,7 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
           presetEmail={engageFor.email ?? ""}
           presetCounty={engageFor.county ?? ""}
           letters={letters[engageFor.id] ?? []}
+          defaultRates={defaultRates}
           onClose={() => setEngageFor(null)}
         />
       )}

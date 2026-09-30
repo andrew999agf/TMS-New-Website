@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye, Link2, Loader2, Mail, FilePen, Plus } from "lucide-react";
-import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, sendEngagementLetterEmail, getEngagementSignLink, previewEngagementLetter, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
+import { X, Download, Send, Check, FileSignature, Trash2, CircleAlert, Eye, Link2, Loader2, Mail, FilePen, Plus, Paperclip } from "lucide-react";
+import { saveEngagementLetter, setEngagementStatus, deleteEngagementLetter, sendEngagementLetterEmail, getEngagementSignLink, previewEngagementLetter, uploadEngagementDocx, clearEngagementDocx, type EngagementInput } from "@/app/admin/(panel)/intake/engagement-actions";
 import type { LetterPreviewPara } from "@/lib/engagement/letter";
 import { DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email-shared";
 import {
@@ -31,6 +31,9 @@ export type LetterRow = {
   sentTo: string;
   signedAt: string | null;
   signerName: string;
+  /** Non-empty when an attorney-edited .docx is attached (it replaces the
+   *  generated letter in sends and downloads). */
+  customDocxName: string;
   createdAt: string;
 };
 
@@ -56,7 +59,7 @@ function Field({ label, children, className }: { label: string; children: React.
  * Somervell → Meridian, everything else → Fort Worth — and every fee default
  * follows from that choice. All figures stay editable.
  */
-export function EngagementLetterDialog({ intakeId, branch, answers, presetName, presetEmail, presetCounty, letters, onClose }: {
+export function EngagementLetterDialog({ intakeId, branch, answers, presetName, presetEmail, presetCounty, letters, defaultRates, onClose }: {
   intakeId: number;
   branch: string;
   answers: Record<string, unknown>;
@@ -64,6 +67,9 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
   presetEmail: string;
   presetCounty: string;
   letters: LetterRow[];
+  /** Firm-standard hourly rates (set in the Intake tab) — typing below one
+   *  strikes it through in the letter with the reduced rate beside it. */
+  defaultRates?: { attorneyRate: number; associateRate: number; staffRate: number };
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -230,6 +236,45 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
     });
   }
 
+  /** Hint under each hourly-rate field: the firm standard, and how a reduced
+   *  rate will print (standard struck through, reduced beside it). */
+  function rateHint(key: "attorneyRate" | "associateRate" | "staffRate") {
+    const std = defaultRates?.[key];
+    if (!std) return null;
+    const cur = fees[key];
+    if (cur > 0 && cur < std) {
+      return <p className="mt-1 text-[11px] text-[var(--c-accent)]">letter shows <s>${std.toFixed(0)}</s> ${cur.toFixed(0)}/hr</p>;
+    }
+    return <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">standard ${std.toFixed(0)}/hr</p>;
+  }
+
+  /* ------------- attorney-edited .docx (low-profile override) ------------- */
+  const [docxBusy, setDocxBusy] = useState(false);
+  function onUploadDocx(file: File) {
+    setError(null); setDocxBusy(true);
+    const reader = new FileReader();
+    reader.onerror = () => { setError("Couldn't read that file."); setDocxBusy(false); };
+    reader.onload = () => {
+      const b64 = String(reader.result).split(",")[1] ?? "";
+      start(async () => {
+        try {
+          let letterId = id;
+          if (!letterId) {
+            const s = await saveEngagementLetter(payload());
+            if (!s.ok || !s.id) { setError(s.error ?? "Save failed."); return; }
+            letterId = s.id; setId(s.id);
+          }
+          const r = await uploadEngagementDocx(letterId, { name: file.name, dataBase64: b64 });
+          if (!r.ok) { setError(r.error ?? "Upload failed."); return; }
+          router.refresh();
+        } finally {
+          setDocxBusy(false);
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
   /* ---------------- Live letter preview (side pane) ---------------- */
   const [previewOpen, setPreviewOpen] = useState(false);
   const [preview, setPreview] = useState<LetterPreviewPara[] | null>(null);
@@ -276,6 +321,7 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                 <span className="font-medium">{l.businessName || l.clientName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CHIP[l.status].cls}`}>{STATUS_CHIP[l.status].label}</span>
                 {l.id === id && <span className="rounded-full border border-[var(--c-accent)] px-2 py-0.5 text-[11px] text-[var(--c-accent)]">Open in editor</span>}
+                {l.customDocxName && <span title={`Edited copy attached (${l.customDocxName}) — it replaces the generated letter`} className="inline-flex items-center gap-1 text-[11px] text-[var(--c-ink-muted)]"><Paperclip size={11} /> edited copy</span>}
                 <span className="text-xs text-[var(--c-ink-muted)]">{new Date(l.createdAt).toLocaleDateString()}</span>
                 {l.status === "sent" && l.sentTo && <span className="text-xs text-[var(--c-ink-muted)]">→ {l.sentTo}</span>}
                 {l.status === "signed" && l.signerName && (
@@ -456,9 +502,9 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Rates &amp; retainers — {OFFICE_INFO[office].label} defaults, edit freely</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Field label="Attorney ($/hr)"><input type="number" step="5" className={input} value={fees.attorneyRate} onChange={(e) => setFee("attorneyRate", e.target.value)} /></Field>
-              <Field label="Associates / contract ($/hr)"><input type="number" step="5" className={input} value={fees.associateRate} onChange={(e) => setFee("associateRate", e.target.value)} /></Field>
-              <Field label="Staff / clerical ($/hr)"><input type="number" step="5" className={input} value={fees.staffRate} onChange={(e) => setFee("staffRate", e.target.value)} /></Field>
+              <Field label="Attorney ($/hr)"><input type="number" step="5" className={input} value={fees.attorneyRate} onChange={(e) => setFee("attorneyRate", e.target.value)} />{rateHint("attorneyRate")}</Field>
+              <Field label="Associates / contract ($/hr)"><input type="number" step="5" className={input} value={fees.associateRate} onChange={(e) => setFee("associateRate", e.target.value)} />{rateHint("associateRate")}</Field>
+              <Field label="Staff / clerical ($/hr)"><input type="number" step="5" className={input} value={fees.staffRate} onChange={(e) => setFee("staffRate", e.target.value)} />{rateHint("staffRate")}</Field>
               {form.phase1 && (
                 <Field label={form.phase2 ? "Phase 1 retainer ($)" : "Initial retainer ($)"}><input type="number" step="100" className={input} value={fees.phase1Retainer} onChange={(e) => setFee("phase1Retainer", e.target.value)} /></Field>
               )}
@@ -511,6 +557,30 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                 </div>
               )}
               <Field label="Payment link"><input className={input} value={paymentLink} onChange={(e) => setPaymentLink(e.target.value)} /></Field>
+              {/* Low-profile: normally the generated letter is what sends.
+                  An attorney who downloaded and reworked it in Word can slip
+                  the edited file in here instead. */}
+              <div className="text-xs text-[var(--c-ink-muted)]">
+                {editing?.customDocxName ? (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <Paperclip size={12} className="text-[var(--c-accent)]" />
+                    Edited copy attached: <b>{editing.customDocxName}</b> — this exact file is what sends and downloads.
+                    <button
+                      onClick={() => { if (confirm("Remove the edited copy and go back to the generated letter?")) start(async () => { await clearEngagementDocx(editing.id); router.refresh(); }); }}
+                      className="text-[var(--c-error)] hover:underline"
+                    >Remove</button>
+                  </span>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 hover:text-[var(--c-accent)]">
+                    {docxBusy ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                    Or attach a .docx you downloaded and edited in Word — it will be sent in place of the generated letter.
+                    <input
+                      type="file" accept=".docx" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadDocx(f); e.target.value = ""; }}
+                    />
+                  </label>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={sendNow} disabled={pending}
                   className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
@@ -569,7 +639,7 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                   ? <div key={i} className="h-2.5" />
                   : (
                     <p key={i} className={`mb-1.5 whitespace-pre-wrap ${p.center ? "text-center" : ""} ${p.bold ? "font-semibold" : ""} ${p.indent ? "pl-6" : ""}`}>
-                      {p.text}
+                      {p.segs ? p.segs.map((s, j) => (s.strike ? <s key={j}>{s.text}</s> : <span key={j}>{s.text}</span>)) : p.text}
                     </p>
                   ),
               )}

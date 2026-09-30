@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { engagementLetters } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { buildEngagementLetter, letterFileName } from "@/lib/engagement/letter";
+import { engagementDefaultRates } from "@/app/admin/(panel)/intake/engagement-actions";
 import type { EngagementOffice, EngagementSide } from "@/lib/engagement/config";
 
 export const runtime = "nodejs";
@@ -18,7 +19,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.signToken, token));
   if (!letter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // The client always gets the same file the send attached: the
+  // attorney-edited copy when one exists, else the generated letter.
+  if (letter.customDocx) {
+    const fn = letter.customDocxName || letterFileName(letter);
+    return new NextResponse(new Uint8Array(Buffer.from(letter.customDocx, "base64")), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="${fn.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'")}"`,
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex",
+      },
+    });
+  }
+
   const buf = await buildEngagementLetter({
+    defaultRates: await engagementDefaultRates(),
     clientName: letter.clientName, businessName: letter.businessName, officerTitle: letter.officerTitle,
     andIndividually: letter.andIndividually, email: letter.email, street: letter.street, city: letter.city,
     state: letter.state, zip: letter.zip, county: letter.county,

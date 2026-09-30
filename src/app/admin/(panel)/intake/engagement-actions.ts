@@ -12,6 +12,33 @@ import { buildEngagementLetter, buildEngagementLetterPreview, letterFileName, ty
 import { buildEngagementEmail, DEFAULT_PAYMENT_LINK, type EngagementEmailTemplate } from "@/lib/engagement/email";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
+import { getBlocks, getIntakeRecipients } from "@/lib/content";
+
+/** The firm's standard hourly rates, set in the Intake tab. Rates typed
+ *  below these render struck-through-then-reduced in the letter. */
+export async function engagementDefaultRates(): Promise<{ attorneyRate: number; associateRate: number; staffRate: number }> {
+  const b = await getBlocks("consultation");
+  const n = (k: string, fallback: number) => {
+    const v = parseFloat(b[k] ?? "");
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  return {
+    attorneyRate: n("engagement.rate.attorney", 425),
+    associateRate: n("engagement.rate.associate", 425),
+    staffRate: n("engagement.rate.staff", 145),
+  };
+}
+
+/** Everyone checked into the intake team — CCed on letter sends and
+ *  notified when a letter is e-signed. */
+async function intakeTeamEmails(): Promise<string[]> {
+  try {
+    const rs = await getIntakeRecipients(true);
+    return [...new Set(rs.map((r) => r.email.trim().toLowerCase()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)))];
+  } catch {
+    return [];
+  }
+}
 
 export type EngagementInput = {
   id?: number;
@@ -94,10 +121,46 @@ export async function previewEngagementLetter(input: EngagementInput): Promise<{
   await requireAdmin();
   if (!input.phase1 && !input.phase2) return { ok: false, error: "Keep at least one phase in the engagement." };
   try {
-    return { ok: true, paras: await buildEngagementLetterPreview(letterDataFromInput(input)) };
+    const defaultRates = await engagementDefaultRates();
+    return { ok: true, paras: await buildEngagementLetterPreview({ ...letterDataFromInput(input), defaultRates }) };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
+}
+
+/* --------------- attorney-edited .docx (low-profile override) ------------ */
+
+/**
+ * Attach a Word copy the attorney downloaded and edited. From then on, sends
+ * and downloads use THIS file instead of the generated letter, until removed.
+ */
+export async function uploadEngagementDocx(id: number, file: { name: string; dataBase64: string }): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const b64 = String(file.dataBase64 ?? "");
+  if (b64.length > 8_000_000) return { ok: false, error: "That file is too large (5 MB max)." };
+  let head: Buffer;
+  try { head = Buffer.from(b64.slice(0, 8), "base64"); } catch { return { ok: false, error: "Couldn't read that file." }; }
+  if (!(head[0] === 0x50 && head[1] === 0x4b)) return { ok: false, error: "That doesn't look like a .docx file." };
+  const name = (String(file.name ?? "").trim() || "Engagement Letter (edited).docx").slice(0, 255);
+  try {
+    await db.update(engagementLetters).set({ customDocx: b64, customDocxName: name, customDocxAt: new Date(), updatedAt: new Date() }).where(eq(engagementLetters.id, id));
+    await audit(session.email, "update", "engagement-letter", String(id), `Attached edited copy: ${name}`);
+    revalidatePath("/admin/intake");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** Back to the generated letter: drop the attorney-edited copy. */
+export async function clearEngagementDocx(id: number): Promise<{ ok: boolean }> {
+  const session = await requireAdmin();
+  if (!db) return { ok: false };
+  await db.update(engagementLetters).set({ customDocx: null, customDocxName: "", customDocxAt: null, updatedAt: new Date() }).where(eq(engagementLetters.id, id));
+  await audit(session.email, "update", "engagement-letter", String(id), "Removed edited copy — back to the generated letter");
+  revalidatePath("/admin/intake");
+  return { ok: true };
 }
 
 /** Create or update a letter (status stays whatever it already is; new = draft). */
@@ -239,15 +302,19 @@ export async function sendEngagementLetterEmail(id: number, opts: SendEngagement
     const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.id, id));
     if (!letter) return { ok: false, error: "Letter not found." };
 
-    const buf = await buildEngagementLetter({
-      clientName: letter.clientName, businessName: letter.businessName, officerTitle: letter.officerTitle,
-      andIndividually: letter.andIndividually, email: letter.email, street: letter.street, city: letter.city,
-      state: letter.state, zip: letter.zip, county: letter.county,
-      office: letter.office as EngagementOffice, side: letter.side as EngagementSide,
-      generalDescription: letter.generalDescription, caseNumber: letter.caseNumber, caseStyling: letter.caseStyling,
-      phase1Custom: letter.phase1Custom, phase2Custom: letter.phase2Custom,
-      phase1: letter.phase1, phase2: letter.phase2, fees: letter.fees, openUntil: letter.openUntil,
-    });
+    // An attorney-edited copy, when attached, is what the client gets.
+    const buf = letter.customDocx
+      ? Buffer.from(letter.customDocx, "base64")
+      : await buildEngagementLetter({
+          clientName: letter.clientName, businessName: letter.businessName, officerTitle: letter.officerTitle,
+          andIndividually: letter.andIndividually, email: letter.email, street: letter.street, city: letter.city,
+          state: letter.state, zip: letter.zip, county: letter.county,
+          office: letter.office as EngagementOffice, side: letter.side as EngagementSide,
+          generalDescription: letter.generalDescription, caseNumber: letter.caseNumber, caseStyling: letter.caseStyling,
+          phase1Custom: letter.phase1Custom, phase2Custom: letter.phase2Custom,
+          phase1: letter.phase1, phase2: letter.phase2, fees: letter.fees, openUntil: letter.openUntil,
+          defaultRates: await engagementDefaultRates(),
+        });
 
     const token = await ensureSignToken(id, letter.signToken);
     const signUrl = `${siteOrigin()}/engage/${token}`;
@@ -258,13 +325,16 @@ export async function sendEngagementLetterEmail(id: number, opts: SendEngagement
       signUrl, paymentLink, criminalNote: Boolean(opts.criminalNote), debtNote: Boolean(opts.debtNote),
     });
 
+    // The intake team rides along on every letter that goes out.
+    const cc = (await intakeTeamEmails()).filter((e) => e !== to.toLowerCase());
     const res = await sendEmail({
       to,
+      cc: cc.length ? cc : undefined,
       subject,
       html,
       fromName: FIRM.name,
       attachments: [{
-        filename: letterFileName(letter),
+        filename: letter.customDocx ? (letter.customDocxName || letterFileName(letter)) : letterFileName(letter),
         content: buf,
         contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       }],

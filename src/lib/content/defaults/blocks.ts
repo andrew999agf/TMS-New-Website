@@ -107,6 +107,12 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "intake.hero.heading", page: "consultation", section: "hero", label: "Heading", type: "text", value: "What brings you in?" },
   { key: "intake.hero.body", page: "consultation", section: "hero", label: "Body", type: "text", value: "Tell us what is going on. Start typing, or pick what fits. This takes a couple of minutes." },
   { key: "intake.consent", page: "consultation", section: "consent", label: "Consent language", type: "text", value: "Submitting this form does not create an attorney-client relationship. I understand and agree that the firm does not represent me until I have signed a representation agreement issued by the firm and paid the applicable retainer fee. Please do not send confidential or time-sensitive details here." },
+  // Standard hourly rates for engagement letters. When a letter is drafted
+  // BELOW one of these, the letter prints the standard rate struck through
+  // followed by the reduced rate — no commentary, the client sees the break.
+  { key: "engagement.rate.attorney", page: "consultation", section: "engagement", label: "Standard attorney hourly rate ($)", type: "text", value: "425" },
+  { key: "engagement.rate.associate", page: "consultation", section: "engagement", label: "Standard associate / contract hourly rate ($)", type: "text", value: "425" },
+  { key: "engagement.rate.staff", page: "consultation", section: "engagement", label: "Standard staff / clerical hourly rate ($)", type: "text", value: "145" },
 
   // ---- Payment ----
   { key: "payment.heading", page: "payment", section: "main", label: "Heading", type: "text", value: "Make a Payment" },

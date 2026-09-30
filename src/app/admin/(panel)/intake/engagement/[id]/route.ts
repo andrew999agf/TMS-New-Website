@@ -5,6 +5,7 @@ import { engagementLetters } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { buildEngagementLetter, letterFileName } from "@/lib/engagement/letter";
+import { engagementDefaultRates } from "@/app/admin/(panel)/intake/engagement-actions";
 import type { EngagementOffice, EngagementSide } from "@/lib/engagement/config";
 
 export const runtime = "nodejs";
@@ -22,7 +23,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.id, id));
   if (!letter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // The attorney-edited copy, when attached, is what downloads — the same
+  // file a send would attach. Remove it in the dialog to get back to the
+  // generated letter.
+  if (letter.customDocx) {
+    return new NextResponse(new Uint8Array(Buffer.from(letter.customDocx, "base64")), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": disposition(letter.customDocxName || letterFileName(letter)),
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const buf = await buildEngagementLetter({
+    defaultRates: await engagementDefaultRates(),
     clientName: letter.clientName,
     businessName: letter.businessName,
     officerTitle: letter.officerTitle,
