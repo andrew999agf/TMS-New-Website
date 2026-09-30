@@ -39,31 +39,58 @@ async function launchBrowser() {
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
     });
   }
-  // Vercel's Node 20/22 functions don't carry the AWS env markers that
-  // @sparticuz/chromium checks, so it extracted the browser but SKIPPED the
-  // shared libraries (libnss3 & co.) → "cannot open shared object file".
-  // Claim the AL2023 runtime explicitly BEFORE importing the package, and
-  // pin the library/font paths ourselves so nothing depends on import order
-  // or a warm sandbox that extracted only the binary.
-  process.env["AWS_LAMBDA_JS_RUNTIME"] ??= "nodejs22.x";
+  // @sparticuz/chromium decides whether to unpack its shared libraries
+  // (libnss3 & co.) by sniffing AWS env markers, and on Vercel that sniffing
+  // fails — the browser binary lands in /tmp with nothing it links against
+  // ("cannot open shared object file"). Its detection is not trusted here at
+  // all: the library pack's presence is VERIFIED on disk, extracted directly
+  // from the package when absent, and the library path is handed to the
+  // browser process explicitly.
+  process.env["AWS_LAMBDA_JS_RUNTIME"] = "nodejs22.x";
   const { existsSync, rmSync } = await import("node:fs");
-  if (existsSync("/tmp/chromium") && !existsSync("/tmp/al2023/lib")) {
-    // A half-extracted warm sandbox: drop the binary so the full extraction
-    // (binary + libraries + fonts) runs again.
+  const LIBNSS = "/tmp/al2023/lib/libnss3.so";
+  if (existsSync("/tmp/chromium") && !existsSync(LIBNSS)) {
+    // A half-extracted sandbox: drop the binary so extraction runs fresh.
     try { rmSync("/tmp/chromium", { force: true }); } catch { /* re-extract below */ }
   }
   const mod = await import("@sparticuz/chromium");
   const chromium = (mod.default ?? mod) as typeof mod.default;
   const executablePath = await chromium.executablePath();
-  process.env["FONTCONFIG_PATH"] ??= "/tmp/fonts";
-  if (!(process.env["LD_LIBRARY_PATH"] ?? "").includes("/tmp/al2023/lib")) {
-    process.env["LD_LIBRARY_PATH"] = ["/tmp/al2023/lib", process.env["LD_LIBRARY_PATH"]].filter(Boolean).join(":");
+  if (!existsSync(LIBNSS)) {
+    // Their detection skipped the libraries again — unpack them ourselves,
+    // straight from the package's bin folder.
+    const { createRequire } = await import("node:module");
+    const { dirname, join } = await import("node:path");
+    const req = createRequire(join(process.cwd(), "package.json"));
+    const binDir = join(dirname(req.resolve("@sparticuz/chromium/package.json")), "bin");
+    const lfsMod = await import("@sparticuz/chromium/build/lambdafs.js") as unknown as { default?: { inflate(p: string): Promise<string> }; inflate?(p: string): Promise<string> };
+    const lfs = lfsMod.default ?? lfsMod;
+    await (lfs as { inflate(p: string): Promise<string> }).inflate(join(binDir, "al2023.tar.br"));
+    if (!existsSync("/tmp/fonts")) await (lfs as { inflate(p: string): Promise<string> }).inflate(join(binDir, "fonts.tar.br")).catch(() => undefined);
   }
-  return puppeteer.launch({
-    executablePath,
-    args: [...chromium.args, "--font-render-hinting=none"],
-    defaultViewport: chromium.defaultViewport,
-  });
+  const libPath = ["/tmp/al2023/lib", process.env["LD_LIBRARY_PATH"]].filter(Boolean).join(":");
+  process.env["LD_LIBRARY_PATH"] = libPath;
+  process.env["FONTCONFIG_PATH"] ??= "/tmp/fonts";
+  try {
+    return await puppeteer.launch({
+      executablePath,
+      headless: chromium.headless as "shell", // the sparticuz build is headless_shell
+      args: [...chromium.args, "--font-render-hinting=none"],
+      defaultViewport: chromium.defaultViewport,
+      env: { ...process.env, LD_LIBRARY_PATH: libPath, FONTCONFIG_PATH: process.env["FONTCONFIG_PATH"]! },
+    });
+  } catch (err) {
+    // If it still fails, the error must say exactly what the sandbox looks
+    // like — no more blind rounds.
+    const diag = [
+      `bin=${existsSync("/tmp/chromium")}`,
+      `libnss3=${existsSync(LIBNSS)}`,
+      `fonts=${existsSync("/tmp/fonts")}`,
+      `LD=${libPath}`,
+      `execEnv=${process.env["AWS_EXECUTION_ENV"] ?? "(unset)"}`,
+    ].join(" ");
+    throw new Error(`${(err as Error).message} [diag: ${diag}]`, { cause: err });
+  }
 }
 
 export async function docxToPdf(docx: Buffer): Promise<Buffer> {
