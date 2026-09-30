@@ -122,6 +122,8 @@ export const DISCOVERY_DDL = [
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx text;
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx_name varchar(255) NOT NULL DEFAULT '';
       ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS custom_docx_at timestamptz;
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signature_kind varchar(16) NOT NULL DEFAULT '';
+      ALTER TABLE engagement_letters ADD COLUMN IF NOT EXISTS signature_image text;
     END IF;
   END $$;`,
   `CREATE TABLE IF NOT EXISTS lit_files (
@@ -226,6 +228,9 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE case_hub ADD COLUMN IF NOT EXISTS retainer_paid boolean`,
+  `ALTER TABLE case_hub ADD COLUMN IF NOT EXISTS retainer_set_by varchar(255)`,
+  `ALTER TABLE case_hub ADD COLUMN IF NOT EXISTS retainer_set_at timestamptz`,
   // AI server concierge: start/stop audit trail behind the cost meter.
   `CREATE TABLE IF NOT EXISTS ai_server_log (
     id serial PRIMARY KEY,

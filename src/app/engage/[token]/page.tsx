@@ -11,14 +11,13 @@ import { SignForm } from "./sign-form";
 export const metadata: Metadata = { title: `Engagement Letter — ${FIRM.name}`, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
-const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0 })}`;
 const CT = { timeZone: "America/Chicago" } as const;
 
 /**
  * The client-facing e-sign page. Reached only by the unguessable link the
- * engagement email carries. Shows who the letter is for, the key terms, a
- * download of the full letter, and the signature block. The letter itself is
- * the controlling document — this page's summary never replaces it.
+ * engagement email carries. The letter itself is shown in a PDF viewer —
+ * no summary, no editable Word copy — with a sign call-to-action up top and
+ * the signature block (typed in script, or drawn) below.
  */
 export default async function EngagePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -32,36 +31,48 @@ export default async function EngagePage({ params }: { params: Promise<{ token: 
   const client = letter.businessName
     ? `${letter.businessName}${letter.andIndividually ? ` and ${letter.clientName}, individually` : ` (by ${letter.clientName}${letter.officerTitle ? `, ${letter.officerTitle}` : ""})`}`
     : letter.clientName;
-  const fees = letter.fees;
+  const canSign = letter.status !== "signed" && !expired;
+  const letterUrl = `/engage/${token}/letter`;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 text-[15px] leading-relaxed text-[var(--c-ink,#1a1a1a)]">
+    <main className="mx-auto max-w-3xl px-4 py-10 text-[15px] leading-relaxed text-[var(--c-ink,#1a1a1a)]">
+      {/* Script face for the typed-signature preview. */}
+      <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet" />
+
       <header className="mb-8 border-b border-neutral-300 pb-4">
         <p className="font-[family-name:var(--font-display,Georgia)] text-2xl font-semibold">{FIRM.name}</p>
         <p className="text-sm text-neutral-500">Engagement letter — review and sign · Office: {office.label} · {office.phone}</p>
       </header>
 
-      <h1 className="mb-1 text-xl font-semibold">Proposed engagement for {client}</h1>
-      {letter.generalDescription && <p className="mb-4 text-neutral-600">{letter.generalDescription}</p>}
-
-      <div className="mb-6 rounded-lg border border-neutral-300 bg-neutral-50 p-4">
-        <p className="mb-2 font-semibold">Key terms (summary only — the letter controls)</p>
-        <ul className="list-disc space-y-1 pl-5 text-sm text-neutral-700">
-          <li>Attorney rate {money(fees.attorneyRate)}/hr · associate {money(fees.associateRate)}/hr · staff {money(fees.staffRate)}/hr</li>
-          {letter.phase1 && <li>Phase 1 retainer: {money(fees.phase1Retainer)}</li>}
-          {letter.phase2 && <li>Litigation retainer: {money(fees.litigationRetainer)} · minimum trust balance {money(fees.minTrustBalance)} · trial retainer {money(fees.trialRetainer)}</li>}
-          {letter.caseStyling && <li>Matter: {letter.caseStyling}{letter.caseNumber ? ` (No. ${letter.caseNumber})` : ""}</li>}
-          {letter.openUntil && (
-            <li>This offer of representation is open until {letter.openUntil.toLocaleString("en-US", { ...CT, dateStyle: "long", timeStyle: "short" })} (Central).</li>
-          )}
-        </ul>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold">Engagement letter for {client}</h1>
+          {letter.generalDescription && <p className="text-neutral-600">{letter.generalDescription}</p>}
+        </div>
+        {canSign && (
+          <a href="#sign" className="rounded-md bg-[#7a1f2b] px-6 py-3 font-semibold text-white hover:opacity-90">
+            Sign the letter
+          </a>
+        )}
       </div>
 
-      <p className="mb-6">
-        <a href={`/engage/${token}/letter`}
-          className="inline-block rounded-md bg-[#7a1f2b] px-5 py-2.5 font-semibold text-white hover:opacity-90">
-          Download the full engagement letter (Word)
-        </a>
+      {/* The letter itself, in a PDF viewer. */}
+      <div className="mb-2 flex flex-wrap items-center gap-4 text-sm">
+        <span className="font-semibold">The engagement letter</span>
+        <span className="flex-1" />
+        <a href={`${letterUrl}?dl=1`} className="font-medium text-[#7a1f2b] hover:underline">Download PDF</a>
+        <a href={letterUrl} target="_blank" rel="noreferrer" className="font-medium text-[#7a1f2b] hover:underline">Open / print</a>
+      </div>
+      <iframe
+        src={letterUrl}
+        title="Engagement letter (PDF)"
+        className="mb-2 h-[70vh] min-h-[420px] w-full rounded-lg border border-neutral-300 bg-neutral-100"
+      />
+      <p className="mb-6 text-xs text-neutral-500">
+        If the letter doesn&apos;t display above, use <a href={`${letterUrl}?dl=1`} className="underline">Download PDF</a>.
+        {letter.openUntil && letter.status !== "signed" && (
+          <> This offer of representation is open until {letter.openUntil.toLocaleString("en-US", { ...CT, dateStyle: "long", timeStyle: "short" })} (Central).</>
+        )}
       </p>
 
       {letter.status === "signed" ? (
@@ -69,6 +80,7 @@ export default async function EngagePage({ params }: { params: Promise<{ token: 
           <p className="font-semibold text-green-800">This engagement letter has been signed.</p>
           <p className="mt-1 text-sm text-neutral-700">
             Signed by {letter.signerName} on {letter.signedAt?.toLocaleString("en-US", { ...CT, dateStyle: "long", timeStyle: "short" })} (Central).
+            A copy of the signed letter was emailed to you, and the viewer above shows the signed version.
             Next steps from the engagement email: pay the applicable retainer and email a copy of your driver license.
             Questions? Call {office.phone}.
           </p>

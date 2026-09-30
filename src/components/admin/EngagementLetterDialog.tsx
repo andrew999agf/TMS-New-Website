@@ -338,7 +338,10 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                   <button onClick={() => copySignLink(l.id)} title="Copy the client's e-sign link" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
                     {linkCopied === l.id ? <Check size={15} className="text-emerald-600" /> : <Link2 size={15} />}
                   </button>
-                  <button onClick={() => download(l.id)} title="Download .docx" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Download size={15} /></button>
+                  <a href={`/admin/intake/engagement/${l.id}/pdf`} target="_blank" rel="noreferrer"
+                    title={l.signedAt ? "View the signed letter (PDF with signature page)" : "View the letter as the client sees it (PDF)"}
+                    className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Eye size={15} /></a>
+                  <button onClick={() => download(l.id)} title="Download .docx (for editing — clients only ever receive the PDF)" className="text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"><Download size={15} /></button>
                   {l.status === "draft" && (
                     <button onClick={() => lifecycle(l.id, "sent")} className="text-xs text-[var(--c-accent)] hover:underline">Mark sent</button>
                   )}
@@ -564,7 +567,7 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                 {editing?.customDocxName ? (
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <Paperclip size={12} className="text-[var(--c-accent)]" />
-                    Edited copy attached: <b>{editing.customDocxName}</b> — this exact file is what sends and downloads.
+                    Edited copy attached: <b>{editing.customDocxName}</b> — this exact PDF is what sends and downloads.
                     <button
                       onClick={() => { if (confirm("Remove the edited copy and go back to the generated letter?")) start(async () => { await clearEngagementDocx(editing.id); router.refresh(); }); }}
                       className="text-[var(--c-error)] hover:underline"
@@ -573,9 +576,9 @@ export function EngagementLetterDialog({ intakeId, branch, answers, presetName, 
                 ) : (
                   <label className="inline-flex cursor-pointer items-center gap-1.5 hover:text-[var(--c-accent)]">
                     {docxBusy ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
-                    Or attach a .docx you downloaded and edited in Word — it will be sent in place of the generated letter.
+                    Or attach an edited copy as a PDF (edit the .docx in Word, then File &rarr; Save As &rarr; PDF) — it sends in place of the generated letter. Letters only ever go out as PDFs.
                     <input
-                      type="file" accept=".docx" className="hidden"
+                      type="file" accept=".pdf" className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadDocx(f); e.target.value = ""; }}
                     />
                   </label>

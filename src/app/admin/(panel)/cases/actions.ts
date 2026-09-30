@@ -199,6 +199,27 @@ export async function removeCaseParty(id: number, index: number) {
   }
 }
 
+/** The "has the retainer been paid?" flag on a case. null = not answered.
+ *  A reminder for the team until payment tracking is fully coordinated. */
+export async function setCaseRetainer(id: number, paid: boolean | null) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    await db.update(caseHub).set({
+      retainerPaid: paid,
+      retainerSetBy: paid === null ? null : session.email,
+      retainerSetAt: paid === null ? null : new Date(),
+      updatedAt: new Date(),
+    }).where(eq(caseHub.id, id));
+    await audit(session.email, "update", "case", String(id), paid === null ? "Retainer question cleared" : `Retainer marked ${paid ? "PAID" : "NOT paid"}`);
+    revalidatePath("/admin/cases");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[cases] setCaseRetainer failed:", err);
+    return { ok: false as const, error: "Couldn't update the case." };
+  }
+}
+
 /** Close or reopen a case. A closed case keeps every record — it just moves
  *  out of the main list into the low-profile "Closed cases" section. */
 export async function setCaseArchived(id: number, archived: boolean) {

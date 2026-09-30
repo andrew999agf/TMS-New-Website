@@ -236,15 +236,20 @@ export async function buildEngagementLetterPreview(d: LetterData): Promise<Lette
   const out: LetterPreviewPara[] = [];
   const pRe = /<w:p(?:[ >][\s\S]*?)?<\/w:p>|<w:p\/>/g;
   let m: RegExpExecArray | null;
+  // A tab renders as a space; and the text regex must not mistake <w:tab/>
+  // for an opening <w:t ...> tag (it otherwise swallows real markup as text).
+  const T_RE = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
+  const runText = (s: string) =>
+    unesc([...s.replace(/<w:tab\/>/g, "<w:t> </w:t>").matchAll(T_RE)].map((t) => t[1]).join(""));
   while ((m = pRe.exec(xml))) {
     const p = m[0];
-    const text = unesc([...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => t[1]).join(""));
+    const text = runText(p);
     // Per-run segments only where strikethrough appears (reduced rates), so
     // the preview can draw the strike the way the letter will.
     let segs: LetterPreviewPara["segs"];
     if (/<w:strike\s*\/>/.test(p)) {
       segs = [...p.matchAll(/<w:r(?:[ >][\s\S]*?)?<\/w:r>/g)].map((r) => ({
-        text: unesc([...r[0].matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => t[1]).join("")),
+        text: runText(r[0]),
         strike: /<w:strike\s*\/>/.test(r[0]),
       })).filter((s) => s.text !== "");
     }

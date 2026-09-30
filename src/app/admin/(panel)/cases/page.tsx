@@ -26,6 +26,7 @@ export default async function CasesPage() {
       cases = (await db.select().from(caseHub).orderBy(asc(caseHub.matter))).map((c) => ({
         id: c.id, matter: c.matter, name: c.name, causeNumber: c.causeNumber, court: c.court,
         parties: (c.parties as CaseParty[]) ?? [], archived: c.archived,
+        retainerPaid: c.retainerPaid ?? null,
       }));
     } catch { /* table just created */ }
   }

@@ -5,7 +5,7 @@ import { engagementLetters } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { buildEngagementLetter, letterFileName } from "@/lib/engagement/letter";
-import { engagementDefaultRates } from "@/app/admin/(panel)/intake/engagement-actions";
+import { engagementDefaultRates } from "@/lib/engagement/rates";
 import type { EngagementOffice, EngagementSide } from "@/lib/engagement/config";
 
 export const runtime = "nodejs";

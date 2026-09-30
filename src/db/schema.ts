@@ -856,6 +856,9 @@ export const engagementLetters = pgTable(
     customDocx: text("custom_docx"),
     customDocxName: varchar("custom_docx_name", { length: 255 }).notNull().default(""),
     customDocxAt: timestamp("custom_docx_at", { withTimezone: true }),
+    /** How the client signed ("typed" | "drawn") and, for drawn, the PNG (base64). */
+    signatureKind: varchar("signature_kind", { length: 16 }).notNull().default(""),
+    signatureImage: text("signature_image"),
     createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1404,6 +1407,10 @@ export const caseHub = pgTable(
     /** [{ name, role }] — role e.g. Plaintiff, Defendant, Intervenor, Third-Party Defendant. */
     parties: jsonb("parties").notNull().default([]),
     archived: boolean("archived").notNull().default(false),
+    /** Has the retainer been paid? null = not answered yet. */
+    retainerPaid: boolean("retainer_paid"),
+    retainerSetBy: varchar("retainer_set_by", { length: 255 }),
+    retainerSetAt: timestamp("retainer_set_at", { withTimezone: true }),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -113,3 +113,30 @@ export async function buildEngagementEmail(o: EngagementEmailOpts): Promise<{ su
   });
   return { subject, html };
 }
+
+/** The client's copy after e-signing: short note, signed PDF attached. */
+export async function buildSignedCopyEmail(o: { clientName: string; office: EngagementOffice }): Promise<{ subject: string; html: string }> {
+  const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
+  const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
+  const fontPalette = getFontPalette(theme.fontPaletteId);
+  const fonts = { display: fontPalette.displayLabel, body: fontPalette.bodyLabel };
+  const firmName = globals["global.firmName"] || FIRM.name;
+  const phone = OFFICE_MAIL[o.office]?.phone ?? OFFICE_INFO[o.office]?.phone ?? "";
+  const p = (html: string) => `<p style="margin:0 0 12px;line-height:1.6;color:${colors.ink}">${html}</p>`;
+
+  const body =
+    p(`Dear ${esc(o.clientName)},`) +
+    p(`Thank you — your engagement letter has been signed. A copy of the signed letter is attached as a PDF for your records.`) +
+    p(`As a reminder from the engagement email, the next steps are to pay the applicable retainer and email a copy of your driver license. If you have any questions, please call our office at <b>${esc(phone)}</b>.`) +
+    firmSignatureHtml(colors);
+
+  return {
+    subject: `Your signed engagement letter — ${firmName}`,
+    html: brandedEmailHtml({
+      colors, fonts,
+      logoLight: globals["global.logoLight"] || undefined,
+      logoDark: globals["global.logoDark"] || undefined,
+      firmName, bodyHtml: body, footer: false,
+    }),
+  };
+}
