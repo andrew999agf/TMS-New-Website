@@ -20,7 +20,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.id, id));
   if (!letter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const pdf = await letterPdf(letter);
+  let pdf: Awaited<ReturnType<typeof letterPdf>>;
+  try {
+    pdf = await letterPdf(letter);
+  } catch (err) {
+    console.error("[engagement] letter PDF render failed:", err);
+    return NextResponse.json({ error: `PDF print engine failed: ${(err as Error).message}` }, { status: 503 });
+  }
   if (!pdf) return NextResponse.json({ error: "The attached edited copy is a Word file — re-attach it as a PDF." }, { status: 409 });
 
   const dl = new URL(req.url).searchParams.get("dl") === "1";

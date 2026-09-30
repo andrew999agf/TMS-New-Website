@@ -22,7 +22,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const [letter] = await db.select().from(engagementLetters).where(eq(engagementLetters.signToken, token));
   if (!letter) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const pdf = await letterPdf(letter);
+  let pdf: Awaited<ReturnType<typeof letterPdf>>;
+  try {
+    pdf = await letterPdf(letter);
+  } catch (err) {
+    console.error("[engage] letter PDF render failed:", err);
+    return NextResponse.json({ error: "The letter can't be displayed right now — please call the office." }, { status: 503 });
+  }
   if (!pdf) return NextResponse.json({ error: "Letter unavailable — please call the office." }, { status: 409 });
 
   const dl = new URL(req.url).searchParams.get("dl") === "1";

@@ -859,6 +859,10 @@ export const engagementLetters = pgTable(
     /** How the client signed ("typed" | "drawn") and, for drawn, the PNG (base64). */
     signatureKind: varchar("signature_kind", { length: 16 }).notNull().default(""),
     signatureImage: text("signature_image"),
+    /** The EXACT signed PDF, frozen at signing (base64). Once set, every view
+     *  and email serves these bytes — the signed artifact can never change. */
+    signedPdf: text("signed_pdf"),
+    signedPdfName: varchar("signed_pdf_name", { length: 255 }).notNull().default(""),
     createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

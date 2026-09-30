@@ -156,6 +156,11 @@ export async function clearEngagementDocx(id: number): Promise<{ ok: boolean }> 
 export async function saveEngagementLetter(input: EngagementInput): Promise<{ ok: boolean; id?: number; error?: string }> {
   const session = await requireAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
+  if (input.id) {
+    // A signed letter is an executed agreement — its record never changes.
+    const [existing] = await db.select({ status: engagementLetters.status }).from(engagementLetters).where(eq(engagementLetters.id, input.id));
+    if (existing?.status === "signed") return { ok: false, error: "This letter has been SIGNED and is locked. Start a new letter instead." };
+  }
   if (!input.clientName.trim()) return { ok: false, error: "Enter the client's name." };
   if (!input.phase1 && !input.phase2) return { ok: false, error: "Keep at least one phase in the engagement." };
 
@@ -297,7 +302,13 @@ export async function sendEngagementLetterEmail(id: number, opts: SendEngagement
 
     // The letter always goes out as a PDF (a Word file could be edited by the
     // client): the attorney-edited PDF when attached, else the generated one.
-    const pdf = await letterPdf(letter);
+    let pdf: Awaited<ReturnType<typeof letterPdf>>;
+    try {
+      pdf = await letterPdf(letter);
+    } catch (err) {
+      console.error("[engagement] letter PDF render failed:", err);
+      return { ok: false, error: `NOT SENT — the PDF print engine failed (${(err as Error).message}). The letter was not emailed; tell Claude this exact message.` };
+    }
     if (!pdf) return { ok: false, error: "The attached edited copy is a Word file — re-attach it as a PDF, or remove it to send the generated letter." };
 
     const token = await ensureSignToken(id, letter.signToken);

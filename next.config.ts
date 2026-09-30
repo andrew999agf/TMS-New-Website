@@ -56,7 +56,13 @@ const nextConfig: NextConfig = {
   // every PDF open in production fails ("Setting up fake worker failed").
   // Belt to ensurePdfWorker()'s suspenders — covers every route.
   outputFileTracingIncludes: {
-    "/**": ["node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+    "/**": [
+      "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      // The brotli-packed Chromium that prints engagement letters to PDF —
+      // without this the print engine can be missing in production and the
+      // letter routes fail (loudly, by design).
+      "node_modules/@sparticuz/chromium/bin/**",
+    ],
   },
   images: {
     formats: ["image/avif", "image/webp"],

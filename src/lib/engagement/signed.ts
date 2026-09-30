@@ -3,7 +3,7 @@ import type { engagementLetters } from "@/db/schema";
 import type { EngagementOffice, EngagementSide } from "./config";
 import type { LetterData } from "./letter";
 import { buildEngagementLetter } from "./letter";
-import { buildEngagementLetterPdf, appendSignaturePageToPdf, stampSignatureOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
+import { appendSignaturePageToPdf, stampSignatureOnPdf, letterPdfFileName, type SignatureRecord } from "./pdf";
 import { docxToPdf } from "./docx2pdf";
 import { engagementDefaultRates } from "./rates";
 import { getOrCreateCaseForMatter } from "@/lib/cases";
@@ -58,27 +58,47 @@ async function applySignature(buf: Buffer, sig: SignatureRecord, anchor: string)
  * signature line and the electronic-signature record page is appended.
  */
 export async function letterPdf(letter: LetterDbRow): Promise<{ buf: Buffer; fileName: string } | null> {
+  // A frozen signed PDF is served byte-for-byte, forever. Nothing — not a
+  // template change, not a rendering change, not an edit to the letter's
+  // fields — alters the document the client actually signed.
+  if (letter.signedPdf) {
+    return { buf: Buffer.from(letter.signedPdf, "base64"), fileName: letter.signedPdfName || letterPdfFileName(letter, true) };
+  }
   const sig = signatureFromDbRow(letter);
   if (letter.customDocx && isPdf(letter.customDocx)) {
     let buf: Buffer = Buffer.from(letter.customDocx, "base64");
     if (sig) buf = await applySignature(buf, sig, signerLineText(letter));
     const base = (letter.customDocxName || "Engagement Letter.pdf").replace(/\.(docx|pdf)$/i, "");
-    return { buf, fileName: `${base}${sig ? " (signed)" : ""}.pdf` };
+    const out = { buf, fileName: `${base}${sig ? " (signed)" : ""}.pdf` };
+    if (sig) await freezeSignedPdf(letter.id, out);
+    return out;
   }
   if (letter.customDocx) return null; // legacy Word upload — no PDF to serve
   const data = letterDataFromDbRow(letter, await engagementDefaultRates());
-  let buf: Buffer;
-  try {
-    // The real thing: the filled Word document, printed.
-    buf = await docxToPdf(await buildEngagementLetter(data));
-  } catch (err) {
-    // Never fail a send or a signing over the printer — the typeset fallback
-    // carries the identical text while the Chromium path is investigated.
-    console.error("[engagement] docx→PDF print failed; using typeset fallback:", err);
-    return { buf: await buildEngagementLetterPdf(data, sig ?? undefined), fileName: letterPdfFileName(letter, !!sig) };
-  }
+  // The letter IS the filled Word document, printed. If the print engine is
+  // down, callers surface the error — the firm's letter never gets replaced
+  // with a re-typeset stand-in.
+  let buf = await docxToPdf(await buildEngagementLetter(data));
   if (sig) buf = await applySignature(buf, sig, signerLineText(letter));
-  return { buf, fileName: letterPdfFileName(letter, !!sig) };
+  const out = { buf, fileName: letterPdfFileName(letter, !!sig) };
+  if (sig) await freezeSignedPdf(letter.id, out); // first successful render after signing becomes THE document
+  return out;
+}
+
+/** Store the signed PDF on the letter row — once, best-effort, idempotent. */
+async function freezeSignedPdf(letterId: number, pdf: { buf: Buffer; fileName: string }): Promise<void> {
+  try {
+    const { db } = await import("@/db");
+    const { engagementLetters } = await import("@/db/schema");
+    const { and, eq, isNull } = await import("drizzle-orm");
+    if (!db) return;
+    await db
+      .update(engagementLetters)
+      .set({ signedPdf: pdf.buf.toString("base64"), signedPdfName: pdf.fileName, updatedAt: new Date() })
+      .where(and(eq(engagementLetters.id, letterId), isNull(engagementLetters.signedPdf)));
+  } catch (err) {
+    console.error("[engagement] could not freeze the signed PDF (will retry on next render):", err);
+  }
 }
 
 /**
