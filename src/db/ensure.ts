@@ -404,3 +404,32 @@ export function ensureResultsPageColumns(): Promise<void> {
   }
   return ensured;
 }
+
+let homeHeroCopy: Promise<void> | null = null;
+
+/**
+ * One-time copy update for the homepage hero: the headline became "Preparing for trial from day one."
+ * and the old headline moved to the front of the support line. Only rows still
+ * holding the exact previous wording are touched — an admin edit made in
+ * Pages is never overwritten.
+ */
+export function ensureHomeHeroCopy(): Promise<void> {
+  if (!db) return Promise.resolve();
+  if (!homeHeroCopy) {
+    homeHeroCopy = (async () => {
+      await db!.execute(sql`UPDATE content_blocks SET value = to_jsonb(${"Preparing for trial from day one."}::text), updated_at = now()
+        WHERE key = 'home.hero.headline' AND value = to_jsonb(${"Generally trained for your specific legal matter."}::text)`);
+      // A parked draft holding the old wording would silently revert the
+      // change on its next publish — move it too.
+      await db!.execute(sql`UPDATE content_blocks SET draft = to_jsonb(${"Preparing for trial from day one."}::text)
+        WHERE key = 'home.hero.headline' AND draft = to_jsonb(${"Generally trained for your specific legal matter."}::text)`);
+      await db!.execute(sql`UPDATE content_blocks SET value = to_jsonb(${"Generally trained for your specific legal matter. The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches."}::text), updated_at = now()
+        WHERE key = 'home.hero.support' AND value = to_jsonb(${"The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches."}::text)`);
+      await db!.execute(sql`UPDATE content_blocks SET draft = to_jsonb(${"Generally trained for your specific legal matter. The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches."}::text)
+        WHERE key = 'home.hero.support' AND draft = to_jsonb(${"The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches."}::text)`);
+    })().catch(() => {
+      homeHeroCopy = null; // retried by the next render
+    }) as Promise<void>;
+  }
+  return homeHeroCopy;
+}

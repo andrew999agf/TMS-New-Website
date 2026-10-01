@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { ensureResultsPageColumns } from "@/db/ensure";
+import { ensureResultsPageColumns, ensureHomeHeroCopy } from "@/db/ensure";
 import {
   contentBlocks,
   practiceAreas as paTable,
@@ -49,6 +49,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 /* ---- Content blocks ---- */
 
 export async function getBlocks(page: string): Promise<Record<string, string>> {
+  if (page === "home") await ensureHomeHeroCopy();
   const defaults = Object.fromEntries(
     Object.entries(BLOCK_DEFAULTS).filter(([k]) => k.startsWith(page + ".")),
   );
