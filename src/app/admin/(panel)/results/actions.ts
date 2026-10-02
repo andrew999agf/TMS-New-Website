@@ -25,6 +25,9 @@ export type ResultInput = {
   pageBody?: string;
   heroImage?: string;
   heroFocal?: string;
+  shareImage?: string;
+  shareTitle?: string;
+  shareDescription?: string;
 };
 
 export async function saveResult(input: ResultInput) {
@@ -49,6 +52,9 @@ export async function saveResult(input: ResultInput) {
     pageBody: input.pageBody || null,
     heroImage: input.heroImage || null,
     heroFocal: input.heroFocal || null,
+    shareImage: input.shareImage?.trim() || null,
+    shareTitle: input.shareTitle?.trim().slice(0, 255) || null,
+    shareDescription: input.shareDescription?.trim() || null,
     updatedAt: new Date(),
   };
 

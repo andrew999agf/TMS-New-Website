@@ -174,6 +174,28 @@ function ResultForm({ initial, practices, onClose }: { initial: ResultInput; pra
             </div>
           </div>
         )}
+        {/* Optional per-page social share card. Left empty, the page shares
+            exactly like the home page. */}
+        <details className="rounded-md border border-[var(--c-border)] p-3" open={!!(form.shareImage || form.shareTitle || form.shareDescription)}>
+          <summary className="cursor-pointer text-sm font-medium">
+            Social share card <span className="font-normal text-[var(--c-ink-muted)]">(optional — what shows when this page is texted or posted)</span>
+          </summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-[var(--c-ink-muted)]">
+              Leave everything blank and the page shares like the home page (the site&apos;s share image and title). Add an image to give this result its own card; the title and blurb default to the result&apos;s title and summary.
+            </p>
+            <ImageUploadField
+              value={form.shareImage ?? ""}
+              onChange={(url) => setForm((f) => ({ ...f, shareImage: url }))}
+              slot="ogImage"
+              folder="results-share"
+              allowRemoveBg={false}
+              normalize={{ width: 1200, height: 630, format: "jpeg" }}
+            />
+            <input value={form.shareTitle ?? ""} onChange={(e) => setForm({ ...form, shareTitle: e.target.value })} placeholder={`Share title (default: ${form.title || "the result title"})`} className={cls} />
+            <textarea value={form.shareDescription ?? ""} onChange={(e) => setForm({ ...form, shareDescription: e.target.value })} placeholder="Share blurb (default: the result summary)" rows={2} className={cls} />
+          </div>
+        </details>
         {error && <p className="text-sm text-[var(--c-error)]">{error}</p>}
         <div className="flex gap-2">
           <button onClick={save} disabled={pending} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-60"><Check size={15} /> Save</button>

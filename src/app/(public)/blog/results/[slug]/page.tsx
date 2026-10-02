@@ -20,9 +20,32 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const result = await findResult(slug);
   if (!result) return {};
+  const description = result.summary ?? result.detail ?? "Case result.";
+  const base: Metadata = { title: result.title, description };
+  // No custom share card → inherit the site's (home page) share exactly.
+  if (!result.shareImage && !result.shareTitle && !result.shareDescription) return base;
+
+  const shareTitle = result.shareTitle || result.title;
+  const shareDescription = result.shareDescription || description;
+  // A title/blurb-only card still needs an image: fall back to the site's.
+  const image = result.shareImage || (await getBlocks("global"))["global.socialImage"] || "";
+  const imgType = /\.png($|\?)/i.test(image) ? "image/png" : /\.(jpg|jpeg)($|\?)/i.test(image) ? "image/jpeg" : /\.webp($|\?)/i.test(image) ? "image/webp" : undefined;
+  const images = image ? [{ url: image, width: 1200, height: 630, alt: shareTitle, ...(imgType ? { type: imgType } : {}) }] : undefined;
   return {
-    title: result.title,
-    description: result.summary ?? result.detail ?? "Case result.",
+    ...base,
+    openGraph: {
+      type: "article",
+      title: shareTitle,
+      description: shareDescription,
+      url: `/blog/results/${slug}`,
+      ...(images ? { images } : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: shareTitle,
+      description: shareDescription,
+      ...(image ? { images: [image] } : {}),
+    },
   };
 }
 

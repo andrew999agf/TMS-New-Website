@@ -1,3 +1,4 @@
+import { ensureResultsPageColumns } from "@/db/ensure";
 import { NextResponse } from "next/server";
 import { notInArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -50,21 +51,33 @@ export async function POST() {
     //    are made in the admin panel, not the seed file, so carry them across
     //    the replace by title — otherwise every refresh would silently unpublish
     //    the owner's result pages and discard their write-ups.
-    await db.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS has_page boolean NOT NULL DEFAULT false`);
-    await db.execute(sql`ALTER TABLE case_results ADD COLUMN IF NOT EXISTS page_body text`);
-    const pageSettings = new Map<string, { hasPage: boolean; pageBody: string | null }>();
+    // Detail-page settings, banner photos, and share cards are all made in the
+    // admin panel, not the seed file — carry every one of them across the
+    // replace by title.
+    await ensureResultsPageColumns();
+    type Kept = Pick<typeof caseResults.$inferSelect, "hasPage" | "pageBody" | "heroImage" | "heroFocal" | "shareImage" | "shareTitle" | "shareDescription">;
+    const kept = new Map<string, Kept>();
     for (const r of await db.select().from(caseResults)) {
-      if (r.hasPage || r.pageBody) pageSettings.set(r.title, { hasPage: r.hasPage, pageBody: r.pageBody });
+      kept.set(r.title, {
+        hasPage: r.hasPage, pageBody: r.pageBody, heroImage: r.heroImage, heroFocal: r.heroFocal,
+        shareImage: r.shareImage, shareTitle: r.shareTitle, shareDescription: r.shareDescription,
+      });
     }
     await db.delete(caseResults);
     for (const r of CASE_RESULTS) {
-      const page = pageSettings.get(r.title);
+      const k = kept.get(r.title);
       await db.insert(caseResults).values({
         category: r.category, title: r.title, stat: r.stat, statLabel: r.statLabel, year: r.year,
         summary: r.summary, detail: r.detail, cite: r.cite, link: r.link,
         practiceSlug: r.practiceSlug, featuredHome: r.featuredHome ?? false, sort: r.sort,
-        hasPage: page?.hasPage ?? r.hasPage ?? false,
-        pageBody: page?.pageBody ?? r.pageBody ?? null,
+        // An admin's page decision (on or off, once a page existed) wins over the seed.
+        hasPage: k && (k.hasPage || k.pageBody) ? k.hasPage : (r.hasPage ?? false),
+        pageBody: k?.pageBody ?? r.pageBody ?? null,
+        heroImage: k?.heroImage ?? r.heroImage ?? null,
+        heroFocal: k?.heroFocal ?? r.heroFocal ?? null,
+        shareImage: k?.shareImage ?? null,
+        shareTitle: k?.shareTitle ?? null,
+        shareDescription: k?.shareDescription ?? null,
       });
     }
     applied.push(`Refreshed ${CASE_RESULTS.length} results`);

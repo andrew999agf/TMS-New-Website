@@ -26,6 +26,10 @@ export type CaseResultSeed = {
   heroImage?: string;
   /** Crop position for the banner photo: center | top | bottom | left | right. */
   heroFocal?: string;
+  /** Optional social-share card (image 1200×630, title, blurb) for the page. */
+  shareImage?: string;
+  shareTitle?: string;
+  shareDescription?: string;
   sort: number;
 };
 

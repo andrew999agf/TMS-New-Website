@@ -28,6 +28,9 @@ export default async function ResultsAdmin() {
     pageBody?: string;
     heroImage?: string;
     heroFocal?: string;
+    shareImage?: string;
+    shareTitle?: string;
+    shareDescription?: string;
   }> = [];
 
   if (db) {
@@ -51,6 +54,9 @@ export default async function ResultsAdmin() {
         pageBody: r.pageBody ?? undefined,
         heroImage: r.heroImage ?? undefined,
         heroFocal: r.heroFocal ?? undefined,
+        shareImage: r.shareImage ?? undefined,
+        shareTitle: r.shareTitle ?? undefined,
+        shareDescription: r.shareDescription ?? undefined,
       }));
     } catch {
       results = [];
@@ -75,6 +81,9 @@ export default async function ResultsAdmin() {
       pageBody: r.pageBody,
       heroImage: r.heroImage,
       heroFocal: r.heroFocal,
+      shareImage: r.shareImage,
+      shareTitle: r.shareTitle,
+      shareDescription: r.shareDescription,
     }));
   }
 

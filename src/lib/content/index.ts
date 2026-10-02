@@ -155,6 +155,9 @@ function normalizeResult(r: CaseResult): CaseResultSeed {
     pageBody: r.pageBody ?? undefined,
     heroImage: r.heroImage ?? undefined,
     heroFocal: r.heroFocal ?? undefined,
+    shareImage: r.shareImage ?? undefined,
+    shareTitle: r.shareTitle ?? undefined,
+    shareDescription: r.shareDescription ?? undefined,
     sort: r.sort,
   };
 }
