@@ -295,7 +295,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const [doBates, setDoBates] = useState(true);
   const [prefix, setPrefix] = useState(batesDefaults.prefix);
   const [start, setStart] = useState(String(batesDefaults.nextStart));
-  const [stampStyle, setStampStyle] = useState<Required<StampStyle>>({ position: "bottom-right", font: "helvetica", color: "black", size: 10 });
+  const [stampStyle, setStampStyle] = useState<Required<StampStyle>>({ position: "bottom-right", font: "helvetica", color: "red", size: 12 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -527,7 +527,9 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     <div className="flex min-h-0 flex-1 flex-col">
       <ProductionContents setId={setId} mode="received" toc={contents.toc} notes={contents.notes} tocFile={contents.tocFile}
         fileChoices={pdfFiles.map((f) => ({ key: f.key, name: f.name }))} onJump={jumpToPage} />
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 mt-3">
+      {/* Frozen under the admin strip so the selection actions stay in reach
+          while checking pages at the bottom of a long set. */}
+      <div className="sticky top-9 z-20 mt-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 shadow-sm">
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
           {viewBtn("grid", "Grid", <Grid3x3 size={14} />)}
           {viewBtn("reader", "Reader", <BookOpen size={14} />)}
@@ -1565,7 +1567,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="sticky top-9 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-2 shadow-sm">
         {view === "grid" && (
           <div className="inline-flex items-center overflow-hidden rounded-md border border-[var(--c-border)]" title="Zoom the page grid">
             <button onClick={() => setCols((c) => Math.min(10, c + 1))} disabled={cols >= 10} className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomOut size={15} /></button>

@@ -7,6 +7,8 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
 import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, shareFolders, shareFiles, shareRecipients, productionDocs, productions, type CaseParty } from "@/db/schema";
 import { DiscoveryWorkspace } from "@/components/admin/DiscoveryWorkspace";
+import { DiscoveryLiveRefresh } from "@/components/admin/DiscoveryLiveRefresh";
+import { discoveryFingerprint } from "@/lib/discovery/fingerprint";
 import { RequestTracker, type ClientFile, type StagedDoc, type ProductionRow, type RequestRow } from "@/components/admin/ProductionPipeline";
 import { aiStateOf } from "@/lib/discovery/ai-state";
 import { RequestClientDocs, type ClientFolderChip } from "@/components/admin/RequestClientDocs";
@@ -168,8 +170,12 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
     }
   }
 
+  let liveVersion = "";
+  try { liveVersion = await discoveryFingerprint(setId, set.matter); } catch { /* live refresh just stays idle */ }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <DiscoveryLiveRefresh setId={setId} version={liveVersion} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6 py-3">
         <Link href="/admin/discovery-reviewer" className="inline-flex items-center gap-1.5 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
           <ArrowLeft size={15} /> Discovery cases
