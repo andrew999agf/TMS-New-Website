@@ -12,7 +12,6 @@ import { brandedEmailHtml } from "@/lib/email-template";
 import { FIRM } from "@/lib/firm";
 import { LEGAL_DOCS } from "@/lib/documents/legal-specs";
 import { renderDoc, wrapForWord } from "@/lib/documents/legal";
-import { answersPdf } from "@/lib/intake/answers-pdf";
 
 export const runtime = "nodejs";
 
@@ -326,22 +325,6 @@ export async function POST(req: Request) {
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 
-  // Every answered field, labeled, in the order asked — shared by the intake
-  // team's Word document and the client's PDF copy.
-  const answerItems: { label: string; value: string }[] = (() => {
-    const seen = new Set<string>();
-    const items: { label: string; value: string }[] = [];
-    const pushKey = (key: string) => {
-      if (seen.has(key) || internalKeys.has(key)) return;
-      seen.add(key);
-      const val = formatAnswerValue(a[key]);
-      if (val.trim()) items.push({ label: fieldLabel(key), value: val });
-    };
-    INTAKE_FIELDS.forEach((f) => pushKey(f.name));
-    Object.keys(a).forEach(pushKey);
-    return items;
-  })();
-
   const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
   const notSavedBanner = id == null
     ? `<div style="max-width:640px;margin:0 0 16px;padding:12px 16px;background:#fdecec;border:1px solid #e7b3af;border-left:6px solid #b3261e;color:#7d1d17;font-family:Arial,Helvetica,sans-serif;font-size:14px"><strong>⚠ NOT SAVED TO THE INTAKE TAB.</strong> This submission could not be written to the database${persistError ? ` (${esc(persistError)})` : ""} — it exists ONLY in this email. Handle it from here, and run Settings → Database updates, then check the error logs.</div>`
@@ -357,7 +340,7 @@ export async function POST(req: Request) {
 
   // Acknowledgment email to the prospective client — a branded HTML email that
   // matches the live site (logo banner, theme colors, office footer), with the
-  // representation disclaimer and a PDF copy of everything they submitted.
+  // representation disclaimer. No copy of their answers is attached.
   if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const [theme, globals] = await Promise.all([getActiveTheme(), getBlocks("global")]);
     const colors = { ...getColorPalette(theme.colorPaletteId).tokens, ...(theme.colorOverrides ?? {}) };
@@ -366,26 +349,9 @@ export async function POST(req: Request) {
     const firmName = globals["global.firmName"] || FIRM.name;
     const greetingName = str("name") ? esc(str("name")!.trim()) : "there";
 
-    // Their copy: every answered field, labeled, in the order asked. Built
-    // best-effort — a PDF hiccup never blocks the acknowledgment itself.
-    let ackAttachments: { filename: string; content: Buffer; contentType?: string }[] | undefined;
-    try {
-      const items = answerItems;
-      const pdfBytes = await answersPdf({
-        firmName,
-        formTitle: `${branchLabel} — Intake Submission`,
-        submittedAt: new Date(),
-        clientName: str("name") || undefined,
-        sections: [{ title: "Your responses", items }],
-      });
-      ackAttachments = [{ filename: `Your intake submission — ${firmName}.pdf`, content: Buffer.from(pdfBytes), contentType: "application/pdf" }];
-    } catch (err) {
-      console.error("[intake] acknowledgment PDF failed:", err);
-    }
-
     const ackBody = `
       <p style="margin:0 0 14px">Dear ${greetingName},</p>
-      <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it, then follow up using the contact method you chose.${ackAttachments ? " A PDF copy of everything you submitted is attached for your records." : ""}</p>
+      <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it, then follow up using the contact method you chose.</p>
       <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This has not created an attorney-client relationship.</strong> Our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
       <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
       <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">— The office of ${esc(firmName)}</p>`;
@@ -397,12 +363,15 @@ export async function POST(req: Request) {
       firmName,
       bodyHtml: ackBody,
     });
+    // The intake team for this branch rides along, so everyone sees exactly
+    // what the prospective client was told.
+    const ackCc = to.filter((addr) => addr.trim().toLowerCase() !== email.trim().toLowerCase());
     await sendEmail({
       to: email,
+      cc: ackCc.length ? ackCc : undefined,
       fromName: firmName,
       subject: `Thank you for contacting ${firmName}`,
       html: ackHtml,
-      attachments: ackAttachments,
     });
   }
 
