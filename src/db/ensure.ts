@@ -201,6 +201,8 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS productions_set_idx ON productions (set_id)`,
+  `ALTER TABLE productions ADD COLUMN IF NOT EXISTS emailed_at timestamptz`,
+  `ALTER TABLE productions ADD COLUMN IF NOT EXISTS emailed_to text`,
   `CREATE TABLE IF NOT EXISTS contacts (
     id serial PRIMARY KEY,
     kind varchar(24) NOT NULL DEFAULT 'other',

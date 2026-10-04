@@ -21,6 +21,21 @@ export function cleanParties(v: unknown): CaseParty[] {
       if (p?.email) out.email = fstr(p.email, 255);
       if (p?.phone) out.phone = fstr(p.phone, 64);
       if (p?.address) out.address = fstr(p.address, 500);
+      if (p?.ours) out.ours = true;
+      if (p?.proSe) out.proSe = true;
+      if (Array.isArray(p?.cc)) {
+        const cc = p.cc
+          .map((c) => ({
+            name: fstr(c?.name, 191),
+            role: fstr(c?.role, 32) || "other",
+            ...(c?.firm ? { firm: fstr(c.firm, 191) } : {}),
+            ...(c?.email ? { email: fstr(c.email, 255) } : {}),
+            ...(c?.phone ? { phone: fstr(c.phone, 64) } : {}),
+          }))
+          .filter((c) => c.name || c.email)
+          .slice(0, 25);
+        if (cc.length) out.cc = cc;
+      }
       if (p?.attorney?.name) {
         out.attorney = { name: fstr(p.attorney.name, 191) };
         if (p.attorney.firm) out.attorney.firm = fstr(p.attorney.firm, 191);

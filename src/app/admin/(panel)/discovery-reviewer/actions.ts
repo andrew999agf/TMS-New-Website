@@ -17,6 +17,9 @@ import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordi
 import { buildStagedPdf, compressPageRanges, remapAfterPull, type RedactionMark } from "@/lib/production/subset";
 import { rasterizeRedactedPages } from "@/lib/production/redact";
 import { FIRM } from "@/lib/firm";
+import { caseDistribution, type Distribution } from "@/lib/case-distribution";
+import { sendEmail } from "@/lib/email";
+import { buildProductionEmail } from "@/lib/production/email";
 import { randomBytes } from "crypto";
 
 async function guard() {
@@ -1183,9 +1186,11 @@ export async function prepareProduction(setId: number) {
     const fileBlob = await put(`production/${setId}/final/${fileName}`, Buffer.from(merged), {
       access: "public", contentType: "application/pdf", addRandomSuffix: true,
     });
+    const dist = await distributionForMatter(set.matter);
     const letterBytes = await buildProductionLetter({
       caseName: set.name, causeNumber: set.causeNumber, court: set.court,
       seq, batesFrom: from, batesTo: to, link: publicUrl, date: now,
+      to: dist.to, cc: dist.cc,
     });
     const letterBlob = await put(`production/${setId}/final/${ordinal(seq)} Production Letter - ${lastName} - ${dateStr}.pdf`, Buffer.from(letterBytes), {
       access: "public", contentType: "application/pdf", addRandomSuffix: true,
@@ -1317,5 +1322,132 @@ export async function saveProductionContents(setId: number, input: { toc: string
     return { ok: true as const };
   } catch {
     return { ok: false as const };
+  }
+}
+
+/* ------------------ emailing a production to counsel ------------------ */
+
+/** The case's letter distribution (counsel of record + CC people) for a matter. */
+async function distributionForMatter(matter: string): Promise<Distribution & { caseId: number | null }> {
+  const empty = { to: [], cc: [], missing: [], caseId: null };
+  if (!db || !matter) return empty;
+  try {
+    const [hub] = await db.select({ id: caseHub.id, parties: caseHub.parties }).from(caseHub).where(eq(caseHub.matter, matter));
+    if (!hub) return empty;
+    return { ...caseDistribution((hub.parties as CaseParty[]) ?? []), caseId: hub.id };
+  } catch (err) {
+    console.error("[discovery-reviewer] distribution lookup failed:", err);
+    return empty;
+  }
+}
+
+/** Default To/CC for a production email, from the case's Counsel of Record. */
+export async function getProductionDistribution(productionId: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+  if (!row) return { ok: false as const, error: "Production not found." };
+  const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, row.setId));
+  if (!set) return { ok: false as const, error: "Case not found." };
+  const d = await distributionForMatter(set.matter);
+  const fmt = (r: { name: string; email: string }) => (r.name && r.name !== r.email ? `${r.name} <${r.email}>` : r.email);
+  return {
+    ok: true as const,
+    to: d.to.map(fmt),
+    cc: d.cc.map(fmt),
+    missing: d.missing.map((m) => `${m.name}${m.party && m.party !== m.name ? ` (${m.party})` : ""}`),
+    caseId: d.caseId,
+    emailedAt: row.emailedAt ? row.emailedAt.toISOString() : null,
+    emailedTo: row.emailedTo ?? "",
+  };
+}
+
+/** "Jane Doe <jane@x.com>" or "jane@x.com" → { name, email }; null if no address. */
+function parseAddr(s: string): { name: string; email: string } | null {
+  const t = s.trim();
+  if (!t) return null;
+  const m = t.match(/^(.*?)\s*<([^<>\s]+)>$/);
+  const email = (m ? m[2] : t).trim();
+  if (!/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(email)) return null;
+  return { name: (m ? m[1] : "").replace(/^"|"$/g, "").trim(), email };
+}
+
+/** Largest production PDF that rides along as an attachment; bigger ones go by link. */
+const MAX_ATTACH_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Email the production to counsel: the cover letter PDF attached, the
+ * production PDF attached when it's small enough, and the production link in
+ * the body. To = the other side's counsel of record; CC = everyone else on
+ * the case's distribution, our side included. Optionally marks it produced.
+ */
+export async function emailProduction(productionId: number, input: { to: string[]; cc: string[]; markProduced: boolean }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+    if (!row) return { ok: false as const, error: "Production not found." };
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, row.setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+
+    const bad: string[] = [];
+    const parse = (list: string[]) => (Array.isArray(list) ? list : []).flatMap((s) => {
+      if (!str(s, 400)) return [];
+      const a = parseAddr(str(s, 400));
+      if (!a) { bad.push(str(s, 80)); return []; }
+      return [a];
+    });
+    const to = parse(input.to);
+    const toKeys = new Set(to.map((a) => a.email.toLowerCase()));
+    const cc = parse(input.cc).filter((a) => !toKeys.has(a.email.toLowerCase()));
+    if (bad.length) return { ok: false as const, error: `Not an email address: ${bad.join(", ")}` };
+    if (!to.length) return { ok: false as const, error: "Add at least one recipient on the To line (opposing counsel)." };
+    if (!row.letterUrl) return { ok: false as const, error: "This production has no cover letter to send." };
+
+    const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
+    const letterRes = await fetch(row.letterUrl);
+    if (!letterRes.ok) return { ok: false as const, error: "Couldn't load the cover letter PDF." };
+    const range = row.batesStart ? `${batesLabel(row.batesPrefix, row.batesStart)} through ${batesLabel(row.batesPrefix, row.batesEnd)}` : "";
+    attachments.push({ filename: `${row.label} - Cover Letter.pdf`, content: Buffer.from(await letterRes.arrayBuffer()), contentType: "application/pdf" });
+    let productionAttached = false;
+    if (row.fileUrl) {
+      try {
+        const head = await fetch(row.fileUrl, { method: "HEAD" });
+        const size = Number(head.headers.get("content-length") || 0);
+        if (head.ok && size > 0 && size <= MAX_ATTACH_BYTES) {
+          const f = await fetch(row.fileUrl);
+          if (f.ok) {
+            attachments.push({ filename: row.fileName || `${row.label}.pdf`, content: Buffer.from(await f.arrayBuffer()), contentType: "application/pdf" });
+            productionAttached = true;
+          }
+        }
+      } catch { /* link only */ }
+    }
+
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`;
+    const link = `${origin.replace(/\/$/, "")}/production/${row.token}`;
+    const { subject, html } = await buildProductionEmail({
+      caseName: set.name, causeNumber: set.causeNumber, label: row.label, seq: row.seq,
+      range, link, productionAttached,
+    });
+    const fmt = (a: { name: string; email: string }) => (a.name ? `"${a.name.replace(/"/g, "")}" <${a.email}>` : a.email);
+    const res = await sendEmail({ to: to.map(fmt), cc: cc.map(fmt), subject, html, attachments });
+    if (!res.sent) {
+      return { ok: false as const, error: `NOT SENT — ${res.reason === "no-transport" || res.reason === "not-configured" ? "email isn't configured on the server" : res.reason ?? "the mail server refused it"}.` };
+    }
+
+    const all = [...to, ...cc].map((a) => a.email).join(", ");
+    await db.update(productions).set({ emailedAt: new Date(), emailedTo: all.slice(0, 4000) }).where(eq(productions.id, productionId));
+    if (input.markProduced && !row.producedAt) {
+      await db.update(productions).set({ producedAt: new Date() }).where(eq(productions.id, productionId));
+      await db.update(productionDocs).set({ status: "produced" }).where(eq(productionDocs.productionId, productionId));
+    }
+    await audit(session.email, "send", "production", String(productionId),
+      `Emailed ${row.label} for "${set.name}" to ${to.map((a) => a.email).join(", ")}${cc.length ? ` (cc ${cc.map((a) => a.email).join(", ")})` : ""}${productionAttached ? "" : " — link only (too large to attach)"}${input.markProduced && !row.producedAt ? "; marked produced" : ""}`);
+    revalidatePath(`/admin/discovery-reviewer/${row.setId}`);
+    return { ok: true as const, to: to.length, cc: cc.length, productionAttached };
+  } catch (err) {
+    console.error("[discovery-reviewer] emailProduction failed:", err);
+    return { ok: false as const, error: "NOT SENT — something went wrong preparing the email." };
   }
 }

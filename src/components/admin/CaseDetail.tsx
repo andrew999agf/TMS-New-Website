@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { updateCaseInfo, addCaseParty, updateCaseParty, removeCaseParty, setCaseArchived } from "@/app/admin/(panel)/cases/actions";
 import { PartyContactButton } from "./PartyContact";
+import { CounselBubble, CounselPanel, needsCounsel } from "./CounselOfRecord";
 import type { CaseParty } from "@/db/schema";
 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
@@ -167,6 +168,10 @@ function PartiesCard({ caseRow }: { caseRow: CaseRow }) {
   const [eRole, setERole] = useState("Plaintiff");
   const [pName, setPName] = useState("");
   const [pRole, setPRole] = useState("Plaintiff");
+  // Which party's Counsel of Record panel is open; `prompt` when it opened
+  // itself right after the party was added.
+  const [counsel, setCounsel] = useState<{ index: number; prompt: boolean } | null>(null);
+  const missing = caseRow.parties.map((p, i) => ({ p, i })).filter(({ p }) => needsCounsel(p));
 
   function beginEdit(i: number) {
     setEditIdx(i);
@@ -188,8 +193,12 @@ function PartiesCard({ caseRow }: { caseRow: CaseRow }) {
     if (!pName.trim()) return;
     start(async () => {
       const r = await addCaseParty(caseRow.matter, pName, pRole);
-      if (r.ok) { setPName(""); router.refresh(); }
-      else setError(r.error ?? "Couldn't add the party.");
+      if (r.ok) {
+        const idx = r.parties.findIndex((x) => x.name.toLowerCase() === pName.trim().toLowerCase());
+        setPName("");
+        if (idx >= 0) setCounsel({ index: idx, prompt: true });
+        router.refresh();
+      } else setError(r.error ?? "Couldn't add the party.");
     });
   }
 
@@ -197,6 +206,14 @@ function PartiesCard({ caseRow }: { caseRow: CaseRow }) {
     <section className="min-w-0 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-accent)]">Parties</h2>
       {error && <p className="mb-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+      {missing.length > 0 && !counsel && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <span className="min-w-0 flex-1">
+            Counsel of record still needed for {missing.length === 1 ? <strong>{missing[0].p.name}</strong> : <><strong>{missing.length} parties</strong></>}. Letters copy everyone listed here.
+          </span>
+          <button onClick={() => setCounsel({ index: missing[0].i, prompt: false })} className="shrink-0 font-semibold underline underline-offset-2">Complete it</button>
+        </div>
+      )}
 
       <div className="divide-y divide-[var(--c-border)]">
         {caseRow.parties.length === 0 && <p className="py-2 text-sm text-[var(--c-ink-muted)]">No parties yet.</p>}
@@ -215,13 +232,22 @@ function PartiesCard({ caseRow }: { caseRow: CaseRow }) {
               <button onClick={() => setEditIdx(null)} className="shrink-0 rounded p-1.5 text-[var(--c-ink-muted)]" title="Cancel"><X size={15} /></button>
             </div>
           ) : (
-            <div key={`${p.name}-${i}`} className="flex items-center gap-2 py-2 text-sm">
+            <div key={`${p.name}-${i}`} className="py-2 text-sm">
+            <div className="flex items-center gap-2">
               <span className="min-w-0 flex-1 break-words font-medium">{p.name}</span>
               <span className="shrink-0 rounded-full border border-[var(--c-border)] px-2 py-0.5 text-xs text-[var(--c-ink-muted)]">{p.role || "Party"}</span>
               <button onClick={() => beginEdit(i)} className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit party" aria-label={`Edit ${p.name}`}><Pencil size={13} /></button>
-              <PartyContactButton caseId={caseRow.id} index={i} party={p} allParties={caseRow.parties} />
+              <PartyContactButton caseId={caseRow.id} index={i} party={p} />
               <button onClick={() => { if (confirm(`Remove ${p.name}?`)) start(async () => { await removeCaseParty(caseRow.id, i); router.refresh(); }); }}
                 className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove party" aria-label={`Remove ${p.name}`}><Trash2 size={13} /></button>
+            </div>
+            <div className="mt-1">
+              <CounselBubble party={p} open={counsel?.index === i} onToggle={() => setCounsel(counsel?.index === i ? null : { index: i, prompt: false })} />
+            </div>
+            {counsel?.index === i && (
+              <CounselPanel key={`counsel-${i}-${p.name}`} caseId={caseRow.id} index={i} party={p} allParties={caseRow.parties}
+                prompt={counsel.prompt} onClose={() => setCounsel(null)} />
+            )}
             </div>
           ),
         )}

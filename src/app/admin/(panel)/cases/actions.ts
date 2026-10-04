@@ -8,8 +8,10 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { getOrCreateCaseForMatter, cleanParties } from "@/lib/cases";
-import { upsertAttorneyContact } from "@/lib/contacts";
-import type { PartyAttorney } from "@/db/schema";
+import { upsertAttorneyContact, upsertContact } from "@/lib/contacts";
+import { admins, contacts, type PartyAttorney, type PartyCc } from "@/db/schema";
+import { and, sql } from "drizzle-orm";
+import { FIRM } from "@/lib/firm";
 
 async function guard() {
   const session = await requireAdmin();
@@ -125,7 +127,8 @@ export async function updateCaseParty(id: number, index: number, name: string, r
       return { ok: false as const, error: "Another party already has that name." };
     }
     const prev = parties[index];
-    parties[index] = { name: pname, role: str(role, 96) || "Party" };
+    // Keep contact details, counsel, and CC list — only the name/role change.
+    parties[index] = { ...prev, name: pname, role: str(role, 96) || "Party" };
     await db.update(caseHub).set({ parties, updatedAt: new Date() }).where(eq(caseHub.id, id));
     await audit(session.email, "update", "case", String(id), `Party "${prev.name}" \u2192 "${pname}" (${role || "Party"})`);
     revalidatePath(`/admin/cases/${id}`);
@@ -157,7 +160,10 @@ export async function updateCasePartyContact(id: number, index: number, input: P
     p.address = str(input.address, 500) || undefined;
     const aName = str(input.attorney?.name, 191);
     let attorney: PartyAttorney | undefined;
-    if (aName) {
+    // The party's own-contact dialog leaves counsel of record alone.
+    if (!("attorney" in input)) {
+      // keep whatever counsel is on file
+    } else if (aName) {
       attorney = {
         name: aName,
         firm: str(input.attorney?.firm, 191) || undefined,
@@ -291,4 +297,155 @@ export async function deletePleading(fileId: number, caseId: number) {
   await audit(session.email, "case.pleading.delete", `${f.filename} (#${fileId})`);
   revalidatePath(`/admin/cases/${caseId}`);
   return { ok: true as const };
+}
+
+/* ---------------------- counsel of record + CC people --------------------- */
+
+/** CC categories → contact-book kinds. */
+const CC_KIND: Record<string, string> = {
+  attorney: "attorney", "legal-assistant": "staff", paralegal: "staff",
+  witness: "witness", "litigation-support": "litigation-support", court: "court", other: "other",
+};
+const PLACEHOLDER_PARTY = /^(plaintiff|defendant|petitioner|respondent|intervenor|party)$/i;
+
+export type PartyCounselInput = {
+  ours: boolean;
+  proSe?: boolean;
+  attorney?: { name?: string; firm?: string; email?: string; phone?: string; address?: string };
+  cc: { name?: string; role?: string; firm?: string; email?: string; phone?: string }[];
+};
+
+/**
+ * Save a party's counsel of record, whether the party is our client, and the
+ * people to copy on correspondence. Everyone named here is filed into the
+ * Contacts tab under their category (and side) so later type-aheads find them.
+ */
+export async function updateCasePartyCounsel(id: number, index: number, input: PartyCounselInput) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.select().from(caseHub).where(eq(caseHub.id, id));
+    if (!row) return { ok: false as const, error: "Case not found." };
+    const parties = cleanParties(row.parties);
+    if (index < 0 || index >= parties.length) return { ok: false as const, error: "That party no longer exists — reload the page." };
+    const p = parties[index];
+    const side = input.ours ? "ours" : "opposing";
+
+    if (input.ours) p.ours = true; else delete p.ours;
+
+    const aName = input.proSe ? "" : str(input.attorney?.name, 191);
+    if (input.proSe && !input.ours) p.proSe = true; else delete p.proSe;
+    if (aName) {
+      p.attorney = {
+        name: aName,
+        firm: str(input.attorney?.firm, 191) || undefined,
+        email: str(input.attorney?.email, 255) || undefined,
+        phone: str(input.attorney?.phone, 64) || undefined,
+        address: str(input.attorney?.address, 500) || undefined,
+      };
+    } else {
+      delete p.attorney;
+    }
+
+    const cc: PartyCc[] = (input.cc ?? [])
+      .map((c) => ({
+        name: str(c.name, 191),
+        role: CC_KIND[str(c.role, 32)] ? str(c.role, 32) : "other",
+        firm: str(c.firm, 191) || undefined,
+        email: str(c.email, 255) || undefined,
+        phone: str(c.phone, 64) || undefined,
+      }))
+      .filter((c) => c.name || c.email)
+      .slice(0, 25);
+    const uncategorized = (input.cc ?? []).find((c) => (str(c.name) || str(c.email)) && !CC_KIND[str(c.role, 32)]);
+    if (uncategorized) return { ok: false as const, error: `Pick a category for ${str(uncategorized.name) || str(uncategorized.email)}.` };
+    for (const c of cc) {
+      if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) {
+        return { ok: false as const, error: `"${c.email}" doesn't look like an email address.` };
+      }
+    }
+    if (p.attorney?.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.attorney.email)) {
+      return { ok: false as const, error: `"${p.attorney.email}" doesn't look like an email address.` };
+    }
+    if (cc.length) p.cc = cc; else delete p.cc;
+
+    await db.update(caseHub).set({ parties, updatedAt: new Date() }).where(eq(caseHub.id, id));
+
+    // File everyone into the contact book, categorized. Best-effort.
+    try {
+      if (p.attorney) await upsertAttorneyContact(p.attorney, session.email, side);
+      for (const c of cc) {
+        await upsertContact({ kind: CC_KIND[c.role] ?? "other", side, name: c.name, firm: c.firm, email: c.email, phone: c.phone }, session.email);
+      }
+      if (!PLACEHOLDER_PARTY.test(p.name)) {
+        await upsertContact({ kind: input.ours ? "client-current" : "opposing-party", side, name: p.name, email: p.email, phone: p.phone, address: p.address }, session.email);
+      }
+    } catch (err) {
+      console.error("[cases] filing contacts failed (case saved):", err);
+    }
+
+    await audit(session.email, "update", "case", String(id), `Counsel of record / CC for "${p.name}"`);
+    revalidatePath(`/admin/cases/${id}`);
+    revalidatePath("/admin/contacts");
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[cases] updateCasePartyCounsel failed:", err);
+    return { ok: false as const, error: "Couldn't save counsel of record." };
+  }
+}
+
+export type PersonHit = { source: "firm" | "book"; name: string; firm: string; email: string; phone: string; address: string; kind: string; side: string };
+
+/**
+ * Type-ahead for counsel and CC fields: the firm's own people (admin accounts
+ * and contacts marked "ours") first when filling our side, then the contact
+ * book. Readable by anyone in the Cases section.
+ */
+export async function searchPeople(query: string, opts: { ours?: boolean; kinds?: string[] } = {}): Promise<PersonHit[]> {
+  await guard();
+  if (!db) return [];
+  const q = str(query, 100).toLowerCase();
+  if (q.length < 2) return [];
+  const like = "%" + q + "%";
+  const out: PersonHit[] = [];
+  try {
+    if (opts.ours) {
+      const staff = await db.select({ name: admins.name, email: admins.email }).from(admins)
+        .where(sql`(lower(${admins.name}) LIKE ${like} OR lower(${admins.email}) LIKE ${like})`).limit(6);
+      for (const a of staff) out.push({ source: "firm", name: a.name, firm: FIRM.name, email: a.email, phone: "", address: "", kind: "staff", side: "ours" });
+    }
+    const rows = await db.select().from(contacts).where(and(
+      eq(contacts.archived, false),
+      sql`(lower(${contacts.name}) LIKE ${like} OR lower(${contacts.firm}) LIKE ${like} OR lower(${contacts.email}) LIKE ${like})`,
+      ...(opts.kinds?.length ? [sql`${contacts.kind} IN (${sql.join(opts.kinds.map((k) => sql`${k}`), sql`, `)})`] : []),
+    )).limit(10);
+    const seen = new Set(out.map((h) => (h.email || h.name).toLowerCase()));
+    // Our side sees our people first; the other side sees theirs first.
+    const want = opts.ours ? "ours" : "opposing";
+    rows.sort((a, b) => Number(b.side === want) - Number(a.side === want));
+    for (const r of rows) {
+      const key = (r.email || r.name).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ source: "book", name: r.name, firm: r.firm, email: r.email, phone: r.phone, address: r.address, kind: r.kind, side: r.side });
+    }
+  } catch (err) {
+    console.error("[cases] searchPeople failed:", err);
+  }
+  return out.slice(0, 12);
+}
+
+/** The firm's own people (admin accounts), for the "our team" quick-adds. */
+export async function listFirmPeople(): Promise<PersonHit[]> {
+  await guard();
+  if (!db) return [];
+  try {
+    const rows = await db.select({ name: admins.name, email: admins.email }).from(admins).limit(40);
+    return rows
+      .filter((a) => a.email)
+      .map((a) => ({ source: "firm" as const, name: a.name || a.email, firm: FIRM.name, email: a.email, phone: "", address: "", kind: "staff", side: "ours" }));
+  } catch (err) {
+    console.error("[cases] listFirmPeople failed:", err);
+    return [];
+  }
 }

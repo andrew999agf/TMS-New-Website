@@ -137,6 +137,10 @@ export type LetterOpts = {
   batesTo: string;
   link: string;
   date: Date;
+  /** Addressees — the other side's counsel of record (from the case's parties). */
+  to?: { name: string; firm?: string; email?: string }[];
+  /** "cc:" block — everyone else on the case's distribution, our side included. */
+  cc?: { name: string; firm?: string; email?: string }[];
 };
 
 /**
@@ -148,9 +152,11 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
-  const page = doc.addPage([612, 792]);
+  let page = doc.addPage([612, 792]);
   const M = 72;
   let y = 792 - M;
+  // A long cc list can run past the first page.
+  const room = (need: number) => { if (y - need < M) { page = doc.addPage([612, 792]); y = 792 - M; } };
 
   const center = (text: string, f: PDFFont, size: number) => {
     const w = f.widthOfTextAtSize(text, size);
@@ -166,6 +172,7 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   y -= 28;
 
   const line = (text: string, f: PDFFont = font, size = 11, indent = 0) => {
+    room(size + 6);
     page.drawText(text, { x: M + indent, y, size, font: f });
     y -= size + 6;
   };
@@ -174,6 +181,13 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   y -= 12;
   line("Via email", bold, 11);
   y -= 8;
+  for (const a of opts.to ?? []) {
+    line(a.name, font, 11);
+    if (a.firm) line(a.firm, font, 11);
+    if (a.email) line(a.email, font, 11);
+    y -= 6;
+  }
+  if (opts.to?.length) y -= 2;
   line(`RE:  ${opts.caseName}`, bold, 11);
   if (opts.causeNumber) line(`Cause No. ${opts.causeNumber}${opts.court ? `, ${opts.court}` : ""}`, font, 11, 26);
   line(opts.batesFrom ? `${ordinal(opts.seq)} Production — ${opts.batesFrom} through ${opts.batesTo}` : `${ordinal(opts.seq)} Production`, bold, 11, 26);
@@ -196,6 +210,7 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   y -= 8;
 
   // clickable link
+  room(40);
   const linkSize = 11;
   const linkW = font.widthOfTextAtSize(opts.link, linkSize);
   page.drawText(opts.link, { x: M, y, size: linkSize, font, color: rgb(0.1, 0.2, 0.6) });
@@ -213,6 +228,17 @@ export async function buildProductionLetter(opts: LetterOpts): Promise<Uint8Arra
   line(FIRM.attorney.displayName, bold, 11);
   line(`State Bar No. ${FIRM.attorney.barNumber}`, font, 10);
   line(FIRM.email, font, 10);
+
+  if (opts.cc?.length) {
+    y -= 18;
+    const ccLine = (c: { name: string; firm?: string; email?: string }) =>
+      [c.name, c.firm, c.email].filter(Boolean).join(", ");
+    opts.cc.forEach((c, i) => {
+      room(16);
+      if (i === 0) page.drawText("cc:", { x: M, y, size: 10, font });
+      line(ccLine(c), font, 10, 30);
+    });
+  }
 
   return doc.save();
 }

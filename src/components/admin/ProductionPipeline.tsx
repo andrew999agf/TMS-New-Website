@@ -10,6 +10,7 @@ import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
+import { EmailToCounsel } from "./EmailToCounsel";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages,
@@ -23,7 +24,7 @@ export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
-export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string };
+export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
 export const bates = (prefix: string, n: number) => `${prefix}${String(n).padStart(6, "0")}`;
@@ -1711,6 +1712,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
             <a href={publicUrl(draft)} target="_blank" rel="noreferrer" className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><ExternalLink size={13} /> Review the opposing-counsel page</a>
             <button onClick={async () => { try { await navigator.clipboard.writeText(publicUrl(draft)); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* no clipboard */ } }}
               className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><Copy size={13} /> {copied ? "Copied!" : "Copy link"}</button>
+            <EmailToCounsel key={`email-${draft.id}`} productionId={draft.id} draft emailedAt={draft.emailedAt} onSent={(m) => setMovedNotice(m)} />
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button onClick={async () => { setBusy(true); await finalizeProduction(draft.id); setBusy(false); router.refresh(); }} disabled={busy}
@@ -1804,6 +1806,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
                     {p.letterUrl && <a href={p.letterUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">letter</a>}
                     {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">{p.fileName || "production PDF"}</a>}
                     <a href={`/production/${p.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--c-accent)] hover:underline">OC link <ExternalLink size={11} /></a>
+                    {p.letterUrl && <EmailToCounsel productionId={p.id} draft={false} emailedAt={p.emailedAt} compact />}
                   </span>
                 </div>
                 <div className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">

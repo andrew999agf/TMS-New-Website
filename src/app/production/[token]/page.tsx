@@ -17,7 +17,7 @@ const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "nu
  */
 export default async function ProductionPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const row = db ? (await db.select().from(productions).where(eq(productions.token, token)))[0] : null;
+  const row = db ? (await db.select({ label: productions.label, batesPrefix: productions.batesPrefix, batesStart: productions.batesStart, batesEnd: productions.batesEnd, producedAt: productions.producedAt, letterUrl: productions.letterUrl, fileUrl: productions.fileUrl, fileName: productions.fileName }).from(productions).where(eq(productions.token, token)))[0] : null;
 
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">

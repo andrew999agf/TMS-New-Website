@@ -17,7 +17,11 @@ export const CONTACT_KINDS: { key: string; label: string; chip: string }[] = [
   { key: "client-past", label: "Past client", chip: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
   { key: "client-prospective", label: "Prospective client", chip: "bg-violet-500/15 text-violet-700 dark:text-violet-300" },
   { key: "attorney", label: "Attorney", chip: "bg-[var(--c-accent)]/15 text-[var(--c-accent)]" },
+  { key: "staff", label: "Legal assistant / staff", chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
   { key: "opposing-party", label: "Opposing party", chip: "bg-red-500/15 text-red-700 dark:text-red-300" },
+  { key: "witness", label: "Witness", chip: "bg-teal-500/15 text-teal-700 dark:text-teal-300" },
+  { key: "litigation-support", label: "Litigation support", chip: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" },
+  { key: "court", label: "Court / clerk", chip: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
   { key: "other", label: "Other", chip: "bg-[var(--c-border)] text-[var(--c-ink-muted)]" },
 ];
 const kindDef = (k: string) => CONTACT_KINDS.find((c) => c.key === k) ?? CONTACT_KINDS[CONTACT_KINDS.length - 1];
@@ -67,13 +71,13 @@ export function ContactsManager({ rows }: { rows: ContactListRow[] }) {
         <FilterChip label={`All (${rows.length})`} active={filter === "all"} onClick={() => setFilter("all")} />
         {CONTACT_KINDS.map((k) => {
           const n = rows.filter((r) => r.kind === k.key).length;
-          return <FilterChip key={k.key} label={`${k.label}s (${n})`} active={filter === k.key} onClick={() => setFilter(k.key)} />;
+          return <FilterChip key={k.key} label={`${k.label} (${n})`} active={filter === k.key} onClick={() => setFilter(k.key)} />;
         })}
       </div>
 
       {shown.length === 0 && (
         <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6 text-center text-sm text-[var(--c-ink-muted)]">
-          {rows.length === 0 ? "No contacts yet. Attorneys typed into a case's party details are added here automatically." : "No contact matches."}
+          {rows.length === 0 ? "No contacts yet. Counsel, staff, and anyone CC'd on a case's parties are filed here automatically." : "No contact matches."}
         </p>
       )}
 
@@ -87,7 +91,7 @@ export function ContactsManager({ rows }: { rows: ContactListRow[] }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="break-words font-medium">{r.name}</span>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${k.chip}`}>{k.label}</span>
-                  {r.kind === "attorney" && r.side && (
+                  {r.side && (
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.side === "ours" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-red-500/15 text-red-700 dark:text-red-300"}`}>
                       {r.side === "ours" ? "our side" : "opposing"}
                     </span>
@@ -124,7 +128,7 @@ export function ContactsManager({ rows }: { rows: ContactListRow[] }) {
                     {CONTACT_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
                   </select>
                 </label>
-                {editing.kind === "attorney" && (
+                {!editing.kind.startsWith("client") && editing.kind !== "court" && (
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-semibold">Side</span>
                     <select value={editing.side ?? ""} onChange={(e) => setEditing({ ...editing, side: e.target.value })} className={input}>
@@ -139,9 +143,9 @@ export function ContactsManager({ rows }: { rows: ContactListRow[] }) {
                 <span className="mb-1 block text-xs font-semibold">Name *</span>
                 <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className={input} autoFocus />
               </label>
-              {editing.kind === "attorney" && (
+              {editing.kind !== "client-current" && editing.kind !== "client-past" && editing.kind !== "client-prospective" && (
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold">Firm</span>
+                  <span className="mb-1 block text-xs font-semibold">{editing.kind === "court" ? "Court" : "Firm / company"}</span>
                   <input value={editing.firm ?? ""} onChange={(e) => setEditing({ ...editing, firm: e.target.value })} className={input} />
                 </label>
               )}

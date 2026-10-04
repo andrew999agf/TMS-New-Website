@@ -8,7 +8,10 @@ import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 
-const KINDS = new Set(["attorney", "client-current", "client-past", "client-prospective", "opposing-party", "other"]);
+const KINDS = new Set([
+  "attorney", "staff", "client-current", "client-past", "client-prospective", "opposing-party",
+  "witness", "litigation-support", "court", "other",
+]);
 const SIDES = new Set(["", "ours", "opposing"]);
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 

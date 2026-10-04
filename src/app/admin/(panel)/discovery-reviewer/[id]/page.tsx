@@ -149,7 +149,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       batesDefaults = { prefix: latest.batesPrefix || batesDefaults.prefix, nextStart: Math.max(0, ...pdocs.map((d) => d.batesEnd)) + 1 };
     }
     prods = (await db.select().from(productions).where(eq(productions.setId, setId)))
-      .map((r) => ({ id: r.id, label: r.label, batesPrefix: r.batesPrefix, batesStart: r.batesStart, batesEnd: r.batesEnd, producedAt: r.producedAt ? r.producedAt.toISOString() : null, letterUrl: r.letterUrl, fileUrl: r.fileUrl, fileName: r.fileName, token: r.token }));
+      .map((r) => ({ id: r.id, label: r.label, batesPrefix: r.batesPrefix, batesStart: r.batesStart, batesEnd: r.batesEnd, producedAt: r.producedAt ? r.producedAt.toISOString() : null, letterUrl: r.letterUrl, fileUrl: r.fileUrl, fileName: r.fileName, token: r.token, emailedAt: r.emailedAt ? r.emailedAt.toISOString() : null }));
   } catch { /* production tables optional */ }
 
   // The linked exhibit set (same matter, not archived, oldest first) and its

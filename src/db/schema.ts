@@ -1436,13 +1436,31 @@ export type PartyAttorney = { name: string; firm?: string; email?: string; phone
 /** A party on a case, with optional contact details. For an opposing party
  *  the attorney block is the default point of contact; the party's own
  *  address/phone/email still matter pre-litigation and for service. */
+/** Someone copied on correspondence for a party: co-counsel, a legal
+ *  assistant or paralegal, an adjuster, etc. */
+export type PartyCc = {
+  name: string;
+  /** attorney | legal-assistant | paralegal | witness | litigation-support | court | other */
+  role: string;
+  firm?: string;
+  email?: string;
+  phone?: string;
+};
+
 export type CaseParty = {
   name: string;
   role: string;
   email?: string;
   phone?: string;
   address?: string;
+  /** Counsel of record for this party. */
   attorney?: PartyAttorney;
+  /** True when this party is the firm's client (our side). */
+  ours?: boolean;
+  /** Unrepresented — no counsel of record to prompt for. */
+  proSe?: boolean;
+  /** Everyone else to copy on letters and emails for this party. */
+  cc?: PartyCc[];
 };
 
 /**
@@ -1687,6 +1705,9 @@ export const productions = pgTable(
     token: varchar("token", { length: 64 }).notNull().unique(),
     /** Null until "Mark as produced" — a draft the firm is still reviewing. */
     producedAt: timestamp("produced_at", { withTimezone: true }),
+    /** Last time the letter was emailed to counsel, and to whom (To + CC). */
+    emailedAt: timestamp("emailed_at", { withTimezone: true }),
+    emailedTo: text("emailed_to"),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
