@@ -102,6 +102,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
               status: "" as const,
               aiLabel: x.aiLabel ?? "", aiDescription: x.aiDescription ?? "", aiSections: asSections(x.aiSections),
               textStatus: x.textStatus ?? "",
+              pageCount: x.pageCount ?? (/\.(jpe?g|png)$/i.test(x.filename) ? 1 : undefined),
               ...aiStateOf({ name: x.filename, contentType: x.contentType, pageCount: x.pageCount, pageText: x.pageText, pageNotes: x.pageNotes, aiLabelStatus: x.aiLabelStatus ?? "", textStatus: x.textStatus ?? "", textError: x.textError ?? "" }),
             };
           });
@@ -125,6 +126,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       movedFromOpposing: true,
       aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       textStatus: d.textStatus ?? "",
+      pageCount: d.pageCount ?? (/\.(jpe?g|png)$/i.test(d.name) ? 1 : undefined),
       ...aiStateOf({ name: d.name, contentType: d.contentType, pageCount: d.pageCount, pageText: d.pageText, pageNotes: d.pageNotes, aiLabelStatus: d.aiLabelStatus ?? "", textStatus: d.textStatus ?? "", textError: d.textError ?? "" }),
     });
   }
@@ -135,6 +137,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
       sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], pageBates: Array.isArray(d.pageBates) ? (d.pageBates as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
       aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
+      pageCount: d.pageCount ?? undefined,
       ...aiStateOf({ name: d.name, contentType: d.contentType, pageCount: d.pageCount, pageText: d.pageText, pageNotes: d.pageNotes, aiLabelStatus: d.aiLabelStatus ?? "", textStatus: d.textStatus ?? "", textError: d.textError ?? "" }),
     }));
     // Whole-document rows lock their source in the red tab; page-slice rows

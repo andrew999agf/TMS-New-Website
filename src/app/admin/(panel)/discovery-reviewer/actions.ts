@@ -1451,3 +1451,38 @@ export async function emailProduction(productionId: number, input: { to: string[
     return { ok: false as const, error: "NOT SENT — something went wrong preparing the email." };
   }
 }
+
+/**
+ * Pull a produced set back to the yellow tab: its documents return to
+ * "to be produced" (Bates numbers kept), and the production record, its
+ * merged PDF, cover letter, and opposing-counsel link are removed. Refused
+ * once the production has gone to opposing counsel — a production they
+ * already have gets supplemented or clarified, never quietly withdrawn.
+ */
+export async function returnProductionToStaged(productionId: number, input: { notSentConfirmed: boolean }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+    if (!row) return { ok: false as const, error: "Production not found." };
+    if (!row.producedAt) return { ok: false as const, error: "This production is still a draft — use Discard draft in the yellow tab." };
+    if (row.emailedAt) {
+      return { ok: false as const, sent: true as const, error: `${row.label} was emailed to opposing counsel on ${row.emailedAt.toLocaleDateString("en-US", { timeZone: "America/Chicago" })}. Supplement the production or send opposing counsel a clarification instead.` };
+    }
+    if (input?.notSentConfirmed !== true) {
+      return { ok: false as const, sent: true as const, error: "Only a production that has NOT gone to opposing counsel can be pulled back. Supplement it or send a clarification instead." };
+    }
+    const docs = await db.select({ id: productionDocs.id }).from(productionDocs).where(eq(productionDocs.productionId, productionId));
+    await db.update(productionDocs).set({ status: "staged", productionId: null }).where(eq(productionDocs.productionId, productionId));
+    await db.delete(productions).where(eq(productions.id, productionId));
+    if (row.letterPathname) { try { await del(row.letterPathname); } catch { /* best-effort */ } }
+    if (row.filePathname) { try { await del(row.filePathname); } catch { /* best-effort */ } }
+    await audit(session.email, "update", "production", String(productionId),
+      `Pulled ${row.label}${row.batesStart ? ` (${batesLabel(row.batesPrefix, row.batesStart)}–${batesLabel(row.batesPrefix, row.batesEnd)})` : ""} back to "to be produced" — ${docs.length} document${docs.length === 1 ? "" : "s"}; user confirmed it was not sent to opposing counsel`);
+    revalidatePath(`/admin/discovery-reviewer/${row.setId}`);
+    return { ok: true as const, moved: docs.length, label: row.label };
+  } catch (err) {
+    console.error("[discovery-reviewer] returnProductionToStaged failed:", err);
+    return { ok: false as const, error: "Couldn't move the production back." };
+  }
+}

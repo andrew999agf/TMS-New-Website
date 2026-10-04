@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
-  BookOpen, Check, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
+  BookOpen, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsDownUp, ChevronsUpDown, EyeOff, Undo2, Copy, Download, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
@@ -13,7 +13,7 @@ import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
-  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages,
+  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
@@ -22,8 +22,8 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -192,6 +192,42 @@ function GoToPage({ onGo }: { onGo: (page: number) => void }) {
 
 /** The sent-requests ledger under the "Request documents from client" button,
  *  ordered by the date we need the documents back from the client. */
+/** "1,234 pages · 18 documents" — the tab's running page total. Counts
+ *  still being read off the PDFs show as "+" until they're known. */
+function PageTotal({ pages, docs, unknown, noun = "document" }: { pages: number; docs: number; unknown?: number; noun?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1 text-sm"
+      title={unknown ? `${unknown} document${unknown === 1 ? "" : "s"} still being counted` : "Total pages in this tab"}>
+      <FileText size={13} className="text-[var(--c-accent)]" />
+      {pages === 0 && unknown ? <span className="text-[var(--c-ink-muted)]">Counting pages…</span> : <>
+        <strong className="tabular-nums">{pages.toLocaleString()}{unknown ? "+" : ""}</strong> page{pages === 1 && !unknown ? "" : "s"}
+      </>}
+      <span className="text-[var(--c-ink-muted)]">· {docs.toLocaleString()} {noun}{docs === 1 ? "" : "s"}</span>
+    </span>
+  );
+}
+
+/** Collapse / expand every document bar at once. */
+function FoldAll({ allCollapsed, onCollapseAll, onExpandAll }: { allCollapsed: boolean; onCollapseAll: () => void; onExpandAll: () => void }) {
+  return allCollapsed ? (
+    <button onClick={onExpandAll} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]" title="Show every document's pages">
+      <ChevronsUpDown size={14} /> Expand all
+    </button>
+  ) : (
+    <button onClick={onCollapseAll} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]" title="Fold every document down to its name bar">
+      <ChevronsDownUp size={14} /> Collapse all
+    </button>
+  );
+}
+
+/** Pages in a staged/produced copy, from the best source on hand. */
+function stagedPages(d: StagedDoc): number {
+  if (d.pageCount) return d.pageCount;
+  if (d.pageBates?.length) return d.pageBates.length;
+  if (d.batesStart > 0 && d.batesEnd >= d.batesStart) return d.batesEnd - d.batesStart + 1;
+  return d.sourcePages.length;
+}
+
 export function RequestTracker({ requests }: { requests: RequestRow[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
@@ -305,6 +341,10 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
   const anchor = useRef<{ key: string; page: number } | null>(null);
   const [annos, setAnnos] = useState<Record<string, FileAnnotation[]>>({});
+  // Folded document bars and the "hide what went to yellow" switch. Both
+  // reset every time the tab opens: everything expanded, everything shown.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [hideSent, setHideSent] = useState(false);
 
   // Which pages of which source files are already staged/produced, so a
   // 700-page PDF can go over in slices and the sent slices show their stamp.
@@ -321,6 +361,20 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const pageMark = useCallback((f: ClientFile, page: number): PageMark => f.status || (pageMarks.get(f.key)?.get(page) ?? ""), [pageMarks]);
 
   const notePages = useCallback((key: string, n: number) => setPageCounts((prev) => (prev[key] === n ? prev : { ...prev, [key]: n })), []);
+
+  const pagesOf = (f: ClientFile): number | undefined =>
+    f.pageCount ?? pageCounts[f.key] ?? (fileKind(f.name) === "pdf" ? undefined : 1);
+  const totalPages = files.reduce((n, f) => n + (pagesOf(f) ?? 0), 0);
+  const unknownPages = files.filter((f) => pagesOf(f) === undefined).length;
+  /** Every page of the document is already staged or produced. */
+  const fullySent = (f: ClientFile) => {
+    if (f.status) return true;
+    const n = pagesOf(f);
+    return !!n && (pageMarks.get(f.key)?.size ?? 0) >= n;
+  };
+  const shownFiles = hideSent ? files.filter((f) => !fullySent(f)) : files;
+  const sentCount = files.length - files.filter((f) => !fullySent(f)).length;
+  const toggleCollapse = (key: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   // AI.fred's per-page notes, fetched per document as its section opens.
   const [pgNotes, setPgNotes] = useState<Record<string, string[]>>({});
@@ -531,6 +585,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
       {/* Frozen under the admin strip so the selection actions stay in reach
           while checking pages at the bottom of a long set. */}
       <div className="sticky top-9 z-20 mt-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 shadow-sm">
+        <PageTotal pages={totalPages} docs={files.length} unknown={unknownPages} />
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
           {viewBtn("grid", "Grid", <Grid3x3 size={14} />)}
           {viewBtn("reader", "Reader", <BookOpen size={14} />)}
@@ -542,6 +597,17 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             <span className="min-w-[3.5rem] border-x border-[var(--c-border)] px-2 py-1.5 text-center text-xs text-[var(--c-ink-muted)]">{cols}/row</span>
             <button onClick={() => setCols((c) => Math.max(1, c - 1))} disabled={cols <= 1} className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
+        )}
+        {view === "grid" && shownFiles.length > 0 && (
+          <FoldAll allCollapsed={shownFiles.every((f) => collapsed.has(f.key))}
+            onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
+        )}
+        {view !== "reader" && (
+          <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${hideSent ? "border-yellow-500 bg-yellow-100 text-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-200" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}
+            title="Hide documents (and pages) already sent to Documents to be produced or produced. Partly-sent documents stay, showing only the pages still here.">
+            <input type="checkbox" checked={hideSent} onChange={(e) => setHideSent(e.target.checked)} className="accent-yellow-600" />
+            <EyeOff size={14} /> Hide what&apos;s sent to yellow{hideSent && sentCount ? ` (${sentCount} hidden)` : ""}
+          </label>
         )}
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
@@ -591,17 +657,23 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             }} />
         ) : view === "grid" ? (
           <div className="space-y-6">
-            {files.map((f) => (
+            {shownFiles.length === 0 && (
+              <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6 text-center text-sm text-[var(--c-ink-muted)]">
+                Everything here has gone to the yellow tab. <button onClick={() => setHideSent(false)} className="text-[var(--c-accent)] underline">Show it all</button>
+              </p>
+            )}
+            {shownFiles.map((f) => (
               <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
                 setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
                 onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={pagesKnown}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
-                getDoc={getDoc} proxyUrl={proxyUrl} />
+                getDoc={getDoc} proxyUrl={proxyUrl}
+                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent} />
             ))}
           </div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-            {files.map((f) => {
+            {shownFiles.map((f) => {
               const selPages = selByKey.get(f.key)?.length ?? 0;
               const sel = selPages > 0;
               const locked = !!f.status;
@@ -729,7 +801,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -748,6 +820,11 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   pageLabel?: (page: number) => string;
   /** Tooltip for unmarked cells (the yellow tab selects whole documents). */
   cellTitle?: string;
+  /** Folded down to just its header bar (the pages aren't rendered). */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  /** Leave out pages already sent to yellow/green (red tab's "hide sent"). */
+  hideMarked?: boolean;
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -775,7 +852,15 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
 
   return (
     <section>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className={`flex flex-wrap items-center gap-2 ${collapsed ? "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1.5" : "mb-2"}`}>
+        {onToggleCollapse && (
+          <button onClick={onToggleCollapse} aria-expanded={!collapsed}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
+            title={collapsed ? "Expand — show this document's pages" : "Collapse — hide this document's pages for now"}
+            aria-label={collapsed ? `Expand ${f.name}` : `Collapse ${f.name}`}>
+            {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+          </button>
+        )}
         {selectable && <button onClick={onToggleDoc} disabled={!!f.status || (total > 0 && freeCount === 0)}
           className={`flex h-5 w-5 items-center justify-center rounded border ${allSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : selCount > 0 ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)]"} disabled:opacity-40`}
           title={f.status ? "Already staged or produced" : allSel ? "Deselect all pages" : "Select every remaining page of this document"}>
@@ -809,7 +894,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
           <a href={proxyUrl(f)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline"><ExternalLink size={12} /> original</a>
         </span>
       </div>
-      {kind === "image" ? (
+      {collapsed ? null : kind === "image" ? (
+        hideMarked && pageMark(f, 1) ? null :
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           <div className="relative">
             <button onClick={() => onTogglePage(f, 1)} onDoubleClick={() => onOpen(1)} disabled={!!pageMark(f, 1)}
@@ -826,7 +912,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
         </div>
       ) : kind === "pdf" && pages > 0 ? (
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {Array.from({ length: pages }, (_, i) => i + 1).map((page) => {
+          {Array.from({ length: pages }, (_, i) => i + 1).filter((page) => !hideMarked || !pageMark(f, page)).map((page) => {
             const note = noteFor?.(f, page) ?? "";
             return (
               <div key={page} className="min-w-0">
@@ -1333,6 +1419,9 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
   const [error, setError] = useState<string | null>(null);
   const [annos, setAnnos] = useState<Record<string, FileAnnotation[]>>({});
   const loadedAnnos = useRef(new Set<string>());
+  // Folded document bars — every one starts expanded when the tab opens.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapse = (key: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   const files: ClientFile[] = useMemo(() => rows.map((d) => ({
     key: `prod:${d.id}`, name: d.name, dir: d.requestLabel, folderId: null, folderName: "",
@@ -1569,6 +1658,11 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
   return (
     <div>
       <div className="sticky top-9 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-2 shadow-sm">
+        <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />
+        {view === "grid" && files.length > 0 && (
+          <FoldAll allCollapsed={files.every((f) => collapsed.has(f.key))}
+            onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
+        )}
         {view === "grid" && (
           <div className="inline-flex items-center overflow-hidden rounded-md border border-[var(--c-border)]" title="Zoom the page grid">
             <button onClick={() => setCols((c) => Math.min(10, c + 1))} disabled={cols >= 10} className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomOut size={15} /></button>
@@ -1625,7 +1719,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
                 onTogglePage={togglePage} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)}
-                pageLabel={(page) => batesOf(d, page)} />
+                pageLabel={(page) => batesOf(d, page)}
+                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} />
             );
           })}
         </div>
@@ -1679,6 +1774,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
     <div className="p-4">
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.stagedToc} notes={contents.stagedNotes} tocFile="" linkFor={linkFor} batesLink={batesLink} stagedDocs={stagedForToc} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
+        {view === "list" && <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />}
         <p className="text-sm text-[var(--c-ink-muted)]">Bates-labeled and under review — nothing here has gone to the other side yet.</p>
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
           {(["grid", "reader", "list"] as const).map((m) => (
@@ -1763,7 +1859,11 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
 function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens }) {
   const shareToken = shareTokens.produced;
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [ocCopied, setOcCopied] = useState<number | null>(null);
+  const [pullBack, setPullBack] = useState<ProductionRow | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
+  const producedDocs = staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId));
   // Link + Bates base come from the most recent production with a file.
   const latest = [...done].reverse().find((p) => p.fileUrl) ?? null;
   const mainDoc = latest ? null : likelyMainDoc(staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId)));
@@ -1785,9 +1885,19 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
           return page >= 1 ? `${d.url}#page=${page}` : null;
         }} /></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
+        <PageTotal pages={producedDocs.reduce((n, d) => n + stagedPages(d), 0)} docs={producedDocs.length} />
         <IndexAndLabel setId={setId} docCount={staged.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />
       </div>
+      {notice && (
+        <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          <Check size={15} className="mt-0.5 shrink-0" /> {notice} <button onClick={() => setNotice(null)} className="ml-auto"><X size={14} /></button>
+        </p>
+      )}
+      {pullBack && (
+        <PullBackDialog p={pullBack} docs={staged.filter((d) => d.productionId === pullBack.id)}
+          onClose={() => setPullBack(null)} onDone={(msg) => { setPullBack(null); setNotice(msg); }} />
+      )}
       {done.length === 0 ? (
         <p className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-8 text-center text-sm text-[var(--c-ink-muted)]">
           Nothing has been produced yet. Stage documents, prepare the production, review it, and mark it produced.
@@ -1802,11 +1912,26 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
                   <span className="font-semibold">{p.label}</span>
                   <span className="font-mono text-xs">{bates(p.batesPrefix, p.batesStart)} – {String(p.batesEnd).padStart(6, "0")}</span>
                   {p.producedAt && <span className="text-xs text-[var(--c-ink-muted)]">produced {fmtDay(p.producedAt.slice(0, 10))}</span>}
-                  <span className="ml-auto flex items-center gap-2 text-xs">
+                  <span className="text-xs text-[var(--c-ink-muted)]">{docs.reduce((n, d) => n + stagedPages(d), 0).toLocaleString()} pages · {docs.length} doc{docs.length === 1 ? "" : "s"}</span>
+                  <span className="ml-auto flex flex-wrap items-center gap-3 text-xs">
                     {p.letterUrl && <a href={p.letterUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">letter</a>}
                     {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">{p.fileName || "production PDF"}</a>}
-                    <a href={`/production/${p.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--c-accent)] hover:underline">OC link <ExternalLink size={11} /></a>
                     {p.letterUrl && <EmailToCounsel productionId={p.id} draft={false} emailedAt={p.emailedAt} compact />}
+                    {/* Divided button: left opens the opposing-counsel page, right copies its link. */}
+                    <span className="inline-flex overflow-hidden rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-accent)] shadow-sm">
+                      <a href={`/production/${p.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 hover:bg-[var(--c-accent)]/10" title="Open the opposing-counsel page">
+                        <ExternalLink size={14} /> OC link
+                      </a>
+                      <button onClick={async () => { if (await copyText(`${window.location.origin}/production/${p.token}`)) { setOcCopied(p.id); setTimeout(() => setOcCopied(null), 2000); } }}
+                        className="inline-flex items-center gap-1 border-l border-[var(--c-accent)] px-2.5 py-1.5 hover:bg-[var(--c-accent)]/10" title="Copy the opposing-counsel link to paste" aria-label="Copy OC link">
+                        {ocCopied === p.id ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                      </button>
+                    </span>
+                    <button onClick={() => setPullBack(p)}
+                      className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1.5 text-[var(--c-ink-muted)] hover:border-yellow-500 hover:text-yellow-800 dark:hover:text-yellow-300"
+                      title="Move this whole production back to Documents to be produced">
+                      <Undo2 size={13} /> Move back to yellow
+                    </button>
                   </span>
                 </div>
                 <div className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
@@ -1831,6 +1956,94 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
           })}
         </div>
       )}
+    </div>
+  );
+}
+/**
+ * Pull a produced set back to the yellow tab — explain, then ask whether it
+ * went to opposing counsel. If it did, refuse and point to a supplement or a
+ * clarification instead.
+ */
+function PullBackDialog({ p, docs, onClose, onDone }: { p: ProductionRow; docs: StagedDoc[]; onClose: () => void; onDone: (msg: string) => void }) {
+  const router = useRouter();
+  const [step, setStep] = useState<"explain" | "ask" | "blocked">(p.emailedAt ? "blocked" : "explain");
+  const [blockedWhy, setBlockedWhy] = useState<string>(p.emailedAt ? `Our records show ${p.label} was emailed to opposing counsel on ${new Date(p.emailedAt).toLocaleDateString()}.` : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const range = p.batesStart ? `${bates(p.batesPrefix, p.batesStart)} – ${bates(p.batesPrefix, p.batesEnd)}` : "";
+  const pages = docs.reduce((n, d) => n + stagedPages(d), 0);
+
+  async function pull() {
+    setBusy(true);
+    setError(null);
+    const r = await returnProductionToStaged(p.id, { notSentConfirmed: true }).catch(() => null);
+    setBusy(false);
+    if (!r) { setError("Couldn't reach the server. Nothing was changed."); return; }
+    if (!r.ok) {
+      if ("sent" in r && r.sent) { setBlockedWhy(r.error ?? ""); setStep("blocked"); }
+      else setError(r.error ?? "Couldn't move it back. Nothing was changed.");
+      return;
+    }
+    onDone(`${r.label} moved back to Documents to be produced — ${r.moved} document${r.moved === 1 ? "" : "s"}, Bates stamps kept.`);
+    router.refresh();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5" role="dialog" aria-modal="true">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="font-[family-name:var(--font-display)] text-lg">Move {p.label} back to the yellow tab?</h3>
+          <button onClick={onClose} disabled={busy} className="text-[var(--c-ink-muted)]" aria-label="Close"><X size={18} /></button>
+        </div>
+
+        {step === "explain" && (
+          <>
+            <p className="mt-2 text-sm text-[var(--c-ink-muted)]">Here&apos;s what will happen:</p>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm">
+              <li>The {docs.length} document{docs.length === 1 ? "" : "s"} ({pages.toLocaleString()} page{pages === 1 ? "" : "s"}{range ? `, ${range}` : ""}) go back to <strong>Documents to be produced</strong>, still Bates-stamped, for more review.</li>
+              <li><strong>{p.label}</strong> stops existing as a production: its merged PDF and cover letter are deleted, and the <strong>opposing-counsel link stops working</strong>.</li>
+              <li>The client&apos;s originals in the red tab don&apos;t change.</li>
+            </ul>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+              <button onClick={() => setStep("ask")} className="btn btn-accent text-sm py-2 px-4">Continue</button>
+            </div>
+          </>
+        )}
+
+        {step === "ask" && (
+          <>
+            <div className="mt-3 rounded-md border-2 border-red-500/70 bg-red-500/10 p-4 text-center">
+              <p className="text-base font-bold uppercase tracking-wide text-red-700 dark:text-red-300">Has this production been sent to opposing counsel?</p>
+              <p className="mt-1 text-xs text-red-700/80 dark:text-red-300/80">By email, the OC link, mail, a file share, a thumb drive, or any other way.</p>
+            </div>
+            {error && <p className="mt-3 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button onClick={() => { setBlockedWhy(""); setStep("blocked"); }} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Yes — it was sent</button>
+              <button onClick={() => void pull()} disabled={busy} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-60">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />} No — never sent. Move it back
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "blocked" && (
+          <>
+            <div className="mt-3 rounded-md border-2 border-red-500/70 bg-red-500/10 p-4 text-sm">
+              <p className="font-bold text-red-700 dark:text-red-300">Don&apos;t pull it back — opposing counsel already has it.</p>
+              {blockedWhy && <p className="mt-1 text-red-700 dark:text-red-300">{blockedWhy}</p>}
+              <p className="mt-2">Pulling a sent production back here would make our records disagree with what the other side received. Instead:</p>
+              <ul className="mt-1.5 list-disc space-y-1 pl-5">
+                <li><strong>Supplement</strong> — stage the corrected or additional documents and prepare the next production, or</li>
+                <li><strong>Send a clarification</strong> to opposing counsel explaining the correction (e.g. a document produced in error, or a replacement page).</li>
+              </ul>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button onClick={onClose} className="btn btn-accent text-sm py-2 px-4">OK</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
