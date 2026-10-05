@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UploadCloud,
@@ -672,7 +673,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
         </div>
       </div>
 
-      <div className={`min-h-0 flex-1 overflow-y-auto p-4 ${dragOver ? "ring-2 ring-inset ring-[var(--c-accent)] bg-[var(--c-accent)]/5" : ""}`}
+      <div className={`min-h-0 flex-1 p-4 ${dragOver ? "ring-2 ring-inset ring-[var(--c-accent)] bg-[var(--c-accent)]/5" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadClientFiles(Array.from(e.dataTransfer.files)); }}>
@@ -1473,9 +1474,12 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
  * instead: remove a document from staging, or burn a late-caught redaction
  * straight into the staged copy.
  */
-function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
+function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolbarHost }: {
   setId: number; rows: StagedDoc[]; shareToken: string | null;
   view: "grid" | "reader"; setView: (v: "grid" | "reader") => void;
+  /** StagedView's frozen header: the toolbar renders there so one block
+   *  stays pinned under the admin strip. */
+  toolbarHost?: HTMLElement | null;
   /** Success notice hoisted to StagedView — this gallery unmounts when the
    *  last staged document moves to the green tab. */
   onMoved: (msg: string) => void;
@@ -1725,9 +1729,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
     );
   };
 
-  return (
-    <div>
-      <div className="sticky top-9 z-20 -mx-1 mb-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-2 shadow-sm">
+  const toolbar = (
+      <div className="flex flex-wrap items-center gap-3">
         <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />
         {view === "grid" && files.length > 0 && (
           <FoldAll allCollapsed={files.every((f) => collapsed.has(f.key))}
@@ -1764,6 +1767,13 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved }: {
         )}
         <span className="text-xs text-[var(--c-ink-muted)]">This is the exact copy that goes out — click a page to select it (shift-click for a range), double-click to read; the reader&apos;s Tools can burn a late redaction or remove the document.</span>
       </div>
+  );
+
+  return (
+    <div>
+      {toolbarHost ? createPortal(toolbar, toolbarHost) : (
+        <div className="sticky top-9 z-20 -mx-1 mb-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-2 shadow-sm">{toolbar}</div>
+      )}
       {notice && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
           <Check size={15} className="mt-0.5 shrink-0" /> {notice} <button onClick={() => setNotice(null)} className="ml-auto"><X size={14} /></button>
@@ -1810,6 +1820,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<ProductionRow | null>(draft);
   const [copied, setCopied] = useState(false);
+  const [toolHost, setToolHost] = useState<HTMLDivElement | null>(null);
   // Lives here, not in the gallery: moving the LAST staged doc to green
   // unmounts the gallery, and the confirmation must survive that.
   const [movedNotice, setMovedNotice] = useState<string | null>(null);
@@ -1843,7 +1854,9 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
   return (
     <div className="p-4">
       <div className="-mx-4 -mt-1 mb-3"><ProductionContents setId={setId} mode="staged" toc={contents.stagedToc} notes={contents.stagedNotes} tocFile="" linkFor={linkFor} batesLink={batesLink} stagedDocs={stagedForToc} /></div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      {/* Frozen under the admin strip while the staged pages scroll. */}
+      <div className="sticky top-9 z-20 -mx-4 mb-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
         {view === "list" && <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />}
         <p className="text-sm text-[var(--c-ink-muted)]">Bates-labeled and under review — nothing here has gone to the other side yet.</p>
         <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
@@ -1861,6 +1874,8 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
           title={draft ? "A draft production is awaiting review below" : undefined}>
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {busy ? "Assembling…" : "Prepare production"}
         </button>
+      </div>
+      <div ref={setToolHost} className="mt-2 empty:hidden" />
       </div>
       {error && <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
       {movedNotice && (
@@ -1896,7 +1911,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
           Nothing staged. Select documents under <strong>Received from Client</strong> and click <strong>Intend to produce</strong>.
         </p>
       ) : view !== "list" ? (
-        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} />
+        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} toolbarHost={toolHost} />
       ) : (
         <div className="divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
           {rows.map((d) => (
@@ -1954,7 +1969,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
           const page = pb.length ? pb.indexOf(n) + 1 : n - d.batesStart + 1;
           return page >= 1 ? `${d.url}#page=${page}` : null;
         }} /></div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="sticky top-9 z-20 -mx-4 mb-3 flex flex-wrap items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2 shadow-sm">
         <PageTotal pages={producedDocs.reduce((n, d) => n + stagedPages(d), 0)} docs={producedDocs.length} />
         <IndexAndLabel setId={setId} docCount={staged.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />

@@ -47,7 +47,7 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
       {mode === "opposing" ? (
         <DiscoveryReviewer {...reviewerProps} />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1">
           <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} />
         </div>
       )}

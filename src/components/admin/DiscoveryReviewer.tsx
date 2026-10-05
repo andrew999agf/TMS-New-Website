@@ -289,7 +289,7 @@ export function DiscoveryReviewer({
       )}
 
       {/* ---- toolbar: view toggle, upload, selection bar ---- */}
-      <div className="sticky top-0 z-30 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2.5">
+      <div className="sticky top-9 z-30 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-2.5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]">
             <button onClick={() => setView("grid")} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm ${view === "grid" ? "bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "hover:bg-[var(--c-bg)]"}`}><Grid3x3 size={14} /> Grid</button>
@@ -360,7 +360,7 @@ export function DiscoveryReviewer({
       </div>
 
       {/* ---- body ---- */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 p-4">
         {docs.length === 0 ? (
           <div className="mx-auto mt-10 max-w-md rounded-lg border-2 border-dashed border-[var(--c-border)] p-10 text-center text-sm text-[var(--c-ink-muted)]">
             <UploadCloud className="mx-auto mb-3 text-[var(--c-ink-muted)]" size={28} />
