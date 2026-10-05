@@ -1486,3 +1486,70 @@ export async function returnProductionToStaged(productionId: number, input: { no
     return { ok: false as const, error: "Couldn't move the production back." };
   }
 }
+
+/**
+ * Delete checked documents from "Documents received from Client". Each key
+ * is either a client-portal upload (share:<id>, removed from the client's
+ * share folder too) or a document filed directly into this case
+ * (doc:<id>). A document with any page staged or produced is refused — it
+ * is the source of a Bates copy that has to stay traceable.
+ */
+export async function deleteClientDocs(setId: number, keysIn: string[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const keys = [...new Set((Array.isArray(keysIn) ? keysIn : []).filter((k) => typeof k === "string" && /^(share|doc):\d+$/.test(k)))].slice(0, 500);
+    if (!keys.length) return { ok: false as const, error: "Check at least one document." };
+
+    const used = new Set((await db.select({ k: productionDocs.sourceKey }).from(productionDocs)
+      .where(and(eq(productionDocs.setId, setId), inArray(productionDocs.sourceKey, keys)))).map((r) => r.k));
+
+    const shareIds = keys.filter((k) => k.startsWith("share:")).map((k) => Number(k.slice(6)));
+    const docIds = keys.filter((k) => k.startsWith("doc:")).map((k) => Number(k.slice(4)));
+    // Only this case's client folders and this case's own documents.
+    const folderIds = set.matter
+      ? (await db.select({ id: shareFolders.id }).from(shareFolders)
+          .where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))).map((f) => f.id)
+      : [];
+    const shares = shareIds.length && folderIds.length
+      ? await db.select().from(shareFiles).where(and(inArray(shareFiles.id, shareIds), inArray(shareFiles.folderId, folderIds)))
+      : [];
+    const docs = docIds.length
+      ? await db.select().from(discoveryDocs).where(and(inArray(discoveryDocs.id, docIds), eq(discoveryDocs.setId, setId), eq(discoveryDocs.bucket, "client")))
+      : [];
+
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+    for (const f of shares) {
+      const key = `share:${f.id}`;
+      const name = f.filename.split("/").pop() || f.filename;
+      if (used.has(key)) { skipped.push(`${name} (pages already sent to yellow/green)`); continue; }
+      try { await del(f.url); } catch { /* best-effort */ }
+      await db.delete(shareFiles).where(eq(shareFiles.id, f.id));
+      await db.delete(discoveryAnnotations).where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.fileKey, key)));
+      deleted.push(name);
+    }
+    for (const d of docs) {
+      const key = `doc:${d.id}`;
+      if (used.has(key)) { skipped.push(`${d.name} (pages already sent to yellow/green)`); continue; }
+      if (d.pathname) { try { await del(d.pathname); } catch { /* best-effort */ } }
+      await db.delete(discoveryDocs).where(eq(discoveryDocs.id, d.id));
+      await db.delete(discoveryAnnotations).where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.fileKey, key)));
+      deleted.push(d.name);
+    }
+    const missing = keys.length - shares.length - docs.length;
+    if (missing > 0) skipped.push(`${missing} not found in this case`);
+
+    if (deleted.length) {
+      await audit(session.email, "delete", "discovery-doc", String(setId),
+        `Deleted ${deleted.length} client document${deleted.length === 1 ? "" : "s"} from "${set.name}": ${deleted.join(", ").slice(0, 900)}`);
+    }
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, deleted: deleted.length, skipped };
+  } catch (err) {
+    console.error("[discovery-reviewer] deleteClientDocs failed:", err);
+    return { ok: false as const, error: "Couldn't delete the documents." };
+  }
+}

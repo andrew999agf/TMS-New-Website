@@ -13,7 +13,7 @@ import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
-  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged,
+  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
@@ -345,6 +345,11 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   // reset every time the tab opens: everything expanded, everything shown.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hideSent, setHideSent] = useState(false);
+  // "Select to delete": check whole documents, then delete them together.
+  const [delMode, setDelMode] = useState(false);
+  const [delSel, setDelSel] = useState<Set<string>>(new Set());
+  const [delDialog, setDelDialog] = useState(false);
+  const [delBusy, setDelBusy] = useState(false);
 
   // Which pages of which source files are already staged/produced, so a
   // 700-page PDF can go over in slices and the sent slices show their stamp.
@@ -374,6 +379,27 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   };
   const shownFiles = hideSent ? files.filter((f) => !fullySent(f)) : files;
   const sentCount = files.length - files.filter((f) => !fullySent(f)).length;
+  /** Any page already staged/produced → it's the source of a Bates copy; keep it. */
+  const delLocked = (f: ClientFile) => !!f.status || (pageMarks.get(f.key)?.size ?? 0) > 0;
+  const toggleDel = (f: ClientFile) => {
+    if (delLocked(f)) return;
+    setDelSel((prev) => { const n = new Set(prev); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; });
+  };
+  const delFiles = files.filter((f) => delSel.has(f.key));
+  const exitDelMode = () => { setDelMode(false); setDelSel(new Set()); };
+  async function deleteChecked() {
+    setDelBusy(true);
+    setError(null);
+    const r = await deleteClientDocs(setId, [...delSel]).catch(() => null);
+    setDelBusy(false);
+    setDelDialog(false);
+    if (!r || !r.ok) { setError(r && !r.ok ? r.error ?? "Couldn't delete." : "Couldn't reach the server. Nothing was deleted."); return; }
+    // Drop any page selections that pointed at the deleted documents.
+    setSelected((prev) => new Set([...prev].filter((k) => !delSel.has(k.slice(0, k.lastIndexOf("#"))))));
+    exitDelMode();
+    setNotice(`Deleted ${r.deleted} document${r.deleted === 1 ? "" : "s"}.${r.skipped.length ? ` Not deleted: ${r.skipped.join("; ")}.` : ""}`);
+    router.refresh();
+  }
   const toggleCollapse = (key: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   // AI.fred's per-page notes, fetched per document as its section opens.
@@ -609,6 +635,24 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             <EyeOff size={14} /> Hide what&apos;s sent to yellow{hideSent && sentCount ? ` (${sentCount} hidden)` : ""}
           </label>
         )}
+        {view !== "reader" && files.length > 0 && (delMode ? (
+          <span className="inline-flex flex-wrap items-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-2 py-1">
+            <span className="text-sm font-semibold text-red-700 dark:text-red-300">{delSel.size} checked</span>
+            <button onClick={() => setDelSel(new Set(shownFiles.filter((f) => !delLocked(f)).map((f) => f.key)))}
+              className="text-xs text-red-700 underline dark:text-red-300">check all</button>
+            <button onClick={() => setDelDialog(true)} disabled={delSel.size === 0}
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+              <Trash2 size={13} /> Delete checked
+            </button>
+            <button onClick={exitDelMode} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">cancel</button>
+          </span>
+        ) : (
+          <button onClick={() => { setDelSel(new Set()); setDelMode(true); }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:border-red-500 hover:text-red-600"
+            title="Check documents and delete them">
+            <Trash2 size={14} /> Select to delete
+          </button>
+        ))}
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
           {uploading ? `Uploading ${uploading.done + 1}/${uploading.total}…` : "Add client documents"}
@@ -668,7 +712,8 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
                 onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={pagesKnown}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl}
-                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent} />
+                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent}
+                deleteCheck={delMode ? { checked: delSel.has(f.key), locked: delLocked(f), onToggle: () => toggleDel(f) } : undefined} />
             ))}
           </div>
         ) : (
@@ -678,8 +723,9 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
               const sel = selPages > 0;
               const locked = !!f.status;
               return (
-                <button key={f.key} onClick={() => void toggleDoc(f)}
-                  className={`relative rounded-lg border bg-[var(--c-surface)] p-3 text-left transition-shadow ${sel ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${locked ? "opacity-70" : "hover:shadow"}`}>
+                <button key={f.key} onClick={() => (delMode ? toggleDel(f) : void toggleDoc(f))}
+                  title={delMode && delLocked(f) ? "Pages of this document are already in the yellow or green tab — it can't be deleted" : undefined}
+                  className={`relative rounded-lg border bg-[var(--c-surface)] p-3 text-left transition-shadow ${delMode ? (delSel.has(f.key) ? "border-red-600 ring-2 ring-red-600" : delLocked(f) ? "border-[var(--c-border)] opacity-50" : "border-red-300") : sel ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${locked ? "opacity-70" : "hover:shadow"}`}>
                   <div className="flex items-start gap-2">
                     <FileText size={17} className="mt-0.5 shrink-0 text-[var(--c-accent)]" />
                     <div className="min-w-0">
@@ -713,6 +759,27 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
           </div>
         )}
       </div>
+
+      {delDialog && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-red-500 bg-[var(--c-surface)] p-5" role="dialog" aria-modal="true">
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Delete {delFiles.length} document{delFiles.length === 1 ? "" : "s"}?</h3>
+            <ul className="mt-2 max-h-48 list-disc overflow-y-auto pl-5 text-sm">
+              {delFiles.map((f) => <li key={f.key} className="break-words">{f.name}{f.dir ? <span className="text-[var(--c-ink-muted)]"> — {f.dir}</span> : null}</li>)}
+            </ul>
+            <p className="mt-3 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+              This permanently deletes {delFiles.length === 1 ? "the file" : "these files"} from this case — including from the client&apos;s share folder — along with their notes and highlights. It can&apos;t be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setDelDialog(false)} disabled={delBusy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+              <button onClick={() => void deleteChecked()} disabled={delBusy}
+                className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                {delBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {dialog && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setDialog(false); }}>
@@ -801,7 +868,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -825,6 +892,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   onToggleCollapse?: () => void;
   /** Leave out pages already sent to yellow/green (red tab's "hide sent"). */
   hideMarked?: boolean;
+  /** Red tab "Select to delete" mode: a red checkbox replaces the page one. */
+  deleteCheck?: { checked: boolean; locked: boolean; onToggle: () => void };
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -861,7 +930,15 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
             {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
           </button>
         )}
-        {selectable && <button onClick={onToggleDoc} disabled={!!f.status || (total > 0 && freeCount === 0)}
+        {deleteCheck && (
+          <button onClick={deleteCheck.onToggle} disabled={deleteCheck.locked} role="checkbox" aria-checked={deleteCheck.checked}
+            aria-label={`Check ${f.name} for deletion`}
+            title={deleteCheck.locked ? "Pages of this document are already in the yellow or green tab — it can't be deleted" : deleteCheck.checked ? "Uncheck" : "Check to delete this document"}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${deleteCheck.checked ? "border-red-600 bg-red-600 text-white" : "border-red-400"} disabled:cursor-not-allowed disabled:border-[var(--c-border)] disabled:opacity-40`}>
+            {deleteCheck.checked && <Check size={13} strokeWidth={3} />}
+          </button>
+        )}
+        {selectable && !deleteCheck && <button onClick={onToggleDoc} disabled={!!f.status || (total > 0 && freeCount === 0)}
           className={`flex h-5 w-5 items-center justify-center rounded border ${allSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : selCount > 0 ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)]"} disabled:opacity-40`}
           title={f.status ? "Already staged or produced" : allSel ? "Deselect all pages" : "Select every remaining page of this document"}>
           {allSel ? <Check size={13} strokeWidth={3} /> : selCount > 0 ? <span className="text-[11px] font-bold leading-none">–</span> : null}
