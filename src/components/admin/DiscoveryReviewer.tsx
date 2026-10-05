@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
-  ChevronLeft, ChevronRight, FolderInput, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
-  addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation, updateDesignation, setDiscoveryDocBucket,
+  addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation, updateDesignation,
   type PageRef,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
@@ -491,18 +491,7 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge
                 className="inline-flex items-center gap-1 text-xs text-[var(--c-accent)] hover:underline" title="Open the untouched original PDF in a new tab">
                 <ExternalLink size={12} /> original
               </a>
-              <button
-                onClick={async () => {
-                  if (confirm(`Move "${d.name}" to Documents received from Client? Its pages leave this view (any exhibit designations on them keep their exhibits, but the page badges go with the document).`)) {
-                    await setDiscoveryDocBucket(d.id, "client");
-                    window.location.reload();
-                  }
-                }}
-                className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
-                title="This document is actually from our client, not the opposing side — move it to the Documents received from Client bucket">
-                <FolderInput size={13} /> move to Client docs
-              </button>
-              <button onClick={() => onDeleteDoc(d)} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
+              <button onClick={() => onDeleteDoc(d)} className="ml-auto rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove this document"><Trash2 size={14} /></button>
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
               {Array.from({ length: n }, (_, i) => i + 1).map((page) => {

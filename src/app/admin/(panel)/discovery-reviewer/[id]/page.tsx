@@ -34,7 +34,8 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   // The opposing-production reviewer shows only its own bucket; documents
   // moved to the client bucket surface under "Documents received from Client".
   const docs = allDocs.filter((d) => d.bucket !== "client");
-  const movedDocs = allDocs.filter((d) => d.bucket === "client");
+  // Documents the firm added straight into the red tab (not via the client portal).
+  const firmDocs = allDocs.filter((d) => d.bucket === "client");
   let marks = await db.select().from(discoveryMarks).where(eq(discoveryMarks.setId, setId)).orderBy(asc(discoveryMarks.id));
 
   // Self-heal designations whose exhibit was deleted before badge-sync
@@ -114,16 +115,15 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   let staged: StagedDoc[] = [];
   let prods: ProductionRow[] = [];
   let batesDefaults = { prefix: (set.matter.includes("-") ? set.matter.slice(set.matter.indexOf("-") + 1) : set.name.split(/\s+/)[0] || "BATES").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "BATES", nextStart: 1 };
-  for (const d of movedDocs) {
+  for (const d of firmDocs) {
     clientFiles.push({
       key: `doc:${d.id}`,
       name: d.name,
       dir: "",
       folderId: null,
-      folderName: "Opposing production",
+      folderName: "Added by the firm",
       createdAt: d.createdAt.toISOString(),
       status: "",
-      movedFromOpposing: true,
       aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       textStatus: d.textStatus ?? "",
       pageCount: d.pageCount ?? (/\.(jpe?g|png)$/i.test(d.name) ? 1 : undefined),

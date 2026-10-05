@@ -12,7 +12,7 @@ import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
-  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines, setDiscoveryDocBucket,
+  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -22,7 +22,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; movedFromOpposing?: boolean; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
@@ -732,13 +732,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
                       <p className="break-words text-sm font-medium leading-snug">{f.name}</p>
                       <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--c-ink-muted)]">
                         {f.dir && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 font-semibold text-[var(--c-accent)]">{f.dir}</span>}
-                        {f.movedFromOpposing && <span className="rounded-full bg-[var(--c-border)] px-1.5 py-0.5">moved from opposing</span>}
                         <span>{fmtDay(f.createdAt.slice(0, 10))}</span>
-                        {f.movedFromOpposing && !locked && (
-                          <span role="button" tabIndex={0}
-                            onClick={async (e) => { e.stopPropagation(); if (confirm(`Move "${f.name}" back to Opposing production?`)) { await setDiscoveryDocBucket(Number(f.key.slice(4)), "opposing"); router.refresh(); } }}
-                            className="cursor-pointer text-[var(--c-accent)] underline">move back</span>
-                        )}
                       </p>
                     </div>
                   </div>
@@ -946,7 +940,6 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
         {headerExtra}
         <h3 className="truncate text-sm font-semibold">{f.name}</h3>
         {f.dir && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{f.dir}</span>}
-        {f.movedFromOpposing && <span className="rounded-full bg-[var(--c-border)] px-1.5 py-0.5 text-[11px] text-[var(--c-ink-muted)]">moved from opposing</span>}
         {f.status ? (
           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${f.status === "produced" ? "bg-green-200 text-green-900" : "bg-yellow-200 text-yellow-900"}`}>
             {f.status === "produced" ? "produced" : "TBP →"}
