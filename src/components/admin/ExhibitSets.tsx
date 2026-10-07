@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, FileSearch, Archive, ArchiveRestore, Trash2, X, ChevronRight } from "lucide-react";
 import { MatterPicker, type MatterOption } from "./MatterPicker";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { createExhibitSet, setExhibitSetArchived, deleteExhibitSet } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 
 export type SetRow = {
@@ -14,7 +15,7 @@ export type SetRow = {
 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export function ExhibitSets({ sets, matters, discoveryMatters = [], hub = {} }: { sets: SetRow[]; matters: MatterOption[]; discoveryMatters?: string[]; hub?: Record<string, { name: string; causeNumber: string; court: string }> }) {
+export function ExhibitSets({ sets, matters, discoveryMatters = [] }: { sets: SetRow[]; matters: MatterOption[]; discoveryMatters?: string[]; hub?: Record<string, { name: string; causeNumber: string; court: string }> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -22,6 +23,10 @@ export function ExhibitSets({ sets, matters, discoveryMatters = [], hub = {} }: 
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({ name: "", matter: "", causeNumber: "", court: "" });
   const [alsoDiscovery, setAlsoDiscovery] = useState(true);
+  const lookup = useCaseLookup(f.matter, (c) => {
+    setF((prev) => ({ ...prev, matter: c.matter || prev.matter, name: prev.name || c.name, causeNumber: prev.causeNumber || c.causeNumber, court: prev.court || c.court }));
+  });
+  const note = lookupNote(lookup);
   const discoveryExists = !!f.matter.trim() && discoveryMatters.includes(f.matter.trim());
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -62,15 +67,8 @@ export function ExhibitSets({ sets, matters, discoveryMatters = [], hub = {} }: 
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Case code (matter)</span>
-              <MatterPicker matters={matters} value={f.matter} onChange={(v) => {
-                const known = hub[v.trim()];
-                setF((prev) => ({
-                  ...prev, matter: v,
-                  name: prev.name || known?.name || prev.name,
-                  causeNumber: prev.causeNumber || known?.causeNumber || prev.causeNumber,
-                  court: prev.court || known?.court || prev.court,
-                }));
-              }} placeholder="Search by code, client, or description…" inputClass={input} />
+              <MatterPicker matters={matters} value={f.matter} onChange={(v) => setF((prev) => ({ ...prev, matter: v }))} placeholder="Search by code, client, or description…" inputClass={input} />
+              {note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>}
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</span>

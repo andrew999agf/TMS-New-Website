@@ -10,7 +10,7 @@ import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessag
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { partyToReviewerSide } from "@/lib/portal";
-import { cleanMatterCode } from "@/lib/time-entry";
+import { resolveMatterKey } from "@/lib/cases";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -97,7 +97,7 @@ export async function createPortalMatter(groupId: number, input: { title: string
   const posture = ["transactional", "pre-litigation", "litigation"].includes(input.posture) ? input.posture : "transactional";
   const [row] = await db
     .insert(portalMatters)
-    .values({ groupId, companyId: input.companyId, title, clioMatter: cleanMatterCode(input.clioMatter), posture })
+    .values({ groupId, companyId: input.companyId, title, clioMatter: await resolveMatterKey(input.clioMatter), posture })
     .returning({ id: portalMatters.id });
   await audit(session.email, "create", "portal-matter", String(row.id), title);
   reval(groupId);
@@ -114,7 +114,7 @@ export async function updatePortalMatter(id: number, patch: {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.title !== undefined) set.title = patch.title.trim().slice(0, 255);
   if (patch.companyId !== undefined) set.companyId = patch.companyId;
-  if (patch.clioMatter !== undefined) set.clioMatter = cleanMatterCode(patch.clioMatter);
+  if (patch.clioMatter !== undefined) set.clioMatter = await resolveMatterKey(patch.clioMatter);
   if (patch.posture !== undefined && ["transactional", "pre-litigation", "litigation"].includes(patch.posture)) set.posture = patch.posture;
   if (patch.status !== undefined && ["open", "closed"].includes(patch.status)) set.status = patch.status;
   if (patch.notes !== undefined) set.notes = patch.notes;

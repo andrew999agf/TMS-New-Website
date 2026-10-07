@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Briefcase, Building2, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2, Eye, EyeOff } from "lucide-react";
 import { addPortalCompany, removePortalCompany, createPortalMatter, setMatterHidden, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember, setClientCanCreateMatters } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { POSTURES } from "@/lib/portal";
 
 export type CompanyRow = { id: number; name: string };
@@ -36,6 +37,12 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
   const [clio, setClio] = useState("");
   const [posture, setPosture] = useState<string>("transactional");
   const [error, setError] = useState<string | null>(null);
+  // Known case? Snap to its key and suggest its name as the matter title.
+  const lookup = useCaseLookup(clio, (c) => {
+    if (c.matter && c.matter !== clio) setClio(c.matter);
+    setTitle((v) => v || c.name);
+  });
+  const note = lookupNote(lookup);
   const [pending, start] = useTransition();
 
   const open = matters.filter((m) => m.status === "open" && !m.hidden);
@@ -90,7 +97,7 @@ export function CasePortalGroup({ groupId, companies, matters, clioMatters, memb
                 {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Clio matter <span className="opacity-70">(links the time tally)</span></span><MatterCombobox matters={clioMatters} value={clio} onChange={setClio} placeholder="Search matter…" /></label>
+            <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Clio matter <span className="opacity-70">(links the time tally)</span></span><MatterCombobox matters={clioMatters} value={clio} onChange={setClio} placeholder="Search matter…" />{note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>}</label>
             <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Posture</span>
               <select value={posture} onChange={(e) => setPosture(e.target.value)} className={`${input} w-full`}>
                 {POSTURES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}

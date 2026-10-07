@@ -8,6 +8,7 @@ import {
   trialWitnesses, type CaseParty,
 } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
+import { findCaseForMatter } from "@/lib/cases";
 
 /**
  * The Assistant's window into the firm's own systems — Matters/Cases,
@@ -255,7 +256,7 @@ async function listCases(query: string) {
 
 async function getCase(matter: string) {
   if (!matter) return { error: "matter is required." };
-  const [hub] = await db!.select().from(caseHub).where(eq(caseHub.matter, matter));
+  const hub = await findCaseForMatter(matter);
   if (!hub) {
     const near = await listCases(matter);
     return { error: `No case with matter "${matter}".`, similar: near.cases.slice(0, 5) };

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, Scale, X, ChevronRight, Search, Archive, CircleDollarSign } from "lucide-react";
 import { MatterPicker, type MatterOption } from "./MatterPicker";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { createCase, setCaseRetainer } from "@/app/admin/(panel)/cases/actions";
 import type { CaseParty } from "@/db/schema";
 
@@ -26,6 +27,12 @@ export function CasesManager({ cases, matters }: { cases: CaseRow[]; matters: Ma
   const [f, setF] = useState({ matter: "", name: "", causeNumber: "", court: "" });
 
   const [showClosed, setShowClosed] = useState(false);
+  // Already on file? Snap to its key and show what we have, so "creating" it
+  // just opens the existing record instead of retyping it.
+  const lookup = useCaseLookup(f.matter, (c) => {
+    setF((prev) => ({ ...prev, matter: c.matter || prev.matter, name: prev.name || c.name, causeNumber: prev.causeNumber || c.causeNumber, court: prev.court || c.court }));
+  });
+  const note = lookupNote(lookup);
 
   const shown = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -62,6 +69,7 @@ export function CasesManager({ cases, matters }: { cases: CaseRow[]; matters: Ma
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Matter (case ID) *</span>
               <MatterPicker matters={matters} value={f.matter} onChange={(v) => setF({ ...f, matter: v })} placeholder="Search by code, client, or description…" inputClass={input} />
+              {note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{lookup.status === "found" ? "This case is already on file — saving opens it." : note.text}</span>}
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</span>

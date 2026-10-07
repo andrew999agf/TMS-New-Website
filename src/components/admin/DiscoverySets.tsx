@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Loader2, FileStack, Archive, ArchiveRestore, Trash2, X, ChevronRight, Link2 } from "lucide-react";
 import { MatterPicker, type MatterOption } from "./MatterPicker";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { createDiscoverySet, setDiscoverySetArchived, deleteDiscoverySet } from "@/app/admin/(panel)/discovery-reviewer/actions";
 
 export type DiscoverySetRow = {
@@ -14,7 +15,7 @@ export type DiscoverySetRow = {
 
 const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
 
-export function DiscoverySets({ sets, matters, exhibitMatters, hub = {} }: { sets: DiscoverySetRow[]; matters: MatterOption[]; exhibitMatters: string[]; hub?: Record<string, { name: string; causeNumber: string; court: string }> }) {
+export function DiscoverySets({ sets, matters, exhibitMatters }: { sets: DiscoverySetRow[]; matters: MatterOption[]; exhibitMatters: string[]; hub?: Record<string, { name: string; causeNumber: string; court: string }> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -22,6 +23,12 @@ export function DiscoverySets({ sets, matters, exhibitMatters, hub = {} }: { set
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({ name: "", matter: "", causeNumber: "", court: "" });
   const [alsoExhibit, setAlsoExhibit] = useState(true);
+  // Known case (by code, long form, or bare number)? Snap to its key and
+  // pull its info from the central record — never overwrite what's typed.
+  const lookup = useCaseLookup(f.matter, (c) => {
+    setF((prev) => ({ ...prev, matter: c.matter || prev.matter, name: prev.name || c.name, causeNumber: prev.causeNumber || c.causeNumber, court: prev.court || c.court }));
+  });
+  const note = lookupNote(lookup);
 
   const exhibitExists = !!f.matter.trim() && exhibitMatters.includes(f.matter.trim());
 
@@ -63,17 +70,8 @@ export function DiscoverySets({ sets, matters, exhibitMatters, hub = {} }: { set
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Case code (matter) — links the two reviewers</span>
-              <MatterPicker matters={matters} value={f.matter} onChange={(v) => {
-                // Known case? Pull its info from the central record so nothing
-                // needs retyping — but never overwrite what's already typed.
-                const known = hub[v.trim()];
-                setF((prev) => ({
-                  ...prev, matter: v,
-                  name: prev.name || known?.name || prev.name,
-                  causeNumber: prev.causeNumber || known?.causeNumber || prev.causeNumber,
-                  court: prev.court || known?.court || prev.court,
-                }));
-              }} placeholder="Search by code, client, or description…" inputClass={input} />
+              <MatterPicker matters={matters} value={f.matter} onChange={(v) => setF((prev) => ({ ...prev, matter: v }))} placeholder="Search by code, client, or description…" inputClass={input} />
+              {note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>}
             </label>
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</span>

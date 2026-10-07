@@ -8,7 +8,7 @@ import { del, put } from "@vercel/blob";
 import { db } from "@/db";
 import { exhibitSets, exhibitDocs, exhibitWitnesses, exhibitClaims, exhibitElements, exhibitRecipients, discoverySets, discoveryMarks } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
-import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { getOrCreateCaseForMatter, resolveMatterKey } from "@/lib/cases";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -49,7 +49,7 @@ export async function createExhibitSet(input: SetInput, alsoDiscovery?: boolean)
   const name = str(input.name);
   if (!name) return { ok: false as const, error: "Enter a case name." };
   try {
-    const matter = str(input.matter, 500);
+    const matter = await resolveMatterKey(input.matter);
     const [row] = await db
       .insert(exhibitSets)
       .values({

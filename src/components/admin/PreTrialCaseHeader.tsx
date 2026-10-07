@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Pencil, Trash2 } from "lucide-react";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { updateTrialCase, deleteTrialCase } from "@/app/admin/(panel)/pre-trial/actions";
 
 type Form = { name: string; matter: string; causeNumber: string; court: string; trialDate: string; pretrialDate: string; notes: string };
@@ -23,6 +24,10 @@ export function PreTrialCaseHeader({ id, initial, matters }: { id: number; initi
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const lookup = useCaseLookup(form.matter, (c) => {
+    setForm((f) => ({ ...f, matter: c.matter || f.matter, name: f.name || c.name, causeNumber: f.causeNumber || c.causeNumber, court: f.court || c.court }));
+  });
+  const note = lookupNote(lookup);
 
   function save() {
     if (!form.name.trim()) { setError("Enter a case name."); return; }
@@ -69,6 +74,7 @@ export function PreTrialCaseHeader({ id, initial, matters }: { id: number; initi
         <div>
           <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Matter</label>
           <MatterCombobox value={form.matter} onChange={(v) => setForm({ ...form, matter: v })} matters={matters} />
+          {note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>}
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold text-[var(--c-ink)]">Cause number</label>

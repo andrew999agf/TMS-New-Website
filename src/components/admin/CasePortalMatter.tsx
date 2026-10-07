@@ -13,6 +13,7 @@ import {
   addPortalMessage, registerPortalDoc, deletePortalDoc, notifyClientOfUpdate,
 } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup } from "./useCaseLookup";
 import { POSTURES, PARTY_ROLES } from "@/lib/portal";
 
 export type MatterData = {
@@ -142,6 +143,7 @@ function DashboardTab({ matter, companies, tasks, time, clioMatters, shareFolder
 }) {
   const router = useRouter();
   const [clio, setClio] = useState(matter.clioMatter);
+  useCaseLookup(clio, (c) => { if (c.matter && c.matter !== clio) setClio(c.matter); });
   const [notes, setNotes] = useState(matter.notes);
   const openClient = tasks.filter((t) => t.kind === "client" && !t.done).length;
   const openFirm = tasks.filter((t) => t.kind === "firm" && !t.done).length;

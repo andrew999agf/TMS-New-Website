@@ -10,6 +10,7 @@ import {
 import { Lock } from "lucide-react";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
+import { useCaseLookup, lookupNote } from "./useCaseLookup";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
@@ -166,6 +167,16 @@ function FolderHeader({ folder, matters }: { folder: FolderData; matters: Matter
   const [defendant, setDefendant] = useState(folder.defendant);
   const [type, setType] = useState(folder.type);
   const [pending, start] = useTransition();
+  const lookup = useCaseLookup(matter, (c) => {
+    if (c.matter && c.matter !== matter) setMatter(c.matter);
+    setName((v) => v || c.client);
+    setCaseNumber((v) => v || c.causeNumber);
+    setCourt((v) => v || c.court);
+    setCounty((v) => v || c.county);
+    setPlaintiff((v) => v || c.plaintiff);
+    setDefendant((v) => v || c.defendant);
+  });
+  const note = lookupNote(lookup);
 
   function save() {
     start(async () => {
@@ -180,7 +191,7 @@ function FolderHeader({ folder, matters }: { folder: FolderData; matters: Matter
       {editing ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Client name</span><input value={name} onChange={(e) => setName(e.target.value)} className={`${input} w-full`} /></label>
-          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(Clio list)</span></span><MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter…" /></label>
+          <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Matter <span className="opacity-70">(Clio list)</span></span><MatterCombobox matters={matters} value={matter} onChange={setMatter} placeholder="Search matter…" />{note && <span className={`mt-1 block text-[11px] ${note.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--c-ink-muted)]"}`}>{note.text}</span>}</label>
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Case / cause number</span><input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} className={`${input} w-full`} /></label>
           <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Court / location</span><input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="e.g., 393rd Judicial District Court" className={`${input} w-full`} /></label>
           {/* Caption fields for generated pleadings (table of contents, etc.).

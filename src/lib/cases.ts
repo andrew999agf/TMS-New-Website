@@ -92,8 +92,13 @@ export async function findCaseForMatter(matterIn: unknown) {
 
 /** The key to store for a typed matter: the existing case's exact key when we have one, else the cleaned code. */
 export async function resolveMatterKey(matterIn: unknown): Promise<string> {
-  const existing = await findCaseForMatter(matterIn);
-  return existing ? existing.matter : canonicalMatter(matterIn);
+  try {
+    const existing = await findCaseForMatter(matterIn);
+    if (existing) return existing.matter;
+  } catch (err) {
+    console.error("[cases] resolveMatterKey lookup failed; storing the cleaned code:", err);
+  }
+  return canonicalMatter(matterIn);
 }
 
 export type CaseSeed = { matter: string; name?: string; causeNumber?: string; court?: string; county?: string; notes?: string; plaintiffName?: string; defendantName?: string };

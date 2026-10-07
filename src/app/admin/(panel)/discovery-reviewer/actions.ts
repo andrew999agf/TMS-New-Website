@@ -11,7 +11,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { extractPdfText } from "@/lib/exhibit-review/text";
 import { buildCarry, carryPages, carrySectionList } from "@/lib/exhibit-review/carry";
-import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { getOrCreateCaseForMatter, resolveMatterKey } from "@/lib/cases";
 import { expiryDaysForType } from "@/lib/share/types";
 import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
 import { buildStagedPdf, compressPageRanges, remapAfterPull, type RedactionMark } from "@/lib/production/subset";
@@ -50,7 +50,7 @@ export async function createDiscoverySet(input: DiscoverySetInput, alsoExhibit: 
   if (!db) return { ok: false as const, error: "Database not configured." };
   const name = str(input.name);
   if (!name) return { ok: false as const, error: "Enter a case name." };
-  const matter = str(input.matter, 500);
+  const matter = await resolveMatterKey(input.matter);
   try {
     const [row] = await db
       .insert(discoverySets)
