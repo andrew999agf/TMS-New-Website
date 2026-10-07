@@ -8,6 +8,8 @@ import {
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus, Eye,
 } from "lucide-react";
 import { Lock } from "lucide-react";
+import { shareUploadBlockReason } from "@/lib/share/upload-limits";
+import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { useCaseLookup, lookupNote } from "./useCaseLookup";
@@ -380,12 +382,14 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     while (queueRef.current.length) {
       const item = queueRef.current.shift()!;
       try {
+        const blocked = shareUploadBlockReason(item.rel);
+        if (blocked) throw new Error(blocked);
         const blob = await upload(`share/${folderId}/${item.rel}`, item.file, { access: "public", handleUploadUrl: "/api/admin/share-upload", clientPayload: String(folderId), multipart: true });
         const res = await registerShareFile(folderId, { url: blob.url, pathname: blob.pathname, filename: item.rel, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
         if (!res.ok) throw new Error(res.error ?? "record failed");
         if (res.id) uploadedIdsRef.current.push(res.id);
-      } catch {
-        failedRef.current.push(baseName(item.rel));
+      } catch (err) {
+        failedRef.current.push(`${baseName(item.rel)} — ${uploadFailureReason(err)}`);
       } finally {
         doneRef.current += 1;
         setProgress(`Uploading ${doneRef.current} / ${totalRef.current}${failedRef.current.length ? ` · ${failedRef.current.length} failed` : ""}`);
@@ -413,7 +417,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
     clearUpload(folderId).catch(() => {});
     if (fileInput.current) fileInput.current.value = "";
     if (folderInput.current) folderInput.current.value = "";
-    setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload (${failed.slice(0, 4).join(", ")}${failed.length > 4 ? ", …" : ""}). Everything else went in — you can re-add just the failed one${failed.length === 1 ? "" : "s"}.` : null);
+    setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload: ${failed.slice(0, 4).join("; ")}${failed.length > 4 ? "; …" : ""} Everything else went in.` : null);
     if (queueRef.current.length) { drainQueue(); return; } // picked up files dropped during teardown
 
     // Ask whether to notify the recipients about what was just uploaded. Only

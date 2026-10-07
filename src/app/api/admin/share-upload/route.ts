@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getSession } from "@/lib/auth";
 import { isBlobConfigured } from "@/lib/blob";
-import { SHARE_ALLOWED_CONTENT_TYPES as ALLOWED, SHARE_MAX_BYTES as MAX_BYTES } from "@/lib/share/upload-limits";
+import { SHARE_MAX_BYTES as MAX_BYTES, shareUploadBlockReason } from "@/lib/share/upload-limits";
 
 export const runtime = "nodejs";
 
@@ -28,11 +28,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     const result = await handleUpload({
       body,
       request: req,
-      onBeforeGenerateToken: async (_pathname, clientPayload) => {
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
         const session = await getSession();
         if (!session) throw new Error("Unauthorized");
+        const blocked = shareUploadBlockReason(pathname);
+        if (blocked) throw new Error(blocked);
+        // Any document type: no content-type allow-list (an .xml, .msg or
+        // .json used to be refused by storage with no useful message).
         return {
-          allowedContentTypes: ALLOWED,
           maximumSizeInBytes: MAX_BYTES,
           addRandomSuffix: true,
           tokenPayload: clientPayload ?? "",

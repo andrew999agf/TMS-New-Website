@@ -7,6 +7,8 @@ import { Upload, FolderPlus, Loader2, Download, Trash2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
+import { shareUploadBlockReason } from "@/lib/share/upload-limits";
+import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { filesFromDrop, fromInput, countDropItems, type PickedFile } from "@/lib/share/drop";
 import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDeleteFiles, recipientDeleteDir, recipientRenameDir, recipientRenameFile, recipientClearUpload } from "@/app/share/[token]/actions";
 
@@ -85,11 +87,13 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
       const base = parts.pop() as string;
       const dir = parts.join("/");
       try {
+        const blocked = shareUploadBlockReason(item.rel);
+        if (blocked) throw new Error(blocked);
         const blob = await upload(`share-recipient/${item.rel}`, item.file, { access: "public", handleUploadUrl: `/api/share/${token}/upload`, multipart: true });
         const res = await recipientRegisterFile(token, { url: blob.url, pathname: blob.pathname, filename: base, dir, contentType: item.file.type || blob.contentType, size: item.file.size }, { total: totalRef.current, done: doneRef.current + 1 });
         if (!res.ok) throw new Error(res.error ?? "record failed");
-      } catch {
-        failedRef.current.push(base);
+      } catch (err) {
+        failedRef.current.push(`${base} — ${uploadFailureReason(err)}`);
       } finally {
         doneRef.current += 1;
         setProgress(`Uploading ${doneRef.current} / ${totalRef.current}${failedRef.current.length ? ` · ${failedRef.current.length} failed` : ""}`);
@@ -117,7 +121,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
     recipientClearUpload(token).catch(() => {});
     if (fileInput.current) fileInput.current.value = "";
     if (folderInput.current) folderInput.current.value = "";
-    setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload (${failed.slice(0, 4).join(", ")}${failed.length > 4 ? ", …" : ""}). Everything else went in — please try adding just the failed one${failed.length === 1 ? "" : "s"} again.` : null);
+    setError(failed.length ? `${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload: ${failed.slice(0, 4).join("; ")}${failed.length > 4 ? "; …" : ""} Everything else went in.` : null);
     if (queueRef.current.length) drainQueue();
   }
 

@@ -3,7 +3,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { isBlobConfigured } from "@/lib/blob";
 import { resolveRecipient } from "@/lib/share/access";
 import { shareCan } from "@/lib/share/types";
-import { SHARE_ALLOWED_CONTENT_TYPES as ALLOWED, SHARE_MAX_BYTES as MAX_BYTES } from "@/lib/share/upload-limits";
+import { SHARE_MAX_BYTES as MAX_BYTES, shareUploadBlockReason } from "@/lib/share/upload-limits";
 
 export const runtime = "nodejs";
 
@@ -26,10 +26,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const result = await handleUpload({
       body,
       request: req,
-      onBeforeGenerateToken: async () => {
+      onBeforeGenerateToken: async (pathname) => {
         const ctx = await resolveRecipient(token);
         if (!ctx || !shareCan(ctx.rec.permission, "upload")) throw new Error("Not allowed");
-        return { allowedContentTypes: ALLOWED, maximumSizeInBytes: MAX_BYTES, addRandomSuffix: true, tokenPayload: token };
+        const blocked = shareUploadBlockReason(pathname);
+        if (blocked) throw new Error(blocked);
+        return { maximumSizeInBytes: MAX_BYTES, addRandomSuffix: true, tokenPayload: token };
       },
       onUploadCompleted: async () => { /* recorded by recipientRegisterFile */ },
     });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { isBlobConfigured } from "@/lib/blob";
 import { resolvePortalMember, isVerifiedPortalMember } from "@/lib/portal-access";
-import { SHARE_ALLOWED_CONTENT_TYPES as ALLOWED, SHARE_MAX_BYTES as MAX_BYTES } from "@/lib/share/upload-limits";
+import { SHARE_MAX_BYTES as MAX_BYTES, shareUploadBlockReason } from "@/lib/share/upload-limits";
 
 export const runtime = "nodejs";
 
@@ -29,7 +29,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         const ctx = await resolvePortalMember(token);
         if (!ctx || !(await isVerifiedPortalMember(ctx))) throw new Error("Not allowed");
         if (!pathname.startsWith(`client-portal/${ctx.group.id}/`)) throw new Error("Bad path");
-        return { allowedContentTypes: ALLOWED, maximumSizeInBytes: MAX_BYTES, addRandomSuffix: true, tokenPayload: token };
+        const blocked = shareUploadBlockReason(pathname);
+        if (blocked) throw new Error(blocked);
+        return { maximumSizeInBytes: MAX_BYTES, addRandomSuffix: true, tokenPayload: token };
       },
       onUploadCompleted: async () => { /* recorded by clientRegisterDoc */ },
     });
