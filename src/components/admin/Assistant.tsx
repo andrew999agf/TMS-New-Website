@@ -34,6 +34,8 @@ type ServerInfo = {
   autoSleep?: boolean;
   error?: string;
   notice?: AiNotice | null;
+  /** When the pod is gone: other pods on the account, and what a rebuild would use. */
+  lost?: { candidates: { id: string; name: string; desiredStatus: string; gpu: string; costPerHr: number }[]; rebuild: string | null };
   /** Which model is loaded/desired, and whether a vision model exists at all. */
   modelLabel?: string | null;
   desiredModel?: "text" | "vision";
@@ -481,6 +483,26 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
       setError("Couldn't reach the server controls.");
     } finally {
       setSrvBusy(false);
+      setTimeout(() => void refreshServer(), 1500);
+    }
+  }, [refreshServer]);
+
+  // Recovery after RunPod removed the pod (an account that ran out of credit):
+  // adopt a pod still on the account (free) or rebuild one (paid — confirmed).
+  const [rebuildAsk, setRebuildAsk] = useState(false);
+  const recover = useCallback(async (action: "adopt" | "rebuild", podId?: string) => {
+    setSrvBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/ai-server", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...(podId ? { podId } : {}) }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setError(j.error || "Server control failed.");
+      else setSrv((s) => (s ? { ...s, state: j.state ?? "starting", lost: undefined } : s));
+    } catch {
+      setError("Couldn't reach the server controls.");
+    } finally {
+      setSrvBusy(false);
+      setRebuildAsk(false);
       setTimeout(() => void refreshServer(), 1500);
     }
   }, [refreshServer]);
@@ -1077,18 +1099,64 @@ export function Assistant({ configured, label, initialThreads, saveable, codeAll
               {srv.state === "ready" && <>AI server on · ${srv.costPerHr?.toFixed(2)}/hr</>}
               {srv.state === "starting" && <>Waking up — loading the model (~3 min)…</>}
               {srv.state === "stopped" && <>AI server asleep · $0/hr</>}
-              {srv.state === "missing" && <>Server not found — check RUNPOD_POD_ID</>}
+              {srv.state === "missing" && <>Server not found on RunPod</>}
               {srv.state === "error" && <span className="text-red-600">{srv.error || "Can't reach server controls"}</span>}
             </span>
-            <button
+            {srv.state === "missing" && (
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="text-[var(--c-ink-muted)]">RunPod removes a server once the account runs out of credit.</span>
+                {srv.lost?.candidates.map((c) => (
+                  <button key={c.id} onClick={() => void recover("adopt", c.id)} disabled={srvBusy}
+                    className="inline-flex items-center gap-1 rounded-md border border-green-600/50 px-2 py-1 font-medium text-green-700 hover:bg-green-600 hover:text-white dark:text-green-400 disabled:opacity-40"
+                    title={`Use the pod "${c.name || c.id}" (${c.desiredStatus.toLowerCase()}${c.gpu ? `, ${c.gpu}` : ""}) — free, nothing is created`}>
+                    <Power size={12} /> Use {c.name || c.id}
+                  </button>
+                ))}
+                {srv.lost?.rebuild ? (
+                  <button onClick={() => setRebuildAsk(true)} disabled={srvBusy}
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--c-accent)] px-2 py-1 font-medium text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white disabled:opacity-40"
+                    title={`Create a new server from the ${srv.lost.rebuild} on the firm's storage (billing starts)`}>
+                    <RefreshCw size={12} /> Rebuild server
+                  </button>
+                ) : srv.lost && !srv.lost.candidates.length ? (
+                  <span className="text-[var(--c-ink-muted)]">No saved configuration to rebuild from — set the server up once on runpod.io (same network volume), then put its pod ID in RUNPOD_POD_ID.</span>
+                ) : null}
+                <button onClick={() => void refreshServer()} disabled={srvBusy} className="text-[var(--c-ink-muted)] underline">Check again</button>
+              </span>
+            )}
+            {srv.state === "error" && (
+              <button onClick={() => void refreshServer()} disabled={srvBusy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
+                <RefreshCw size={12} /> Check again
+              </button>
+            )}
+            {rebuildAsk && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !srvBusy) setRebuildAsk(false); }}>
+                <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5 text-sm" role="dialog" aria-modal="true">
+                  <h3 className="font-[family-name:var(--font-display)] text-lg">Rebuild the AI server?</h3>
+                  <p className="mt-2 text-[var(--c-ink-muted)]">
+                    This creates a new GPU server on RunPod from the {srv.lost?.rebuild}, attached to the firm&apos;s existing storage (the models are still there, so nothing re-downloads).
+                  </p>
+                  <p className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">
+                    <strong>Billing starts the moment it&apos;s created</strong>{srv.podCostPerHr ? ` (about $${srv.podCostPerHr.toFixed(2)}/hr)` : ""} and the usual auto-sleep applies. Make sure the RunPod account has credit first.
+                  </p>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={() => setRebuildAsk(false)} disabled={srvBusy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+                    <button onClick={() => void recover("rebuild")} disabled={srvBusy} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-60">
+                      {srvBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Yes — rebuild and start billing
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {srv.state !== "missing" && <button
               onClick={() => void powerAction(srv.state === "stopped" ? "start" : "stop")}
-              disabled={srvBusy || srv.state === "missing" || srv.state === "error"}
+              disabled={srvBusy || srv.state === "error"}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium transition-colors disabled:opacity-40 ${srv.state === "stopped" ? "border-green-600/50 text-green-700 hover:bg-green-600 hover:text-white dark:text-green-400" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"}`}
               title={srv.state === "stopped" ? "Wake the AI server (billing starts; ready in ~3 minutes)" : "Put the AI server to sleep (billing stops; the model stays saved)"}
             >
               {srvBusy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
               {srv.state === "stopped" ? "Turn on" : "Turn off"}
-            </button>
+            </button>}
             <label className="inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]">
               Auto-sleep after
               <select

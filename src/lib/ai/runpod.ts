@@ -73,6 +73,21 @@ async function gql<T>(cfg: RunpodConfig, query: string, variables: Record<string
   return json.data;
 }
 
+type EnvPair = { key: string; value: string };
+const parseEnv = (env: unknown): EnvPair[] => {
+  if (!Array.isArray(env)) return [];
+  const out: EnvPair[] = [];
+  for (const e of env) {
+    if (typeof e === "string") {
+      const i = e.indexOf("=");
+      if (i > 0) out.push({ key: e.slice(0, i), value: e.slice(i + 1) });
+    } else if (e && typeof e === "object" && typeof (e as EnvPair).key === "string") {
+      out.push({ key: (e as EnvPair).key, value: String((e as EnvPair).value ?? "") });
+    }
+  }
+  return out;
+};
+
 export type PodStatus = {
   exists: boolean;
   /** RUNNING | EXITED (stopped) | others RunPod may report. */
@@ -80,13 +95,35 @@ export type PodStatus = {
   costPerHr: number;
   uptimeSeconds: number;
   gpu: string;
+  /** How the pod is built — kept as the blueprint for rebuilding it. */
+  spec?: PodSpec;
 };
+
+/** Everything needed to deploy an identical pod on the same storage. */
+export type PodSpec = {
+  name: string;
+  imageName: string;
+  dockerArgs: string;
+  ports: string;
+  volumeMountPath: string;
+  containerDiskInGb: number;
+  env: EnvPair[];
+  gpu: string;
+};
+
+const SPEC_FIELDS = "name imageName dockerArgs ports volumeMountPath containerDiskInGb env";
+type RawSpec = { name?: string; imageName?: string; dockerArgs?: string; ports?: string; volumeMountPath?: string; containerDiskInGb?: number; env?: unknown; machine?: { gpuDisplayName?: string } | null };
+const toSpec = (p: RawSpec): PodSpec | undefined => p.imageName ? {
+  name: p.name || "firm-ai-server", imageName: p.imageName, dockerArgs: p.dockerArgs ?? "", ports: p.ports ?? "",
+  volumeMountPath: p.volumeMountPath || "/workspace", containerDiskInGb: p.containerDiskInGb ?? 20, env: parseEnv(p.env),
+  gpu: p.machine?.gpuDisplayName ?? "",
+} : undefined;
 
 /** Live state of the pod. */
 export async function getPodStatus(cfg: RunpodConfig): Promise<PodStatus> {
-  const data = await gql<{ pod: { desiredStatus?: string; costPerHr?: number; runtime?: { uptimeInSeconds?: number } | null; machine?: { gpuDisplayName?: string } | null } | null }>(
+  const data = await gql<{ pod: ({ desiredStatus?: string; costPerHr?: number; runtime?: { uptimeInSeconds?: number } | null } & RawSpec) | null }>(
     cfg,
-    `query pod($input: PodFilter) { pod(input: $input) { desiredStatus costPerHr runtime { uptimeInSeconds } machine { gpuDisplayName } } }`,
+    `query pod($input: PodFilter) { pod(input: $input) { desiredStatus costPerHr runtime { uptimeInSeconds } machine { gpuDisplayName } ${SPEC_FIELDS} } }`,
     { input: { podId: cfg.podId } },
   );
   const p = data.pod;
@@ -97,8 +134,94 @@ export async function getPodStatus(cfg: RunpodConfig): Promise<PodStatus> {
     costPerHr: p.costPerHr ?? 0,
     uptimeSeconds: p.runtime?.uptimeInSeconds ?? 0,
     gpu: p.machine?.gpuDisplayName ?? "",
+    spec: toSpec(p),
   };
 }
+
+/* ------------------------- blueprint + recovery ------------------------- */
+
+/** The last-seen pod configuration, so the server can be rebuilt after
+ *  RunPod removes it (which it does once an account runs out of credit). */
+const BLUEPRINT_KEY = "ai.podBlueprint";
+type Blueprint = PodSpec & { savedAt: string; podId: string };
+
+/** Keep the blueprint current — only writes when something changed. */
+export async function rememberBlueprint(cfg: RunpodConfig, spec: PodSpec | undefined): Promise<void> {
+  if (!spec) return;
+  try {
+    const cur = await getAiSetting<Blueprint | null>(BLUEPRINT_KEY, null);
+    const { savedAt: _s, podId: _p, ...curSpec } = cur ?? ({} as Blueprint);
+    void _s; void _p;
+    if (cur && JSON.stringify(curSpec) === JSON.stringify(spec)) return;
+    await putAiSetting(BLUEPRINT_KEY, { ...spec, savedAt: new Date().toISOString(), podId: cfg.podId } satisfies Blueprint);
+  } catch { /* best-effort */ }
+}
+
+export async function getBlueprint(): Promise<Blueprint | null> {
+  return getAiSetting<Blueprint | null>(BLUEPRINT_KEY, null);
+}
+
+export type LostPodCandidate = { id: string; name: string; desiredStatus: string; gpu: string; costPerHr: number };
+
+/**
+ * When the configured pod is gone: is the server still on the account under
+ * another id (a relocation whose override was lost, or a pod someone made by
+ * hand)? Lists every pod so the user can pick, best match first.
+ */
+export async function findLostPods(cfg: RunpodConfig): Promise<LostPodCandidate[]> {
+  const data = await gql<{ myself: { pods?: { id: string; name?: string; desiredStatus?: string; costPerHr?: number; machine?: { gpuDisplayName?: string } | null }[] } | null }>(
+    cfg,
+    `query { myself { pods { id name desiredStatus costPerHr machine { gpuDisplayName } } } }`,
+    {},
+  );
+  const bp = await getBlueprint().catch(() => null);
+  const want = (bp?.name ?? "").toLowerCase();
+  const list = (data.myself?.pods ?? []).map((p) => ({ id: p.id, name: p.name ?? "", desiredStatus: p.desiredStatus ?? "UNKNOWN", gpu: p.machine?.gpuDisplayName ?? "", costPerHr: p.costPerHr ?? 0 }));
+  const score = (c: LostPodCandidate) => (want && c.name.toLowerCase() === want ? 2 : /ai|vllm|firm/i.test(c.name) ? 1 : 0);
+  return list.sort((a, b) => score(b) - score(a));
+}
+
+/** Point the controls at an existing pod on the account. Free. */
+export async function adoptPod(newId: string): Promise<void> {
+  const envPodId = process.env.RUNPOD_POD_ID?.trim() ?? "";
+  await putAiSetting(POD_OVERRIDE_KEY, { podId: newId, replacedEnvPodId: envPodId } satisfies PodOverride);
+}
+
+/**
+ * Where a rebuild would get its configuration: the saved blueprint, else a
+ * RunPod template (RUNPOD_TEMPLATE_ID, or the one whose name looks like the
+ * firm's server), else nothing — and then the user has to set it up on
+ * RunPod by hand once, after which the blueprint is saved automatically.
+ */
+export async function rebuildSource(cfg: RunpodConfig): Promise<{ kind: "blueprint" | "template"; label: string; spec: PodSpec } | null> {
+  const bp = await getBlueprint().catch(() => null);
+  if (bp?.imageName) {
+    const { savedAt, podId, ...spec } = bp;
+    void podId;
+    return { kind: "blueprint", label: `saved configuration from ${new Date(savedAt).toLocaleDateString()}`, spec };
+  }
+  try {
+    const data = await gql<{ myself: { podTemplates?: { id: string; name?: string; imageName?: string; dockerArgs?: string; ports?: string; env?: unknown; volumeMountPath?: string; containerDiskInGb?: number; isServerless?: boolean }[] } | null }>(
+      cfg, `query { myself { podTemplates { id name imageName dockerArgs ports env volumeMountPath containerDiskInGb isServerless } } }`, {},
+    );
+    const all = (data.myself?.podTemplates ?? []).filter((t) => t.imageName && !t.isServerless);
+    const wantId = process.env.RUNPOD_TEMPLATE_ID?.trim();
+    const t = wantId ? all.find((x) => x.id === wantId) : all.find((x) => /ai|vllm|firm/i.test(x.name ?? "")) ?? (all.length === 1 ? all[0] : undefined);
+    if (!t) return null;
+    return {
+      kind: "template", label: `RunPod template "${t.name ?? t.id}"`,
+      spec: { name: t.name || "firm-ai-server", imageName: t.imageName!, dockerArgs: t.dockerArgs ?? "", ports: t.ports ?? "", volumeMountPath: t.volumeMountPath || "/workspace", containerDiskInGb: t.containerDiskInGb ?? 20, env: parseEnv(t.env), gpu: "" },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Does this error mean the account can't pay for the pod right now? */
+export function isNoFundsError(message: string): boolean {
+  return /insufficient|balance|credit|funds|billing|payment/i.test(message);
+}
+
 
 /** Prepaid credit remaining on the RunPod account (the "tank"). */
 export async function getBalance(cfg: RunpodConfig): Promise<number | null> {
@@ -158,20 +281,6 @@ export function isNoGpuError(message: string): boolean {
   return /not enough free gpus|gpus? (is|are) no longer available|no longer available/i.test(message);
 }
 
-type EnvPair = { key: string; value: string };
-const parseEnv = (env: unknown): EnvPair[] => {
-  if (!Array.isArray(env)) return [];
-  const out: EnvPair[] = [];
-  for (const e of env) {
-    if (typeof e === "string") {
-      const i = e.indexOf("=");
-      if (i > 0) out.push({ key: e.slice(0, i), value: e.slice(i + 1) });
-    } else if (e && typeof e === "object" && typeof (e as EnvPair).key === "string") {
-      out.push({ key: (e as EnvPair).key, value: String((e as EnvPair).value ?? "") });
-    }
-  }
-  return out;
-};
 
 /**
  * The stuck pod's host rented out its GPU. Recreate the pod, identically
@@ -182,14 +291,38 @@ const parseEnv = (env: unknown): EnvPair[] => {
  */
 export async function relocatePod(cfg: RunpodConfig): Promise<string> {
   // 1) The stuck pod's own spec is the blueprint.
-  const spec = await gql<{ pod: { name?: string; imageName?: string; dockerArgs?: string; ports?: string; volumeMountPath?: string; containerDiskInGb?: number; env?: unknown; machine?: { gpuDisplayName?: string } | null } | null }>(
+  const spec = await gql<{ pod: RawSpec | null }>(
     cfg,
-    `query pod($input: PodFilter) { pod(input: $input) { name imageName dockerArgs ports volumeMountPath containerDiskInGb env machine { gpuDisplayName } } }`,
+    `query pod($input: PodFilter) { pod(input: $input) { ${SPEC_FIELDS} machine { gpuDisplayName } } }`,
     { input: { podId: cfg.podId } },
   );
-  const p = spec.pod;
-  if (!p?.imageName) throw new Error("Couldn't read the stuck pod's configuration.");
+  const p = spec.pod ? toSpec(spec.pod) : undefined;
+  if (!p) throw new Error("Couldn't read the stuck pod's configuration.");
+  const newId = await deployFromSpec(cfg, p);
+  // Clear away the stuck shell.
+  if (newId !== cfg.podId) {
+    try {
+      await gql(cfg, `mutation terminate($input: PodTerminateInput!) { podTerminate(input: $input) }`, { input: { podId: cfg.podId } });
+    } catch { /* a lingering empty shell is cosmetic — never fail the rescue over it */ }
+  }
+  return newId;
+}
 
+/**
+ * Rebuild the server after RunPod removed it: deploy the blueprint (or
+ * template) onto the firm's network volume, where the models still live.
+ * Costs money from the moment it starts — the caller confirms with the user.
+ */
+export async function rebuildPod(cfg: RunpodConfig): Promise<{ id: string; source: string }> {
+  const src = await rebuildSource(cfg);
+  if (!src) throw new Error("No saved configuration or RunPod template to rebuild from. Set the server up once on RunPod (same network volume), then point RUNPOD_POD_ID at it.");
+  const id = await deployFromSpec(cfg, src.spec);
+  return { id, source: src.label };
+}
+
+/** Deploy a pod from a spec onto the firm's network volume; store it as the
+ *  active pod. Returns the new pod id. */
+async function deployFromSpec(cfg: RunpodConfig, p: PodSpec): Promise<string> {
   // 2) The network volume decides the building; the models live on it.
   const vols = await gql<{ myself: { networkVolumes?: { id: string; name?: string; dataCenterId?: string }[] } | null }>(
     cfg,
@@ -205,9 +338,9 @@ export async function relocatePod(cfg: RunpodConfig): Promise<string> {
   let gpuTypeId = process.env.RUNPOD_GPU_TYPE_ID?.trim() || "";
   if (!gpuTypeId) {
     const types = await gql<{ gpuTypes: { id: string; displayName?: string }[] }>(cfg, `query { gpuTypes { id displayName } }`, {});
-    const want = (p.machine?.gpuDisplayName ?? "").toLowerCase();
+    const want = p.gpu.toLowerCase();
     const hit = want ? types.gpuTypes.find((t) => (t.displayName ?? "").toLowerCase() === want) ?? types.gpuTypes.find((t) => (t.displayName ?? "").toLowerCase().includes(want)) : undefined;
-    if (!hit) throw new Error(`Couldn't match the GPU type ("${p.machine?.gpuDisplayName ?? "unknown"}") in RunPod's catalog.`);
+    if (!hit) throw new Error(`Couldn't match the GPU type ("${p.gpu || "unknown"}") in RunPod's catalog — set RUNPOD_GPU_TYPE_ID.`);
     gpuTypeId = hit.id;
   }
 
@@ -227,7 +360,7 @@ export async function relocatePod(cfg: RunpodConfig): Promise<string> {
         volumeMountPath: p.volumeMountPath || "/workspace",
         containerDiskInGb: p.containerDiskInGb ?? 20,
         volumeInGb: 0,
-        env: parseEnv(p.env),
+        env: p.env,
         networkVolumeId: volume.id,
         ...(volume.dataCenterId ? { dataCenterId: volume.dataCenterId } : {}),
       },
@@ -236,13 +369,7 @@ export async function relocatePod(cfg: RunpodConfig): Promise<string> {
   const newId = made.podFindAndDeployOnDemand?.id;
   if (!newId) throw new Error("RunPod accepted the relocation but returned no pod id.");
 
-  // 5) Point everything at the replacement, then clear away the stuck shell.
-  const envPodId = process.env.RUNPOD_POD_ID?.trim() ?? "";
-  await putAiSetting(POD_OVERRIDE_KEY, { podId: newId, replacedEnvPodId: envPodId } satisfies PodOverride);
-  if (newId !== cfg.podId) {
-    try {
-      await gql(cfg, `mutation terminate($input: PodTerminateInput!) { podTerminate(input: $input) }`, { input: { podId: cfg.podId } });
-    } catch { /* a lingering empty shell is cosmetic — never fail the rescue over it */ }
-  }
+  // 5) Point everything at the replacement.
+  await adoptPod(newId);
   return newId;
 }

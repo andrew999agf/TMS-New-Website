@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { resolvedRunpodConfig, getPodStatus, getBalance, startPod, stopPod, aiServingModel, relocatePod, isNoGpuError } from "@/lib/ai/runpod";
+import { resolvedRunpodConfig, getPodStatus, getBalance, startPod, stopPod, aiServingModel, relocatePod, isNoGpuError, isNoFundsError, rememberBlueprint, findLostPods, adoptPod, rebuildSource, rebuildPod } from "@/lib/ai/runpod";
 import { AI_IDLE_KEY, AI_AUTOSLEEP_KEY, AI_LAST_USED_KEY, AI_IDLE_DEFAULT, getAiSetting, putAiSetting, monthEstimate } from "@/lib/ai/concierge";
 import { getAiNotice, setAiNotice, clearAiNotice } from "@/lib/ai/notice";
 import { visionEnv, getDesiredModel, setDesiredModel, activeModel } from "@/lib/ai/vision";
@@ -57,6 +57,15 @@ export async function GET() {
     const ready = serving !== null && swapDone;
     const state = !pod.exists ? "missing" : running ? (ready ? "ready" : "starting") : "stopped";
     const monthUsd = await monthEstimate(running ? pod.costPerHr : null);
+    // Keep the rebuild blueprint current while the pod exists; when it's
+    // gone (RunPod removes pods once an account runs dry), say what can be
+    // done about it: adopt a pod still on the account, or rebuild one.
+    let lost: { candidates: Awaited<ReturnType<typeof findLostPods>>; rebuild: string | null } | undefined;
+    if (pod.exists) await rememberBlueprint(cfg, pod.spec);
+    else {
+      const [candidates, src] = await Promise.all([findLostPods(cfg).catch(() => []), rebuildSource(cfg).catch(() => null)]);
+      lost = { candidates, rebuild: src?.label ?? null };
+    }
     return NextResponse.json({
       configured: true,
       state, // ready | starting | stopped | missing
@@ -70,10 +79,13 @@ export async function GET() {
       autoSleep,
       lastUsedAt,
       notice,
+      ...(lost ? { lost } : {}),
       ...modelInfo,
     });
   } catch (e) {
-    return NextResponse.json({ configured: true, state: "error", error: (e as Error).message.slice(0, 200), notice, ...modelInfo });
+    const msg = (e as Error).message;
+    const error = isNoFundsError(msg) ? `RunPod says the account can't be billed right now (${msg.slice(0, 120).replace(/\.+$/, "")}). Check the credit balance on runpod.io.` : msg.slice(0, 200);
+    return NextResponse.json({ configured: true, state: "error", error, notice, ...modelInfo });
   }
 }
 
@@ -84,7 +96,7 @@ export async function POST(req: Request) {
   const cfg = await resolvedRunpodConfig();
   if (!cfg) return NextResponse.json({ error: "Server controls aren't configured — set RUNPOD_API_KEY and RUNPOD_POD_ID." }, { status: 503 });
 
-  let body: { action?: string; idleMinutes?: number; autoSleep?: boolean; target?: string };
+  let body: { action?: string; idleMinutes?: number; autoSleep?: boolean; target?: string; podId?: string };
   try {
     body = await req.json();
   } catch {
@@ -99,10 +111,14 @@ export async function POST(req: Request) {
       try {
         pod = await startPod(cfg);
       } catch (e) {
+        const msg = (e as Error).message;
+        if (isNoFundsError(msg)) {
+          return NextResponse.json({ error: `RunPod wouldn't start the server: ${msg.slice(0, 160).replace(/\.+$/, "")}. Add credit at runpod.io, wait a minute, then press Turn on again.` }, { status: 402 });
+        }
         // The stuck-host case: the pod's machine rented out its GPU while we
         // slept. Self-heal by recreating the pod on a machine with a free
         // card (same building, same storage volume) instead of failing.
-        if (!isNoGpuError((e as Error).message)) throw e;
+        if (!isNoGpuError(msg)) throw e;
         const newId = await relocatePod(cfg);
         relocated = true;
         pod = await getPodStatus({ ...cfg, podId: newId });
@@ -163,6 +179,26 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ ok: true, state: "starting", desiredModel: target });
     }
+    if (body.action === "adopt") {
+      // Free: point the controls at a pod that's still on the account.
+      const id = String(body.podId ?? "").trim();
+      if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return NextResponse.json({ error: "Pick a server to use." }, { status: 400 });
+      const candidates = await findLostPods(cfg);
+      if (!candidates.some((c) => c.id === id)) return NextResponse.json({ error: "That server isn't on the RunPod account." }, { status: 400 });
+      await adoptPod(id);
+      const pod = await getPodStatus({ ...cfg, podId: id });
+      await rememberBlueprint({ ...cfg, podId: id }, pod.spec);
+      return NextResponse.json({ ok: true, state: pod.desiredStatus === "RUNNING" ? "starting" : "stopped" });
+    }
+    if (body.action === "rebuild") {
+      // Paid: a new pod on the firm's storage volume. The UI asks first.
+      const { id, source } = await rebuildPod(cfg);
+      const pod = await getPodStatus({ ...cfg, podId: id });
+      await putAiSetting(AI_LAST_USED_KEY, new Date().toISOString());
+      if (db) await db.insert(aiServerLog).values({ event: "start", costPerHr: pod.costPerHr, byEmail: session.email });
+      await setAiNotice(`The AI server was rebuilt from the ${source} — starting up now (first boot can take 5–10 minutes).`, { chatBlocked: false, minutes: 15, kind: "relocate" });
+      return NextResponse.json({ ok: true, state: "starting", podId: id });
+    }
     if (body.action === "config") {
       if (typeof body.idleMinutes === "number" && Number.isFinite(body.idleMinutes)) {
         await putAiSetting(AI_IDLE_KEY, Math.min(30, Math.max(2, Math.round(body.idleMinutes))));
@@ -172,6 +208,8 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   } catch (e) {
-    return NextResponse.json({ error: `Server control failed: ${(e as Error).message.slice(0, 200)}` }, { status: 502 });
+    const msg = (e as Error).message;
+    if (isNoFundsError(msg)) return NextResponse.json({ error: `RunPod can't bill the account right now: ${msg.slice(0, 160).replace(/\.+$/, "")}. Check the credit balance on runpod.io.` }, { status: 402 });
+    return NextResponse.json({ error: `Server control failed: ${msg.slice(0, 200)}` }, { status: 502 });
   }
 }
