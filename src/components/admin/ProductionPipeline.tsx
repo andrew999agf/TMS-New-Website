@@ -14,7 +14,7 @@ import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
-  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs,
+  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
@@ -1973,6 +1973,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
         <PageTotal pages={producedDocs.reduce((n, d) => n + stagedPages(d), 0)} docs={producedDocs.length} />
         <IndexAndLabel setId={setId} docCount={staged.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />
+        <AddPreLabeled setId={setId} onDone={(msg) => setNotice(msg)} />
       </div>
       {notice && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -1995,7 +1996,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
               <section key={p.id} className="overflow-hidden rounded-lg border border-green-600/40">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-green-600/10 px-4 py-2.5">
                   <span className="font-semibold">{p.label}</span>
-                  <span className="font-mono text-xs">{bates(p.batesPrefix, p.batesStart)} – {String(p.batesEnd).padStart(6, "0")}</span>
+                  <span className="font-mono text-xs">{p.batesStart > 0 ? <>{bates(p.batesPrefix, p.batesStart)} – {String(p.batesEnd).padStart(6, "0")}</> : "already Bates labeled on arrival"}</span>
                   {p.producedAt && <span className="text-xs text-[var(--c-ink-muted)]">produced {fmtDay(p.producedAt.slice(0, 10))}</span>}
                   <span className="text-xs text-[var(--c-ink-muted)]">{docs.reduce((n, d) => n + stagedPages(d), 0).toLocaleString()} pages · {docs.length} doc{docs.length === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex flex-wrap items-center gap-3 text-xs">
@@ -2022,7 +2023,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
                 <div className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
                   {docs.map((d) => (
                     <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
-                      <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</span>
+                      <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{d.batesStart > 0 ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "already labeled"}</span>
                       <span className="min-w-0 flex-1 break-words">{d.name}</span>
                       <LabelChip setId={setId} target={{ kind: "production", id: d.id }} label={d.aiLabel} description={d.aiDescription} />
                       {d.requestLabel && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{d.requestLabel}</span>}
@@ -2130,5 +2131,127 @@ function PullBackDialog({ p, docs, onClose, onDone }: { p: ProductionRow; docs: 
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Special case for documents that arrive already Bates labeled: they skip
+ * the red and yellow tabs and land straight in Documents produced. Confirm
+ * the bypass → pick files → upload → offer to file copies in the red tab too.
+ */
+function AddPreLabeled({ setId, onDone }: { setId: number; onDone: (msg: string) => void }) {
+  const router = useRouter();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<"idle" | "confirm" | "uploading" | "mirror" | "error">("idle");
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null);
+  const [result, setResult] = useState<{ productionId: number; label: string; count: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function uploadAll(all: File[]) {
+    const okFiles = all.filter((f) => /\.(pdf|jpe?g|png)$/i.test(f.name));
+    if (!okFiles.length) { setError("Choose PDFs or photos (JPG/PNG)."); setStep("error"); return; }
+    setStep("uploading");
+    const uploaded: { name: string; url: string; pathname: string; contentType?: string; size?: number }[] = [];
+    const failed: string[] = [];
+    for (let i = 0; i < okFiles.length; i++) {
+      const file = okFiles[i];
+      setProgress({ done: i, total: okFiles.length, current: file.name });
+      try {
+        const blob = await upload(`production/${setId}/prelabeled/${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`, file, {
+          access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
+          contentType: file.type || undefined,
+        });
+        uploaded.push({ name: file.name, url: blob.url, pathname: blob.pathname, contentType: file.type || undefined, size: file.size });
+      } catch (err) {
+        failed.push(`${file.name}: ${(err as Error).message}`);
+      }
+    }
+    setProgress(null);
+    if (!uploaded.length) { setError(`Nothing was uploaded. ${failed.join("; ")}`); setStep("error"); return; }
+    const r = await addPreLabeledProduction(setId, uploaded).catch(() => null);
+    if (!r || !r.ok) { setError(r && !r.ok ? r.error ?? "Couldn't file the documents." : "Couldn't reach the server."); setStep("error"); return; }
+    setResult({ productionId: r.productionId, label: r.label, count: r.count });
+    if (failed.length) setError(`${failed.length} file${failed.length === 1 ? "" : "s"} didn't upload: ${failed.join("; ")}`);
+    router.refresh();
+    setStep("mirror");
+  }
+
+  async function mirror(yes: boolean) {
+    if (!result) return;
+    if (!yes) {
+      setStep("idle");
+      onDone(`${result.count} already-labeled document${result.count === 1 ? "" : "s"} added to Documents produced as ${result.label}.`);
+      return;
+    }
+    setBusy(true);
+    const r = await mirrorProductionToReceived(setId, result.productionId).catch(() => null);
+    setBusy(false);
+    setStep("idle");
+    if (!r || !r.ok) { onDone(`${result.count} document${result.count === 1 ? "" : "s"} added to Documents produced as ${result.label}, but the copies for Documents received from Client couldn't be filed — try again from the red tab.`); return; }
+    onDone(`${result.count} already-labeled document${result.count === 1 ? "" : "s"} added to Documents produced as ${result.label}, with copies filed in Documents received from Client.`);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <button onClick={() => { setError(null); setStep("confirm"); }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-green-600/60 px-3 py-1.5 text-sm text-green-800 hover:bg-green-600/10 dark:text-green-300"
+        title="Documents that arrived already Bates labeled — file them straight here">
+        <UploadCloud size={14} /> Add already Bates labeled documents
+      </button>
+      <input ref={fileInput} type="file" accept=".pdf,image/jpeg,image/png" multiple className="hidden"
+        onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; if (fs.length) void uploadAll(fs); else setStep("idle"); }} />
+
+      {step !== "idle" && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-green-600 bg-[var(--c-surface)] p-5" role="dialog" aria-modal="true">
+            {step === "confirm" && (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">Add documents that are already Bates labeled?</h3>
+                <p className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                  You are <strong>bypassing the first two tabs</strong>. These documents will <strong>not</strong> go through Documents received from Client (red) or Documents to be produced (yellow), and they will <strong>not</strong> be Bates stamped — they go straight into Documents produced exactly as uploaded.
+                </p>
+                <p className="mt-2 text-sm text-[var(--c-ink-muted)]">Use this only for documents that already carry their Bates labels. Are you sure you want to proceed?</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => setStep("idle")} className="btn btn-outline text-sm py-2 px-4">No</button>
+                  <button onClick={() => fileInput.current?.click()} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4"><UploadCloud size={14} /> Yes — choose files</button>
+                </div>
+              </>
+            )}
+            {step === "uploading" && (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">Uploading…</h3>
+                <p className="mt-2 flex items-center gap-2 text-sm text-[var(--c-ink-muted)]">
+                  <Loader2 size={15} className="animate-spin" />
+                  {progress ? `${progress.done + 1} of ${progress.total} — ${progress.current}` : "Filing the documents…"}
+                </p>
+              </>
+            )}
+            {step === "mirror" && result && (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">{result.count} document{result.count === 1 ? "" : "s"} added to Documents produced</h3>
+                {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+                <p className="mt-3 text-sm">Do you also want {result.count === 1 ? "this document" : "these documents"} uploaded to <strong>Documents received from Client</strong>?</p>
+                <p className="mt-1.5 text-xs text-[var(--c-ink-muted)]">Note: this is to keep the file organized. The copies in the red tab are marked produced, so nothing will look like it still needs to be done.</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => void mirror(false)} disabled={busy} className="btn btn-outline text-sm py-2 px-4">No</button>
+                  <button onClick={() => void mirror(true)} disabled={busy} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-60">
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes
+                  </button>
+                </div>
+              </>
+            )}
+            {step === "error" && (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">Couldn&apos;t add the documents</h3>
+                <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>
+                <div className="mt-4 flex justify-end"><button onClick={() => setStep("idle")} className="btn btn-outline text-sm py-2 px-4">Close</button></div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

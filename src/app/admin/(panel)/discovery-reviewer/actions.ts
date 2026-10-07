@@ -1553,3 +1553,97 @@ export async function deleteClientDocs(setId: number, keysIn: string[]) {
     return { ok: false as const, error: "Couldn't delete the documents." };
   }
 }
+
+/* -------------- already-Bates-labeled uploads straight to green -------------- */
+
+/**
+ * Special case: documents that arrive already Bates labeled skip the red and
+ * yellow tabs. They're filed as a produced production (pale green) exactly as
+ * uploaded — no stamping, no merged PDF, no cover letter.
+ */
+export async function addPreLabeledProduction(setId: number, files: { name: string; url: string; pathname: string; contentType?: string; size?: number }[]) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f.url === "string" && f.url).slice(0, 200);
+    if (!list.length) return { ok: false as const, error: "No files were uploaded." };
+
+    const prior = await db.select({ seq: productions.seq }).from(productions).where(eq(productions.setId, setId));
+    const seq = Math.max(0, ...prior.map((r) => r.seq)) + 1;
+    const [prod] = await db.insert(productions).values({
+      setId, seq, label: `${ordinal(seq)} Production`,
+      batesPrefix: "", batesStart: 0, batesEnd: 0,
+      token: randomBytes(24).toString("base64url"), createdBy: session.email, producedAt: new Date(),
+    }).returning({ id: productions.id });
+
+    const ids: number[] = [];
+    for (const f of list) {
+      const isPdf = (f.contentType ?? "").includes("pdf") || /\.pdf$/i.test(f.pathname || f.name);
+      let pageCount: number | null = null;
+      let pageText: string[] = [];
+      if (isPdf) {
+        try {
+          const ex = await extractPdfText(f.url, f.size);
+          pageCount = ex.pageCount || null;
+          pageText = ex.pages;
+        } catch { /* indexer finishes later */ }
+      } else {
+        pageCount = 1;
+      }
+      const [row] = await db.insert(productionDocs).values({
+        setId, productionId: prod.id,
+        sourceKey: "",
+        name: str(f.name, 255) || f.pathname.split("/").pop() || "document",
+        url: f.url, pathname: f.pathname, contentType: f.contentType ?? null, sizeBytes: f.size ?? null,
+        batesPrefix: "", batesStart: 0, batesEnd: 0, pageCount,
+        pageText,
+        textStatus: !isPdf || pageCount != null ? "done" : "pending",
+        status: "produced",
+      }).returning({ id: productionDocs.id });
+      ids.push(row.id);
+    }
+    await audit(session.email, "create", "production", String(prod.id),
+      `Added ${ids.length} already-Bates-labeled document${ids.length === 1 ? "" : "s"} straight to Documents produced (${ordinal(seq)} Production) in "${set.name}"`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, productionId: prod.id, label: `${ordinal(seq)} Production`, count: ids.length };
+  } catch (err) {
+    console.error("[discovery-reviewer] addPreLabeledProduction failed:", err);
+    return { ok: false as const, error: "Couldn't file the documents." };
+  }
+}
+
+/**
+ * After a straight-to-green upload: also file copies in "Documents received
+ * from Client" so the case folder stays organized. Each red-tab copy is
+ * linked as the produced document's source, so it shows the green
+ * "produced" badge there rather than looking like something still to do.
+ */
+export async function mirrorProductionToReceived(setId: number, productionId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const docs = await db.select().from(productionDocs)
+      .where(and(eq(productionDocs.setId, setId), eq(productionDocs.productionId, productionId), eq(productionDocs.sourceKey, "")));
+    if (!docs.length) return { ok: true as const, count: 0 };
+    const [{ maxSort }] = await db
+      .select({ maxSort: sql<number>`coalesce(max(${discoveryDocs.sort}), 0)` })
+      .from(discoveryDocs).where(eq(discoveryDocs.setId, setId));
+    let sort = Number(maxSort);
+    for (const d of docs) {
+      const [row] = await db.insert(discoveryDocs).values({
+        setId, name: d.name, url: d.url, pathname: d.pathname, contentType: d.contentType, sizeBytes: d.sizeBytes,
+        pageCount: d.pageCount, pageText: (d.pageText as string[]) ?? [], textStatus: d.textStatus,
+        bucket: "client", sort: ++sort,
+      }).returning({ id: discoveryDocs.id });
+      await db.update(productionDocs).set({ sourceKey: `doc:${row.id}` }).where(eq(productionDocs.id, d.id));
+    }
+    await audit(session.email, "create", "discovery-doc", String(setId), `Filed ${docs.length} already-labeled produced document${docs.length === 1 ? "" : "s"} in Documents received from Client too`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, count: docs.length };
+  } catch (err) {
+    console.error("[discovery-reviewer] mirrorProductionToReceived failed:", err);
+    return { ok: false as const, error: "Couldn't file the copies in the red tab." };
+  }
+}
