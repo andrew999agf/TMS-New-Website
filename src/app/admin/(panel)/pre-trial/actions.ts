@@ -1,6 +1,6 @@
 "use server";
 
-import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { getOrCreateCaseForMatter, resolveMatterKey } from "@/lib/cases";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { revalidatePath } from "next/cache";
 import { eq, max } from "drizzle-orm";
@@ -44,11 +44,13 @@ export async function createTrialCase(input: CaseInput) {
   if (!name) return { ok: false as const, error: "Enter a case name." };
   try {
     const trialDate = isoDate(input.trialDate);
+    await ensureDiscoveryTables();
+    const matter = await resolveMatterKey(input.matter);
     const [row] = await db
       .insert(trialCases)
       .values({
         name,
-        matter: str(input.matter, 500),
+        matter,
         causeNumber: str(input.causeNumber, 128),
         court: str(input.court),
         trialDate,
@@ -58,9 +60,8 @@ export async function createTrialCase(input: CaseInput) {
       })
       .returning({ id: trialCases.id });
 
-    if (str(input.matter, 500)) {
-      await ensureDiscoveryTables();
-      await getOrCreateCaseForMatter({ matter: input.matter!, name, causeNumber: input.causeNumber, court: input.court }, session.email).catch(() => null);
+    if (matter) {
+      await getOrCreateCaseForMatter({ matter, name, causeNumber: input.causeNumber, court: input.court }, session.email).catch(() => null);
       revalidatePath("/admin/cases");
     }
 
@@ -95,11 +96,12 @@ export async function updateTrialCase(id: number, input: CaseInput) {
   const name = str(input.name);
   if (!name) return { ok: false as const, error: "Enter a case name." };
   try {
+    await ensureDiscoveryTables();
     await db
       .update(trialCases)
       .set({
         name,
-        matter: str(input.matter, 500),
+        matter: await resolveMatterKey(input.matter),
         causeNumber: str(input.causeNumber, 128),
         court: str(input.court),
         trialDate: isoDate(input.trialDate),

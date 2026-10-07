@@ -314,11 +314,46 @@ let discoveryEnsured: Promise<void> | null = null;
 
 /** Create the Discovery Reviewer tables if they don't exist yet — once per
  *  server instance, so the feature needs no manual database step. */
+/**
+ * One-time repair: the share-folder / pre-trial matter picker used to store
+ * "CODE — description" while every other tool stored the bare CODE, so one
+ * case could end up as two Matters/Cases rows and a folder that no other tool
+ * could find. Fold the long keys back onto the bare code. Guarded: only rows
+ * whose key still carries the " — " tail are touched.
+ */
+async function repairMatterKeys() {
+  if (!db) return;
+  const dups = await db.execute(sql`SELECT id, matter, name, cause_number, court, county FROM case_hub WHERE matter LIKE '% — %'`) as unknown as
+    { id: number; matter: string; name: string; cause_number: string; court: string; county: string }[];
+  for (const d of dups) {
+    const code = d.matter.split(" — ")[0].trim();
+    if (!code) continue;
+    const keep = (await db.execute(sql`SELECT id, name, cause_number, court, county FROM case_hub WHERE matter = ${code} AND id <> ${d.id}`) as unknown as
+      { id: number; name: string; cause_number: string; court: string; county: string }[])[0];
+    if (keep) {
+      // Fill the real record's blanks from the duplicate, then drop the duplicate.
+      await db.execute(sql`UPDATE case_hub SET
+        name = CASE WHEN name = '' THEN ${d.name} ELSE name END,
+        cause_number = CASE WHEN cause_number = '' THEN ${d.cause_number} ELSE cause_number END,
+        court = CASE WHEN court = '' THEN ${d.court} ELSE court END,
+        county = CASE WHEN county = '' THEN ${d.county} ELSE county END,
+        updated_at = now()
+        WHERE id = ${keep.id}`);
+      await db.execute(sql`DELETE FROM case_hub WHERE id = ${d.id}`);
+    } else {
+      await db.execute(sql`UPDATE case_hub SET matter = ${code}, updated_at = now() WHERE id = ${d.id}`);
+    }
+  }
+  await db.execute(sql`UPDATE share_folders SET matter = split_part(matter, ' — ', 1) WHERE matter LIKE '% — %'`);
+  await db.execute(sql`UPDATE trial_cases SET matter = split_part(matter, ' — ', 1) WHERE matter LIKE '% — %'`);
+}
+
 export function ensureDiscoveryTables(): Promise<void> {
   if (!db) return Promise.resolve();
   if (!discoveryEnsured) {
     discoveryEnsured = (async () => {
       for (const ddl of DISCOVERY_DDL) await db!.execute(sql.raw(ddl));
+      await repairMatterKeys().catch((err) => console.error("[ensure] matter-key repair skipped:", err));
     })().catch(() => {
       discoveryEnsured = null;
     }) as Promise<void>;

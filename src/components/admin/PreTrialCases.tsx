@@ -35,7 +35,7 @@ export function PreTrialCases({ cases, matters }: { cases: CaseRow[]; matters: M
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", matter: "", causeNumber: "", court: "", trialDate: "", templateId: TEMPLATES[0].id });
   const lookup = useCaseLookup(form.matter, (c) => {
-    setForm((f) => ({ ...f, name: f.name || c.name, causeNumber: f.causeNumber || c.causeNumber, court: f.court || c.court }));
+    setForm((f) => ({ ...f, matter: c.matter || f.matter, name: f.name || c.name, causeNumber: f.causeNumber || c.causeNumber, court: f.court || c.court }));
   });
   const lookupMsg = lookupNote(lookup);
 

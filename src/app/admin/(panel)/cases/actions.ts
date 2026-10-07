@@ -7,7 +7,7 @@ import { caseHub } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
-import { getOrCreateCaseForMatter, cleanParties } from "@/lib/cases";
+import { getOrCreateCaseForMatter, cleanParties, findCaseForMatter, clientFromMatter } from "@/lib/cases";
 import { upsertAttorneyContact, upsertContact } from "@/lib/contacts";
 import { admins, contacts, type PartyAttorney, type PartyCc } from "@/db/schema";
 import { and, sql } from "drizzle-orm";
@@ -33,14 +33,21 @@ export async function lookupCaseForMatter(matterIn: string) {
   await ensureDiscoveryTables();
   const matter = str(matterIn, 500);
   if (!matter) return { found: false as const };
-  const [row] = await db.select().from(caseHub).where(eq(caseHub.matter, matter));
+  const row = await findCaseForMatter(matter);
   if (!row) return { found: false as const };
   const parties = cleanParties(row.parties);
+  // Our client: the party marked "ours" under Counsel of Record, else the
+  // client named in the matter code itself.
+  const ours = parties.find((p) => p.ours && p.name !== p.role)?.name ?? "";
+  const client = ours || clientFromMatter(row.matter);
   // Placeholder entries (name === role) aren't real names; don't offer them
   // for pleading captions.
   const named = (role: string) => parties.filter((p) => p.role === role && p.name !== p.role).map((p) => p.name).join("; ");
   return {
     found: true as const,
+    /** The exact key the case is filed under — forms swap to it so every tool points at one record. */
+    matter: row.matter,
+    client,
     name: row.name, causeNumber: row.causeNumber, court: row.court, county: row.county,
     plaintiff: named("Plaintiff"), defendant: named("Defendant"),
   };

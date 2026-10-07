@@ -306,6 +306,10 @@ function NewFolderForm({ matters, presetType, onDone }: { matters: MatterOption[
   // Matters/Cases lookup: a known matter fills the empty fields from the
   // central record; a new one gets saved back on create for next time.
   const lookup = useCaseLookup(matter, (c) => {
+    // Snap to the key the case is filed under, so this folder links to the
+    // same record the Discovery Reviewer and Matters / Cases use.
+    if (c.matter && c.matter !== matter) setMatter(c.matter);
+    setName((v) => v || c.client);
     setCaseNumber((v) => v || c.causeNumber);
     setCourt((v) => v || c.court);
     setCounty((v) => v || c.county);

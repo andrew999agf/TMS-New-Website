@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { caseHub, type CaseParty } from "@/db/schema";
 
@@ -49,6 +49,53 @@ export function cleanParties(v: unknown): CaseParty[] {
     .slice(0, 50);
 }
 
+/**
+ * The key every tool files a case under is the Clio matter code alone,
+ * e.g. "01319-Holocron Toy Store, LLC". Some pickers used to hand back
+ * "CODE — description"; strip that so one case never splits in two.
+ */
+export function canonicalMatter(v: unknown): string {
+  const s = (typeof v === "string" ? v : "").trim().slice(0, 500);
+  return s.split(" — ")[0].trim();
+}
+
+/** The client's name as it appears in the matter code ("01319-Holocron Toy Store, LLC" → "Holocron Toy Store, LLC"). */
+export function clientFromMatter(matter: string): string {
+  const m = matter.match(/^\s*[A-Za-z0-9.]+\s*-\s*(.+)$/);
+  return m ? m[1].trim() : "";
+}
+
+/**
+ * Find the central case record for whatever a user typed: the exact key,
+ * the key with a " — description" tail, a different letter case, or just
+ * the matter number ("01319") when exactly one case starts with it.
+ */
+export async function findCaseForMatter(matterIn: unknown) {
+  if (!db) return null;
+  const raw = (typeof matterIn === "string" ? matterIn : "").trim().slice(0, 500);
+  if (!raw) return null;
+  const canon = canonicalMatter(raw);
+  for (const key of [...new Set([raw, canon])]) {
+    const [row] = await db.select().from(caseHub).where(eq(caseHub.matter, key));
+    if (row) return row;
+  }
+  const ci = await db.select().from(caseHub).where(sql`lower(${caseHub.matter}) = ${canon.toLowerCase()}`).limit(2);
+  if (ci.length === 1) return ci[0];
+  // A bare number: "01319" → the one case whose code starts with "01319-".
+  if (/^[A-Za-z0-9.]+$/.test(canon)) {
+    const like = canon.toLowerCase().replace(/[%_]/g, "") + "-%";
+    const rows = await db.select().from(caseHub).where(sql`lower(${caseHub.matter}) LIKE ${like}`).limit(2);
+    if (rows.length === 1) return rows[0];
+  }
+  return null;
+}
+
+/** The key to store for a typed matter: the existing case's exact key when we have one, else the cleaned code. */
+export async function resolveMatterKey(matterIn: unknown): Promise<string> {
+  const existing = await findCaseForMatter(matterIn);
+  return existing ? existing.matter : canonicalMatter(matterIn);
+}
+
 export type CaseSeed = { matter: string; name?: string; causeNumber?: string; court?: string; county?: string; notes?: string; plaintiffName?: string; defendantName?: string };
 
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -61,9 +108,9 @@ const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0
  */
 export async function getOrCreateCaseForMatter(seed: CaseSeed, createdBy?: string) {
   if (!db) return null;
-  const matter = str(seed.matter, 500);
+  const matter = canonicalMatter(seed.matter);
   if (!matter) return null;
-  const [existing] = await db.select().from(caseHub).where(eq(caseHub.matter, matter));
+  const existing = await findCaseForMatter(matter);
   if (existing) {
     // Fill blanks only, so the hub accumulates information without clobbering.
     const patch: Partial<typeof existing> = {};

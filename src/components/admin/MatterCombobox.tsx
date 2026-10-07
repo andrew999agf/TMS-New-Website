@@ -10,15 +10,19 @@ export type MatterOption = { displayNumber: string; description: string };
  * must appear somewhere in the matter (number OR description), so a matter is
  * findable by case number, client name, opposing party, etc. Free text is
  * allowed too, for a matter that isn't in the list yet.
+ *
+ * Picking an entry stores the matter CODE alone (e.g. "01319-Holocron Toy
+ * Store, LLC") — the key every other tool files the case under. The
+ * description is only shown in the list.
  */
 export function MatterCombobox({ matters, value, onChange, placeholder, className }: { matters: MatterOption[]; value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
-  const options = useMemo(() => matters.map((m) => (m.description ? `${m.displayNumber} — ${m.description}` : m.displayNumber)), [matters]);
+  const options = useMemo(() => matters.map((m) => ({ code: m.displayNumber, label: m.description ? `${m.displayNumber} — ${m.description}` : m.displayNumber })), [matters]);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(-1);
   const ref = useRef<HTMLDivElement>(null);
 
   const words = value.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = open ? (words.length ? options.filter((o) => { const hay = o.toLowerCase(); return words.every((w) => hay.includes(w)); }) : options).slice(0, 50) : [];
+  const matches = open ? (words.length ? options.filter((o) => { const hay = o.label.toLowerCase(); return words.every((w) => hay.includes(w)); }) : options).slice(0, 50) : [];
 
   useEffect(() => {
     function d(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
@@ -41,7 +45,7 @@ export function MatterCombobox({ matters, value, onChange, placeholder, classNam
           if (!open && e.key === "ArrowDown") { setOpen(true); return; }
           if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, matches.length - 1)); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
-          else if (e.key === "Enter") { if (hi >= 0 && hi < matches.length) { e.preventDefault(); select(matches[hi]); } }
+          else if (e.key === "Enter") { if (hi >= 0 && hi < matches.length) { e.preventDefault(); select(matches[hi].code); } }
           else if (e.key === "Escape" || e.key === "Tab") setOpen(false);
         }}
       />
@@ -49,8 +53,8 @@ export function MatterCombobox({ matters, value, onChange, placeholder, classNam
       {open && matches.length > 0 && (
         <div className="absolute left-0 right-0 top-full z-30 max-h-52 overflow-y-auto rounded-b-md border border-t-0 border-[var(--c-accent)] bg-[var(--c-surface)] shadow-lg">
           {matches.map((o, i) => (
-            <div key={o} onClick={() => select(o)} onMouseEnter={() => setHi(i)} className={`cursor-pointer border-b border-[var(--c-border)] px-3 py-2 text-sm last:border-0 ${i === hi ? "bg-[var(--c-surface2)]" : ""}`}>
-              {o}
+            <div key={o.code} onClick={() => select(o.code)} onMouseEnter={() => setHi(i)} className={`cursor-pointer border-b border-[var(--c-border)] px-3 py-2 text-sm last:border-0 ${i === hi ? "bg-[var(--c-surface2)]" : ""}`}>
+              {o.label}
             </div>
           ))}
         </div>

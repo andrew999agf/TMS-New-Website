@@ -7,7 +7,7 @@ export type CaseLookup =
   | { status: "idle" }
   | { status: "looking" }
   | { status: "new" }
-  | { status: "found"; name: string; causeNumber: string; court: string; county: string; plaintiff: string; defendant: string };
+  | { status: "found"; matter: string; client: string; name: string; causeNumber: string; court: string; county: string; plaintiff: string; defendant: string };
 
 /**
  * Debounced "do we already have this case?" check against the Matters/Cases
@@ -29,10 +29,12 @@ export function useCaseLookup(matter: string, onFound: (c: Extract<CaseLookup, {
         const r = await lookupCaseForMatter(value);
         if (mySeq !== seq.current) return;
         if (r.found) {
-          setState({ status: "found", name: r.name, causeNumber: r.causeNumber, court: r.court, county: r.county, plaintiff: r.plaintiff, defendant: r.defendant });
-          if (lastFilled.current !== value) {
-            lastFilled.current = value;
-            onFound({ status: "found", name: r.name, causeNumber: r.causeNumber, court: r.court, county: r.county, plaintiff: r.plaintiff, defendant: r.defendant });
+          const found = { status: "found" as const, matter: r.matter, client: r.client, name: r.name, causeNumber: r.causeNumber, court: r.court, county: r.county, plaintiff: r.plaintiff, defendant: r.defendant };
+          setState(found);
+          // Fire once per case, not once per keystroke variant of its key.
+          if (lastFilled.current !== r.matter) {
+            lastFilled.current = r.matter;
+            onFound(found);
           }
         } else {
           setState({ status: "new" });

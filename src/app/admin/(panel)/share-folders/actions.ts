@@ -1,6 +1,6 @@
 "use server";
 
-import { getOrCreateCaseForMatter } from "@/lib/cases";
+import { getOrCreateCaseForMatter, resolveMatterKey } from "@/lib/cases";
 import { shareFileTextFields } from "@/lib/share/text-fields";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { randomBytes } from "crypto";
@@ -53,12 +53,14 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
   const name = input.name.trim();
   if (!name) return { ok: false as const, error: "Enter the client name." };
   try {
+    await ensureDiscoveryTables();
+    const matter = await resolveMatterKey(input.matter);
     const [row] = await db
       .insert(shareFolders)
       .values({
         caseNumber: input.caseNumber.trim(),
         name,
-        matter: (input.matter ?? "").trim(),
+        matter,
         court: (input.court ?? "").trim(),
         county: (input.county ?? "").trim(),
         plaintiff: (input.plaintiff ?? "").trim(),
@@ -68,12 +70,10 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
         createdBy: session.email,
       })
       .returning({ id: shareFolders.id });
-    const matter = (input.matter ?? "").trim();
     if (matter) {
       // Register / enrich the central case record so the next tool auto-fills.
       const plaintiff = (input.plaintiff ?? "").trim();
       const defendant = (input.defendant ?? "").trim();
-      await ensureDiscoveryTables();
       await getOrCreateCaseForMatter({
         matter,
         name: plaintiff && defendant ? `${plaintiff} v. ${defendant}` : "",
@@ -97,7 +97,7 @@ export async function updateFolder(id: number, patch: { caseNumber?: string; nam
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.caseNumber !== undefined) set.caseNumber = patch.caseNumber.trim();
   if (patch.name !== undefined) set.name = patch.name.trim();
-  if (patch.matter !== undefined) set.matter = patch.matter.trim();
+  if (patch.matter !== undefined) { await ensureDiscoveryTables(); set.matter = await resolveMatterKey(patch.matter); }
   if (patch.court !== undefined) set.court = patch.court.trim();
   if (patch.county !== undefined) set.county = patch.county.trim();
   if (patch.plaintiff !== undefined) set.plaintiff = patch.plaintiff.trim();
