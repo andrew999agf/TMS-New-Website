@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { shareFiles, shareAccessLog } from "@/db/schema";
 import { resolveRecipient } from "@/lib/share/access";
 import { shareCan } from "@/lib/share/types";
-import { zipResponse, parseFileIds } from "@/lib/share/zip";
+import { zipOrParts, parseFileIds } from "@/lib/share/zip";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,5 +32,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const suffix = idFilter ? " - new documents" : since ? " - recent uploads" : "";
   const zipName = `${(ctx.folder.name || "documents").replace(/[\\/:*?"<>|]/g, "-")}${suffix}.zip`;
-  return zipResponse(files.map((f) => ({ url: f.url, name: f.filename })), zipName);
+  return zipOrParts(req, files.map((f) => ({ url: f.url, name: f.filename, size: f.sizeBytes })), zipName);
 }

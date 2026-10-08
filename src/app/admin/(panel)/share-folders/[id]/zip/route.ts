@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { shareFolders, shareFiles } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
-import { zipResponse, parseFileIds } from "@/lib/share/zip";
+import { zipOrParts, parseFileIds } from "@/lib/share/zip";
 import { cleanDirPath } from "@/lib/share/access";
 
 export const runtime = "nodejs";
@@ -46,5 +46,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // so the archive opens as that folder rather than a chain of empty parents.
   const strip = dir ? dir.length + 1 : 0;
   const zipName = `${safeName(dir ? dir.split("/").pop()! : folder.name)}.zip`;
-  return zipResponse(files.map((f) => ({ url: f.url, name: f.filename.slice(strip) })), zipName);
+  return zipOrParts(req, files.map((f) => ({ url: f.url, name: f.filename.slice(strip), size: f.sizeBytes })), zipName);
 }

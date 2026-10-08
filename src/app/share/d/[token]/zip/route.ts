@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { shareFiles } from "@/db/schema";
 import { resolveDirLink, fileInDir, relToDir } from "@/lib/share/dir-link";
-import { zipResponse, parseFileIds } from "@/lib/share/zip";
+import { zipOrParts, parseFileIds } from "@/lib/share/zip";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -24,5 +24,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const dirName = link.dirPath ? link.dirPath.split("/").pop()! : link.folderName || "documents";
   const zipName = `${dirName.replace(/[\\/:*?"<>|]/g, "-")}${idFilter ? " - selected" : ""}.zip`;
-  return zipResponse(files.map((f) => ({ url: f.url, name: relToDir(f.filename, link.dirPath) })), zipName);
+  return zipOrParts(req, files.map((f) => ({ url: f.url, name: relToDir(f.filename, link.dirPath), size: f.sizeBytes })), zipName);
 }
