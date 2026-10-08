@@ -8,7 +8,8 @@ import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta, folderSupportsWorkspace } from "@/lib/share/types";
 import { isBlobConfigured } from "@/lib/blob";
-import { getBlocks } from "@/lib/content";
+import { getBlocks, getSetting } from "@/lib/content";
+import { SHARE_OTP_KEY, SHARE_OTP_DEFAULT } from "@/lib/share/settings";
 import { portalEmail } from "@/lib/share/portal-session";
 import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
@@ -83,9 +84,10 @@ export default async function SharePage({ params, searchParams }: { params: Prom
     const who = await portalEmail();
     if (!who || who !== rec.email.toLowerCase()) {
       const [pu] = await db.select({ passwordHash: portalUsers.passwordHash }).from(portalUsers).where(eq(portalUsers.email, rec.email.toLowerCase()));
+      const otpEnabled = await getSetting<boolean>(SHARE_OTP_KEY, SHARE_OTP_DEFAULT).catch(() => SHARE_OTP_DEFAULT);
       return (
         <Shell logo={logo}>
-          <ShareAuthGate token={token} email={rec.email} hasPassword={!!pu?.passwordHash} />
+          <ShareAuthGate token={token} email={rec.email} hasPassword={!!pu?.passwordHash} otpEnabled={otpEnabled} />
         </Shell>
       );
     }

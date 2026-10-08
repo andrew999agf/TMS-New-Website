@@ -10,9 +10,11 @@ const input = "w-full rounded-md border border-[var(--c-border)] bg-[var(--c-bg)
 const primary = "w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[var(--c-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50";
 const ghost = "w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-[var(--c-border)] px-4 py-2.5 text-sm font-medium hover:bg-[var(--c-surface2)]";
 
-export function ShareAuthGate({ token, email, hasPassword }: { token: string; email: string; hasPassword: boolean }) {
+export function ShareAuthGate({ token, email, hasPassword, otpEnabled = true }: { token: string; email: string; hasPassword: boolean; otpEnabled?: boolean }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>(hasPassword ? "password" : "choose");
+  // With one-time codes off, a first-time visitor goes straight to creating
+  // a password; there's nothing to choose between.
+  const [mode, setMode] = useState<Mode>(hasPassword ? "password" : otpEnabled ? "choose" : "create");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
@@ -62,7 +64,11 @@ export function ShareAuthGate({ token, email, hasPassword }: { token: string; em
         <div className="space-y-3">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") run(() => portalPasswordLogin(token, password)); }} placeholder="Password" className={input} autoFocus />
           <button onClick={() => run(() => portalPasswordLogin(token, password))} disabled={pending || !password} className={primary}>{pending ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />} Sign in</button>
-          <button onClick={() => { setMode("reset"); setCodeSent(false); setError(null); }} className="w-full text-center text-xs text-[var(--c-accent)]">Forgot password?</button>
+          {otpEnabled ? (
+            <button onClick={() => { setMode("reset"); setCodeSent(false); setError(null); }} className="w-full text-center text-xs text-[var(--c-accent)]">Forgot password?</button>
+          ) : (
+            <p className="text-center text-xs text-[var(--c-ink-muted)]">Forgot your password? Contact the firm and they&apos;ll reset it for you.</p>
+          )}
         </div>
       )}
 
@@ -70,7 +76,7 @@ export function ShareAuthGate({ token, email, hasPassword }: { token: string; em
         <div className="space-y-2.5">
           <p className="mb-1 text-xs text-[var(--c-ink-muted)]">First time here? Choose how you&apos;d like to get in.</p>
           <button onClick={() => { setMode("create"); setError(null); }} className={primary}><KeyRound size={15} /> Create a login</button>
-          <button onClick={() => { setMode("code"); setError(null); sendCode(); }} className={ghost}><Mail size={15} /> Email me a one-time code</button>
+          {otpEnabled && <button onClick={() => { setMode("code"); setError(null); sendCode(); }} className={ghost}><Mail size={15} /> Email me a one-time code</button>}
         </div>
       )}
 
@@ -79,7 +85,7 @@ export function ShareAuthGate({ token, email, hasPassword }: { token: string; em
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create a password (8+ characters)" className={input} autoFocus />
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirm password" className={input} />
           <button onClick={() => { if (password !== confirm) { setError("Passwords don't match."); return; } run(() => portalCreateLogin(token, password)); }} disabled={pending || password.length < 8} className={primary}>{pending ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />} Create login &amp; continue</button>
-          {!hasPassword && <button onClick={() => setMode("choose")} className="flex items-center gap-1 text-xs text-[var(--c-ink-muted)]"><ArrowLeft size={12} /> Back</button>}
+          {!hasPassword && otpEnabled && <button onClick={() => setMode("choose")} className="flex items-center gap-1 text-xs text-[var(--c-ink-muted)]"><ArrowLeft size={12} /> Back</button>}
         </div>
       )}
 

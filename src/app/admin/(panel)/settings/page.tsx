@@ -13,7 +13,7 @@ import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } 
 import { DailyBillingReviewManager } from "@/components/admin/DailyBillingReviewManager";
 import { DAILY_REVIEW_KEY, DAILY_REVIEW_DEFAULT, type DailyReviewConfig } from "@/lib/billing/daily-review-config";
 import { ShareCcManager } from "@/components/admin/ShareCcManager";
-import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
+import { SHARE_CC_KEY, SHARE_CC_DEFAULT, SHARE_OTP_KEY, SHARE_OTP_DEFAULT } from "@/lib/share/settings";
 import { getSetting, getBlocks } from "@/lib/content";
 import { isBlobConfigured } from "@/lib/blob";
 import { FIRM } from "@/lib/firm";
@@ -35,6 +35,7 @@ export default async function SettingsPage() {
     ? (await db.select({ name: admins.name, email: admins.email }).from(admins).orderBy(asc(admins.name))).map((u) => ({ name: u.name ?? "", email: u.email }))
     : [];
   const shareCc = await getSetting<string[]>(SHARE_CC_KEY, SHARE_CC_DEFAULT);
+  const otpEnabled = await getSetting<boolean>(SHARE_OTP_KEY, SHARE_OTP_DEFAULT);
 
   const envState = [
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
@@ -122,7 +123,7 @@ export default async function SettingsPage() {
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
           <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Email</h2>
-          <EmailStatusCard status={emailStatus()} />
+          <EmailStatusCard status={emailStatus()} otpEnabled={otpEnabled} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

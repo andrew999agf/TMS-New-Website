@@ -9,6 +9,8 @@ import { resolveRecipient } from "@/lib/share/access";
 import { setPortalCookie } from "@/lib/share/portal-session";
 import { sendEmail, emailConfigured, describeSendFailure } from "@/lib/email";
 import { ensurePortalUsers } from "@/db/ensure";
+import { getSetting } from "@/lib/content";
+import { SHARE_OTP_KEY, SHARE_OTP_DEFAULT } from "@/lib/share/settings";
 import { FIRM } from "@/lib/firm";
 
 type Result = { ok: boolean; error?: string };
@@ -82,6 +84,9 @@ export async function portalRequestCode(token: string): Promise<Result> {
   return guarded("sending a code", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
+  if (!(await getSetting<boolean>(SHARE_OTP_KEY, SHARE_OTP_DEFAULT).catch(() => SHARE_OTP_DEFAULT))) {
+    return { ok: false, error: "One-time codes are turned off right now. Create a login with a password instead, or contact the firm." };
+  }
   if (!emailConfigured) { console.error("[share-login] one-time code requested but no SMTP/Resend is configured"); return { ok: false, error: sendFailure("not-configured") }; }
   const u = await ensureUser(ctx.rec.email, ctx.rec.name);
   if (!u) return { ok: false, error: "Couldn't send a code." };
