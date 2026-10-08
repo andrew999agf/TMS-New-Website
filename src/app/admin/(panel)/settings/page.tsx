@@ -4,6 +4,8 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { LogoUploadSetting } from "@/components/admin/LogoUploadSetting";
 import { PaymentLinkSetting } from "@/components/admin/PaymentLinkSetting";
 import { DbSyncButton } from "@/components/admin/DbSyncButton";
+import { EmailStatusCard } from "@/components/admin/EmailStatusCard";
+import { emailStatus, emailConfigured } from "@/lib/email";
 import { ContentRefreshButton } from "@/components/admin/ContentRefreshButton";
 import { IntakeNotifyManager } from "@/components/admin/IntakeNotifyManager";
 import { BillingReminderManager } from "@/components/admin/BillingReminderManager";
@@ -38,7 +40,7 @@ export default async function SettingsPage() {
     { key: "DATABASE_URL", label: "Database", set: Boolean(process.env.DATABASE_URL) },
     { key: "AUTH_SECRET", label: "Auth secret", set: Boolean(process.env.AUTH_SECRET) },
     { key: "BLOB_READ_WRITE_TOKEN", label: "Media storage (Blob)", set: isBlobConfigured() },
-    { key: "RESEND_API_KEY", label: "Email (Resend)", set: Boolean(process.env.RESEND_API_KEY) },
+    { key: "SMTP_USER", label: "Email (Google Workspace SMTP, or Resend)", set: emailConfigured },
   ];
 
   return (
@@ -116,6 +118,11 @@ export default async function SettingsPage() {
             Theme (colors + fonts) is managed in{" "}
             <Link href="/admin/appearance" className="text-[var(--c-accent)]">Appearance</Link>.
           </p>
+        </section>
+
+        <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+          <h2 className="font-[family-name:var(--font-ui)] font-semibold mb-2">Email</h2>
+          <EmailStatusCard status={emailStatus()} />
         </section>
 
         <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-6">

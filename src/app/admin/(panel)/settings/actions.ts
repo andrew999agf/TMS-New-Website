@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { admins, settings } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, emailStatus, describeSendFailure } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { BILLING_REMINDER_KEY, BILLING_REMINDER_DEFAULT, type BillingReminder } from "@/lib/billing-reminder";
 import { buildMonthReports, loadLogoBytes, renderTimeSummaryPdf, reminderEmailHtml, deptSummaryHtml, sampleReport } from "@/lib/billing/report";
@@ -22,6 +22,23 @@ export async function saveSetting(key: string, value: unknown) {
   await audit(session.email, "update", "settings", key, `Updated ${key}`);
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/**
+ * "Is email working?" — sends a one-line test to the signed-in admin and
+ * reports the mail server's exact answer, translated into what to fix.
+ */
+export async function sendEmailTest() {
+  const session = await requireAdmin();
+  const status = emailStatus();
+  if (status.method === "none") return { ok: false as const, status, error: describeSendFailure("not-configured") };
+  const html = `<div style="font-family:Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.5"><p>This is a test message from the ${FIRM.name} admin panel.</p><p style="color:#777;font-size:13px">Sent ${new Date().toLocaleString("en-US", { timeZone: "America/Chicago" })} by ${session.email}. If you got this, email is working.</p></div>`;
+  const started = Date.now();
+  const res = await sendEmail({ to: session.email, fromName: `${FIRM.name} — Admin`, subject: "Test: email is working", html });
+  const ms = Date.now() - started;
+  await audit(session.email, "send", "settings", "email-test", res.sent ? `Email test sent (${ms} ms)` : `Email test FAILED: ${(res.reason ?? "").slice(0, 120)}`);
+  if (res.sent) return { ok: true as const, status, ms, to: session.email };
+  return { ok: false as const, status, error: describeSendFailure(res.reason), raw: (res.reason ?? "").slice(0, 300) };
 }
 
 /**

@@ -39,12 +39,50 @@ function getTransport() {
       port,
       secure: port === 465, // 465 = implicit TLS; 587 = STARTTLS
       auth: { user: SMTP_USER, pass: SMTP_PASS },
+      // Fail fast with a real error instead of hanging until the serverless
+      // function is killed (which looked like "email not connected").
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
     });
   }
   return transporter;
 }
 
 const SENDER_ADDRESS = SMTP_USER ?? process.env.RESEND_FROM ?? `intake@${FIRM.domain}`;
+
+/** How email is set up on this server, for the Settings page — no secrets. */
+export function emailStatus(): { method: "smtp" | "resend" | "none"; from: string; host: string; port: number } {
+  const port = Number(process.env.SMTP_PORT || 465);
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  if (smtpConfigured) return { method: "smtp", from: SENDER_ADDRESS, host, port };
+  if (resend) return { method: "resend", from: SENDER_ADDRESS, host: "api.resend.com", port: 443 };
+  return { method: "none", from: "", host: "", port: 0 };
+}
+
+/**
+ * Turn a failed send's reason into what the firm should actually do about
+ * it. Google's SMTP errors are precise; this translates the common ones.
+ */
+export function describeSendFailure(reason: string | undefined): string {
+  const r = reason ?? "";
+  if (r === "not-configured") return "No email account is connected on this server: SMTP_USER / SMTP_PASS (Google Workspace) aren't set in the hosting environment.";
+  if (r === "no-recipients") return "There was no email address to send to.";
+  if (/535|Username and Password not accepted|Invalid login|BadCredentials|authentication failed/i.test(r)) {
+    return `Google rejected the mailbox sign-in (${r.slice(0, 90)}). The App Password for ${SENDER_ADDRESS} is no longer valid — this happens after the mailbox password is changed, 2-Step Verification is reset, or the App Password is deleted. Create a new App Password in that Google account and update SMTP_PASS in the hosting environment.`;
+  }
+  if (/534|application-specific password|Please log in via your web browser|less secure/i.test(r)) {
+    return `Google wants an App Password, not the regular mailbox password (${r.slice(0, 90)}). Turn on 2-Step Verification for ${SENDER_ADDRESS}, create an App Password, and set it as SMTP_PASS.`;
+  }
+  if (/550|5\.7\.1|Daily user sending (quota|limit)|quota exceeded|rate limit/i.test(r)) {
+    return `Google refused the message (${r.slice(0, 120)}) — usually the mailbox's daily sending limit or a blocked recipient. Wait and retry, or check the mailbox for a security alert.`;
+  }
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Greeting never received|Connection timeout|socket/i.test(r)) {
+    return `Couldn't reach the mail server (${r.slice(0, 90)}). Check SMTP_HOST / SMTP_PORT in the hosting environment (Google Workspace is smtp.gmail.com, port 465).`;
+  }
+  if (/self.signed|certificate/i.test(r)) return `The mail server's TLS certificate was rejected (${r.slice(0, 90)}). Check SMTP_HOST and SMTP_PORT.`;
+  return `The mail server returned: ${r.slice(0, 200) || "unknown error"}.`;
+}
 
 /** Build the From header. A per-email `fromName` keeps the sender line logical
  *  for what the message is about (e.g. an intake notice vs. a login link),

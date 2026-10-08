@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { portalUsers } from "@/db/schema";
 import { resolveRecipient } from "@/lib/share/access";
 import { setPortalCookie } from "@/lib/share/portal-session";
-import { sendEmail, emailConfigured } from "@/lib/email";
+import { sendEmail, emailConfigured, describeSendFailure } from "@/lib/email";
 import { ensurePortalUsers } from "@/db/ensure";
 import { FIRM } from "@/lib/firm";
 
@@ -29,7 +29,10 @@ async function guarded(step: string, fn: () => Promise<Result>): Promise<Result>
 function sendFailure(reason: string | undefined): string {
   if (reason === "not-configured") return "The firm's email isn't connected on this server yet, so codes can't be sent. Please contact the firm for access.";
   if (reason === "no-recipients") return "This invitation has no email address on it — please contact the firm.";
-  return `The code couldn't be emailed (${(reason ?? "mail server error").slice(0, 120)}). Please try again in a minute.`;
+  // The recipient can't fix a mail-server problem; keep it short for them
+  // and put the full diagnosis in the server log for the firm.
+  console.error("[share-login] code email failed:", describeSendFailure(reason));
+  return `The code couldn't be emailed right now (${(reason ?? "mail server error").slice(0, 100)}). Please try again in a few minutes or contact the firm.`;
 }
 
 async function userFor(email: string) {

@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { admins, settings } from "@/db/schema";
 import { requireFullAdmin, audit } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, describeSendFailure } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFeaturePermission } from "@/lib/admin-sections";
 
@@ -135,9 +135,10 @@ export async function sendSetupLink(id: number) {
       <p style="margin:0;font-size:13px;color:#777">This link expires in 7 days. If you weren't expecting it, you can ignore this email.</p>
     </div>`;
   const res = await sendEmail({ to: a.email, fromName: `${FIRM.name} — Accounts`, subject: "Set up your T. Maxwell Smith login", html });
-  await audit(session.email, "update", "login", String(id), "Sent setup link");
+  if (!res.sent) console.error(`[logins] setup link to ${a.email} not emailed:`, res.reason);
+  await audit(session.email, "update", "login", String(id), res.sent ? "Sent setup link" : `Setup link NOT emailed (${(res.reason ?? "").slice(0, 80)}) — link shown to admin`);
   revalidatePath("/admin/logins");
-  return { ok: true, sent: res.sent, link: res.sent ? undefined : link };
+  return { ok: true, sent: res.sent, link: res.sent ? undefined : link, why: res.sent ? undefined : describeSendFailure(res.reason) };
 }
 
 export async function deleteLogin(id: number) {

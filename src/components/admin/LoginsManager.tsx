@@ -47,7 +47,7 @@ export function LoginsManager({ initial, selfId, selfRole = "", activityUsers = 
       const res = await sendSetupLink(id);
       if (!res.ok) { alert(res.error ?? "Failed"); return; }
       if (res.sent) alert("Setup link emailed.");
-      else { window.prompt("Email isn't connected yet — copy this setup link and share it:", res.link ?? ""); }
+      else { window.prompt(`The setup email didn't go out. ${res.why ?? ""}\n\nCopy this setup link and send it to them yourself:`, res.link ?? ""); }
     });
   }
 
