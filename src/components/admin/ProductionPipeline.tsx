@@ -351,6 +351,9 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const [delSel, setDelSel] = useState<Set<string>>(new Set());
   const [delDialog, setDelDialog] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
+  // "Check all": every page still here goes into the selection, so the
+  // user can uncheck the few to hold back and stage the rest.
+  const [checkingAll, setCheckingAll] = useState(false);
 
   // Which pages of which source files are already staged/produced, so a
   // 700-page PDF can go over in slices and the sent slices show their stamp.
@@ -538,6 +541,24 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     } else setError(r.error ?? "Couldn't stage the documents.");
   }
 
+  async function checkAllPages() {
+    setCheckingAll(true);
+    try {
+      const next = new Set(selected);
+      for (const f of shownFiles) {
+        if (f.status) continue;
+        let n = pagesOf(f) ?? 0;
+        // A PDF nobody has opened yet and whose count wasn't recorded: ask the file.
+        if (!n && fileKind(f.name) === "pdf") { try { n = (await getDoc(f)).numPages; notePages(f.key, n); } catch { continue; } }
+        if (!n) n = 1;
+        for (let p = 1; p <= n; p++) if (!pageMark(f, p)) next.add(pk(f.key, p));
+      }
+      setSelected(next);
+    } finally {
+      setCheckingAll(false);
+    }
+  }
+
   const openStageDialog = () => { setDoBates(true); setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setDialog(true); };
 
   // ---- review marks (highlighter / redaction / notes), cached per file ----
@@ -665,6 +686,18 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
         <ShareControl setId={setId} tokens={shareTokens} activeScope="received" />
         <span className="text-xs text-[var(--c-ink-muted)]">Click a page to select it · Shift-click another page for the range · double-click to read.</span>
         <div className={`ml-auto flex items-center gap-2 rounded-md px-2 py-1 ${selected.size ? "bg-[var(--c-accent)]/10 ring-1 ring-[var(--c-accent)]/40" : ""}`}>
+          {!delMode && view !== "reader" && files.length > 0 && (
+            <button onClick={() => void checkAllPages()} disabled={checkingAll}
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] disabled:opacity-50"
+              title="Select every page still in this tab — then uncheck the ones to hold back">
+              {checkingAll ? <Loader2 size={13} className="animate-spin" /> : <CheckSquare size={13} />} Check all
+            </button>
+          )}
+          {selected.size > 0 && (
+            <button onClick={() => setSelected(new Set())} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 text-sm text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]" title="Clear the selection">
+              <Square size={13} /> Uncheck all
+            </button>
+          )}
           {selected.size > 0 && <span className="text-sm font-medium">{selected.size} page{selected.size === 1 ? "" : "s"} · {selByKey.size} doc{selByKey.size === 1 ? "" : "s"}</span>}
           <button onClick={openStageDialog} disabled={selected.size === 0}
             className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
