@@ -16,6 +16,7 @@ import { expiryDaysForType } from "@/lib/share/types";
 import { stampToPdf, mergeProductionPdf, buildProductionLetter, batesLabel, ordinal, type StampStyle } from "@/lib/production/build";
 import { buildStagedPdf, compressPageRanges, remapAfterPull, type RedactionMark } from "@/lib/production/subset";
 import { rasterizeRedactedPages } from "@/lib/production/redact";
+import { planProductionParts, partsOf, partFileName, partsReady, type ProductionPart } from "@/lib/production/parts";
 import { FIRM } from "@/lib/firm";
 import { caseDistribution, type Distribution } from "@/lib/case-distribution";
 import { sendEmail } from "@/lib/email";
@@ -1148,9 +1149,13 @@ export async function redactProductionDoc(setId: number, id: number, page: numbe
 }
 
 /**
- * "Prepare production": assemble everything staged into the Nth production —
- * the merged Bates PDF, the cover letter, and the opposing-counsel link —
- * as a DRAFT the firm reviews before marking it produced.
+ * "Prepare production": open the Nth production as a DRAFT — the cover
+ * letter, the opposing-counsel link, and a plan for the production file.
+ * The file itself is built by buildProductionPart, one part per call: a
+ * production small enough for one PDF is one part; a bigger one is split
+ * in Bates order (never mid-document) into "Part 1 of 3", "Part 2 of 3"…
+ * under this one production, letter and link. The page drives the calls
+ * and shows each part landing.
  */
 export async function prepareProduction(setId: number) {
   const session = await guard();
@@ -1162,8 +1167,6 @@ export async function prepareProduction(setId: number) {
       .where(and(eq(productionDocs.setId, setId), eq(productionDocs.status, "staged"))))
       .sort((a, b) => a.batesStart - b.batesStart);
     if (staged.length === 0) return { ok: false as const, error: "Nothing is staged for production." };
-    const totalBytes = staged.reduce((sum, d) => sum + (d.sizeBytes ?? 0), 0);
-    if (totalBytes > 200 * 1024 * 1024) return { ok: false as const, error: "This production is too large to merge into one PDF — split it into two productions." };
 
     const prior = await db.select({ seq: productions.seq }).from(productions).where(eq(productions.setId, setId));
     const seq = Math.max(0, ...prior.map((r) => r.seq)) + 1;
@@ -1172,29 +1175,21 @@ export async function prepareProduction(setId: number) {
     const from = labeled.length ? batesLabel(prefix, Math.min(...labeled.map((d) => d.batesStart))) : "";
     const to = labeled.length ? batesLabel(prefix, Math.max(...labeled.map((d) => d.batesEnd))) : "";
 
-    // Merge in Bates order.
-    const parts: Uint8Array[] = [];
-    for (const d of staged) {
-      if (!d.url) continue;
-      const res = await fetch(d.url);
-      if (!res.ok) return { ok: false as const, error: `Couldn't fetch ${batesLabel(d.batesPrefix, d.batesStart)}.` };
-      parts.push(new Uint8Array(await res.arrayBuffer()));
-    }
-    const merged = await mergeProductionPdf(parts);
+    // The plan: which staged copies go in which part, Bates order.
+    const parts = planProductionParts(staged.filter((d) => !!d.url));
+    if (!parts.length) return { ok: false as const, error: "None of the staged copies has a file to assemble." };
 
     // "1st Bates - <Client Last Name> - <date sent>"
     const lastName = (set.matter.includes("-") ? set.matter.slice(set.matter.indexOf("-") + 1) : set.name.split(/\s+/)[0] || "Client").trim();
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const fileName = `${ordinal(seq)} Bates - ${lastName} - ${dateStr}.pdf`;
+    for (const p of parts) p.name = partFileName(fileName, p.n, parts.length);
 
     const token = randomBytes(24).toString("base64url");
     const origin = process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`;
     const publicUrl = `${origin.replace(/\/$/, "")}/production/${token}`;
 
-    const fileBlob = await put(`production/${setId}/final/${fileName}`, Buffer.from(merged), {
-      access: "public", contentType: "application/pdf", addRandomSuffix: true,
-    });
     const dist = await distributionForMatter(set.matter);
     const letterBytes = await buildProductionLetter({
       caseName: set.name, causeNumber: set.causeNumber, court: set.court,
@@ -1211,18 +1206,69 @@ export async function prepareProduction(setId: number) {
       batesStart: labeled.length ? Math.min(...labeled.map((d) => d.batesStart)) : 0,
       batesEnd: labeled.length ? Math.max(...labeled.map((d) => d.batesEnd)) : 0,
       letterUrl: letterBlob.url, letterPathname: letterBlob.pathname,
-      fileUrl: fileBlob.url, filePathname: fileBlob.pathname, fileName,
+      fileUrl: null, filePathname: null, fileName,
+      parts,
       token, createdBy: session.email,
     }).returning({ id: productions.id });
     await db.update(productionDocs).set({ productionId: row.id })
       .where(and(eq(productionDocs.setId, setId), eq(productionDocs.status, "staged")));
 
-    await audit(session.email, "create", "production", String(row.id), `Prepared ${ordinal(seq)} Production ${from ? `(${from}\u2013${to}) ` : ""}for "${set.name}"`);
+    await audit(session.email, "create", "production", String(row.id), `Prepared ${ordinal(seq)} Production ${from ? `(${from}\u2013${to}) ` : ""}for "${set.name}"${parts.length > 1 ? ` in ${parts.length} parts` : ""}`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
-    return { ok: true as const, id: row.id, label: `${ordinal(seq)} Production`, from, to, letterUrl: letterBlob.url, fileUrl: fileBlob.url, fileName, publicUrl };
+    return { ok: true as const, id: row.id, label: `${ordinal(seq)} Production`, from, to, letterUrl: letterBlob.url, fileName, publicUrl, parts };
   } catch (err) {
     console.error("[discovery-reviewer] prepareProduction failed:", err);
     return { ok: false as const, error: "Couldn't prepare the production." };
+  }
+}
+
+/**
+ * Build ONE part of a draft production's file: fetch that part's staged
+ * copies, merge them in Bates order, upload. Called once per part by the
+ * page, in order; a part already built is returned as-is, so a run that
+ * broke off resumes where it stopped.
+ */
+export async function buildProductionPart(productionId: number, n: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
+    if (!row) return { ok: false as const, error: "Production not found." };
+    if (row.producedAt) return { ok: false as const, error: "This production was already marked produced." };
+    const parts = partsOf(row.parts);
+    const part = parts.find((p) => p.n === Math.floor(Number(n)));
+    if (!part) return { ok: false as const, error: "No such part." };
+    if (part.url) return { ok: true as const, parts, part };
+
+    const docs = part.docIds.length
+      ? (await db.select().from(productionDocs).where(and(eq(productionDocs.productionId, productionId), inArray(productionDocs.id, part.docIds))))
+          .sort((a, b) => part.docIds.indexOf(a.id) - part.docIds.indexOf(b.id))
+      : [];
+    if (docs.length !== part.docIds.length) return { ok: false as const, error: "Some of this part's documents are no longer in the draft — discard the draft and prepare it again." };
+    const buffers: Uint8Array[] = [];
+    for (const d of docs) {
+      if (!d.url) continue;
+      const res = await fetch(d.url);
+      if (!res.ok) return { ok: false as const, error: `Couldn't fetch ${batesLabel(d.batesPrefix, d.batesStart)}.` };
+      buffers.push(new Uint8Array(await res.arrayBuffer()));
+    }
+    const merged = await mergeProductionPdf(buffers);
+    const blob = await put(`production/${row.setId}/final/${part.name}`, Buffer.from(merged), {
+      access: "public", contentType: "application/pdf", addRandomSuffix: true,
+    });
+    const built: ProductionPart = { ...part, url: blob.url, pathname: blob.pathname, sizeBytes: merged.byteLength };
+    const next = parts.map((p) => (p.n === built.n ? built : p));
+    await db.update(productions).set({
+      parts: next,
+      // Part 1 doubles as "the file" for readers that know only one.
+      ...(built.n === 1 ? { fileUrl: blob.url, filePathname: blob.pathname } : {}),
+    }).where(eq(productions.id, productionId));
+    if (partsReady(next)) await audit(session.email, "update", "production", String(productionId), `Assembled ${row.label}${next.length > 1 ? ` (${next.length} parts)` : ""}`);
+    revalidatePath(`/admin/discovery-reviewer/${row.setId}`);
+    return { ok: true as const, parts: next, part: built };
+  } catch (err) {
+    console.error("[discovery-reviewer] buildProductionPart failed:", err);
+    return { ok: false as const, error: "Couldn't assemble that part — press Finish assembling to try again." };
   }
 }
 
@@ -1234,6 +1280,8 @@ export async function finalizeProduction(productionId: number) {
     const [row] = await db.select().from(productions).where(eq(productions.id, productionId));
     if (!row) return { ok: false as const, error: "Production not found." };
     if (row.producedAt) return { ok: true as const };
+    const parts = partsOf(row.parts);
+    if (parts.length ? !partsReady(parts) : !row.fileUrl) return { ok: false as const, error: "The production file isn't fully assembled yet — press Finish assembling first." };
     await db.update(productions).set({ producedAt: new Date() }).where(eq(productions.id, productionId));
     await db.update(productionDocs).set({ status: "produced" }).where(eq(productionDocs.productionId, productionId));
     await audit(session.email, "update", "production", String(productionId), `Marked ${row.label} as produced`);
@@ -1300,7 +1348,7 @@ export async function discardProductionDraft(productionId: number) {
     if (!row) return { ok: false as const };
     if (row.producedAt) return { ok: false as const, error: "This production was already marked produced." };
     if (row.letterPathname) { try { await del(row.letterPathname); } catch { /* best-effort */ } }
-    if (row.filePathname) { try { await del(row.filePathname); } catch { /* best-effort */ } }
+    for (const path of new Set([row.filePathname, ...partsOf(row.parts).map((p) => p.pathname)])) { if (path) { try { await del(path); } catch { /* best-effort */ } } }
     await db.update(productionDocs).set({ productionId: null }).where(eq(productionDocs.productionId, productionId));
     await db.delete(productions).where(eq(productions.id, productionId));
     await audit(session.email, "delete", "production", String(productionId), `Discarded draft ${row.label}`);
@@ -1419,7 +1467,9 @@ export async function emailProduction(productionId: number, input: { to: string[
     const range = row.batesStart ? `${batesLabel(row.batesPrefix, row.batesStart)} through ${batesLabel(row.batesPrefix, row.batesEnd)}` : "";
     attachments.push({ filename: `${row.label} - Cover Letter.pdf`, content: Buffer.from(await letterRes.arrayBuffer()), contentType: "application/pdf" });
     let productionAttached = false;
-    if (row.fileUrl) {
+    // A multi-part production never rides as an attachment — part 1 alone
+    // would mislead; counsel gets every part from the link.
+    if (row.fileUrl && partsOf(row.parts).length <= 1) {
       try {
         const head = await fetch(row.fileUrl, { method: "HEAD" });
         const size = Number(head.headers.get("content-length") || 0);
@@ -1485,7 +1535,7 @@ export async function returnProductionToStaged(productionId: number, input: { no
     await db.update(productionDocs).set({ status: "staged", productionId: null }).where(eq(productionDocs.productionId, productionId));
     await db.delete(productions).where(eq(productions.id, productionId));
     if (row.letterPathname) { try { await del(row.letterPathname); } catch { /* best-effort */ } }
-    if (row.filePathname) { try { await del(row.filePathname); } catch { /* best-effort */ } }
+    for (const path of new Set([row.filePathname, ...partsOf(row.parts).map((p) => p.pathname)])) { if (path) { try { await del(path); } catch { /* best-effort */ } } }
     await audit(session.email, "update", "production", String(productionId),
       `Pulled ${row.label}${row.batesStart ? ` (${batesLabel(row.batesPrefix, row.batesStart)}–${batesLabel(row.batesPrefix, row.batesEnd)})` : ""} back to "to be produced" — ${docs.length} document${docs.length === 1 ? "" : "s"}; user confirmed it was not sent to opposing counsel`);
     revalidatePath(`/admin/discovery-reviewer/${row.setId}`);

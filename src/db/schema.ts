@@ -20,6 +20,7 @@ import {
   index,
   real,
 } from "drizzle-orm/pg-core";
+import type { ProductionPart } from "@/lib/production/parts";
 
 /* ----------------------------------------------------------------------------
  * Auth & audit
@@ -1701,6 +1702,10 @@ export const productions = pgTable(
     fileUrl: text("file_url"),
     filePathname: text("file_pathname"),
     fileName: varchar("file_name", { length: 255 }).notNull().default(""),
+    /** The production file as numbered parts when it is too big for one PDF
+     *  (see lib/production/parts.ts). One part = the ordinary case; file_url
+     *  mirrors part 1 so older readers keep working. */
+    parts: jsonb("parts").$type<ProductionPart[]>().notNull().default([]),
     /** Unguessable id for the opposing-counsel page at /production/<token>. */
     token: varchar("token", { length: 64 }).notNull().unique(),
     /** Null until "Mark as produced" — a draft the firm is still reviewing. */

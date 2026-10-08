@@ -203,6 +203,7 @@ export const DISCOVERY_DDL = [
   `CREATE INDEX IF NOT EXISTS productions_set_idx ON productions (set_id)`,
   `ALTER TABLE productions ADD COLUMN IF NOT EXISTS emailed_at timestamptz`,
   `ALTER TABLE productions ADD COLUMN IF NOT EXISTS emailed_to text`,
+  `ALTER TABLE productions ADD COLUMN IF NOT EXISTS parts jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE TABLE IF NOT EXISTS contacts (
     id serial PRIMARY KEY,
     kind varchar(24) NOT NULL DEFAULT 'other',

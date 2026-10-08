@@ -4,6 +4,7 @@ import { productions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { FileText, Download } from "lucide-react";
+import { partsOf } from "@/lib/production/parts";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: `Production — ${FIRM.name}`, robots: { index: false, follow: false } };
@@ -17,7 +18,14 @@ const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "nu
  */
 export default async function ProductionPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const row = db ? (await db.select({ label: productions.label, batesPrefix: productions.batesPrefix, batesStart: productions.batesStart, batesEnd: productions.batesEnd, producedAt: productions.producedAt, letterUrl: productions.letterUrl, fileUrl: productions.fileUrl, fileName: productions.fileName }).from(productions).where(eq(productions.token, token)))[0] : null;
+  const row = db ? (await db.select({ label: productions.label, batesPrefix: productions.batesPrefix, batesStart: productions.batesStart, batesEnd: productions.batesEnd, producedAt: productions.producedAt, letterUrl: productions.letterUrl, fileUrl: productions.fileUrl, fileName: productions.fileName, parts: productions.parts }).from(productions).where(eq(productions.token, token)))[0] : null;
+  // The production file: one PDF, or numbered parts when it was too big for one.
+  const files = row ? (() => {
+    const parts = partsOf(row.parts).filter((p) => p.url);
+    if (parts.length > 1) return parts.map((p) => ({ url: p.url as string, name: p.name, note: `Part ${p.n} of ${parts.length}${p.batesStart ? ` · ${row.batesPrefix}${String(p.batesStart).padStart(6, "0")} – ${row.batesPrefix}${String(p.batesEnd).padStart(6, "0")}` : ""}` }));
+    const one = parts[0]?.url ?? row.fileUrl;
+    return one ? [{ url: one, name: parts[0]?.name || row.fileName, note: "" }] : [];
+  })() : [];
 
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
@@ -43,13 +51,17 @@ export default async function ProductionPage({ params }: { params: Promise<{ tok
                   <Download size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
                 </a>
               )}
-              {row.fileUrl && (
-                <a href={row.fileUrl} className="flex items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4 hover:border-[var(--c-accent)]">
+              {files.length > 1 && <p className="pt-1 text-xs text-[var(--c-ink-muted)]">The production is in {files.length} parts. Together they make up the full Bates range above.</p>}
+              {files.map((f) => (
+                <a key={f.url} href={f.url} className="flex items-center gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4 hover:border-[var(--c-accent)]">
                   <FileText size={18} className="shrink-0 text-[var(--c-accent)]" />
-                  <span className="min-w-0 flex-1 break-words text-sm font-medium">{row.fileName}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-sm font-medium">{f.name}</span>
+                    {f.note && <span className="block text-xs text-[var(--c-ink-muted)]">{f.note}</span>}
+                  </span>
                   <Download size={15} className="shrink-0 text-[var(--c-ink-muted)]" />
                 </a>
-              )}
+              ))}
             </div>
           </>
         )}

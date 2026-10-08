@@ -12,8 +12,9 @@ import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
+import { partsReady, type ProductionPart } from "@/lib/production/parts";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
-  stageForProduction, unstageProductionDoc, prepareProduction, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
+  stageForProduction, unstageProductionDoc, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -25,7 +26,7 @@ export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
-export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; token: string; emailedAt?: string | null };
+export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; parts: ProductionPart[]; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
 export const bates = (prefix: string, n: number) => `${prefix}${String(n).padStart(6, "0")}`;
@@ -1910,15 +1911,42 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
   // unmounts the gallery, and the confirmation must survive that.
   const [movedNotice, setMovedNotice] = useState<string | null>(null);
 
+  // The production file is assembled one part per server call. A production
+  // small enough for one PDF is one part; a bigger one is split in Bates
+  // order into Part 1 of N, Part 2 of N… under this one production, and the
+  // box below shows each chunk landing.
+  const [assembling, setAssembling] = useState<{ id: number; parts: ProductionPart[]; active: number | null } | null>(null);
+
+  async function assemble(id: number, parts: ProductionPart[]) {
+    setBusy(true);
+    setError(null);
+    let cur = parts;
+    setAssembling({ id, parts: cur, active: null });
+    for (const p of parts) {
+      if (p.url) continue;
+      setAssembling({ id, parts: cur, active: p.n });
+      const r = await buildProductionPart(id, p.n).catch(() => null);
+      if (!r || !r.ok) {
+        setError((r && !r.ok && r.error) || "The connection dropped while assembling — press Finish assembling to pick up where it stopped.");
+        setAssembling({ id, parts: cur, active: null });
+        setBusy(false);
+        router.refresh();
+        return;
+      }
+      cur = r.parts;
+      setAssembling({ id, parts: cur, active: null });
+    }
+    setBusy(false);
+    router.refresh();
+  }
+
   async function prepare() {
     setBusy(true);
     setError(null);
     const r = await prepareProduction(setId);
-    setBusy(false);
-    if (r.ok) {
-      setReview({ id: r.id, label: r.label, batesPrefix: "", batesStart: 0, batesEnd: 0, producedAt: null, letterUrl: r.letterUrl, fileUrl: r.fileUrl, fileName: r.fileName, token: r.publicUrl.split("/").pop() ?? "" });
-      router.refresh();
-    } else setError(r.error ?? "Couldn't prepare the production.");
+    if (!r.ok) { setBusy(false); setError(r.error ?? "Couldn't prepare the production."); return; }
+    setReview({ id: r.id, label: r.label, batesPrefix: "", batesStart: 0, batesEnd: 0, producedAt: null, letterUrl: r.letterUrl, fileUrl: null, fileName: r.fileName, parts: r.parts, token: r.publicUrl.split("/").pop() ?? "" });
+    await assemble(r.id, r.parts);
   }
 
   const publicUrl = (p: ProductionRow) => `${typeof window !== "undefined" ? window.location.origin : ""}/production/${p.token}`;
@@ -1974,14 +2002,57 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
           <p className="font-semibold">{draft.label} — draft, awaiting your review</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             {draft.letterUrl && <a href={draft.letterUrl} target="_blank" rel="noreferrer" className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><FileText size={13} /> Review the letter</a>}
-            {draft.fileUrl && <a href={draft.fileUrl} target="_blank" rel="noreferrer" className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><FileText size={13} /> Review {draft.fileName}</a>}
+            {(() => {
+              const parts = (assembling?.id === draft.id ? assembling.parts : draft.parts).filter((p) => p.url);
+              if (parts.length > 1) return null; // listed in the chunk box below
+              const url = parts[0]?.url ?? draft.fileUrl;
+              return url ? <a href={url} target="_blank" rel="noreferrer" className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><FileText size={13} /> Review {draft.fileName}</a> : null;
+            })()}
             <a href={publicUrl(draft)} target="_blank" rel="noreferrer" className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><ExternalLink size={13} /> Review the opposing-counsel page</a>
             <button onClick={async () => { try { await navigator.clipboard.writeText(publicUrl(draft)); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* no clipboard */ } }}
               className="btn btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"><Copy size={13} /> {copied ? "Copied!" : "Copy link"}</button>
             <EmailToCounsel key={`email-${draft.id}`} productionId={draft.id} draft emailedAt={draft.emailedAt} onSent={(m) => setMovedNotice(m)} />
           </div>
+          {(() => {
+            const parts = assembling?.id === draft.id ? assembling.parts : draft.parts;
+            const ready = parts.length ? partsReady(parts) : !!draft.fileUrl;
+            const active = assembling?.id === draft.id ? assembling.active : null;
+            const left = parts.filter((p) => !p.url).length;
+            const mb = (n: number) => `${Math.max(1, Math.round(n / 1048576))} MB`;
+            if (parts.length <= 1 && ready) return null;
+            return (
+              <div className="mt-3 rounded-md border border-[var(--c-accent)]/50 bg-[var(--c-surface)] p-3 text-sm" role="status" aria-live="polite">
+                <p className="font-semibold">
+                  {parts.length > 1
+                    ? <>Too big for one PDF — {ready ? "assembled" : "assembling"} in {parts.length} chunks.</>
+                    : busy ? "Assembling the production PDF…" : "The production PDF isn't assembled yet."}
+                </p>
+                {parts.length > 1 && <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">One production, one letter, one opposing-counsel link; the file goes out as Part 1 of {parts.length} through Part {parts.length} of {parts.length}.</p>}
+                <ol className="mt-2 space-y-1">
+                  {parts.map((p) => (
+                    <li key={p.n} className="flex flex-wrap items-center gap-2 text-xs">
+                      {p.url ? <Check size={14} className="text-emerald-600" /> : active === p.n ? <Loader2 size={14} className="animate-spin text-[var(--c-accent)]" /> : <span className="inline-block h-3.5 w-3.5 rounded-full border border-[var(--c-border)]" />}
+                      <span className="font-semibold">Chunk {p.n} of {parts.length}</span>
+                      {p.batesStart > 0 && <span className="font-mono">{bates(draft.batesPrefix, p.batesStart)} – {String(p.batesEnd).padStart(6, "0")}</span>}
+                      <span className="text-[var(--c-ink-muted)]">{p.pages.toLocaleString()} pp. · {mb(p.sizeBytes || p.bytes)}</span>
+                      {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">Review {p.name}</a>}
+                      {!p.url && active === p.n && <span className="text-[var(--c-ink-muted)]">building…</span>}
+                    </li>
+                  ))}
+                </ol>
+                {!ready && !busy && (
+                  <button onClick={() => void assemble(draft.id, parts)} className="btn btn-accent mt-2 inline-flex items-center gap-1.5 text-xs py-1.5 px-3">
+                    <Send size={13} /> Finish assembling ({left} chunk{left === 1 ? "" : "s"} left)
+                  </button>
+                )}
+                {busy && <p className="mt-2 text-[11px] text-[var(--c-ink-muted)]">Keep this window open — each chunk is checked off as it lands.</p>}
+              </div>
+            );
+          })()}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button onClick={async () => { setBusy(true); await finalizeProduction(draft.id); setBusy(false); router.refresh(); }} disabled={busy}
+            <button onClick={async () => { setBusy(true); const r = await finalizeProduction(draft.id); setBusy(false); if (!r.ok) setError(("error" in r && r.error) || "Couldn't mark it produced."); router.refresh(); }}
+              disabled={busy || !((assembling?.id === draft.id ? assembling.parts : draft.parts).length ? partsReady(assembling?.id === draft.id ? assembling.parts : draft.parts) : !!draft.fileUrl)}
+              title={busy ? undefined : "Available once every chunk of the production PDF is assembled"}
               className="inline-flex items-center gap-1.5 rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-50">
               <Check size={14} /> Mark as produced
             </button>
@@ -2035,7 +2106,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
   const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
   const producedDocs = staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId));
   // Link + Bates base come from the most recent production with a file.
-  const latest = [...done].reverse().find((p) => p.fileUrl) ?? null;
+  const latest = [...done].reverse().find((p) => p.fileUrl && p.parts.length <= 1) ?? null;
   const mainDoc = latest ? null : likelyMainDoc(staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId)));
   const linkUrl = latest?.fileUrl ?? mainDoc?.url ?? null;
   const linkFor = (e: TocEntry) => (linkUrl ? `${linkUrl}#page=${e.from}` : null);
@@ -2086,7 +2157,9 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
                   <span className="text-xs text-[var(--c-ink-muted)]">{docs.reduce((n, d) => n + stagedPages(d), 0).toLocaleString()} pages · {docs.length} doc{docs.length === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex flex-wrap items-center gap-3 text-xs">
                     {p.letterUrl && <a href={p.letterUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">letter</a>}
-                    {p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">{p.fileName || "production PDF"}</a>}
+                    {p.parts.filter((x) => x.url).length > 1
+                      ? p.parts.filter((x) => x.url).map((x) => <a key={x.n} href={x.url as string} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline" title={x.name}>Part {x.n} of {p.parts.length}</a>)
+                      : p.fileUrl && <a href={p.fileUrl} target="_blank" rel="noreferrer" className="text-[var(--c-accent)] hover:underline">{p.fileName || "production PDF"}</a>}
                     {p.letterUrl && <EmailToCounsel productionId={p.id} draft={false} emailedAt={p.emailedAt} compact />}
                     {/* Divided button: left opens the opposing-counsel page, right copies its link. */}
                     <span className="inline-flex overflow-hidden rounded-md border border-[var(--c-accent)] bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-accent)] shadow-sm">
