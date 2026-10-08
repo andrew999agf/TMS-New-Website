@@ -835,7 +835,11 @@ const MAX_STAGE_BYTES = 150 * 1024 * 1024;
  */
 export type StageSelection = { key: string; pages?: number[] };
 
-export async function stageForProduction(setId: number, selectionsIn: (string | StageSelection)[], opts: { bates: boolean; prefix?: string; start?: number; stamp?: StampStyle }) {
+/* The page splits a big selection into calls of ~25 documents (see
+ * ReceivedView.submit in ProductionPipeline.tsx) so a 1,500-document
+ * stamping run is many short calls, each inside the server's time budget,
+ * with the Bates numbering handed from one call to the next via nextStart. */
+export async function stageForProduction(setId: number, selectionsIn: (string | StageSelection)[], opts: { bates: boolean; prefix?: string; start?: number; stamp?: StampStyle; /** One call of a chunked run: an all-skipped call is not an error. */ chunk?: boolean }) {
   // Normalize: plain keys mean "the whole document".
   const selections: StageSelection[] = (selectionsIn ?? []).map((x) => (typeof x === "string" ? { key: x } : x)).filter((x) => x && typeof x.key === "string");
   const pagesByKey = new Map(selections.map((x) => [x.key, x.pages && x.pages.length ? [...new Set(x.pages.map((p) => Math.floor(p)))].sort((a, b) => a - b) : null]));
@@ -852,7 +856,7 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const shareIds = [...new Set(sourceKeys.filter((k) => k.startsWith("share:")).map((k) => Math.floor(Number(k.slice(6)))).filter((n) => Number.isFinite(n)))];
     const docIds = [...new Set(sourceKeys.filter((k) => k.startsWith("doc:")).map((k) => Math.floor(Number(k.slice(4)))).filter((n) => Number.isFinite(n)))];
     if (shareIds.length + docIds.length === 0) return { ok: false as const, error: "Select at least one document." };
-    if (shareIds.length + docIds.length > 300) return { ok: false as const, error: "Stage at most 300 documents per batch." };
+    if (shareIds.length + docIds.length > 300) return { ok: false as const, error: "Stage at most 300 documents per call — the page sends bigger selections in chunks." };
 
     // Only files from this matter's client folders are eligible.
     const folders = set.matter
@@ -924,7 +928,10 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       redPagesByKey.set(a.fileKey, pset);
     }
     const todo = sources.filter((f) => !covered.get(f.key)?.all);
-    if (todo.length === 0) return { ok: false as const, error: "All of those documents are already staged or produced." };
+    if (todo.length === 0) {
+      if (opts.chunk) return { ok: true as const, staged: 0, skipped: sources.map((f) => `${f.filename} (already staged)`), nextStart: Math.floor(Number(opts.start)) || undefined };
+      return { ok: false as const, error: "All of those documents are already staged or produced." };
+    }
     const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
 
@@ -1010,8 +1017,10 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     }
     await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${bates ? prefix : "no Bates labeling \u2014 pre-labeled"})`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
-    if (staged === 0) return { ok: false as const, error: `Nothing could be staged. ${skipped.join("; ")}` };
-    return { ok: true as const, staged, skipped };
+    if (staged === 0 && !opts.chunk) return { ok: false as const, error: `Nothing could be staged. ${skipped.join("; ")}` };
+    // nextStart: where the Bates numbering now stands, so the next chunk of a
+    // long run picks up exactly here instead of re-reading the table.
+    return { ok: true as const, staged, skipped, nextStart: bates ? next : undefined };
   } catch (err) {
     console.error("[discovery-reviewer] stageForProduction failed:", err);
     return { ok: false as const, error: "Couldn't stage the documents." };

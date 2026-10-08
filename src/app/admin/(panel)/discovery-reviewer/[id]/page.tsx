@@ -16,6 +16,9 @@ import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+// Server actions posted from this page (Bates stamping above all) run under
+// this budget; the page chunks long runs so each call stays well inside it.
+export const maxDuration = 300;
 
 const asSections = (v: unknown) => (Array.isArray(v) ? (v as { from: number; to: number; title: string }[]) : undefined);
 

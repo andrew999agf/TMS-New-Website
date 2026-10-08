@@ -519,26 +519,66 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     return m;
   }, [selected]);
 
+  // A long run goes to the server in chunks of this many documents: each call
+  // fetches, stamps and uploads its documents inside the server's time budget,
+  // and the Bates numbering is handed from one call to the next. There is no
+  // ceiling on the selection itself — 1,500 documents is 60 calls.
+  const STAGE_CHUNK = 25;
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
   async function submit() {
     setBusy(true);
     setError(null);
-    const selections: StageSelection[] = [];
+    // Same order the server stamps in (full path, natural numbers), so the
+    // Bates sequence across chunks reads exactly like one big batch.
+    const pathOf = (f: ClientFile) => (f.dir ? `${f.dir}/${f.name}` : f.name);
+    const items: { key: string; sel: StageSelection; path: string }[] = [];
     for (const [key, pages] of selByKey) {
       const f = files.find((x) => x.key === key);
-      if (f && fileKind(f.name) === "pdf") selections.push({ key, pages: [...pages].sort((a, b) => a - b) });
-      else selections.push({ key });
+      items.push({ key, path: f ? pathOf(f) : key, sel: f && fileKind(f.name) === "pdf" ? { key, pages: [...pages].sort((a, b) => a - b) } : { key } });
     }
-    const r = await stageForProduction(setId, selections, {
-      bates: doBates, prefix, start: Number(start) || undefined,
-      stamp: doBates ? stampStyle : undefined,
-    });
+    items.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    const chunks: typeof items[] = [];
+    for (let i = 0; i < items.length; i += STAGE_CHUNK) chunks.push(items.slice(i, i + STAGE_CHUNK));
+    setProgress({ done: 0, total: items.length });
+
+    let cursor: number | undefined = Number(start) || undefined;
+    let stagedTotal = 0;
+    const skipped: string[] = [];
+    let done = 0;
+    let failure: string | null = null;
+    for (const chunk of chunks) {
+      const r = await stageForProduction(setId, chunk.map((x) => x.sel), {
+        bates: doBates, prefix, start: cursor,
+        stamp: doBates ? stampStyle : undefined,
+        chunk: chunks.length > 1,
+      }).catch(() => null);
+      if (!r) { failure = "The connection dropped mid-run."; break; }
+      if (!r.ok) { failure = r.error ?? "Couldn't stage the documents."; break; }
+      stagedTotal += r.staged;
+      skipped.push(...r.skipped);
+      done += chunk.length;
+      if (doBates && r.nextStart) { cursor = r.nextStart; setStart(String(r.nextStart)); }
+      // What went over is no longer selected, so a retry after a hiccup only
+      // sends what's left — never the same pages twice.
+      setSelected((prev) => { const n = new Set(prev); for (const s of prev) if (chunk.some((x) => s.startsWith(`${x.key}#`))) n.delete(s); return n; });
+      setProgress({ done, total: items.length });
+      if (chunks.length > 1) router.refresh();
+    }
     setBusy(false);
-    if (r.ok) {
-      setDialog(false);
-      setSelected(new Set());
-      setNotice(`${r.staged} document${r.staged === 1 ? "" : "s"} ${doBates ? "Bates-labeled and " : ""}moved to "To be produced".${r.skipped.length ? ` Skipped: ${r.skipped.join("; ")}` : ""}`);
+    setProgress(null);
+    if (failure) {
+      setError(done > 0
+        ? `${failure} ${done} of ${items.length} documents (${stagedTotal} staged) already moved to "To be produced"; the rest are still selected — press the button again to continue${doBates ? `, and numbering picks up at ${bates(prefix || "PREFIX", cursor || 1)}` : ""}.`
+        : failure);
       router.refresh();
-    } else setError(r.error ?? "Couldn't stage the documents.");
+      return;
+    }
+    if (stagedTotal === 0) { setError(`Nothing could be staged. ${skipped.join("; ")}`); router.refresh(); return; }
+    setDialog(false);
+    setSelected(new Set());
+    setNotice(`${stagedTotal} document${stagedTotal === 1 ? "" : "s"} ${doBates ? "Bates-labeled and " : ""}moved to "To be produced".${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`);
+    router.refresh();
   }
 
   async function checkAllPages() {
@@ -876,6 +916,18 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
               </>
             )}
             {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+            {progress && (
+              <div className="mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-label="Staging progress">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold">{doBates ? "Stamping" : "Staging"} {Math.min(progress.done + STAGE_CHUNK, progress.total)} of {progress.total} documents…</span>
+                  <span className="text-[var(--c-ink-muted)]">{progress.done} done</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[var(--c-border)]">
+                  <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
+                </div>
+                <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Keep this window open until it finishes. Documents move to &quot;To be produced&quot; as each group completes.</p>
+              </div>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setDialog(false)} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
               <button onClick={() => void submit()} disabled={busy || (doBates && !prefix.trim())} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
