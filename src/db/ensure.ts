@@ -453,6 +453,39 @@ let homeHeroCopy: Promise<void> | null = null;
  * holding the exact previous wording are touched — an admin edit made in
  * Pages is never overwritten.
  */
+/** The external-recipient login table (passwords + one-time codes). The
+ *  "Database updates" button creates it, but a share link that gets opened
+ *  before anyone clicks that button must not crash — so the sign-in gate
+ *  makes sure of the table and its columns itself. */
+let portalUsersEnsured: Promise<void> | null = null;
+export function ensurePortalUsers(): Promise<void> {
+  if (!db) return Promise.resolve();
+  if (!portalUsersEnsured) {
+    portalUsersEnsured = (async () => {
+      await db!.execute(sql`CREATE TABLE IF NOT EXISTS portal_users (
+        id serial PRIMARY KEY,
+        email varchar(255) NOT NULL UNIQUE,
+        name varchar(191) NOT NULL DEFAULT '',
+        kind varchar(24) NOT NULL DEFAULT '',
+        password_hash text,
+        verified boolean NOT NULL DEFAULT false,
+        otp_hash varchar(128),
+        otp_expires timestamptz,
+        otp_attempts integer NOT NULL DEFAULT 0,
+        last_login_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      for (const col of [
+        "kind varchar(24) NOT NULL DEFAULT ''", "password_hash text", "verified boolean NOT NULL DEFAULT false",
+        "otp_hash varchar(128)", "otp_expires timestamptz", "otp_attempts integer NOT NULL DEFAULT 0", "last_login_at timestamptz",
+      ]) {
+        await db!.execute(sql.raw(`ALTER TABLE portal_users ADD COLUMN IF NOT EXISTS ${col}`));
+      }
+    })().catch((err) => { console.error("[ensure] portal_users:", err); portalUsersEnsured = null; });
+  }
+  return portalUsersEnsured;
+}
+
 export function ensureHomeHeroCopy(): Promise<void> {
   if (!db) return Promise.resolve();
   if (!homeHeroCopy) {

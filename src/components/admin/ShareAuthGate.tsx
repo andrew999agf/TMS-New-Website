@@ -24,18 +24,26 @@ export function ShareAuthGate({ token, email, hasPassword }: { token: string; em
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     setError(null);
     start(async () => {
-      const res = await fn();
-      if (res.ok) router.refresh();
-      else setError(res.error ?? "Something went wrong.");
+      try {
+        const res = await fn();
+        if (res.ok) router.refresh();
+        else setError(res.error ?? "Something went wrong.");
+      } catch {
+        setError("Couldn't reach the server — check your connection and try again.");
+      }
     });
   };
 
   function sendCode() {
     setError(null);
     start(async () => {
-      const res = await portalRequestCode(token);
-      if (res.ok) { setCodeSent(true); setInfo(`We emailed a 6-digit code to ${email}.`); }
-      else setError(res.error ?? "Couldn't send the code.");
+      try {
+        const res = await portalRequestCode(token);
+        if (res.ok) { setCodeSent(true); setInfo(`We emailed a 6-digit code to ${email}. It can take a minute — check your spam or junk folder if it doesn't show up.`); }
+        else setError(res.error ?? "Couldn't send the code.");
+      } catch {
+        setError("Couldn't reach the server — check your connection and try again.");
+      }
     });
   }
 

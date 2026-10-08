@@ -159,6 +159,10 @@ const DDL = [
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE portal_users ADD COLUMN IF NOT EXISTS otp_hash varchar(128)`,
+  `ALTER TABLE portal_users ADD COLUMN IF NOT EXISTS otp_expires timestamptz`,
+  `ALTER TABLE portal_users ADD COLUMN IF NOT EXISTS otp_attempts integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE portal_users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_total integer NOT NULL DEFAULT 0`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_done integer NOT NULL DEFAULT 0`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS upload_at timestamptz`,

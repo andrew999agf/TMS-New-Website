@@ -7,10 +7,30 @@ import { db } from "@/db";
 import { portalUsers } from "@/db/schema";
 import { resolveRecipient } from "@/lib/share/access";
 import { setPortalCookie } from "@/lib/share/portal-session";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, emailConfigured } from "@/lib/email";
+import { ensurePortalUsers } from "@/db/ensure";
 import { FIRM } from "@/lib/firm";
 
 type Result = { ok: boolean; error?: string };
+
+/** Server actions must hand the gate a message, never a thrown error (which
+ *  just leaves the button dead). Wraps each login step. */
+async function guarded(step: string, fn: () => Promise<Result>): Promise<Result> {
+  try {
+    await ensurePortalUsers();
+    return await fn();
+  } catch (err) {
+    console.error(`[share-login] ${step} failed:`, err);
+    return { ok: false, error: `Something went wrong on our end (${step}). Please try again in a minute, or contact the firm.` };
+  }
+}
+
+/** Plain-English reason an email didn't go out, for the person at the gate. */
+function sendFailure(reason: string | undefined): string {
+  if (reason === "not-configured") return "The firm's email isn't connected on this server yet, so codes can't be sent. Please contact the firm for access.";
+  if (reason === "no-recipients") return "This invitation has no email address on it — please contact the firm.";
+  return `The code couldn't be emailed (${(reason ?? "mail server error").slice(0, 120)}). Please try again in a minute.`;
+}
 
 async function userFor(email: string) {
   if (!db) return null;
@@ -28,6 +48,7 @@ async function ensureUser(email: string, name?: string) {
 
 /** Log in with a password already on file. */
 export async function portalPasswordLogin(token: string, password: string): Promise<Result> {
+  return guarded("password sign-in", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
   const u = await userFor(ctx.rec.email);
@@ -36,10 +57,12 @@ export async function portalPasswordLogin(token: string, password: string): Prom
   await db.update(portalUsers).set({ lastLoginAt: new Date() }).where(eq(portalUsers.id, u.id));
   await setPortalCookie(ctx.rec.email);
   return { ok: true };
+  });
 }
 
 /** Create a login (set a password) and sign in. */
 export async function portalCreateLogin(token: string, password: string): Promise<Result> {
+  return guarded("creating a login", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters." };
@@ -48,12 +71,15 @@ export async function portalCreateLogin(token: string, password: string): Promis
   await db.update(portalUsers).set({ passwordHash: await bcrypt.hash(password, 12), verified: true, lastLoginAt: new Date() }).where(eq(portalUsers.id, u.id));
   await setPortalCookie(ctx.rec.email);
   return { ok: true };
+  });
 }
 
 /** Email a 6-digit one-time code to the invited address. */
 export async function portalRequestCode(token: string): Promise<Result> {
+  return guarded("sending a code", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
+  if (!emailConfigured) { console.error("[share-login] one-time code requested but no SMTP/Resend is configured"); return { ok: false, error: sendFailure("not-configured") }; }
   const u = await ensureUser(ctx.rec.email, ctx.rec.name);
   if (!u) return { ok: false, error: "Couldn't send a code." };
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -66,7 +92,9 @@ export async function portalRequestCode(token: string): Promise<Result> {
       <p style="margin:0;font-size:13px;color:#777">This code is specific to you (${ctx.rec.email}) and expires in 10 minutes. If you didn't request it, you can ignore this email — no one can get in without it.</p>
     </div>`;
   const res = await sendEmail({ to: ctx.rec.email, fromName: `${FIRM.name} — Secure Share`, subject: `Your access code: ${code}`, html });
-  return res.sent ? { ok: true } : { ok: false, error: "Couldn't send the code — please try again." };
+  if (!res.sent) console.error(`[share-login] code email to ${ctx.rec.email} not sent:`, res.reason);
+  return res.sent ? { ok: true } : { ok: false, error: sendFailure(res.reason) };
+  });
 }
 
 async function checkCode(email: string, code: string): Promise<{ ok: boolean; error?: string; id?: number }> {
@@ -83,6 +111,7 @@ async function checkCode(email: string, code: string): Promise<{ ok: boolean; er
 
 /** Sign in with a one-time code. */
 export async function portalCodeLogin(token: string, code: string): Promise<Result> {
+  return guarded("checking the code", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
   const r = await checkCode(ctx.rec.email, code);
@@ -90,10 +119,12 @@ export async function portalCodeLogin(token: string, code: string): Promise<Resu
   await db.update(portalUsers).set({ otpHash: null, otpExpires: null, verified: true, lastLoginAt: new Date() }).where(eq(portalUsers.id, r.id!));
   await setPortalCookie(ctx.rec.email);
   return { ok: true };
+  });
 }
 
 /** Reset a forgotten password using a one-time code, then sign in. */
 export async function portalResetWithCode(token: string, code: string, newPassword: string): Promise<Result> {
+  return guarded("resetting the password", async () => {
   const ctx = await resolveRecipient(token);
   if (!ctx || !db) return { ok: false, error: "This link is no longer active." };
   if (newPassword.length < 8) return { ok: false, error: "Password must be at least 8 characters." };
@@ -102,4 +133,5 @@ export async function portalResetWithCode(token: string, code: string, newPasswo
   await db.update(portalUsers).set({ passwordHash: await bcrypt.hash(newPassword, 12), otpHash: null, otpExpires: null, verified: true, lastLoginAt: new Date() }).where(eq(portalUsers.id, r.id!));
   await setPortalCookie(ctx.rec.email);
   return { ok: true };
+  });
 }
