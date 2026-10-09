@@ -138,7 +138,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   try {
     const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
     staged = pdocs.map((d) => ({
-      id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
+      id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, sizeBytes: d.sizeBytes, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
       sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], pageBates: Array.isArray(d.pageBates) ? (d.pageBates as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
       aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       pageCount: d.pageCount ?? undefined,

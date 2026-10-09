@@ -29,15 +29,20 @@ export type ProductionPart = {
  *  fetch, merge with pdf-lib and upload within its budget. */
 export const PART_BYTES = 100 * 1024 * 1024;
 
+/** A merged "download as one PDF" from the yellow tab holds at most this
+ *  many documents; past it the download comes as PDF 1 of N, 2 of N… */
+export const MERGE_MAX_DOCS = 1000;
+
 export function planProductionParts(
   docs: { id: number; sizeBytes: number | null; pageCount: number | null; batesStart: number; batesEnd: number }[],
   cap = PART_BYTES,
+  maxDocs = Number.POSITIVE_INFINITY,
 ): ProductionPart[] {
   const parts: ProductionPart[] = [];
   let cur: ProductionPart | null = null;
   for (const d of docs) {
     const bytes = d.sizeBytes ?? 0;
-    if (!cur || (cur.docIds.length > 0 && cur.bytes + bytes > cap)) {
+    if (!cur || (cur.docIds.length > 0 && (cur.bytes + bytes > cap || cur.docIds.length >= maxDocs))) {
       cur = { n: parts.length + 1, docIds: [], bytes: 0, pages: 0, batesStart: 0, batesEnd: 0, url: null, pathname: null, name: "", sizeBytes: 0 };
       parts.push(cur);
     }
@@ -66,3 +71,31 @@ export function partFileName(base: string, n: number, total: number): string {
 }
 
 export const partsReady = (parts: ProductionPart[]) => parts.length > 0 && parts.every((p) => !!p.url);
+
+/* ---- compact id lists for download links ("12-40,45,50-61") ---- */
+
+export function encodeIdRanges(ids: number[]): string {
+  const sorted = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    out.push(j > i ? `${sorted[i]}-${sorted[j]}` : String(sorted[i]));
+    i = j + 1;
+  }
+  return out.join(",");
+}
+
+export function decodeIdRanges(raw: string | null | undefined, limit = 50000): number[] {
+  const out: number[] = [];
+  for (const tok of (raw ?? "").split(",")) {
+    const t = tok.trim();
+    if (!t) continue;
+    const m = /^(\d+)(?:-(\d+))?$/.exec(t);
+    if (!m) continue;
+    const a = Number(m[1]), b = m[2] ? Number(m[2]) : a;
+    if (!(a > 0) || b < a) continue;
+    for (let n = a; n <= b && out.length < limit; n++) out.push(n);
+  }
+  return out;
+}

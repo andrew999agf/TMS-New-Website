@@ -12,7 +12,7 @@ import { loadPdfjs } from "./DiscoveryReviewer";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
-import { partsReady, type ProductionPart } from "@/lib/production/parts";
+import { partsReady, planProductionParts, encodeIdRanges, MERGE_MAX_DOCS, type ProductionPart } from "@/lib/production/parts";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
@@ -25,7 +25,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; sizeBytes?: number | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; parts: ProductionPart[]; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -1658,15 +1658,16 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     for (const v of m.values()) v.sort((a, b) => a - b);
     return m;
   }, [selPages, byKey]);
-  const downloadSelected = () => {
-    const sel = rows.filter((d) => selByDoc.has(d.id));
-    sel.forEach((d, i) => setTimeout(() => {
-      const a = document.createElement("a");
-      a.href = `/admin/discovery-reviewer/${setId}/staged-file/${d.id}?dl=1`;
-      a.download = "";
-      document.body.appendChild(a); a.click(); a.remove();
-    }, i * 500));
-    setNotice(`Downloading ${sel.length} document${sel.length === 1 ? "" : "s"} — each file named by its Bates range.`);
+  // "Download documents" opens the options box (individual PDFs / one PDF).
+  const [dlDialog, setDlDialog] = useState(false);
+  // Select every page of every document in the tab (not just one PDF's).
+  const allDocsSelected = rows.length > 0 && rows.every((d) => selByDoc.has(d.id));
+  const selectAllDocs = () => {
+    setSelPages((prev) => {
+      const nx = new Set(prev);
+      for (const d of rows) { const key = `prod:${d.id}`; const n = pagesOf(d); for (let p = 1; p <= n; p++) nx.add(pk(key, p)); }
+      return nx;
+    });
   };
   const sendToGreen = async () => {
     const sel = rows.filter((d) => selByDoc.has(d.id));
@@ -1830,6 +1831,13 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
           </div>
         )}
         <GoToPage onGo={goToPage} />
+        {view === "grid" && rows.length > 0 && (
+          <button onClick={() => (allDocsSelected ? setSelPages(new Set()) : selectAllDocs())}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${allDocsSelected ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}
+            title={allDocsSelected ? "Clear the selection" : "Select every document in this tab — all of them, not just one PDF's pages"}>
+            {allDocsSelected ? <CheckSquare size={13} /> : <Square size={13} />} {allDocsSelected ? "Deselect all documents" : "Select all documents"}
+          </button>
+        )}
         {view === "grid" && selPages.size > 0 && (
           <span className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)]/50 bg-[var(--c-accent)]/10 px-2 py-1">
             <span className="text-xs font-semibold">{selPages.size} page{selPages.size === 1 ? "" : "s"} in {selByDoc.size} document{selByDoc.size === 1 ? "" : "s"}</span>
@@ -1838,9 +1846,9 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
               title="Pull just these pages out of the staged copies (their Bates numbers are skipped)">
               {moving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete page{selPages.size === 1 ? "" : "s"}
             </button>
-            <button onClick={downloadSelected}
+            <button onClick={() => setDlDialog(true)}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-xs hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
-              title="Download the documents these pages belong to">
+              title="Download the documents these pages belong to — as separate PDFs or merged into one">
               <Download size={12} /> Download document{selByDoc.size === 1 ? "" : "s"}
             </button>
             <button onClick={() => void sendToGreen()} disabled={moving}
@@ -1857,6 +1865,10 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
 
   return (
     <div>
+      {dlDialog && (
+        <DownloadStagedDialog setId={setId} docs={rows.filter((d) => selByDoc.has(d.id)).sort((a, b) => a.batesStart - b.batesStart || a.id - b.id)}
+          onClose={() => setDlDialog(false)} onStarted={(msg) => { setDlDialog(false); setNotice(msg); }} />
+      )}
       {toolbarHost ? createPortal(toolbar, toolbarHost) : (
         <div className="sticky top-9 z-20 -mx-1 mb-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-1 py-2 shadow-sm">{toolbar}</div>
       )}
@@ -2208,6 +2220,92 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
  * went to opposing counsel. If it did, refuse and point to a supplement or a
  * clarification instead.
  */
+/** Trigger a browser download for a same-origin URL. */
+function triggerDownload(href: string) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = "";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/**
+ * Yellow tab → Download documents: the options box. Individual PDFs (one
+ * file per document, named by Bates range — zipped when there's more than
+ * one) or everything merged into one PDF in Bates order. A merged download
+ * past MERGE_MAX_DOCS documents (or what one call can merge) comes as PDF 1
+ * of N, 2 of N…, each listed here with its own button.
+ */
+function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: number; docs: StagedDoc[]; onClose: () => void; onStarted: (msg: string) => void }) {
+  const [mode, setMode] = useState<"individual" | "merged">("merged");
+  const pages = docs.reduce((n, d) => n + stagedPages(d), 0);
+  const ids = encodeIdRanges(docs.map((d) => d.id));
+  const parts = useMemo(() => planProductionParts(docs.map((d) => ({ id: d.id, sizeBytes: d.sizeBytes ?? null, pageCount: stagedPages(d), batesStart: d.batesStart, batesEnd: d.batesEnd })), undefined, MERGE_MAX_DOCS), [docs]);
+  const prefix = docs.find((d) => d.batesPrefix && d.batesStart > 0)?.batesPrefix ?? "";
+  const range = (p: ProductionPart) => (p.batesStart > 0 && prefix ? `${bates(prefix, p.batesStart)} – ${String(p.batesEnd).padStart(6, "0")}` : "");
+  const mergeUrl = (n: number) => `/admin/discovery-reviewer/${setId}/staged-merge?ids=${ids}&part=${n}`;
+  const zipUrl = `/admin/discovery-reviewer/${setId}/staged-zip?ids=${ids}`;
+  const mb = (n: number) => `${Math.max(1, Math.round(n / 1048576))} MB`;
+
+  const start = () => {
+    if (mode === "individual") {
+      if (docs.length === 1) { triggerDownload(`/admin/discovery-reviewer/${setId}/staged-file/${docs[0].id}?dl=1`); onStarted("Downloading the document, named by its Bates range."); return; }
+      triggerDownload(zipUrl);
+      onStarted(`Downloading ${docs.length} documents as separate PDFs in a ZIP, each named by its Bates range.`);
+      return;
+    }
+    parts.forEach((p, i) => setTimeout(() => triggerDownload(mergeUrl(p.n)), i * 1500));
+    onStarted(parts.length === 1
+      ? `Merging ${docs.length} document${docs.length === 1 ? "" : "s"} into one PDF — it downloads when the merge finishes.`
+      : `Downloading ${parts.length} PDFs one after another (your browser may ask once to allow multiple downloads).`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5" role="dialog" aria-label="Download documents">
+        <h3 className="font-[family-name:var(--font-display)] text-lg">Download documents</h3>
+        <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{docs.length.toLocaleString()} document{docs.length === 1 ? "" : "s"} · {pages.toLocaleString()} page{pages === 1 ? "" : "s"}{prefix && docs[0].batesStart > 0 ? <> · <span className="font-mono">{bates(prefix, docs[0].batesStart)} – {String(Math.max(...docs.map((d) => d.batesEnd)) || docs[docs.length - 1].batesEnd).padStart(6, "0")}</span></> : null}</p>
+        <div className="mt-3 space-y-2">
+          <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2.5 text-sm ${mode === "merged" ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`}>
+            <input type="radio" name="dl-mode" checked={mode === "merged"} onChange={() => setMode("merged")} className="mt-0.5 accent-[var(--c-accent)]" />
+            <span>
+              <span className="font-semibold">One single PDF</span>
+              <span className="block text-xs text-[var(--c-ink-muted)]">Every document merged into one file, in Bates order.{docs.length > 1 ? "" : " (One document — same as the file itself.)"}</span>
+            </span>
+          </label>
+          <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2.5 text-sm ${mode === "individual" ? "border-[var(--c-accent)] bg-[var(--c-accent)]/5" : "border-[var(--c-border)]"}`}>
+            <input type="radio" name="dl-mode" checked={mode === "individual"} onChange={() => setMode("individual")} className="mt-0.5 accent-[var(--c-accent)]" />
+            <span>
+              <span className="font-semibold">Individual PDFs</span>
+              <span className="block text-xs text-[var(--c-ink-muted)]">One file per document, each named by its Bates range{docs.length > 1 ? ", together in a ZIP" : ""}.</span>
+            </span>
+          </label>
+        </div>
+        {mode === "merged" && parts.length > 1 && (
+          <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" role="status">
+            <p className="font-semibold">That&apos;s more than one PDF can hold — it comes as {parts.length} PDFs.</p>
+            <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Up to {MERGE_MAX_DOCS.toLocaleString()} documents per PDF, in Bates order; the last one holds whatever is left over. Download them all at once, or one at a time.</p>
+            <ol className="mt-2 space-y-1">
+              {parts.map((p) => (
+                <li key={p.n} className="flex flex-wrap items-center gap-2 text-xs">
+                  <button onClick={() => { triggerDownload(mergeUrl(p.n)); }} className="btn btn-outline inline-flex items-center gap-1 py-1 px-2 text-xs"><Download size={11} /> PDF {p.n} of {parts.length}</button>
+                  <span>{p.docIds.length.toLocaleString()} doc{p.docIds.length === 1 ? "" : "s"} · {p.pages.toLocaleString()} pp.{p.bytes ? ` · ${mb(p.bytes)}` : ""}</span>
+                  {range(p) && <span className="font-mono text-[var(--c-ink-muted)]">{range(p)}</span>}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+          <button onClick={start} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4">
+            <Download size={14} /> {mode === "individual" ? (docs.length === 1 ? "Download" : "Download ZIP") : parts.length > 1 ? `Download all ${parts.length} PDFs` : "Download PDF"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PullBackDialog({ p, docs, onClose, onDone }: { p: ProductionRow; docs: StagedDoc[]; onClose: () => void; onDone: (msg: string) => void }) {
   const router = useRouter();
   const [step, setStep] = useState<"explain" | "ask" | "blocked">(p.emailedAt ? "blocked" : "explain");
