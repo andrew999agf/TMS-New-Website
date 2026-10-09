@@ -24,7 +24,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; sizeBytes?: number | null; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; sizeBytes?: number | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; parts: ProductionPart[]; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
@@ -520,35 +520,70 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     return m;
   }, [selected]);
 
-  // A long run goes to the server in chunks of this many documents: each call
-  // fetches, stamps and uploads its documents inside the server's time budget,
-  // and the Bates numbering is handed from one call to the next. There is no
-  // ceiling on the selection itself — 1,500 documents is 60 calls.
+  // A long run goes to the server in batches: each call fetches, stamps and
+  // uploads its documents inside the server's time and memory budget, and the
+  // Bates numbering is handed from one call to the next. Batches are cut by
+  // document count AND by size (the server refuses more than STAGE_MAX_BYTES
+  // of source files per call), so heavy scans get smaller batches on their own.
+  // There is no ceiling on the selection itself.
   const STAGE_CHUNK = 25;
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const STAGE_CHUNK_BYTES = 100 * 1024 * 1024;
+  const STAGE_MAX_BYTES = 150 * 1024 * 1024; // mirrors MAX_STAGE_BYTES on the server
+  type StageItem = { key: string; sel: StageSelection; path: string; bytes: number; pages: number; name: string };
+  type StagePlan = { chunks: StageItem[][]; items: StageItem[]; pages: number; bytes: number; tooBig: StageItem[] };
+  const [progress, setProgress] = useState<{ done: number; total: number; batch: number; batches: number } | null>(null);
+  // A selection that needs more than one call waits for the user's go-ahead
+  // in the "too large — stage in smaller batches?" panel.
+  const [plan, setPlan] = useState<StagePlan | null>(null);
 
-  async function submit() {
-    setBusy(true);
-    setError(null);
+  function planStaging(): StagePlan {
     // Same order the server stamps in (full path, natural numbers), so the
-    // Bates sequence across chunks reads exactly like one big batch.
+    // Bates sequence across batches reads exactly like one big batch.
     const pathOf = (f: ClientFile) => (f.dir ? `${f.dir}/${f.name}` : f.name);
-    const items: { key: string; sel: StageSelection; path: string }[] = [];
+    const all: StageItem[] = [];
     for (const [key, pages] of selByKey) {
       const f = files.find((x) => x.key === key);
-      items.push({ key, path: f ? pathOf(f) : key, sel: f && fileKind(f.name) === "pdf" ? { key, pages: [...pages].sort((a, b) => a - b) } : { key } });
+      const isPdf = !!f && fileKind(f.name) === "pdf";
+      all.push({ key, name: f?.name ?? key, path: f ? pathOf(f) : key, bytes: f?.sizeBytes ?? 0, pages: isPdf ? pages.length : 1, sel: isPdf ? { key, pages: [...pages].sort((a, b) => a - b) } : { key } });
     }
-    items.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
-    const chunks: typeof items[] = [];
-    for (let i = 0; i < items.length; i += STAGE_CHUNK) chunks.push(items.slice(i, i + STAGE_CHUNK));
-    setProgress({ done: 0, total: items.length });
+    all.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    // A single file past the server's per-call limit can't be stamped here at all.
+    const tooBig = all.filter((x) => x.bytes > STAGE_MAX_BYTES);
+    const items = all.filter((x) => x.bytes <= STAGE_MAX_BYTES);
+    const chunks: StageItem[][] = [];
+    let cur: StageItem[] = [], curBytes = 0;
+    for (const it of items) {
+      if (cur.length && (cur.length >= STAGE_CHUNK || curBytes + it.bytes > STAGE_CHUNK_BYTES)) { chunks.push(cur); cur = []; curBytes = 0; }
+      cur.push(it); curBytes += it.bytes;
+    }
+    if (cur.length) chunks.push(cur);
+    return { chunks, items, pages: items.reduce((n, x) => n + x.pages, 0), bytes: items.reduce((n, x) => n + x.bytes, 0), tooBig };
+  }
+
+  // Button press: one call → go; more than one → show the plan and ask.
+  function submit() {
+    setError(null);
+    const p = planStaging();
+    if (p.chunks.length <= 1 && !p.tooBig.length) { void runPlan(p); return; }
+    setPlan(p);
+  }
+
+  async function runPlan(p: StagePlan) {
+    setPlan(null);
+    setBusy(true);
+    setError(null);
+    const { chunks, items } = p;
+    if (!items.length) { setBusy(false); setError(`Nothing can be stamped: ${p.tooBig.map((x) => x.name).join(", ")} ${p.tooBig.length === 1 ? "is" : "are"} over 150 MB.`); return; }
+    setProgress({ done: 0, total: items.length, batch: 1, batches: chunks.length });
 
     let cursor: number | undefined = Number(start) || undefined;
     let stagedTotal = 0;
-    const skipped: string[] = [];
+    const skipped: string[] = p.tooBig.map((x) => `${x.name} (over 150 MB — too large to stamp here)`);
     let done = 0;
     let failure: string | null = null;
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      setProgress({ done, total: items.length, batch: i + 1, batches: chunks.length });
       const r = await stageForProduction(setId, chunk.map((x) => x.sel), {
         bates: doBates, prefix, start: cursor,
         stamp: doBates ? stampStyle : undefined,
@@ -563,7 +598,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
       // What went over is no longer selected, so a retry after a hiccup only
       // sends what's left — never the same pages twice.
       setSelected((prev) => { const n = new Set(prev); for (const s of prev) if (chunk.some((x) => s.startsWith(`${x.key}#`))) n.delete(s); return n; });
-      setProgress({ done, total: items.length });
+      setProgress({ done, total: items.length, batch: Math.min(i + 2, chunks.length), batches: chunks.length });
       if (chunks.length > 1) router.refresh();
     }
     setBusy(false);
@@ -578,7 +613,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     if (stagedTotal === 0) { setError(`Nothing could be staged. ${skipped.join("; ")}`); router.refresh(); return; }
     setDialog(false);
     setSelected(new Set());
-    setNotice(`${stagedTotal} document${stagedTotal === 1 ? "" : "s"} ${doBates ? "Bates-labeled and " : ""}moved to "To be produced".${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`);
+    setNotice(`${stagedTotal} document${stagedTotal === 1 ? "" : "s"} ${doBates ? "Bates-labeled and " : ""}moved to "To be produced"${chunks.length > 1 ? ` in ${chunks.length} batches` : ""}.${skipped.length ? ` Skipped: ${skipped.join("; ")}` : ""}`);
     router.refresh();
   }
 
@@ -600,7 +635,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     }
   }
 
-  const openStageDialog = () => { setDoBates(true); setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setDialog(true); };
+  const openStageDialog = () => { setDoBates(true); setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setPlan(null); setError(null); setDialog(true); };
 
   // ---- review marks (highlighter / redaction / notes), cached per file ----
   const loadedAnnos = useRef(new Set<string>());
@@ -851,7 +886,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
       )}
 
       {dialog && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setDialog(false); }}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) { setPlan(null); setDialog(false); } }}>
           <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5">
             <h3 className="font-[family-name:var(--font-display)] text-lg">Stage for production</h3>
             <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
@@ -917,11 +952,36 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
               </>
             )}
             {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+            {plan && (() => {
+              const mb = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1024 ** 2))} MB`);
+              const sizes = plan.chunks.map((c) => c.length);
+              const most = Math.max(...sizes, 0), least = Math.min(...sizes, most);
+              return (
+                <div className="mt-3 rounded-md border border-amber-500/60 bg-amber-500/10 p-3 text-sm" role="alertdialog" aria-label="Batch too large">
+                  <p className="font-semibold text-amber-900 dark:text-amber-200">This batch is too large to stamp in one go — would you like to stage it in smaller batches?</p>
+                  <p className="mt-1 text-xs text-amber-900/90 dark:text-amber-200/90">
+                    {plan.items.length.toLocaleString()} document{plan.items.length === 1 ? "" : "s"} · {plan.pages.toLocaleString()} page{plan.pages === 1 ? "" : "s"}{plan.bytes ? ` · about ${mb(plan.bytes)}` : ""}.
+                    {" "}Recommended: <strong>{plan.chunks.length} smaller batch{plan.chunks.length === 1 ? "" : "es"}</strong> of {least === most ? most : `${least}–${most}`} documents each (at most {STAGE_CHUNK} documents or 100 MB per batch). They run one after another, in filename order, with the Bates numbering continuing straight through{doBates ? ` from ${bates(prefix || "PREFIX", Number(start) || 1)}` : ""} — nothing for you to split up.
+                  </p>
+                  {plan.tooBig.length > 0 && (
+                    <p className="mt-1.5 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700 dark:text-red-300">
+                      {plan.tooBig.length} file{plan.tooBig.length === 1 ? " is" : "s are"} over 150 MB and will be left here: {plan.tooBig.map((x) => x.name).join(", ")}.
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap justify-end gap-2">
+                    <button onClick={() => setPlan(null)} className="btn btn-outline text-xs py-1.5 px-3">Cancel</button>
+                    <button onClick={() => void runPlan(plan)} disabled={!plan.items.length} className="btn btn-accent inline-flex items-center gap-1.5 text-xs py-1.5 px-3 disabled:opacity-50">
+                      <Stamp size={13} /> Yes — stage in {plan.chunks.length} batch{plan.chunks.length === 1 ? "" : "es"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             {progress && (
               <div className="mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-label="Staging progress">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold">{doBates ? "Stamping" : "Staging"} {Math.min(progress.done + STAGE_CHUNK, progress.total)} of {progress.total} documents…</span>
-                  <span className="text-[var(--c-ink-muted)]">{progress.done} done</span>
+                  <span className="font-semibold">{doBates ? "Stamping" : "Staging"}{progress.batches > 1 ? ` batch ${progress.batch} of ${progress.batches}` : ""} — {progress.done.toLocaleString()} of {progress.total.toLocaleString()} documents done…</span>
+                  <span className="text-[var(--c-ink-muted)]">{progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%</span>
                 </div>
                 <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[var(--c-border)]">
                   <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
@@ -930,8 +990,8 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
               </div>
             )}
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setDialog(false)} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
-              <button onClick={() => void submit()} disabled={busy || (doBates && !prefix.trim())} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+              <button onClick={() => { setPlan(null); setDialog(false); }} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+              <button onClick={submit} disabled={busy || !!plan || (doBates && !prefix.trim())} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
                 {busy ? <Loader2 size={14} className="animate-spin" /> : <Stamp size={14} />} {busy ? "Working…" : doBates ? "Bates label & stage" : "Stage as-is"}
               </button>
             </div>
