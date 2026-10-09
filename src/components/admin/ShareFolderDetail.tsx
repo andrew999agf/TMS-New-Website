@@ -129,7 +129,7 @@ function SecurityToggle({ folder, recipients }: { folder: FolderData; recipients
           reader just signs in first. */}
       <label className="mt-2 flex items-start gap-2 border-t border-[var(--c-border)] pt-2 text-[11px] text-[var(--c-ink-muted)]" title="When on, opening a file's preview shows a copyable link at the top. Paste it into a document; the reader clicks it and opens straight to that file (a secure folder will ask them to sign in first).">
         <input type="checkbox" checked={fileLinks} disabled={pending} onChange={(e) => { const v = e.target.checked; setFileLinks(v); start(async () => { await setFolderFileLinks(folder.id, v); router.refresh(); }); }} className="mt-0.5" />
-        <span>Give each file a copyable direct link on its preview — for pasting into documents so a reader can click straight to that file. {open ? "Anyone with the link can open it." : "The reader signs in (login or one-time code) first."}</span>
+        <span>Give each file its own direct link — a <strong>Copy link</strong> button on every file row and preview (here and on the recipient&apos;s page), for pasting into a memo so the reader clicks straight to that file. {open ? "Anyone with the link can open it." : "The reader signs in (login or one-time code) first."}{fileLinks ? "" : " On by default except for folders shared with the other side."}</span>
       </label>
     </div>
   );

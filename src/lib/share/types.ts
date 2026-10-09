@@ -93,6 +93,13 @@ export const SHARE_TYPES: ShareTypeDef[] = [
 ];
 
 const BY_KEY = new Map(SHARE_TYPES.map((t) => [t.key, t]));
+
+/** Per-file direct links are on from the start for every folder that isn't
+ *  shared with the other side (discovery production, opposing counsel) —
+ *  those two keep the switch, off by default. */
+export function fileLinksDefault(type: string): boolean {
+  return BY_KEY.get(type)?.audience !== "adversary";
+}
 // Retired keys map onto their replacements so existing folders still render.
 const TYPE_ALIAS: Record<string, string> = { "client-drop": "client" };
 export function shareType(key: string): ShareTypeDef {

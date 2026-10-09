@@ -14,7 +14,13 @@ import { recipientRegisterFile, recipientMkdir, recipientDeleteFile, recipientDe
 
 type Caps = { download: boolean; upload: boolean; delete: boolean };
 
-export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { token: string; files: TreeFile[]; dirs: string[]; caps: Caps; blobReady: boolean }) {
+export function ShareRecipientPanel({ token, files, dirs, caps, blobReady, fileLinkToken = null }: { token: string; files: TreeFile[]; dirs: string[]; caps: Caps; blobReady: boolean;
+  /** The folder's per-file direct-link token, when the firm turned file links
+   *  on: every file gets a "Copy link" that opens straight to it (a secure
+   *  folder asks the reader to sign in first). */
+  fileLinkToken?: string | null;
+}) {
+  const fileLink = (id: number) => `${window.location.origin}/share/f/${fileLinkToken}/${id}`;
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -231,6 +237,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
         onRenameFile={caps.delete ? handleRenameFile : undefined}
         onAddSubdir={caps.upload ? (p) => setDialogParent(p) : undefined}
         onPreview={(f) => setPreview(f)}
+        copyLinkFor={fileLinkToken ? fileLink : undefined}
         onUpload={caps.upload && blobReady ? onUpload : undefined}
         revealPath={revealPath}
       />
@@ -239,7 +246,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady }: { t
       )}
 
       <ShareFilePreview
-        file={preview ? { name: preview.base, previewUrl: `/share/${token}/file/${preview.id}?preview=1`, downloadUrl: `/share/${token}/file/${preview.id}` } : null}
+        file={preview ? { name: preview.base, previewUrl: `/share/${token}/file/${preview.id}?preview=1`, downloadUrl: `/share/${token}/file/${preview.id}`, copyLink: fileLinkToken ? fileLink(preview.id) : undefined } : null}
         onClose={() => setPreview(null)}
       />
     </div>

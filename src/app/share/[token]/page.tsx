@@ -175,6 +175,7 @@ export default async function SharePage({ params, searchParams }: { params: Prom
           dirs={dirs}
           caps={caps}
           blobReady={isBlobConfigured()}
+          fileLinkToken={(() => { const m = normalizeMeta(folder.meta); return m.fileLinks && m.publicToken ? m.publicToken : null; })()}
         />
       </div>
       </DiscoveryRequestLayout>

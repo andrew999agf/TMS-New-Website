@@ -15,7 +15,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, shareCan, type ShareWarning, type ShareFolderMeta } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, shareCan, type ShareWarning, type ShareFolderMeta, fileLinksDefault } from "@/lib/share/types";
 import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
@@ -67,6 +67,8 @@ export async function createFolder(input: { caseNumber: string; name: string; ma
         defendant: (input.defendant ?? "").trim(),
         type: input.type,
         requireAuth: true, // secure by default — the sender unchecks to send an open link
+        // Per-file direct links from day one (not for folders that go to the other side).
+        meta: fileLinksDefault(input.type) ? { fileLinks: true, publicToken: randomBytes(24).toString("base64url") } : {},
         createdBy: session.email,
       })
       .returning({ id: shareFolders.id });

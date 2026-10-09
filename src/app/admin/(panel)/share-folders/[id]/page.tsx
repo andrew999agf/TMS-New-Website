@@ -9,12 +9,15 @@ import { shareFolders, shareFiles, shareRecipients, shareDirs, timeMatters, port
 import { asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import { normalizeMeta } from "@/lib/share/types";
+import { ensureDiscoveryTables } from "@/db/ensure";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShareFolderPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
+  // Runs the one-time backfills (per-file links on by default) before the folder renders.
+  await ensureDiscoveryTables().catch(() => {});
   const { id } = await params;
   const fid = Number(id);
   if (!db || !Number.isFinite(fid)) notFound();

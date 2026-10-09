@@ -1,3 +1,5 @@
+import { randomBytes } from "crypto";
+import { fileLinksDefault } from "@/lib/share/types";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { CASE_RESULTS } from "@/lib/content/defaults/results";
@@ -349,12 +351,30 @@ async function repairMatterKeys() {
   await db.execute(sql`UPDATE trial_cases SET matter = split_part(matter, ' — ', 1) WHERE matter LIKE '% — %'`);
 }
 
+/**
+ * One-time backfill: per-file direct links are now on by default for every
+ * folder that isn't shared with the other side. Only folders where the switch
+ * was never touched (no fileLinks key in meta at all) are changed — a folder
+ * an admin explicitly switched off stays off.
+ */
+async function backfillFileLinks() {
+  if (!db) return;
+  const rows = await db.execute(sql`SELECT id, type, meta FROM share_folders WHERE (meta IS NULL OR meta->>'fileLinks' IS NULL)`) as unknown as
+    { id: number; type: string; meta: Record<string, unknown> | null }[];
+  for (const r of rows) {
+    if (!fileLinksDefault(r.type)) continue;
+    const meta = { ...(r.meta ?? {}), fileLinks: true, publicToken: typeof r.meta?.publicToken === "string" && r.meta.publicToken ? r.meta.publicToken : randomBytes(24).toString("base64url") };
+    await db.execute(sql`UPDATE share_folders SET meta = ${JSON.stringify(meta)}::jsonb WHERE id = ${r.id}`);
+  }
+}
+
 export function ensureDiscoveryTables(): Promise<void> {
   if (!db) return Promise.resolve();
   if (!discoveryEnsured) {
     discoveryEnsured = (async () => {
       for (const ddl of DISCOVERY_DDL) await db!.execute(sql.raw(ddl));
       await repairMatterKeys().catch((err) => console.error("[ensure] matter-key repair skipped:", err));
+      await backfillFileLinks().catch((err) => console.error("[ensure] file-link backfill skipped:", err));
     })().catch(() => {
       discoveryEnsured = null;
     }) as Promise<void>;
