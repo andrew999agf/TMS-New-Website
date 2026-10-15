@@ -138,7 +138,10 @@ export async function buildTurnbackEmail(opts: { name?: string | null; attorneys
     bodyHtml: body,
   });
 
-  return { subject: `Regarding your inquiry to ${firmName}`, html };
+  // The person's name on the subject keeps each letter its own conversation
+  // in the firm's Sent mail, and tells the reader at a glance whose it is.
+  const who = (opts.name ?? "").trim();
+  return { subject: `Regarding your inquiry to ${firmName}${who ? ` — ${who}` : ""}`, html };
 }
 
 /**

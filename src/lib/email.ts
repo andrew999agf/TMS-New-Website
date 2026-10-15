@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { randomBytes } from "crypto";
 import { Resend } from "resend";
 import { FIRM } from "./firm";
 
@@ -115,6 +116,11 @@ export async function sendEmail({
   const recipients = (Array.isArray(to) ? to : [to]).map((s) => s.trim()).filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: "no-recipients" };
   const ccList = (Array.isArray(cc) ? cc : cc ? [cc] : []).map((s) => s.trim()).filter(Boolean);
+  // Every message gets its own thread. Gmail stacks same-subject mail from
+  // one sender into a single conversation (so ten turn-back letters to ten
+  // different people read as one thread, and a reply drags them all along);
+  // a unique X-Entity-Ref-ID tells it each message stands alone.
+  headers = { "X-Entity-Ref-ID": randomBytes(12).toString("hex"), ...(headers ?? {}) };
 
   // 1) Google Workspace SMTP (preferred).
   const tx = getTransport();
