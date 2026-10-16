@@ -30,6 +30,28 @@ export type ProductionRow = { id: number; label: string; batesPrefix: string; ba
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
 export const bates = (prefix: string, n: number) => `${prefix}${String(n).padStart(6, "0")}`;
+
+/**
+ * Every page cell from one pick to another in display order — the anchor
+ * document from its page to its end, every document between in full, and
+ * the target document up to its page (either direction). This is what
+ * shift-click selects, so a range can run across document sets.
+ */
+function cellsBetween(order: string[], countOf: (key: string) => number, a: { key: string; page: number }, b: { key: string; page: number }): { key: string; page: number }[] {
+  const ia = order.indexOf(a.key), ib = order.indexOf(b.key);
+  if (ia < 0 || ib < 0) return [];
+  const [from, to] = ia < ib || (ia === ib && a.page <= b.page) ? [a, b] : [b, a];
+  const iFrom = order.indexOf(from.key), iTo = order.indexOf(to.key);
+  const out: { key: string; page: number }[] = [];
+  for (let i = iFrom; i <= iTo; i++) {
+    const key = order[i];
+    const n = Math.max(1, countOf(key));
+    const lo = i === iFrom ? from.page : 1;
+    const hi = i === iTo ? to.page : n;
+    for (let p = lo; p <= Math.min(hi, n); p++) out.push({ key, page: p });
+  }
+  return out;
+}
 const fmtDay = (iso: string) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
 /** Admin file key ("doc:12" / "share:9") or production id → share-route key. */
@@ -473,38 +495,79 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     return p;
   }, [proxyUrl]);
 
-  /** Click = one page. Shift-click = the range from the last clicked page. */
-  const togglePage = (f: ClientFile, page: number, shiftKey = false) => {
-    if (pageMark(f, page)) return;
-    const next = new Set(selected);
-    const a = anchor.current;
-    if (shiftKey && a && a.key === f.key && a.page !== page) {
-      const [lo, hi] = [Math.min(a.page, page), Math.max(a.page, page)];
-      for (let p = lo; p <= hi; p++) if (!pageMark(f, p)) next.add(pk(f.key, p));
-    } else {
-      const k = pk(f.key, page);
-      if (next.has(k)) next.delete(k); else next.add(k);
-    }
-    anchor.current = { key: f.key, page };
-    setSelected(next);
+  /** A document's page count, asking the PDF when nothing has recorded it yet. */
+  const countPages = async (f: ClientFile): Promise<number> => {
+    let n = pagesOf(f) ?? 0;
+    if (!n && fileKind(f.name) === "pdf") { try { n = (await getDoc(f)).numPages; notePages(f.key, n); } catch { /* unreadable: treat as one page */ } }
+    return n || 1;
   };
 
-  /** Header checkbox / documents-view card: whole document at once. */
-  const toggleDoc = async (f: ClientFile) => {
-    if (f.status) return;
-    let n = fileKind(f.name) === "pdf" ? pageCounts[f.key] ?? 0 : 1;
-    if (!n && fileKind(f.name) === "pdf") {
-      try { n = (await getDoc(f)).numPages; notePages(f.key, n); } catch { return; }
+  /** Every selectable page from the anchor to this pick, across document
+   *  sets in the order shown. Page counts of documents in between are
+   *  fetched if nobody has opened them yet. */
+  const rangeFromAnchor = async (to: { key: string; page: number }): Promise<string[]> => {
+    const a = anchor.current;
+    if (!a) return [];
+    const order = shownFiles.map((f) => f.key);
+    const ia = order.indexOf(a.key), ib = order.indexOf(to.key);
+    if (ia < 0 || ib < 0) return [];
+    const counts = new Map<string, number>();
+    for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++) {
+      const f = shownFiles[i];
+      counts.set(f.key, f.status ? 0 : await countPages(f));
     }
-    if (!n) n = 1;
+    const byKey = new Map(shownFiles.map((f) => [f.key, f]));
+    return cellsBetween(order, (k) => counts.get(k) ?? 1, a, to)
+      .filter((c) => { const f = byKey.get(c.key); return !!f && !f.status && !pageMark(f, c.page); })
+      .map((c) => pk(c.key, c.page));
+  };
+
+  /** Click = one page. Shift-click = the range from the last clicked page,
+   *  even when that page is in another document set. */
+  const togglePage = async (f: ClientFile, page: number, shiftKey = false) => {
+    if (pageMark(f, page)) return;
+    const a = anchor.current;
+    if (shiftKey && a && !(a.key === f.key && a.page === page)) {
+      const cells = await rangeFromAnchor({ key: f.key, page });
+      if (cells.length) {
+        setSelected((prev) => { const next = new Set(prev); for (const c of cells) next.add(c); return next; });
+        anchor.current = { key: f.key, page };
+        return;
+      }
+    }
+    const k = pk(f.key, page);
+    setSelected((prev) => { const next = new Set(prev); if (next.has(k)) next.delete(k); else next.add(k); return next; });
+    anchor.current = { key: f.key, page };
+  };
+
+  /** Header checkbox / documents-view card: whole document at once.
+   *  Shift-click = every document from the last clicked one to this one. */
+  const toggleDoc = async (f: ClientFile, shiftKey = false) => {
+    if (f.status) return;
+    const n = await countPages(f);
     const free: number[] = [];
     for (let p = 1; p <= n; p++) if (!pageMark(f, p)) free.push(p);
     if (!free.length) return;
+    if (shiftKey && anchor.current && anchor.current.key !== f.key) {
+      // From the anchor document's first page through this document's last.
+      const order = shownFiles.map((x) => x.key);
+      const ia = order.indexOf(anchor.current.key), ib = order.indexOf(f.key);
+      if (ia >= 0 && ib >= 0) {
+        const from = { key: anchor.current.key, page: ia <= ib ? 1 : await countPages(shownFiles[ia]) };
+        const saved = anchor.current;
+        anchor.current = from;
+        const cells = await rangeFromAnchor({ key: f.key, page: ia <= ib ? free[free.length - 1] : free[0] });
+        anchor.current = saved;
+        if (cells.length) {
+          setSelected((prev) => { const next = new Set(prev); for (const c of cells) next.add(c); return next; });
+          anchor.current = { key: f.key, page: free[free.length - 1] };
+          return;
+        }
+      }
+    }
     const allSel = free.every((p) => selected.has(pk(f.key, p)));
-    const next = new Set(selected);
-    for (const p of free) { if (allSel) next.delete(pk(f.key, p)); else next.add(pk(f.key, p)); }
+    setSelected((prev) => { const next = new Set(prev); for (const p of free) { if (allSel) next.delete(pk(f.key, p)); else next.add(pk(f.key, p)); } return next; });
     anchor.current = { key: f.key, page: free[free.length - 1] };
-    setSelected(next);
   };
 
   // Selection tallies for the toolbar and the staging dialog.
@@ -819,7 +882,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             {shownFiles.map((f) => (
               <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
                 setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
-                onTogglePage={togglePage} onToggleDoc={() => void toggleDoc(f)} onPagesKnown={pagesKnown}
+                onTogglePage={togglePage} onToggleDoc={(shift) => void toggleDoc(f, shift)} onPagesKnown={pagesKnown}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl}
                 collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent}
@@ -833,7 +896,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
               const sel = selPages > 0;
               const locked = !!f.status;
               return (
-                <button key={f.key} onClick={() => (delMode ? toggleDel(f) : void toggleDoc(f))}
+                <button key={f.key} onClick={(e) => (delMode ? toggleDel(f) : void toggleDoc(f, e.shiftKey))}
                   title={delMode && delLocked(f) ? "Pages of this document are already in the yellow or green tab — it can't be deleted" : undefined}
                   className={`relative rounded-lg border bg-[var(--c-surface)] p-3 text-left transition-shadow ${delMode ? (delSel.has(f.key) ? "border-red-600 ring-2 ring-red-600" : delLocked(f) ? "border-[var(--c-border)] opacity-50" : "border-red-300") : sel ? "border-[var(--c-accent)] ring-2 ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${locked ? "opacity-70" : "hover:shadow"}`}>
                   <div className="flex items-start gap-2">
@@ -1014,7 +1077,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
   onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
-  onToggleDoc: () => void;
+  /** shiftKey: select every document from the last clicked one to this one. */
+  onToggleDoc: (shiftKey?: boolean) => void;
   onPagesKnown: (key: string, n: number) => void;
   onOpen: (page: number) => void;
   getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
@@ -1079,9 +1143,9 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
             {deleteCheck.checked && <Check size={13} strokeWidth={3} />}
           </button>
         )}
-        {selectable && !deleteCheck && <button onClick={onToggleDoc} disabled={!!f.status || (total > 0 && freeCount === 0)}
+        {selectable && !deleteCheck && <button onClick={(e) => onToggleDoc(e.shiftKey)} disabled={!!f.status || (total > 0 && freeCount === 0)}
           className={`flex h-5 w-5 items-center justify-center rounded border ${allSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-white" : selCount > 0 ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)]"} disabled:opacity-40`}
-          title={f.status ? "Already staged or produced" : allSel ? "Deselect all pages" : "Select every remaining page of this document"}>
+          title={f.status ? "Already staged or produced" : allSel ? "Deselect all pages" : "Select every remaining page of this document (shift-click: every document from the last one you clicked to this one)"}>
           {allSel ? <Check size={13} strokeWidth={3} /> : selCount > 0 ? <span className="text-[11px] font-bold leading-none">–</span> : null}
         </button>}
         {headerExtra}
@@ -1679,25 +1743,37 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     const key = `prod:${d.id}`;
     return Math.max(pageCounts[key] ?? 0, d.batesStart > 0 && d.batesEnd >= d.batesStart ? d.batesEnd - d.batesStart + 1 : 1);
   }, [pageCounts]);
+  // Display order + page counts, so a shift-click range can run across documents.
+  const orderKeys = useMemo(() => rows.map((d) => `prod:${d.id}`), [rows]);
+  const countOf = useCallback((key: string) => { const d = byKey.get(key); return d ? pagesOf(d) : 1; }, [byKey, pagesOf]);
   const togglePage = useCallback((f: ClientFile, page: number, shiftKey?: boolean) => {
     // Snapshot the anchor NOW — the setState updater runs later (at render
     // time), after lastPick has already moved to the page just clicked.
-    const anchor = shiftKey && lastPick.current?.key === f.key ? lastPick.current.page : null;
+    const anchor = shiftKey && lastPick.current && !(lastPick.current.key === f.key && lastPick.current.page === page) ? lastPick.current : null;
+    const range = anchor ? cellsBetween(orderKeys, countOf, anchor, { key: f.key, page }) : [];
     setSelPages((prev) => {
       const nx = new Set(prev);
-      if (anchor != null) {
-        const a = Math.min(anchor, page), b = Math.max(anchor, page);
-        for (let p = a; p <= b; p++) nx.add(pk(f.key, p));
-      } else if (nx.has(pk(f.key, page))) nx.delete(pk(f.key, page));
+      if (range.length) for (const c of range) nx.add(pk(c.key, c.page));
+      else if (nx.has(pk(f.key, page))) nx.delete(pk(f.key, page));
       else nx.add(pk(f.key, page));
       return nx;
     });
     lastPick.current = { key: f.key, page };
-  }, []);
-  const toggleDoc = useCallback((key: string) => {
+  }, [orderKeys, countOf]);
+  /** "select all" chip: the whole document; shift-click = every document from
+   *  the last clicked one to this one. */
+  const toggleDoc = useCallback((key: string, shiftKey?: boolean) => {
     const d = byKey.get(key);
     if (!d) return;
     const n = pagesOf(d);
+    const a = lastPick.current;
+    if (shiftKey && a && a.key !== key && orderKeys.includes(a.key)) {
+      const forward = orderKeys.indexOf(a.key) <= orderKeys.indexOf(key);
+      const range = cellsBetween(orderKeys, countOf, { key: a.key, page: forward ? 1 : countOf(a.key) }, { key, page: forward ? n : 1 });
+      setSelPages((prev) => { const nx = new Set(prev); for (const c of range) nx.add(pk(c.key, c.page)); return nx; });
+      lastPick.current = { key, page: n };
+      return;
+    }
     setSelPages((prev) => {
       const nx = new Set(prev);
       let all = true;
@@ -1705,7 +1781,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
       for (let p = 1; p <= n; p++) { if (all) nx.delete(pk(key, p)); else nx.add(pk(key, p)); }
       return nx;
     });
-  }, [byKey, pagesOf]);
+    lastPick.current = { key, page: n };
+  }, [byKey, pagesOf, orderKeys, countOf]);
   // The documents the current selection touches, with their selected pages.
   const selByDoc = useMemo(() => {
     const m = new Map<number, number[]>();
@@ -1858,8 +1935,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     const d = byKey.get(f.key)!;
     return (
       <>
-        <button onClick={() => toggleDoc(f.key)}
-          title={selByDoc.has(d.id) ? "Deselect this document's pages" : "Select every page of this document"}
+        <button onClick={(e) => toggleDoc(f.key, e.shiftKey)}
+          title={selByDoc.has(d.id) ? "Deselect this document's pages" : "Select every page of this document (shift-click: every document from the last one you clicked to this one)"}
           className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${selByDoc.has(d.id) ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}>
           {selByDoc.has(d.id) ? <CheckSquare size={12} /> : <Square size={12} />} select all
         </button>
