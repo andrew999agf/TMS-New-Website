@@ -15,7 +15,6 @@ const fmt = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` 
 export function PackageDownload({ token, parts, fileCount, totalBytes, preparedAt, newerFiles }: { token: string; parts: PackagePartView[]; fileCount: number; totalBytes: number; preparedAt: string | null; newerFiles: number }) {
   const [started, setStarted] = useState<Set<number>>(new Set());
   const [queueing, setQueueing] = useState(false);
-  const [showSums, setShowSums] = useState(false);
   const href = (n: number) => `/share/${token}/package/${n}`;
 
   // Chrome asks once to allow multiple downloads from a site; spacing the
@@ -57,12 +56,6 @@ export function PackageDownload({ token, parts, fileCount, totalBytes, preparedA
           </li>
         ))}
       </ul>
-      {parts.some((p) => p.sha256) && (
-        <div className="mt-2 text-[11px] text-[var(--c-ink-muted)]">
-          <button onClick={() => setShowSums((v) => !v)} className="underline">{showSums ? "Hide" : "Show"} checksums</button>
-          {showSums && <ul className="mt-1 space-y-0.5 font-mono">{parts.map((p) => <li key={p.n}>{p.sha256}  {p.name} ({p.size.toLocaleString()} bytes)</li>)}</ul>}
-        </div>
-      )}
     </section>
   );
 }
