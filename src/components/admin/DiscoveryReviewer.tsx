@@ -14,6 +14,7 @@ import {
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
 import { IndexAndLabel } from "@/components/admin/DiscoveryAiReview";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { createPdfLoader, type PdfLoader } from "./pdf-loader";
 
 type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string; aiLabel?: string; aiDescription?: string; aiLabelStatus?: string };
 type Mark = { id: number; party: "P" | "D"; number: number; label: string; title: string; pages: PageRef[]; exhibitSetId: number | null };
@@ -22,20 +23,9 @@ const key = (docId: number, page: number) => `${docId}:${page}`;
 
 /* ------------------------- shared pdf.js loading ------------------------- */
 
-type PdfLib = typeof import("pdfjs-dist");
-let pdfLibPromise: Promise<PdfLib> | null = null;
-export function loadPdfjs(): Promise<PdfLib> {
-  if (!pdfLibPromise) {
-    // The legacy build: the standard v6 build relies on brand-new JS engine
-    // APIs (e.g. Map.getOrInsertComputed) that many otherwise-current browsers
-    // don't ship yet; the legacy build is compiled for wide support.
-    pdfLibPromise = (import("pdfjs-dist/legacy/build/pdf.mjs") as Promise<PdfLib>).then((lib) => {
-      lib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
-      return lib;
-    });
-  }
-  return pdfLibPromise;
-}
+// pdf.js loading lives in pdf-loader.ts (shared worker pool + load queue);
+// re-exported here because the other tabs import it from this module.
+export { loadPdfjs } from "./pdf-loader";
 
 type Party = { name: string; role: string };
 
@@ -86,35 +76,22 @@ export function DiscoveryReviewer({
     Object.fromEntries(docs.filter((d) => d.pageCount).map((d) => [d.id, d.pageCount!])),
   );
 
-  // Shared per-document pdf.js proxies, loaded on demand and reused by every
-  // thumbnail and the reader.
-  const proxies = useRef(new Map<number, Promise<PDFDocumentProxy>>());
-  const getDoc = useCallback((docId: number) => {
-    let p = proxies.current.get(docId);
-    if (!p) {
-      p = loadPdfjs().then(async (lib) => {
-        const doc = await lib.getDocument({
-          url: `/admin/discovery-reviewer/${setId}/doc/${docId}`,
-          // Codec + font assets staged into /public/pdfjs by next.config.ts.
-          // wasmUrl is what decodes scanned-image formats (JBIG2, JPEG2000);
-          // without it those pages would DISPLAY blank (the file itself is
-          // never touched — this is view-time decoding only).
-          wasmUrl: "/pdfjs/wasm/",
-          iccUrl: "/pdfjs/iccs/",
-          cMapUrl: "/pdfjs/cmaps/",
-          standardFontDataUrl: "/pdfjs/standard_fonts/",
-        }).promise;
+  // One shared pdf.js loader for the tab (worker pool, bounded concurrency,
+  // idle documents closed) — reused by every thumbnail and the reader.
+  const [loader] = useState<PdfLoader>(() => createPdfLoader("grey"));
+  const counted = useRef(new Set<number>());
+  const getDoc = useCallback((docId: number, priority = false) =>
+    loader.get(`/admin/discovery-reviewer/${setId}/doc/${docId}`, priority).then((doc) => {
+      if (!counted.current.has(docId)) {
+        counted.current.add(docId);
         setPageCounts((prev) => {
           if (prev[docId] === doc.numPages) return prev;
           void setDiscoveryDocPageCount(docId, doc.numPages);
           return { ...prev, [docId]: doc.numPages };
         });
-        return doc;
-      });
-      proxies.current.set(docId, p);
-    }
-    return p;
-  }, [setId]);
+      }
+      return doc;
+    }), [setId, loader]);
 
   // Resolve counts for files the server-side extractor skipped (too large).
   useEffect(() => {
@@ -460,7 +437,7 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge
   selected: Set<string>;
   badges: Map<string, { party: "P" | "D"; label: string; markId: number }[]>;
   onBadge: (markId: number) => void;
-  getDoc: (docId: number) => Promise<PDFDocumentProxy>;
+  getDoc: (docId: number, priority?: boolean) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
   onOpen: (idx: number) => void;
   onDeleteDoc: (d: DocMeta) => void;
@@ -517,7 +494,7 @@ function PageCell({ docId, page, idx, checked, badges, onBadge, renderW, getDoc,
   onBadge: (markId: number) => void;
   /** Canvas render width, bucketed by grid density so zooming in re-renders sharper. */
   renderW: number;
-  getDoc: (docId: number) => Promise<PDFDocumentProxy>;
+  getDoc: (docId: number, priority?: boolean) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
   onOpen: (idx: number) => void;
 }) {
@@ -612,7 +589,7 @@ function ReaderView({ flat, idx, setIdx, selected, badges, onBadge, getDoc, onTo
   selected: Set<string>;
   badges: Map<string, { party: "P" | "D"; label: string; markId: number }[]>;
   onBadge: (markId: number) => void;
-  getDoc: (docId: number) => Promise<PDFDocumentProxy>;
+  getDoc: (docId: number, priority?: boolean) => Promise<PDFDocumentProxy>;
   onToggle: (idx: number, shift: boolean) => void;
 }) {
   const cur = flat[idx];
@@ -629,7 +606,7 @@ function ReaderView({ flat, idx, setIdx, selected, badges, onBadge, getDoc, onTo
     setRendering(true);
     void (async () => {
       try {
-        const doc = await getDoc(cur.docId);
+        const doc = await getDoc(cur.docId, true);
         const pdfPage = await doc.getPage(cur.page);
         if (seq !== renderSeq.current) return;
         const canvas = canvasRef.current;

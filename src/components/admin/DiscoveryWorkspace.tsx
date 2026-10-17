@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DiscoveryDiagnostics } from "./DiscoveryDiagnostics";
 import { DiscoveryReviewer } from "./DiscoveryReviewer";
 import { ProductionPipeline, type ClientFile, type StagedDoc, type ProductionRow, type PipelineContents, type ShareTokens } from "./ProductionPipeline";
 import type { ComponentProps } from "react";
@@ -43,6 +44,7 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
         {tab("received", "Documents received from Client", "border-red-300 bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900", "border-red-400 bg-red-200 text-red-900 ring-1 ring-red-400", receivedCount)}
         {tab("staged", "Documents to be produced", "border-yellow-300 bg-yellow-100 text-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900", "border-yellow-400 bg-yellow-200 text-yellow-900 ring-1 ring-yellow-400", stagedCount)}
         {tab("produced", "Documents produced", "border-green-300 bg-green-100 text-green-900 dark:bg-green-950/40 dark:text-green-200 dark:border-green-900", "border-green-400 bg-green-200 text-green-900 ring-1 ring-green-400", producedCount)}
+        <DiscoveryDiagnostics setId={reviewerProps.setId} mode={mode} />
       </div>
       {mode === "opposing" ? (
         <DiscoveryReviewer {...reviewerProps} />

@@ -9,6 +9,8 @@ import { UploadCloud,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
+import { createPdfLoader, type PdfLoader } from "./pdf-loader";
+import { diagRegister, diagHook } from "@/lib/client-diag";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
@@ -479,21 +481,15 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   }
 
   // one pdf.js proxy per document, shared by grid + reader
-  const proxies = useRef(new Map<string, Promise<import("pdfjs-dist").PDFDocumentProxy>>());
+  // One shared pdf.js loader for the tab: worker pool, a few loads in flight
+  // at a time (the reader jumps the queue), idle documents closed. See
+  // pdf-loader.ts — this is what keeps a 3,000-page pile from freezing.
+  const [loader] = useState<PdfLoader>(() => createPdfLoader("red"));
   const proxyUrl = useCallback((f: ClientFile) =>
     f.key.startsWith("share:")
       ? `/admin/discovery-reviewer/${setId}/client-file/${f.key.slice(6)}`
       : `/admin/discovery-reviewer/${setId}/doc/${f.key.slice(4)}`, [setId]);
-  const getDoc = useCallback((f: ClientFile) => {
-    let p = proxies.current.get(f.key);
-    if (!p) {
-      p = loadPdfjs().then((lib) => lib.getDocument({
-        url: proxyUrl(f), wasmUrl: "/pdfjs/wasm/", iccUrl: "/pdfjs/iccs/", cMapUrl: "/pdfjs/cmaps/", standardFontDataUrl: "/pdfjs/standard_fonts/",
-      }).promise);
-      proxies.current.set(f.key, p);
-    }
-    return p;
-  }, [proxyUrl]);
+  const getDoc = useCallback((f: ClientFile, priority = false) => loader.get(proxyUrl(f), priority), [proxyUrl, loader]);
 
   /** A document's page count, asking the PDF when nothing has recorded it yet. */
   const countPages = async (f: ClientFile): Promise<number> => {
@@ -719,6 +715,17 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     const r = await deleteDiscoveryAnnotation(setId, id);
     if (!r.ok) void ensureAnnos(key); // resync on failure
   };
+
+  // What the Diagnostics report sees of this tab (live, read at copy time).
+  useEffect(() => {
+    diagHook();
+    return diagRegister("red tab", () => ({
+      documents: files.length, shown: shownFiles.length, hideSent, view, deleteMode: delMode,
+      pageCountsKnown: files.filter((x) => x.pageCount != null || pageCounts[x.key]).length,
+      selectedPages: selected.size, selectedDocs: selByKey.size, collapsed: collapsed.size,
+      pdf: loader.stats(),
+    }));
+  });
 
   const viewBtn = (m: "grid" | "reader" | "docs", label: string, icon: React.ReactNode) => (
     <button onClick={() => setView(m)} disabled={m !== "docs" && files.length === 0}
@@ -1081,7 +1088,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   onToggleDoc: (shiftKey?: boolean) => void;
   onPagesKnown: (key: string, n: number) => void;
   onOpen: (page: number) => void;
-  getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
+  getDoc: (f: ClientFile, priority?: boolean) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
   /** false = review-only surface (the yellow tab): no page selection. */
   selectable?: boolean;
@@ -1102,14 +1109,29 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
-  const [pages, setPages] = useState(0);
+  const [pages, setPages] = useState(f.pageCount ?? 0);
   const [failed, setFailed] = useState(false);
+  // Open the PDF only once this document is near the viewport. Until then
+  // the recorded page count (from upload-time indexing) lays out the cells,
+  // so a 1,000-document pile doesn't open 1,000 files at once.
+  const rootRef = useRef<HTMLElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || kind !== "pdf" || collapsed) return;
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { setNear(true); io.disconnect(); } }, { rootMargin: "1200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [kind, collapsed]);
   useEffect(() => {
     if (kind !== "pdf") return;
+    if (f.pageCount && !near) { setPages(f.pageCount); onPagesKnown(f.key, f.pageCount); return; }
+    if (!near && f.pageCount == null && !collapsed) { /* count unknown: wait until it's near, then ask the file */ }
+    if (!near) return;
     let alive = true;
-    getDoc(f).then((d) => { if (alive) { setPages(d.numPages); onPagesKnown(f.key, d.numPages); } }).catch(() => { if (alive) setFailed(true); });
+    getDoc(f).then((d) => { if (alive) { setPages(d.numPages); onPagesKnown(f.key, d.numPages); } }).catch(() => { if (alive && !f.pageCount) setFailed(true); });
     return () => { alive = false; };
-  }, [kind, f, getDoc, onPagesKnown]);
+  }, [kind, f, near, collapsed, getDoc, onPagesKnown]);
   const renderW = cols >= 8 ? 220 : cols >= 6 ? 300 : cols >= 4 ? 460 : cols >= 2 ? 720 : 1200;
 
   // Header checkbox state + this document's staged-page tally.
@@ -1125,7 +1147,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   const allSel = total > 0 && freeCount > 0 && selCount === freeCount;
 
   return (
-    <section>
+    <section ref={rootRef}>
       <div className={`flex flex-wrap items-center gap-2 ${collapsed ? "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1.5" : "mb-2"}`}>
         {onToggleCollapse && (
           <button onClick={onToggleCollapse} aria-expanded={!collapsed}
@@ -1220,7 +1242,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
 
 function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle }: {
   f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark; flash?: boolean;
-  getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
+  getDoc: (f: ClientFile, priority?: boolean) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   onClick: (shiftKey: boolean) => void; onOpen: () => void;
   /** Overrides the little corner badge (e.g. the page's Bates number). */
   label?: string;
@@ -1235,24 +1257,33 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
   const seqRef = useRef(0);
   const taskRef = useRef<{ cancel: () => void } | null>(null);
 
+  // Draw only while the cell is actually near the viewport. A cell that
+  // scrolls past before its turn comes is skipped and picked up again when
+  // it comes back — otherwise a fast scroll through a 3,000-page pile queues
+  // every thumbnail it passed and the page stops responding.
+  const visibleRef = useRef(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     const el = holder.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) { setInView(true); io.disconnect(); }
+      const vis = entries.some((e) => e.isIntersecting);
+      visibleRef.current = vis;
+      if (vis) { setInView(true); if (renderedW.current !== renderW) setRetry((t) => t + 1); }
     }, { rootMargin: "300px" });
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [renderW]);
 
   useEffect(() => {
-    if (!inView || renderedW.current === renderW) return;
+    if (!inView || renderedW.current === renderW || !visibleRef.current) return;
     const seq = ++seqRef.current;
     void (async () => {
       try {
         const doc = await getDoc(f);
+        if (seq !== seqRef.current || !visibleRef.current) return;
         const pdfPage = await doc.getPage(page);
-        if (seq !== seqRef.current) return;
+        if (seq !== seqRef.current || !visibleRef.current) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
         const base = pdfPage.getViewport({ scale: 1 });
@@ -1270,7 +1301,7 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
         if (seq === seqRef.current) setState("error");
       }
     })();
-  }, [inView, renderW, f, page, getDoc]);
+  }, [inView, retry, renderW, f, page, getDoc]);
 
   return (
     <div ref={holder} id={cellId(f.key, page)} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
@@ -1304,7 +1335,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null;
   onTogglePage: (f: ClientFile, page: number, shiftKey?: boolean) => void;
-  getDoc: (f: ClientFile) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
+  getDoc: (f: ClientFile, priority?: boolean) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   proxyUrl: (f: ClientFile) => string;
   annos: Record<string, FileAnnotation[]>;
   ensureAnnos: (key: string) => Promise<void>;
@@ -1355,7 +1386,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   useEffect(() => {
     if (kind !== "pdf") { setPages(1); return; }
     let alive = true;
-    getDoc(f).then((d) => { if (alive) setPages(d.numPages); }).catch(() => { if (alive) setPages(0); });
+    getDoc(f, true).then((d) => { if (alive) setPages(d.numPages); }).catch(() => { if (alive) setPages(0); });
     return () => { alive = false; };
   }, [kind, f, getDoc]);
 
@@ -1365,7 +1396,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
     setRendering(true);
     void (async () => {
       try {
-        const doc = await getDoc(f);
+        const doc = await getDoc(f, true);
         const pdfPage = await doc.getPage(Math.min(state.page, doc.numPages));
         if (seq !== renderSeq.current) return;
         const canvas = canvasRef.current;
@@ -1713,19 +1744,9 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
   })), [rows]);
   const byKey = useMemo(() => new Map(rows.map((d) => [`prod:${d.id}` as string, d])), [rows]);
 
-  const proxies = useRef(new Map<string, Promise<import("pdfjs-dist").PDFDocumentProxy>>());
+  const [loader] = useState<PdfLoader>(() => createPdfLoader("yellow"));
   const proxyUrl = useCallback((f: ClientFile) => `/admin/discovery-reviewer/${setId}/staged-file/${f.key.slice(5)}?v=${tick}`, [setId, tick]);
-  const getDoc = useCallback((f: ClientFile) => {
-    const u = proxyUrl(f);
-    let pr = proxies.current.get(u);
-    if (!pr) {
-      pr = loadPdfjs().then((lib) => lib.getDocument({
-        url: u, wasmUrl: "/pdfjs/wasm/", iccUrl: "/pdfjs/iccs/", cMapUrl: "/pdfjs/cmaps/", standardFontDataUrl: "/pdfjs/standard_fonts/",
-      }).promise);
-      proxies.current.set(u, pr);
-    }
-    return pr;
-  }, [proxyUrl]);
+  const getDoc = useCallback((f: ClientFile, priority = false) => loader.get(proxyUrl(f), priority), [proxyUrl, loader]);
 
   const noMark = useCallback((): PageMark => "", []);
   const noSel = useMemo(() => new Set<string>(), []);
@@ -1795,6 +1816,11 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     for (const v of m.values()) v.sort((a, b) => a - b);
     return m;
   }, [selPages, byKey]);
+  useEffect(() => {
+    diagHook();
+    return diagRegister("yellow tab", () => ({ documents: rows.length, view, selectedPages: selPages.size, selectedDocs: selByDoc.size, pdf: loader.stats() }));
+  });
+
   // "Download documents" opens the options box (individual PDFs / one PDF).
   const [dlDialog, setDlDialog] = useState(false);
   // Select every page of every document in the tab (not just one PDF's).
@@ -1843,7 +1869,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     setMoving(false);
     if (removed) {
       setSelPages(new Set());
-      proxies.current.clear();
+      loader.clear();
       setTick((t) => t + 1);
       setNotice(`${removed} page${removed === 1 ? "" : "s"} pulled from the staged cop${selByDoc.size === 1 ? "y" : "ies"} — the Bates run keeps its gap, and the source pages are selectable again in the red tab.`);
       router.refresh();
@@ -1923,7 +1949,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
     if (!d) return { ok: false as const, error: "Document not found." };
     const r = await redactProductionDoc(setId, d.id, page, rect);
     if (r.ok) {
-      proxies.current.clear();
+      loader.clear();
       setTick((t) => t + 1);
       setNotice(`Redaction burned into page ${page} of "${d.name}".`);
       router.refresh();

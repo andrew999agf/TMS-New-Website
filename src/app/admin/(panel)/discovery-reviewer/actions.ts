@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { PDFDocument, rgb } from "pdf-lib";
 import { db } from "@/db";
-import { discoverySets, discoveryDocs, discoveryMarks, discoveryAnnotations, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, type CaseParty } from "@/db/schema";
+import { discoverySets, discoveryDocs, discoveryMarks, discoveryAnnotations, exhibitSets, exhibitDocs, shareFolders, shareDirs, shareRecipients, shareFiles, caseHub, productionDocs, productions, auditLog, type CaseParty } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { ensureDiscoveryTables } from "@/db/ensure";
@@ -1704,5 +1704,92 @@ export async function mirrorProductionToReceived(setId: number, productionId: nu
   } catch (err) {
     console.error("[discovery-reviewer] mirrorProductionToReceived failed:", err);
     return { ok: false as const, error: "Couldn't file the copies in the red tab." };
+  }
+}
+
+/**
+ * The server half of the Discovery Reviewer's Diagnostics report: what the
+ * database says is in each tab, the productions, and the last 40 audit
+ * entries for this case — plain text the user copies and pastes. No
+ * secrets, no file contents.
+ */
+export async function discoveryDiagnostics(setId: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select().from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set) return { ok: false as const, error: "Case not found." };
+    const L: string[] = [];
+    const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
+    L.push(`DISCOVERY REVIEWER DIAGNOSTICS — ${new Date().toISOString()}`);
+    L.push(`Deployment: ${(process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7)} · region ${process.env.VERCEL_REGION || "n/a"}`);
+    L.push(`Case: #${set.id} "${set.name}" · matter ${set.matter || "(none)"} · cause ${set.causeNumber || "(none)"}`);
+    L.push("");
+
+    // Red tab sources: client folders + firm-added docs.
+    const folders = set.matter
+      ? await db.select({ id: shareFolders.id, name: shareFolders.name, type: shareFolders.type }).from(shareFolders).where(and(eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")))
+      : [];
+    L.push(`RED TAB SOURCES — ${folders.length} client folder(s) on this matter`);
+    let redFiles = 0, redPages = 0, redUnknown = 0, redBytes = 0, redNonPdf = 0;
+    for (const f of folders) {
+      const files = await db.select({ filename: shareFiles.filename, pageCount: shareFiles.pageCount, sizeBytes: shareFiles.sizeBytes, textStatus: shareFiles.textStatus }).from(shareFiles).where(eq(shareFiles.folderId, f.id));
+      const pdfs = files.filter((x) => /\.pdf$/i.test(x.filename));
+      const unknown = pdfs.filter((x) => !x.pageCount).length;
+      const pages = files.reduce((n, x) => n + (x.pageCount ?? 0), 0);
+      const bytes = files.reduce((n, x) => n + (x.sizeBytes ?? 0), 0);
+      const idx = files.reduce((m, x) => { m[x.textStatus || "(blank)"] = (m[x.textStatus || "(blank)"] ?? 0) + 1; return m; }, {} as Record<string, number>);
+      L.push(`  folder #${f.id} "${f.name}": ${files.length} files (${pdfs.length} PDF, ${files.length - pdfs.length} other) · ${pages} pages recorded · ${unknown} PDFs with no page count · ${mb(bytes)} · index: ${JSON.stringify(idx)}`);
+      redFiles += files.length; redPages += pages; redUnknown += unknown; redBytes += bytes; redNonPdf += files.length - pdfs.length;
+    }
+    const firmDocs = await db.select({ pageCount: discoveryDocs.pageCount, sizeBytes: discoveryDocs.sizeBytes }).from(discoveryDocs).where(and(eq(discoveryDocs.setId, setId), eq(discoveryDocs.bucket, "client")));
+    L.push(`  firm-added client docs: ${firmDocs.length} · ${firmDocs.reduce((n, x) => n + (x.pageCount ?? 0), 0)} pages`);
+    L.push(`  TOTAL red: ${redFiles + firmDocs.length} documents · ${redPages + firmDocs.reduce((n, x) => n + (x.pageCount ?? 0), 0)} pages recorded · ${redUnknown} without a page count · ${redNonPdf} non-PDF · ${mb(redBytes + firmDocs.reduce((n, x) => n + (x.sizeBytes ?? 0), 0))}`);
+    const opp = await db.select({ n: sql<number>`count(*)`, pages: sql<number>`coalesce(sum(page_count),0)` }).from(discoveryDocs).where(and(eq(discoveryDocs.setId, setId), sql`bucket <> 'client'`));
+    L.push(`  grey tab (opposing production): ${Number(opp[0]?.n ?? 0)} documents · ${Number(opp[0]?.pages ?? 0)} pages`);
+    L.push("");
+
+    // Yellow / green.
+    const pdocs = await db.select({ id: productionDocs.id, status: productionDocs.status, productionId: productionDocs.productionId, pageCount: productionDocs.pageCount, sizeBytes: productionDocs.sizeBytes, batesStart: productionDocs.batesStart, batesEnd: productionDocs.batesEnd, sourceKey: productionDocs.sourceKey, url: productionDocs.url, createdAt: productionDocs.createdAt }).from(productionDocs).where(eq(productionDocs.setId, setId));
+    const staged = pdocs.filter((d) => d.status === "staged"), produced = pdocs.filter((d) => d.status === "produced");
+    const sum = (xs: typeof pdocs, k: "pageCount" | "sizeBytes") => xs.reduce((n, x) => n + (x[k] ?? 0), 0);
+    L.push(`YELLOW TAB — ${staged.length} staged copies · ${sum(staged, "pageCount")} pages · ${mb(sum(staged, "sizeBytes"))} · ${staged.filter((d) => d.productionId).length} in a draft production · ${staged.filter((d) => !d.url).length} with no file`);
+    L.push(`GREEN TAB — ${produced.length} produced copies · ${sum(produced, "pageCount")} pages`);
+    const labeled = pdocs.filter((d) => d.batesStart > 0).sort((a, b) => a.batesStart - b.batesStart);
+    if (labeled.length) {
+      const gaps: string[] = [];
+      for (let i = 1; i < labeled.length && gaps.length < 10; i++) if (labeled[i].batesStart !== labeled[i - 1].batesEnd + 1) gaps.push(`${labeled[i - 1].batesEnd}→${labeled[i].batesStart}`);
+      const dups = labeled.filter((d, i) => i > 0 && d.batesStart <= labeled[i - 1].batesEnd).length;
+      L.push(`  Bates: ${labeled[0].batesStart}–${Math.max(...labeled.map((d) => d.batesEnd))} · ${gaps.length ? `gaps at ${gaps.join(", ")}` : "no gaps"} · ${dups} overlapping range(s)`);
+    }
+    const sourceCovered = new Set(pdocs.map((d) => d.sourceKey));
+    L.push(`  distinct source documents with a copy in yellow/green: ${sourceCovered.size}`);
+    const recent = pdocs.filter((d) => Date.now() - d.createdAt.getTime() < 6 * 3600_000);
+    L.push(`  copies created in the last 6 hours: ${recent.length}${recent.length ? ` (first ${recent.reduce((a, b) => (a.createdAt < b.createdAt ? a : b)).createdAt.toISOString()}, last ${recent.reduce((a, b) => (a.createdAt > b.createdAt ? a : b)).createdAt.toISOString()})` : ""}`);
+    L.push("");
+
+    const prods = await db.select().from(productions).where(eq(productions.setId, setId));
+    L.push(`PRODUCTIONS — ${prods.length}`);
+    for (const pr of prods.sort((a, b) => a.seq - b.seq)) {
+      const parts = Array.isArray(pr.parts) ? (pr.parts as { url: string | null }[]) : [];
+      L.push(`  #${pr.id} ${pr.label} · ${pr.batesStart ? `${pr.batesPrefix}${pr.batesStart}–${pr.batesEnd}` : "pre-labeled"} · ${pr.producedAt ? `produced ${pr.producedAt.toISOString()}` : "DRAFT"} · parts ${parts.filter((x) => x.url).length}/${parts.length}${pr.fileUrl ? "" : " · no file yet"}${pr.emailedAt ? ` · emailed ${pr.emailedAt.toISOString()}` : ""}`);
+    }
+    L.push("");
+
+    const prodIds = prods.map((pr) => String(pr.id));
+    const rows = await db.select({ at: auditLog.createdAt, who: auditLog.adminEmail, action: auditLog.action, entity: auditLog.entity, entityId: auditLog.entityId, summary: auditLog.summary })
+      .from(auditLog)
+      .where(or(
+        and(inArray(auditLog.entity, ["production-docs", "discovery-set", "discovery-doc"]), eq(auditLog.entityId, String(setId))),
+        prodIds.length ? and(eq(auditLog.entity, "production"), inArray(auditLog.entityId, prodIds)) : sql`false`,
+      ))
+      .orderBy(desc(auditLog.id)).limit(40);
+    L.push(`RECENT ACTIVITY (newest first, last 40)`);
+    for (const r of rows) L.push(`  ${r.at.toISOString()} ${r.who ?? ""} ${r.action} ${r.entity}#${r.entityId ?? ""} — ${r.summary ?? ""}`);
+    if (!rows.length) L.push("  (none recorded)");
+    return { ok: true as const, text: L.join("\n") };
+  } catch (err) {
+    console.error("[discovery-reviewer] discoveryDiagnostics failed:", err);
+    return { ok: false as const, error: `Couldn't build the report: ${(err as Error).message}` };
   }
 }
