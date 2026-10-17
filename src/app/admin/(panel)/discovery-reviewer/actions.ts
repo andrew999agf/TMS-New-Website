@@ -1038,6 +1038,73 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
   }
 }
 
+/**
+ * Yellow tab → "Bates label now": stamp staged copies that went over
+ * WITHOUT labels (staged as pre-labeled by mistake, or before the user had a
+ * prefix). Each copy is re-stamped in place — same row, new file — and the
+ * numbering continues from the case's last number unless a start is given.
+ * The page sends big sets in chunks and hands nextStart from one call to
+ * the next, exactly like staging.
+ */
+export async function batesLabelStagedDocs(setId: number, idsIn: number[], opts: { prefix?: string; start?: number; stamp?: StampStyle; chunk?: boolean }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const ids = [...new Set((Array.isArray(idsIn) ? idsIn : []).map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n)))];
+  const prefix = (opts.prefix ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
+  if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
+  if (!ids.length) return { ok: false as const, error: "Select at least one document." };
+  try {
+    const docs = (await db.select().from(productionDocs).where(and(eq(productionDocs.setId, setId), inArray(productionDocs.id, ids))))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const skipped: string[] = [];
+    const todo = docs.filter((d) => {
+      if (d.status !== "staged") { skipped.push(`${d.name} (already produced)`); return false; }
+      if (d.batesStart > 0) { skipped.push(`${d.name} (already ${batesLabel(d.batesPrefix, d.batesStart)})`); return false; }
+      if (d.productionId) { skipped.push(`${d.name} (in a draft production — discard the draft first)`); return false; }
+      if (!d.url) { skipped.push(`${d.name} (no file)`); return false; }
+      return true;
+    });
+    if (!todo.length) {
+      if (opts.chunk) return { ok: true as const, labeled: 0, already: docs.length, skipped: [] as string[], nextStart: Math.floor(Number(opts.start)) || undefined };
+      return { ok: false as const, error: `Nothing to label. ${skipped.join("; ")}` };
+    }
+    const totalBytes = todo.reduce((n, d) => n + (d.sizeBytes ?? 0), 0);
+    if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — the page should send it in smaller batches." };
+
+    let next = Math.floor(Number(opts.start));
+    if (!Number.isFinite(next) || next < 1) {
+      const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` }).from(productionDocs).where(eq(productionDocs.setId, setId));
+      next = Number(maxEnd) + 1;
+    }
+    let labeled = 0;
+    for (const d of todo) {
+      const res = await fetch(d.url as string);
+      if (!res.ok) { skipped.push(`${d.name} (couldn't fetch)`); continue; }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const stamped = await stampToPdf(bytes, d.contentType, d.name, prefix, next, true, opts.stamp);
+      if (!stamped) { skipped.push(`${d.name} (type can't be Bates-stamped)`); continue; }
+      const blob = await put(`production/${setId}/${batesLabel(prefix, next)}.pdf`, Buffer.from(stamped.bytes), { access: "public", contentType: "application/pdf", addRandomSuffix: true });
+      const oldPath = d.pathname;
+      await db.update(productionDocs).set({
+        url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: stamped.bytes.byteLength,
+        batesPrefix: prefix, batesStart: next, batesEnd: next + stamped.pages - 1, pageCount: stamped.pages, pageBates: [],
+      }).where(eq(productionDocs.id, d.id));
+      if (oldPath) { try { await del(oldPath); } catch { /* best-effort */ } }
+      next += stamped.pages;
+      labeled++;
+    }
+    await audit(session.email, "update", "production-docs", String(setId), `Bates-labeled ${labeled} staged document(s) in place (${prefix})${skipped.length ? `; skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}` : ""}`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    if (labeled === 0 && !opts.chunk) return { ok: false as const, error: `Nothing could be labeled. ${skipped.join("; ")}` };
+    return { ok: true as const, labeled, already: 0, skipped, nextStart: next };
+  } catch (err) {
+    console.error("[discovery-reviewer] batesLabelStagedDocs failed:", err);
+    const why = String((err as Error)?.message ?? err).slice(0, 200);
+    try { await audit(session.email, "error", "production-docs", String(setId), `Bates-label-later FAILED for a call of ${ids.length} document(s): ${why}`); } catch { /* best-effort */ }
+    return { ok: false as const, error: `Couldn't label the documents (${why}).` };
+  }
+}
+
 /** Take a staged document back out (before it's produced). */
 export async function unstageProductionDoc(id: number) {
   const session = await guard();

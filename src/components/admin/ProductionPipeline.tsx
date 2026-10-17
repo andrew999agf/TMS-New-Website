@@ -16,7 +16,7 @@ import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { partsReady, planProductionParts, encodeIdRanges, MERGE_MAX_DOCS, type ProductionPart } from "@/lib/production/parts";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
-  stageForProduction, unstageProductionDoc, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
+  stageForProduction, unstageProductionDoc, batesLabelStagedDocs, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -343,7 +343,7 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
   shareTokens: ShareTokens;
 }) {
   if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} />;
-  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} />;
+  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} batesDefaults={batesDefaults} />;
   return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} />;
 }
 
@@ -2207,7 +2207,135 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
   );
 }
 
-function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens }) {
+/**
+ * Yellow tab → "Bates label now": for copies that came over unlabeled
+ * (staged as pre-labeled). Stamps them in place, numbering on from the
+ * case's last number, in server-sized batches with the same split-and-
+ * retry safety as staging.
+ */
+function BatesLaterButton({ setId, docs, batesDefaults, onDone }: { setId: number; docs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; onDone: (msg: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [prefix, setPrefix] = useState(batesDefaults.prefix);
+  const [start, setStart] = useState(String(batesDefaults.nextStart));
+  const [stampStyle, setStampStyle] = useState<Required<StampStyle>>({ position: "bottom-right", font: "helvetica", color: "red", size: 12 });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; batch: number; batches: number } | null>(null);
+  if (!docs.length) return null;
+  const ordered = [...docs].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const pages = ordered.reduce((n, d) => n + stagedPages(d), 0);
+  const chunks: StagedDoc[][] = [];
+  { let cur: StagedDoc[] = [], bytes = 0; for (const d of ordered) { const b = d.sizeBytes ?? 0; if (cur.length && (cur.length >= 25 || bytes + b > 60 * 1024 * 1024)) { chunks.push(cur); cur = []; bytes = 0; } cur.push(d); bytes += b; } if (cur.length) chunks.push(cur); }
+
+  async function run() {
+    if (!prefix.trim()) { setError("Enter the Bates prefix."); return; }
+    setBusy(true); setError(null);
+    let cursor: number | undefined = Number(start) || undefined;
+    let labeled = 0, done = 0;
+    const skipped: string[] = [];
+    const failed: string[] = [];
+    const work = [...chunks];
+    let batchNo = 0;
+    diagLog("bates-later", `run start: ${ordered.length} docs in ${chunks.length} batches`);
+    while (work.length) {
+      const chunk = work.shift()!;
+      batchNo++;
+      setProgress({ done, total: ordered.length, batch: batchNo, batches: batchNo + work.length });
+      const r = await batesLabelStagedDocs(setId, chunk.map((d) => d.id), { prefix, start: cursor, stamp: stampStyle, chunk: chunks.length > 1 }).catch(() => null);
+      if (!r || !r.ok) {
+        const why = !r ? "the connection dropped" : (r.error ?? "couldn't label");
+        if (chunk.length > 1) { const mid = Math.ceil(chunk.length / 2); work.unshift(chunk.slice(0, mid), chunk.slice(mid)); diagLog("bates-later", `batch of ${chunk.length} failed (${why}); retrying as halves`); continue; }
+        failed.push(`${chunk[0].name} (${why})`); done += 1; continue;
+      }
+      labeled += r.labeled + (r.already ?? 0);
+      skipped.push(...r.skipped);
+      done += chunk.length;
+      if (r.nextStart) { cursor = r.nextStart; setStart(String(r.nextStart)); }
+      setProgress({ done, total: ordered.length, batch: batchNo, batches: batchNo + work.length });
+    }
+    setBusy(false); setProgress(null);
+    diagLog("bates-later", `run end: ${labeled} labeled, ${skipped.length} skipped, ${failed.length} failed`);
+    if (!labeled && (failed.length || skipped.length)) { setError(`Nothing was labeled. ${[...failed, ...skipped].join("; ")}`); return; }
+    setOpen(false);
+    onDone(`${labeled} document${labeled === 1 ? "" : "s"} Bates-labeled in place (${bates(prefix, Number(start) || 1)} onward).${skipped.length || failed.length ? ` Not labeled: ${[...failed, ...skipped].join("; ")}` : ""}`);
+  }
+
+  const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
+  return (
+    <>
+      <button onClick={() => { setPrefix(batesDefaults.prefix); setStart(String(batesDefaults.nextStart)); setError(null); setOpen(true); }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-yellow-500 bg-yellow-100 px-3 py-1.5 text-sm font-medium text-yellow-900 hover:brightness-95 dark:bg-yellow-950/40 dark:text-yellow-200"
+        title="These copies came over without Bates numbers. Stamp them now, in place, numbering on from the case's last number.">
+        <Stamp size={14} /> Bates label now ({docs.length} unlabeled)
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
+          <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5" role="dialog" aria-label="Bates label now">
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Bates label now</h3>
+            <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
+              {ordered.length.toLocaleString()} staged document{ordered.length === 1 ? "" : "s"} ({pages.toLocaleString()} page{pages === 1 ? "" : "s"}) came over without Bates numbers. They&apos;ll be stamped in place, in filename order, and stay right here in the yellow tab.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold">Bates prefix</span>
+                <input value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="e.g. SMITH" className={`${input} w-full`} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold">Starting number</span>
+                <input value={start} onChange={(e) => setStart(e.target.value.replace(/[^0-9]/g, ""))} className={`${input} w-full`} />
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-[var(--c-ink-muted)]">First label: <strong>{bates(prefix || "PREFIX", Number(start) || 1)}</strong>.{chunks.length > 1 ? ` Runs in ${chunks.length} batches, one after another — keep this window open.` : ""}</p>
+            <fieldset className="mt-3 rounded-md border border-[var(--c-border)] p-2.5">
+              <legend className="px-1 text-xs font-semibold">Stamp appearance</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs">
+                  <span className="mb-0.5 block font-semibold">Location</span>
+                  <select value={stampStyle.position} onChange={(e) => setStampStyle((s) => ({ ...s, position: e.target.value as Required<StampStyle>["position"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                    <option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom middle</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-0.5 block font-semibold">Font</span>
+                  <select value={stampStyle.font} onChange={(e) => setStampStyle((s) => ({ ...s, font: e.target.value as Required<StampStyle>["font"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                    <option value="helvetica">Helvetica</option><option value="helvetica-bold">Helvetica bold</option><option value="times">Times Roman</option><option value="courier">Courier</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-0.5 block font-semibold">Color</span>
+                  <select value={stampStyle.color} onChange={(e) => setStampStyle((s) => ({ ...s, color: e.target.value as Required<StampStyle>["color"] }))} className={`${input} w-full py-1.5 text-xs`}>
+                    <option value="black">Black</option><option value="red">Red</option><option value="blue">Blue</option><option value="gray">Gray</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-0.5 block font-semibold">Size</span>
+                  <select value={String(stampStyle.size)} onChange={(e) => setStampStyle((s) => ({ ...s, size: Number(e.target.value) }))} className={`${input} w-full py-1.5 text-xs`}>
+                    {[8, 9, 10, 12, 14, 18].map((n) => <option key={n} value={n}>{n} pt</option>)}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+            {error && <p className="mt-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600">{error}</p>}
+            {progress && (
+              <div className="mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+                <div className="flex items-center justify-between text-xs"><span className="font-semibold">Stamping{progress.batches > 1 ? ` batch ${progress.batch} of ${progress.batches}` : ""} — {progress.done} of {progress.total} documents done…</span><span className="text-[var(--c-ink-muted)]">{progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%</span></div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[var(--c-border)]"><div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} /></div>
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setOpen(false)} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+              <button onClick={() => void run()} disabled={busy || !prefix.trim()} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Stamp size={14} />} {busy ? "Working…" : `Bates label ${ordered.length} document${ordered.length === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens; batesDefaults: { prefix: string; nextStart: number } }) {
   const shareToken = shareTokens.staged;
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [view, setView] = useState<"grid" | "reader" | "list">("grid");
@@ -2294,6 +2422,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens }: { setId: nu
         </div>
         <IndexAndLabel setId={setId} docCount={rows.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="staged" />
+        <BatesLaterButton setId={setId} docs={rows.filter((d) => !d.batesStart && !d.productionId)} batesDefaults={batesDefaults} onDone={(msg) => { setMovedNotice(msg); router.refresh(); }} />
         <button onClick={() => void prepare()} disabled={busy || rows.length === 0 || !!draft}
           className="btn btn-accent ml-auto inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50"
           title={draft ? "A draft production is awaiting review below" : undefined}>
