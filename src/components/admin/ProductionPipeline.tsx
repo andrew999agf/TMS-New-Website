@@ -220,6 +220,33 @@ function GoToPage({ onGo }: { onGo: (page: number) => void }) {
  *  ordered by the date we need the documents back from the client. */
 /** "1,234 pages · 18 documents" — the tab's running page total. Counts
  *  still being read off the PDFs show as "+" until they're known. */
+/** Grid layout: one section per document (headers, one document per row) or
+ *  every page flowing into one continuous grid — the "drop them all in one
+ *  window" view that fits four or five one-page documents per row. The
+ *  choice sticks across tabs and sessions. */
+type GridLayout = "docs" | "flow";
+const GRID_LAYOUT_KEY = "tms.discovery.gridLayout";
+function useGridLayout(): [GridLayout, (v: GridLayout) => void] {
+  const [layout, setLayoutState] = useState<GridLayout>("docs");
+  useEffect(() => { try { const v = window.localStorage.getItem(GRID_LAYOUT_KEY); if (v === "flow" || v === "docs") setLayoutState(v); } catch { /* storage blocked */ } }, []);
+  const setLayout = useCallback((v: GridLayout) => { setLayoutState(v); try { window.localStorage.setItem(GRID_LAYOUT_KEY, v); } catch { /* storage blocked */ } }, []);
+  return [layout, setLayout];
+}
+function LayoutToggle({ value, onChange, disabled, disabledTitle }: { value: GridLayout; onChange: (v: GridLayout) => void; disabled?: boolean; disabledTitle?: string }) {
+  const btn = (v: GridLayout, label: string, title: string) => (
+    <button onClick={() => onChange(v)} disabled={disabled} aria-pressed={value === v} title={disabled ? disabledTitle : title}
+      className={`px-2.5 py-1.5 text-xs disabled:opacity-40 ${value === v ? "bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "hover:bg-[var(--c-bg)]"}`}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-[var(--c-border)]" role="group" aria-label="Grid layout">
+      {btn("docs", "By document", "One section per document, with its header and tools")}
+      {btn("flow", "All pages", "Every page in one continuous grid, in order — several documents per row")}
+    </div>
+  );
+}
+
 function PageTotal({ pages, docs, unknown, noun = "document" }: { pages: number; docs: number; unknown?: number; noun?: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-2.5 py-1 text-sm"
@@ -352,6 +379,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   const router = useRouter();
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
+  const [layout, setLayout] = useGridLayout();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reader, setReader] = useState<{ docIdx: number; page: number }>({ docIdx: 0, page: 1 });
   const [dialog, setDialog] = useState(false);
@@ -819,7 +847,10 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
             <button onClick={() => setCols((c) => Math.max(1, c - 1))} disabled={cols <= 1} className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
         )}
-        {view === "grid" && shownFiles.length > 0 && (
+        {view === "grid" && (
+          <LayoutToggle value={delMode ? "docs" : layout} onChange={setLayout} disabled={delMode} disabledTitle="Select to delete works by document — finish or cancel it to switch the layout" />
+        )}
+        {view === "grid" && shownFiles.length > 0 && (delMode || layout === "docs") && (
           <FoldAll allCollapsed={shownFiles.every((f) => collapsed.has(f.key))}
             onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
         )}
@@ -913,7 +944,17 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
                 Everything here has gone to the yellow tab. <button onClick={() => setHideSent(false)} className="text-[var(--c-accent)] underline">Show it all</button>
               </p>
             )}
-            {shownFiles.map((f) => (
+            {layout === "flow" && !delMode ? (
+              <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {shownFiles.map((f) => (
+                  <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark} flow
+                    setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
+                    onTogglePage={togglePage} onToggleDoc={(shift) => void toggleDoc(f, shift)} onPagesKnown={pagesKnown}
+                    onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
+                    getDoc={getDoc} proxyUrl={proxyUrl} hideMarked={hideSent} />
+                ))}
+              </div>
+            ) : shownFiles.map((f) => (
               <ClientDocSection key={f.key} f={f} cols={cols} selected={selected} pageMark={pageMark}
                 setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
                 onTogglePage={togglePage} onToggleDoc={(shift) => void toggleDoc(f, shift)} onPagesKnown={pagesKnown}
@@ -1106,7 +1147,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck, flow = false }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -1133,6 +1174,10 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   hideMarked?: boolean;
   /** Red tab "Select to delete" mode: a red checkbox replaces the page one. */
   deleteCheck?: { checked: boolean; locked: boolean; onToggle: () => void };
+  /** "All pages" layout: no header, no section box — just this document's
+   *  cells (each captioned with the document name), dropped into the
+   *  parent's one continuous grid. */
+  flow?: boolean;
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -1143,6 +1188,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   // so a 1,000-document pile doesn't open 1,000 files at once.
   const rootRef = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
+  const markNear = useCallback(() => setNear(true), []);
   useEffect(() => {
     const el = rootRef.current;
     if (!el || kind !== "pdf" || collapsed) return;
@@ -1172,6 +1218,66 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   }
   const freeCount = total - stagedCount - producedCount;
   const allSel = total > 0 && freeCount > 0 && selCount === freeCount;
+
+  if (flow) {
+    const caption = (page: number, total: number) => (
+      <p className="mt-0.5 truncate text-[10px] leading-snug text-[var(--c-ink-muted)]" title={f.dir ? `${f.dir}/${f.name}` : f.name}>
+        {f.name}{total > 1 ? ` · ${page}/${total}` : ""}
+      </p>
+    );
+    if (kind === "image") {
+      if (hideMarked && pageMark(f, 1)) return null;
+      return (
+        <div className="relative min-w-0">
+          <button onClick={() => onTogglePage(f, 1)} onDoubleClick={() => onOpen(1)} disabled={!!pageMark(f, 1)}
+            className={`w-full overflow-hidden rounded-md border bg-white shadow-sm ${selected.has(pk(f.key, 1)) ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)] hover:ring-1 hover:ring-[var(--c-accent)]/50"} ${pageMark(f, 1) ? "cursor-default" : ""}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={proxyUrl(f)} alt={f.name} className={`aspect-[8.5/11] w-full object-contain ${pageMark(f, 1) ? "opacity-60 grayscale-[35%]" : ""}`} loading="lazy" />
+          </button>
+          {pageMark(f, 1) && (
+            <span className={`absolute right-1.5 top-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow ${pageMark(f, 1) === "produced" ? "bg-green-300 text-green-950" : "bg-yellow-300 text-yellow-950"}`}>
+              {pageMark(f, 1) === "produced" ? "PROD" : "TBP →"}
+            </span>
+          )}
+          {caption(1, 1)}
+        </div>
+      );
+    }
+    if (kind !== "pdf" || failed) {
+      return (
+        <div className="min-w-0">
+          <a href={proxyUrl(f)} target="_blank" rel="noreferrer" className="flex aspect-[8.5/11] w-full items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-2 text-center text-[10px] text-[var(--c-ink-muted)]">
+            {failed ? "couldn't open — click for the original" : "no preview — click for the original"}
+          </a>
+          {caption(1, 1)}
+        </div>
+      );
+    }
+    // Page count unknown and the file not yet opened: one placeholder cell
+    // whose own visibility triggers the load (there is no section box to watch).
+    const n = pages > 0 ? pages : 1;
+    return (
+      <>
+        {Array.from({ length: n }, (_, i) => i + 1).filter((page) => !hideMarked || !pageMark(f, page)).map((page) => {
+          const note = noteFor?.(f, page) ?? "";
+          return (
+            <div key={page} className="min-w-0">
+              <ClientPageCell f={f} page={page} renderW={renderW}
+                selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
+                flash={!!flash && flash.key === f.key && flash.page === page}
+                onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)}
+                label={pageLabel?.(page)} cellTitle={cellTitle}
+                onVisible={page === 1 ? markNear : undefined} />
+              {caption(page, pages)}
+              {note && cols <= 7 && (
+                <p className="line-clamp-2 break-words text-[10px] leading-snug text-[var(--c-ink-muted)]" title={note}>{note}</p>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
+  }
 
   return (
     <section ref={rootRef}>
@@ -1267,10 +1373,12 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   );
 }
 
-function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle }: {
+function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle, onVisible }: {
   f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark; flash?: boolean;
   getDoc: (f: ClientFile, priority?: boolean) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
   onClick: (shiftKey: boolean) => void; onOpen: () => void;
+  /** Fired the first time the cell comes near the viewport. */
+  onVisible?: () => void;
   /** Overrides the little corner badge (e.g. the page's Bates number). */
   label?: string;
   /** Overrides the hover tooltip (yellow tab: clicking selects the DOCUMENT). */
@@ -1296,11 +1404,11 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
     const io = new IntersectionObserver((entries) => {
       const vis = entries.some((e) => e.isIntersecting);
       visibleRef.current = vis;
-      if (vis) { setInView(true); if (renderedW.current !== renderW) setRetry((t) => t + 1); }
+      if (vis) { setInView(true); onVisible?.(); if (renderedW.current !== renderW) setRetry((t) => t + 1); }
     }, { rootMargin: "300px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [renderW]);
+  }, [renderW, onVisible]);
 
   useEffect(() => {
     if (!inView || renderedW.current === renderW || !visibleRef.current) return;
@@ -1754,6 +1862,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
 }) {
   const router = useRouter();
   const [cols, setCols] = useState(5);
+  const [layout, setLayout] = useGridLayout();
   const [reader, setReader] = useState<{ docIdx: number; page: number }>({ docIdx: 0, page: 1 });
   const [tick, setTick] = useState(0); // bumps after a burn so pages re-render
   const [flash, setFlash] = useState<{ key: string; page: number } | null>(null);
@@ -2009,7 +2118,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
   const toolbar = (
       <div className="flex flex-wrap items-center gap-3">
         <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />
-        {view === "grid" && files.length > 0 && (
+        {view === "grid" && <LayoutToggle value={layout} onChange={setLayout} />}
+        {view === "grid" && files.length > 0 && layout === "docs" && (
           <FoldAll allCollapsed={files.every((f) => collapsed.has(f.key))}
             onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
         )}
@@ -2078,11 +2188,11 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
           annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno} noteFor={noteFor} onEditNote={saveNote}
           onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact} />
       ) : (
-        <div className="space-y-6">
+        <div className={layout === "flow" ? "grid gap-3" : "space-y-6"} style={layout === "flow" ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}>
           {files.map((f) => {
             const d = byKey.get(f.key)!;
             return (
-              <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={selPages} pageMark={noMark}
+              <ClientDocSection key={`${f.key}:${tick}`} f={f} cols={cols} selected={selPages} pageMark={noMark} flow={layout === "flow"}
                 setId={setId} shareToken={shareToken} flash={flash}
                 onTogglePage={togglePage} onToggleDoc={noop} onPagesKnown={noPages} noteFor={noteFor}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
