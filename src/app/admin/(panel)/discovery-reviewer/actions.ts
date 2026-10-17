@@ -867,7 +867,7 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const folderIds = new Set(folders.map((f) => f.id));
     type SrcSection = { from: number; to: number; title: string };
     type Source = {
-      key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null;
+      key: string; filename: string; url: string | null; contentType: string | null; sizeBytes: number | null; pageCount: number | null;
       pageText: string[]; pageNotes: string[]; aiSections: SrcSection[];
       aiLabel: string; aiDescription: string; aiLabelStatus: string; aiLabeledAt: Date | null;
       textStatus: string;
@@ -893,13 +893,13 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const sources: Source[] = [];
     if (shareIds.length) {
       for (const f of (await db.select().from(shareFiles).where(inArray(shareFiles.id, shareIds))).filter((f) => folderIds.has(f.folderId))) {
-        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageText: srcPages(f.pageText), pageNotes: srcPages(f.pageNotes), aiSections: srcSections(f.aiSections), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt, textStatus: f.textStatus });
+        sources.push({ key: `share:${f.id}`, filename: f.filename, url: f.url, contentType: f.contentType, sizeBytes: f.sizeBytes, pageCount: f.pageCount, pageText: srcPages(f.pageText), pageNotes: srcPages(f.pageNotes), aiSections: srcSections(f.aiSections), aiLabel: f.aiLabel, aiDescription: f.aiDescription, aiLabelStatus: f.aiLabelStatus, aiLabeledAt: f.aiLabeledAt, textStatus: f.textStatus });
       }
     }
     if (docIds.length) {
       // Documents moved into the client bucket from the opposing pile.
       for (const d of (await db.select().from(discoveryDocs).where(inArray(discoveryDocs.id, docIds))).filter((d) => d.setId === setId && d.bucket === "client")) {
-        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageText: srcPages(d.pageText), pageNotes: srcPages(d.pageNotes), aiSections: srcSections(d.aiSections), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt, textStatus: d.textStatus });
+        sources.push({ key: `doc:${d.id}`, filename: d.name, url: d.url, contentType: d.contentType, sizeBytes: d.sizeBytes, pageCount: d.pageCount, pageText: srcPages(d.pageText), pageNotes: srcPages(d.pageNotes), aiSections: srcSections(d.aiSections), aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus, aiLabeledAt: d.aiLabeledAt, textStatus: d.textStatus });
       }
     }
     if (sources.length === 0) return { ok: false as const, error: "Those documents aren't in this case's client pile." };
@@ -929,8 +929,12 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       redPagesByKey.set(a.fileKey, pset);
     }
     const todo = sources.filter((f) => !covered.get(f.key)?.all);
+    // In a chunked run, documents that are already over are reported as a
+    // count, not as "skipped": a batch that broke off part-way gets retried
+    // in halves, and the half that had already landed must read as done.
+    const already = opts.chunk ? sources.length - todo.length : 0;
     if (todo.length === 0) {
-      if (opts.chunk) return { ok: true as const, staged: 0, skipped: sources.map((f) => `${f.filename} (already staged)`), nextStart: Math.floor(Number(opts.start)) || undefined };
+      if (opts.chunk) return { ok: true as const, staged: 0, already, skipped: [] as string[], nextStart: Math.floor(Number(opts.start)) || undefined };
       return { ok: false as const, error: "All of those documents are already staged or produced." };
     }
     const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
@@ -962,10 +966,12 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       let prodText: string[] = [];
       let prodNotes: string[] = [];
       let prodSections: SrcSection[] = [];
+      let builtPages: number | null = null;
       if (isPdfSrc) {
-        const built = await buildStagedPdf(bytes, requested, [...cov.pages], redsByKey.get(f.key) ?? []).catch(() => null);
+        const built = await buildStagedPdf(bytes, requested, [...cov.pages], redsByKey.get(f.key) ?? [], f.pageCount).catch(() => null);
         if (!built) { skipped.push(`${f.filename} (those pages are already staged, or the PDF couldn't be read)`); continue; }
         bytes = built.bytes instanceof Uint8Array ? built.bytes : new Uint8Array(built.bytes);
+        builtPages = built.includedPages.length;
         const isWholeFresh = built.includedPages.length === built.totalPages && cov.pages.size === 0;
         sourcePages = isWholeFresh ? [] : built.includedPages;
         if (!isWholeFresh) nameSuffix = ` (pp. ${compressPageRanges(built.includedPages)})`;
@@ -984,7 +990,7 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
         prodNotes = built.includedPages.map((srcPage) => (redPages?.has(srcPage) ? "" : f.pageNotes[srcPage - 1] ?? ""));
         prodSections = remapSections(f.aiSections, built.includedPages);
       }
-      const stamped = await stampToPdf(bytes, f.contentType, f.filename, prefix, next, bates, opts.stamp);
+      const stamped = await stampToPdf(bytes, f.contentType, f.filename, prefix, next, bates, opts.stamp, builtPages);
       if (!stamped) { skipped.push(`${f.filename} (type can't be Bates-stamped yet)`); continue; }
       const blob = await put(`production/${setId}/${bates ? batesLabel(prefix, next) : f.filename.split("/").pop() || "doc"}.pdf`, Buffer.from(stamped.bytes), {
         access: "public", contentType: "application/pdf", addRandomSuffix: true,
@@ -1016,15 +1022,19 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
       if (bates) next += stamped.pages;
       staged++;
     }
-    await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${bates ? prefix : "no Bates labeling \u2014 pre-labeled"})`);
+    await audit(session.email, "create", "production-docs", String(setId), `Staged ${staged} document(s) for production (${bates ? prefix : "no Bates labeling \u2014 pre-labeled"})${skipped.length ? `; skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}` : ""}`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
     if (staged === 0 && !opts.chunk) return { ok: false as const, error: `Nothing could be staged. ${skipped.join("; ")}` };
     // nextStart: where the Bates numbering now stands, so the next chunk of a
     // long run picks up exactly here instead of re-reading the table.
-    return { ok: true as const, staged, skipped, nextStart: bates ? next : undefined };
+    return { ok: true as const, staged, already, skipped, nextStart: bates ? next : undefined };
   } catch (err) {
     console.error("[discovery-reviewer] stageForProduction failed:", err);
-    return { ok: false as const, error: "Couldn't stage the documents." };
+    const why = String((err as Error)?.message ?? err).slice(0, 200);
+    // Leave a trace the Diagnostics report can show — the page's own error
+    // message is gone the moment the user closes the dialog.
+    try { await audit(session.email, "error", "production-docs", String(setId), `Staging FAILED for a call of ${sourceKeys.length} document(s): ${why}`); } catch { /* best-effort */ }
+    return { ok: false as const, error: `Couldn't stage the documents (${why}).` };
   }
 }
 

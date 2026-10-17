@@ -90,11 +90,13 @@ export type StampResult = { bytes: Uint8Array; pages: number };
  * photos become a one-page PDF carrying the image. Anything else returns null
  * (produced as-is is not allowed — a Bates number must be visible).
  */
-export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number, stamp = true, style?: StampStyle): Promise<StampResult | null> {
+export async function stampToPdf(bytes: Uint8Array, contentType: string | null | undefined, name: string, prefix: string, startNum: number, stamp = true, style?: StampStyle, knownPages?: number | null): Promise<StampResult | null> {
   const fontName = STAMP_FONTS[style?.font ?? "helvetica"] ?? StandardFonts.Helvetica;
   if (isPdf(contentType, name)) {
+    // Pre-labeled material passes through byte-identical; only count pages —
+    // and when the count is already known, don't even parse the file.
+    if (!stamp && knownPages && knownPages > 0) return { bytes, pages: knownPages };
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    // Pre-labeled material passes through byte-identical; only count pages.
     if (!stamp) return { bytes, pages: doc.getPageCount() };
     const font = await doc.embedFont(fontName);
     const pages = doc.getPages();

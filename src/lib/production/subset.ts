@@ -20,7 +20,17 @@ export async function buildStagedPdf(
   pages: number[] | null,
   excludePages: number[],
   redactions: RedactionMark[],
+  /** The source's recorded page count. When the whole document is wanted
+   *  and nothing has to be burned or cut, the file passes through without
+   *  being parsed at all — parsing a 20 MB scan with pdf-lib is what ran big
+   *  pre-labeled batches out of memory. */
+  knownPages?: number | null,
 ): Promise<{ bytes: Uint8Array; includedPages: number[]; totalPages: number } | null> {
+  if (knownPages && knownPages > 0 && excludePages.length === 0 && redactions.length === 0) {
+    const all = Array.from({ length: knownPages }, (_, i) => i + 1);
+    const wantsAll = !pages || pages.length === 0 || (pages.length === knownPages && [...new Set(pages.map((p) => Math.floor(p)))].sort((a, b) => a - b).every((p, i) => p === i + 1));
+    if (wantsAll) return { bytes, includedPages: all, totalPages: knownPages };
+  }
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const total = src.getPageCount();
   const excluded = new Set(excludePages);

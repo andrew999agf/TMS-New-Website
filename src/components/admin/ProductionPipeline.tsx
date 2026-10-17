@@ -10,7 +10,7 @@ import { UploadCloud,
 import { upload } from "@vercel/blob/client";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { createPdfLoader, type PdfLoader } from "./pdf-loader";
-import { diagRegister, diagHook } from "@/lib/client-diag";
+import { diagRegister, diagHook, diagLog } from "@/lib/client-diag";
 import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
@@ -586,7 +586,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   // of source files per call), so heavy scans get smaller batches on their own.
   // There is no ceiling on the selection itself.
   const STAGE_CHUNK = 25;
-  const STAGE_CHUNK_BYTES = 100 * 1024 * 1024;
+  const STAGE_CHUNK_BYTES = 60 * 1024 * 1024;
   const STAGE_MAX_BYTES = 150 * 1024 * 1024; // mirrors MAX_STAGE_BYTES on the server
   type StageItem = { key: string; sel: StageSelection; path: string; bytes: number; pages: number; name: string };
   type StagePlan = { chunks: StageItem[][]; items: StageItem[]; pages: number; bytes: number; tooBig: StageItem[] };
@@ -640,26 +640,53 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
     const skipped: string[] = p.tooBig.map((x) => `${x.name} (over 150 MB — too large to stamp here)`);
     let done = 0;
     let failure: string | null = null;
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      setProgress({ done, total: items.length, batch: i + 1, batches: chunks.length });
+    // A batch that fails is split in half and both halves retried, down to a
+    // single document; a document that fails on its own is reported and the
+    // run moves on. One bad scan no longer stops the other 1,200.
+    const work = [...chunks];
+    let batchNo = 0, dropped = 0;
+    const failedDocs: string[] = [];
+    diagLog("staging", `run start: ${items.length} docs in ${chunks.length} batches, bates=${doBates}`);
+    while (work.length) {
+      const chunk = work.shift()!;
+      batchNo++;
+      const batches = batchNo + work.length;
+      setProgress({ done, total: items.length, batch: batchNo, batches });
       const r = await stageForProduction(setId, chunk.map((x) => x.sel), {
         bates: doBates, prefix, start: cursor,
         stamp: doBates ? stampStyle : undefined,
         chunk: chunks.length > 1,
       }).catch(() => null);
-      if (!r) { failure = "The connection dropped mid-run."; break; }
-      if (!r.ok) { failure = r.error ?? "Couldn't stage the documents."; break; }
-      stagedTotal += r.staged;
+      if (!r || !r.ok) {
+        const why = !r ? "the connection dropped" : (r.error ?? "couldn't stage");
+        if (!r) dropped++; else dropped = 0;
+        if (dropped >= 4) { failure = "The connection dropped four times in a row — check the network and press the button again to continue."; break; }
+        if (chunk.length > 1) {
+          const mid = Math.ceil(chunk.length / 2);
+          work.unshift(chunk.slice(0, mid), chunk.slice(mid));
+          diagLog("staging", `batch of ${chunk.length} failed (${why}); retrying as ${mid} + ${chunk.length - mid}`);
+          continue;
+        }
+        failedDocs.push(`${chunk[0].name} (${why})`);
+        diagLog("staging", `document failed: ${chunk[0].name} (${why})`);
+        done += 1;
+        continue;
+      }
+      dropped = 0;
+      // Documents a broken-off batch had already landed come back as
+      // "already" on the retry — they moved, so they count.
+      stagedTotal += r.staged + (r.already ?? 0);
       skipped.push(...r.skipped);
       done += chunk.length;
       if (doBates && r.nextStart) { cursor = r.nextStart; setStart(String(r.nextStart)); }
       // What went over is no longer selected, so a retry after a hiccup only
       // sends what's left — never the same pages twice.
       setSelected((prev) => { const n = new Set(prev); for (const s of prev) if (chunk.some((x) => s.startsWith(`${x.key}#`))) n.delete(s); return n; });
-      setProgress({ done, total: items.length, batch: Math.min(i + 2, chunks.length), batches: chunks.length });
+      setProgress({ done, total: items.length, batch: Math.min(batchNo + 1, batches), batches });
       if (chunks.length > 1) router.refresh();
     }
+    if (failedDocs.length) skipped.push(...failedDocs.map((x) => `${x} — still in the red tab, try it again on its own`));
+    diagLog("staging", `run end: ${stagedTotal} staged, ${skipped.length} skipped, ${failedDocs.length} failed${failure ? `, stopped: ${failure}` : ""}`);
     setBusy(false);
     setProgress(null);
     if (failure) {
@@ -1031,7 +1058,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
                   <p className="font-semibold text-amber-900 dark:text-amber-200">This batch is too large to stamp in one go — would you like to stage it in smaller batches?</p>
                   <p className="mt-1 text-xs text-amber-900/90 dark:text-amber-200/90">
                     {plan.items.length.toLocaleString()} document{plan.items.length === 1 ? "" : "s"} · {plan.pages.toLocaleString()} page{plan.pages === 1 ? "" : "s"}{plan.bytes ? ` · about ${mb(plan.bytes)}` : ""}.
-                    {" "}Recommended: <strong>{plan.chunks.length} smaller batch{plan.chunks.length === 1 ? "" : "es"}</strong> of {least === most ? most : `${least}–${most}`} documents each (at most {STAGE_CHUNK} documents or 100 MB per batch). They run one after another, in filename order, with the Bates numbering continuing straight through{doBates ? ` from ${bates(prefix || "PREFIX", Number(start) || 1)}` : ""} — nothing for you to split up.
+                    {" "}Recommended: <strong>{plan.chunks.length} smaller batch{plan.chunks.length === 1 ? "" : "es"}</strong> of {least === most ? most : `${least}–${most}`} documents each (at most {STAGE_CHUNK} documents or 60 MB per batch). They run one after another, in filename order, with the Bates numbering continuing straight through{doBates ? ` from ${bates(prefix || "PREFIX", Number(start) || 1)}` : ""} — nothing for you to split up.
                   </p>
                   {plan.tooBig.length > 0 && (
                     <p className="mt-1.5 rounded bg-red-500/10 px-2 py-1 text-xs text-red-700 dark:text-red-300">
