@@ -19,6 +19,7 @@ export const maxDuration = 300;
  *
  *   ?ids=12-40,45   the staged copies (compact ranges)
  *   ?part=2         which PDF of the plan (default 1)
+ *   ?plain=1        classic layout (no object streams) so the browser can join parts
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin();
@@ -47,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!res.ok) return NextResponse.json({ error: `Couldn't fetch ${batesLabel(d.batesPrefix, d.batesStart)}.` }, { status: 502 });
     buffers.push(new Uint8Array(await res.arrayBuffer()));
   }
-  const merged = await mergeProductionPdf(buffers);
+  const merged = await mergeProductionPdf(buffers, { plain: sp.get("plain") === "1" });
 
   const labeled = chosen.filter((d) => d.batesPrefix && d.batesStart > 0);
   const stem = labeled.length

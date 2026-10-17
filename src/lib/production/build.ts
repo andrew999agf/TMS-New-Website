@@ -120,14 +120,14 @@ export async function stampToPdf(bytes: Uint8Array, contentType: string | null |
 }
 
 /** Merge stamped PDFs, in Bates order, into the single production file. */
-export async function mergeProductionPdf(parts: Uint8Array[]): Promise<Uint8Array> {
+export async function mergeProductionPdf(parts: Uint8Array[], opts?: { /** Classic xref table, no object streams — the layout the browser-side joiner (pdf-concat.ts) reads. */ plain?: boolean }): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   for (const part of parts) {
     const src = await PDFDocument.load(part, { ignoreEncryption: true });
     const copied = await out.copyPages(src, src.getPageIndices());
     for (const page of copied) out.addPage(page);
   }
-  return out.save();
+  return out.save(opts?.plain ? { useObjectStreams: false } : undefined);
 }
 
 export type LetterOpts = {

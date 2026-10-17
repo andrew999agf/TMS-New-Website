@@ -15,6 +15,7 @@ import { ProductionContents, type TocEntry } from "./ProductionContents";
 import { IndexAndLabel } from "./DiscoveryAiReview";
 import { EmailToCounsel } from "./EmailToCounsel";
 import { partsReady, planProductionParts, encodeIdRanges, MERGE_MAX_DOCS, type ProductionPart } from "@/lib/production/parts";
+import { concatPdfParts, pickSink } from "@/lib/production/pdf-concat";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, batesLabelStagedDocs, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
@@ -2666,14 +2667,55 @@ function triggerDownload(href: string) {
  */
 function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: number; docs: StagedDoc[]; onClose: () => void; onStarted: (msg: string) => void }) {
   const [mode, setMode] = useState<"individual" | "merged">("merged");
+  // "One single PDF" past one server part: the browser joins the parts into
+  // one file, or into files of about `splitPages` pages (whole parts only).
+  const [split, setSplit] = useState(false);
+  const [splitPages, setSplitPages] = useState("500");
+  const [joining, setJoining] = useState<{ msg: string; frac: number } | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const pages = docs.reduce((n, d) => n + stagedPages(d), 0);
   const ids = encodeIdRanges(docs.map((d) => d.id));
   const parts = useMemo(() => planProductionParts(docs.map((d) => ({ id: d.id, sizeBytes: d.sizeBytes ?? null, pageCount: stagedPages(d), batesStart: d.batesStart, batesEnd: d.batesEnd })), undefined, MERGE_MAX_DOCS), [docs]);
   const prefix = docs.find((d) => d.batesPrefix && d.batesStart > 0)?.batesPrefix ?? "";
   const range = (p: ProductionPart) => (p.batesStart > 0 && prefix ? `${bates(prefix, p.batesStart)} – ${String(p.batesEnd).padStart(6, "0")}` : "");
-  const mergeUrl = (n: number) => `/admin/discovery-reviewer/${setId}/staged-merge?ids=${ids}&part=${n}`;
+  const mergeUrl = (n: number, plain = false) => `/admin/discovery-reviewer/${setId}/staged-merge?ids=${ids}&part=${n}${plain ? "&plain=1" : ""}`;
   const zipUrl = `/admin/discovery-reviewer/${setId}/staged-zip?ids=${ids}`;
-  const mb = (n: number) => `${Math.max(1, Math.round(n / 1048576))} MB`;
+  const mb = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1048576))} MB`);
+  const totalBytes = parts.reduce((n, p) => n + p.bytes, 0);
+  const stem = prefix && docs[0].batesStart > 0 ? `${bates(prefix, docs[0].batesStart)}-${bates(prefix, Math.max(...docs.map((d) => d.batesEnd)))}` : "To be produced";
+  // The output files the browser will write: whole parts grouped by pages.
+  const perFile = split ? Math.max(1, Number(splitPages) || 500) : Number.POSITIVE_INFINITY;
+  const groups: ProductionPart[][] = [];
+  { let cur: ProductionPart[] = [], n = 0; for (const p of parts) { if (cur.length && n + p.pages > perFile) { groups.push(cur); cur = []; n = 0; } cur.push(p); n += p.pages; } if (cur.length) groups.push(cur); }
+  const groupName = (gi: number) => {
+    const g = groups[gi];
+    const r = prefix && g[0].batesStart > 0 ? `${bates(prefix, g[0].batesStart)}-${bates(prefix, g[g.length - 1].batesEnd)}` : stem;
+    return `${r}${groups.length > 1 ? ` (PDF ${gi + 1} of ${groups.length})` : ""}.pdf`;
+  };
+
+  async function joinInBrowser() {
+    setJoinError(null);
+    setJoining({ msg: "Starting…", frac: 0 });
+    try {
+      // Open the first save prompt inside the click so the browser allows it.
+      const sinks: Awaited<ReturnType<typeof pickSink>>[] = [];
+      const r = await concatPdfParts({
+        parts: parts.map((p) => ({ url: mergeUrl(p.n, true), pages: p.pages, bytes: p.bytes })),
+        maxPages: perFile,
+        openSink: async (idx) => { const sk = await pickSink(groupName(idx)); sinks.push(sk); return sk; },
+        onProgress: (msg, frac) => setJoining({ msg, frac }),
+      });
+      setJoining(null);
+      onStarted(r.files === 1
+        ? `One PDF of ${r.pages.toLocaleString()} pages (${mb(totalBytes)}) saved from ${parts.length} parts.`
+        : `${r.files} PDFs of about ${perFile.toLocaleString()} pages each (${r.pages.toLocaleString()} pages in all) saved from ${parts.length} parts.`);
+    } catch (err) {
+      setJoining(null);
+      const m = String((err as Error)?.message ?? err);
+      if (/abort/i.test(m)) return; // user cancelled the save prompt
+      setJoinError(`Couldn't join the parts in this browser (${m}). You can still download the ${parts.length} server parts below.`);
+    }
+  }
 
   const start = () => {
     if (mode === "individual") {
@@ -2682,10 +2724,12 @@ function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: numb
       onStarted(`Downloading ${docs.length} documents as separate PDFs in a ZIP, each named by its Bates range.`);
       return;
     }
-    parts.forEach((p, i) => setTimeout(() => triggerDownload(mergeUrl(p.n)), i * 1500));
-    onStarted(parts.length === 1
-      ? `Merging ${docs.length} document${docs.length === 1 ? "" : "s"} into one PDF — it downloads when the merge finishes.`
-      : `Downloading ${parts.length} PDFs one after another (your browser may ask once to allow multiple downloads).`);
+    if (parts.length === 1) {
+      triggerDownload(mergeUrl(1));
+      onStarted(`Merging ${docs.length} document${docs.length === 1 ? "" : "s"} into one PDF — it downloads when the merge finishes.`);
+      return;
+    }
+    void joinInBrowser();
   };
 
   return (
@@ -2711,11 +2755,36 @@ function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: numb
         </div>
         {mode === "merged" && parts.length > 1 && (
           <div className="mt-3 flex min-h-0 flex-col rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" role="status">
-            <p className="font-semibold">That&apos;s more than one PDF can hold — it comes as {parts.length} PDFs.</p>
-            <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Up to {MERGE_MAX_DOCS.toLocaleString()} documents or about 100 MB per PDF, in Bates order; the last one holds whatever is left over. Download them all at once with the button below, or pick them one at a time here{parts.length > 8 ? " (scroll the list)" : ""}.</p>
+            <p className="font-semibold">{mb(totalBytes)} across {pages.toLocaleString()} pages — your browser will join it on your computer.</p>
+            <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">The server prepares {parts.length} pieces of about 100 MB; this browser fetches them one by one and writes them into {split ? `${groups.length} PDF${groups.length === 1 ? "" : "s"}` : "one PDF"} straight to disk, the way Acrobat combines files. You&apos;ll be asked where to save{groups.length > 1 ? " each file" : ""}.</p>
+            <div className="mt-2 space-y-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="dl-join" checked={!split} onChange={() => setSplit(false)} className="accent-[var(--c-accent)]" />
+                <span>One file <span className="text-xs text-[var(--c-ink-muted)]">· {pages.toLocaleString()} pages · about {mb(totalBytes)}</span></span>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm">
+                <input type="radio" name="dl-join" checked={split} onChange={() => setSplit(true)} className="accent-[var(--c-accent)]" />
+                <span>Split into files of about</span>
+                <input value={splitPages} onChange={(e) => { setSplitPages(e.target.value.replace(/[^0-9]/g, "")); setSplit(true); }} inputMode="numeric"
+                  className="w-20 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1 text-sm outline-none focus:border-[var(--c-accent)]" aria-label="Pages per file" />
+                <span>pages {split && <span className="text-xs text-[var(--c-ink-muted)]">· {groups.length} file{groups.length === 1 ? "" : "s"}: {groups.map((g) => g.reduce((n, p) => n + p.pages, 0).toLocaleString()).join(" / ")} pages</span>}</span>
+              </label>
+            </div>
+            {joining && (
+              <div className="mt-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(joining.frac * 100)}>
+                <div className="flex items-center justify-between text-xs"><span className="font-semibold">{joining.msg}</span><span className="text-[var(--c-ink-muted)]">{Math.round(joining.frac * 100)}%</span></div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[var(--c-border)]"><div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${Math.round(joining.frac * 100)}%` }} /></div>
+                <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Keep this window open. Large sets take a few minutes.</p>
+              </div>
+            )}
+            {joinError && <p className="mt-2 rounded bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300">{joinError}</p>}
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">Advanced: the {parts.length} server pieces, one at a time{" "}
+                <button onClick={(e) => { e.preventDefault(); parts.forEach((p, i) => setTimeout(() => triggerDownload(mergeUrl(p.n)), i * 1500)); onStarted(`Downloading ${parts.length} pieces one after another.`); }} className="ml-1 underline">download all {parts.length}</button>
+              </summary>
             {/* The list scrolls inside the box, two across, so even forty parts
                 leave the Download buttons on screen. */}
-            <ol className="mt-2 grid max-h-[40vh] grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-2">
+            <ol className="mt-2 grid max-h-[30vh] grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-2">
               {parts.map((p) => (
                 <li key={p.n} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                   <button onClick={() => { triggerDownload(mergeUrl(p.n)); }} className="btn btn-outline inline-flex shrink-0 items-center gap-1 py-1 px-2 text-xs"><Download size={11} /> PDF {p.n} of {parts.length}</button>
@@ -2724,12 +2793,13 @@ function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: numb
                 </li>
               ))}
             </ol>
+            </details>
           </div>
         )}
         <div className="mt-4 flex shrink-0 justify-end gap-2">
-          <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
-          <button onClick={start} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4">
-            <Download size={14} /> {mode === "individual" ? (docs.length === 1 ? "Download" : "Download ZIP") : parts.length > 1 ? `Download all ${parts.length} PDFs` : "Download PDF"}
+          <button onClick={onClose} disabled={!!joining} className="btn btn-outline text-sm py-2 px-4 disabled:opacity-50">Cancel</button>
+          <button onClick={start} disabled={!!joining} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50">
+            {joining ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {mode === "individual" ? (docs.length === 1 ? "Download" : "Download ZIP") : parts.length > 1 && split && groups.length > 1 ? `Download ${groups.length} PDFs` : "Download PDF"}
           </button>
         </div>
       </div>
