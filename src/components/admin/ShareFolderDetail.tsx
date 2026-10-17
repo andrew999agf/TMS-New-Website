@@ -11,6 +11,8 @@ import { Lock } from "lucide-react";
 import { shareUploadBlockReason } from "@/lib/share/upload-limits";
 import { useZipDownloader } from "@/components/share/ZipDownloader";
 import { DiagnosticsButton } from "./DiagnosticsButton";
+import { PackageCard } from "./PackageCard";
+import type { PackageSummary } from "@/lib/share/package";
 import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
@@ -47,7 +49,7 @@ const isoToDateInput = (iso: string | null) => (iso ? toDateInput(new Date(iso))
 
 export type Contact = { email: string; name: string };
 
-export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, matters, contacts, blobReady, activity }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; dirInfo?: DirInfo; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean; activity?: ActivitySummary }) {
+export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, matters, contacts, blobReady, activity, pkg }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; dirInfo?: DirInfo; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean; activity?: ActivitySummary; pkg?: PackageSummary }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -72,6 +74,8 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
       )}
 
       <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} activeRecipients={recipients.filter((r) => !r.revoked).length} />
+
+      {pkg && files.length > 0 && <PackageCard folderId={folder.id} initial={pkg} />}
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
 

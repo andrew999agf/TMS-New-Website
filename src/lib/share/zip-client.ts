@@ -59,13 +59,40 @@ type Sink = {
   abort: () => Promise<void>;
 };
 
-async function openSink(name: string): Promise<Sink> {
-  const w = window as Window & { showSaveFilePicker?: (o: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<{ createWritable: () => Promise<{ write: (c: Uint8Array | { type: "write"; position: number; data: Uint8Array }) => Promise<void>; close: () => Promise<void>; abort: () => Promise<void> }> }> };
-  if (w.showSaveFilePicker) {
-    const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }] });
+type FileHandle = { createWritable: () => Promise<{ write: (c: Uint8Array | { type: "write"; position: number; data: Uint8Array }) => Promise<void>; close: () => Promise<void>; abort: () => Promise<void> }> };
+type PickerWindow = Window & {
+  showSaveFilePicker?: (o: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileHandle>;
+  showDirectoryPicker?: (o: { mode: "readwrite"; startIn?: string }) => Promise<{ getFileHandle: (name: string, o: { create: boolean }) => Promise<FileHandle> }>;
+};
+
+/** The user closed a save/folder dialog — not a failure, but not a download either. */
+export const DIALOG_CLOSED = "save dialog closed";
+
+/**
+ * Where archives go. The browser only lets a page open a save dialog right
+ * after a click, so a download that needs several archives asks ONCE for a
+ * folder (Chrome/Edge) and writes every part into it; a single archive asks
+ * for a file. Browsers without those dialogs get ordinary downloads.
+ */
+async function makeSinkOpener(count: number, firstName: string): Promise<(name: string) => Promise<Sink>> {
+  const w = window as PickerWindow;
+  const fromHandle = async (handle: FileHandle): Promise<Sink> => {
     const writable = await handle.createWritable();
     return { seekable: true, write: (c) => writable.write(c), patch: (position, data) => writable.write({ type: "write", position, data }), close: () => writable.close(), abort: () => writable.abort() };
+  };
+  const dialog = async <T,>(fn: () => Promise<T>): Promise<T> => { try { return await fn(); } catch (err) { if ((err as Error)?.name === "AbortError") throw new Error(DIALOG_CLOSED); throw err; } };
+  if (count > 1 && w.showDirectoryPicker) {
+    const dir = await dialog(() => w.showDirectoryPicker!({ mode: "readwrite", startIn: "downloads" }));
+    return async (name) => fromHandle(await dir.getFileHandle(name, { create: true }));
   }
+  if (count === 1 && w.showSaveFilePicker) {
+    const handle = await dialog(() => w.showSaveFilePicker!({ suggestedName: firstName, types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }] }));
+    return async () => fromHandle(handle);
+  }
+  return blobSink;
+}
+
+async function blobSink(name: string): Promise<Sink> {
   const blobs: Blob[] = []; let chunks: Uint8Array[] = []; let size = 0;
   const flush = () => { if (chunks.length) { blobs.push(new Blob(chunks as BlobPart[])); chunks = []; size = 0; } };
   return {
@@ -211,6 +238,7 @@ export async function downloadZip(opts: { files: ZipInput[]; zipName: string; on
   const signal = opts.signal ?? new AbortController().signal;
   const groups = planArchives(opts.files);
   const stem = opts.zipName.replace(/\.zip$/i, "");
+  const openSink = await makeSinkOpener(groups.length, `${stem}.zip`);
   const totalBytes = opts.files.reduce((n, f) => n + (f.size ?? 0), 0);
   const run: RunDiag = { startedAt: new Date().toISOString(), zipName: opts.zipName, files: opts.files.length, bytes: totalBytes, sink: "?", archives: groups.length, perFile: [], result: "running" };
   runs.push(run); if (runs.length > 5) runs.shift();

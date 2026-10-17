@@ -19,6 +19,7 @@ import {
   pgEnum,
   index,
   real,
+  bigint,
 } from "drizzle-orm/pg-core";
 import type { ProductionPart } from "@/lib/production/parts";
 
@@ -581,6 +582,41 @@ export const shareDirLinks = pgTable(
   },
   (t) => ({ tokenIdx: index("share_dir_links_token_idx").on(t.token), folderIdx: index("share_dir_links_folder_idx").on(t.folderId) }),
 );
+
+/** A prepared download package for a shared folder: the folder's files packed
+ *  ahead of time into numbered ZIP parts stored next to the originals, so a
+ *  recipient downloads plain, resumable files instead of waiting on a server
+ *  or a browser tab to build an archive. One row per folder; `parts` holds the
+ *  plan and, per part, where the finished archive lives. See lib/share/package.ts. */
+export const sharePackages = pgTable("share_packages", {
+  id: serial("id").primaryKey(),
+  folderId: integer("folder_id").notNull().unique(),
+  /** building | ready | failed */
+  status: varchar("status", { length: 16 }).notNull().default("building"),
+  /** Fingerprint of the file set the plan was made from (ids + sizes + names). */
+  signature: text("signature").notNull().default(""),
+  parts: jsonb("parts").$type<SharePackagePart[]>().notNull().default([]),
+  fileCount: integer("file_count").notNull().default(0),
+  totalBytes: bigint("total_bytes", { mode: "number" }).notNull().default(0),
+  /** Rebuild on its own when the folder's files change and settle. */
+  auto: boolean("auto").notNull().default(true),
+  /** Part size cap this package was planned with; halves automatically when a
+   *  part cannot be finished inside the server's time limit. */
+  partBytes: bigint("part_bytes", { mode: "number" }).notNull().default(2147483648),
+  error: text("error"),
+  /** Builder lease: a step holds it while packing a part so the cron tick and
+   *  an immediate kick-off never pack the same part twice. */
+  lockUntil: timestamp("lock_until", { withTimezone: true }),
+  requestedBy: varchar("requested_by", { length: 255 }),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  builtAt: timestamp("built_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type SharePackagePart = {
+  n: number; name: string; fileIds: number[]; bytes: number;
+  status: "pending" | "ready" | "failed"; tries: number;
+  url?: string; pathname?: string; size?: number; sha256?: string; builtAt?: string; error?: string;
+};
 
 export const shareAccessLog = pgTable("share_access_log", {
   id: serial("id").primaryKey(),

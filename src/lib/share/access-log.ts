@@ -15,7 +15,7 @@ export type ShareAccessAction =
 
 export type ShareAccessMeta = {
   /** For zips: everything, a checked set, recent uploads, or a sub-folder link. */
-  scope?: "all" | "selected" | "recent" | "dir";
+  scope?: "all" | "selected" | "recent" | "dir" | "package";
   /** How many documents the download held, and their total size. */
   files?: number;
   bytes?: number;

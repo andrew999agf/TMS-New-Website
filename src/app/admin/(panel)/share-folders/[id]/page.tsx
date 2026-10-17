@@ -11,9 +11,13 @@ import { asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import { normalizeMeta } from "@/lib/share/types";
 import { ensureDiscoveryTables } from "@/db/ensure";
+import { getPackage, summarize } from "@/lib/share/package";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 
 export const dynamic = "force-dynamic";
+// Preparing a download package starts packing in the background of the
+// request that asked for it; give it room before the sweep takes over.
+export const maxDuration = 300;
 
 export default async function ShareFolderPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -27,6 +31,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
   if (!folder) notFound();
 
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, fid)).orderBy(desc(shareFiles.createdAt));
+  const pkg = summarize(await getPackage(fid).catch(() => null), files.map((f) => ({ id: f.id, filename: f.filename, url: f.url, sizeBytes: f.sizeBytes })));
   const recipients = await db.select().from(shareRecipients).where(eq(shareRecipients.folderId, fid)).orderBy(asc(shareRecipients.invitedAt));
   const dirRows = await db.select({ path: shareDirs.path, createdBy: shareDirs.createdBy, createdAt: shareDirs.createdAt }).from(shareDirs).where(eq(shareDirs.folderId, fid));
   const dirs = dirRows.map((d) => d.path);
@@ -132,7 +137,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
         <Link href="/admin/share-folders" className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">
           <ChevronLeft size={15} /> All folders
         </Link>
-        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} dirInfo={dirInfo} matters={matters} contacts={contacts} blobReady={isBlobConfigured()} activity={activity} />
+        <ShareFolderDetail folder={data} files={fileRows} recipients={recRows} dirs={dirs} dirInfo={dirInfo} matters={matters} contacts={contacts} blobReady={isBlobConfigured()} activity={activity} pkg={pkg} />
       </div>
     </>
   );

@@ -2,7 +2,7 @@
  *  usable on the client too. */
 export type AccessDescription = { label: string; detail: string; document: string; files?: number; bytes?: number; via: string; viaLabel: string };
 
-const scopeWords: Record<string, string> = { all: "everything", selected: "selected documents", recent: "recent uploads", dir: "a sub-folder" };
+const scopeWords: Record<string, string> = { all: "everything", selected: "selected documents", recent: "recent uploads", dir: "a sub-folder", package: "the prepared package" };
 const viaWords: Record<string, string> = { link: "their share link", "file-link": "a direct file link", "dir-link": "a sub-folder link" };
 
 export function describeAccess(row: { action: string; meta: Record<string, unknown>; fileName?: string | null }): AccessDescription {

@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
 import { RecipientDownloadAll } from "@/components/share/RecipientDownloadAll";
+import { PackageDownload } from "@/components/share/PackageDownload";
+import { getPackage, downloadableParts, packageState } from "@/lib/share/package";
 import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta, folderSupportsWorkspace } from "@/lib/share/types";
@@ -97,6 +99,13 @@ export default async function SharePage({ params, searchParams }: { params: Prom
   }
 
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
+  // A prepared package (pre-built ZIP parts) replaces the browser-built
+  // "Download all" — it is the only sane way to hand over a large production.
+  const pkg = await getPackage(folder.id).catch(() => null);
+  const pkgParts = downloadableParts(pkg);
+  const pkgState = packageState(pkg, files.map((f) => ({ id: f.id, filename: f.filename, url: f.url, sizeBytes: f.sizeBytes })));
+  const folderBytes = files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0);
+  const tooBigForBrowserZip = folderBytes > 1.5 * 1024 ** 3;
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
   const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
 
@@ -154,11 +163,24 @@ export default async function SharePage({ params, searchParams }: { params: Prom
         <FolderWorkspaceView token={token} meta={normalizeMeta(folder.meta)} canCheck={caps.upload} blobReady={isBlobConfigured()} />
       )}
 
+      {caps.download && pkgParts.length > 0 && (
+        <div className="mt-5">
+          <PackageDownload token={token} parts={pkgParts.map((p) => ({ n: p.n, name: p.name, files: p.fileIds.length, size: p.size ?? p.bytes, sha256: p.sha256 ?? null }))}
+            fileCount={pkg?.fileCount ?? files.length} totalBytes={pkg?.totalBytes ?? folderBytes} preparedAt={pkg?.builtAt?.toISOString() ?? null}
+            newerFiles={pkgState === "stale" && pkg ? Math.max(0, files.length - pkg.fileCount) : 0} />
+        </div>
+      )}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
-        {caps.download && files.length > 0 && (
+        {caps.download && files.length > 0 && pkgParts.length === 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <RecipientDownloadAll token={token} folderName={folder.name} files={files.map((f) => ({ id: f.id, name: f.filename, size: f.sizeBytes }))} />
+            {pkgState === "building" ? (
+              <span className="text-xs text-[var(--c-ink-muted)]">A complete download package is being prepared for this folder; check back shortly.</span>
+            ) : tooBigForBrowserZip ? (
+              <span className="text-xs text-[var(--c-ink-muted)]">This folder is large ({(folderBytes / 1024 ** 3).toFixed(1)} GB). Download sub-folders individually below, or ask the sender to prepare a download package.</span>
+            ) : (
+              <RecipientDownloadAll token={token} folderName={folder.name} files={files.map((f) => ({ id: f.id, name: f.filename, size: f.sizeBytes }))} />
+            )}
           </div>
         )}
       </div>

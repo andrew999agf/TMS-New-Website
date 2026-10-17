@@ -72,6 +72,10 @@
     {
       "path": "/api/cron/discovery-label",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/share-packages",
+      "schedule": "* * * * *"
     }
   ]
 }

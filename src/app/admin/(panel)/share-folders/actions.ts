@@ -5,7 +5,10 @@ import { shareFileTextFields } from "@/lib/share/text-fields";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
+import { requestPackage, buildStep, getPackage, summarize, deletePackage, cancelPackageBuild, type PackageSummary } from "@/lib/share/package";
+import { sharePackages } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
@@ -145,6 +148,7 @@ export async function deleteFolder(id: number) {
     for (const f of files) {
       try { await del(f.url); } catch { /* best-effort */ }
     }
+    await deletePackage(id).catch(() => {});
     await db.delete(shareFiles).where(eq(shareFiles.folderId, id));
     await db.delete(shareRecipients).where(eq(shareRecipients.folderId, id));
     await db.delete(shareFolders).where(eq(shareFolders.id, id));
@@ -762,6 +766,12 @@ export async function shareFolderDiagnostics(folderId: number): Promise<{ ok: tr
     if (!largest.length) L.push("  (no files)");
 
     L.push("");
+    const pkg = await getPackage(folderId);
+    const ps = summarize(pkg, files.map((f) => ({ id: f.id, filename: f.filename, url: f.url, sizeBytes: f.sizeBytes })));
+    L.push(`DOWNLOAD PACKAGE: ${ps.state}${pkg ? ` · ${ps.done}/${ps.total} parts · cap ${mb(ps.partBytes)} · requested ${ps.requestedAt ?? "?"} by ${pkg.requestedBy ?? "auto"} · built ${ps.builtAt ?? "—"} · auto-rebuild ${ps.auto ? "on" : "off"}${pkg.lockUntil ? ` · lease until ${pkg.lockUntil.toISOString()}` : ""}` : ""}`);
+    if (ps.error) L.push(`  error: ${ps.error}`);
+    for (const p of ps.parts) L.push(`  ${p.name}: ${p.status} · ${p.files} files · ${mb(p.size ?? p.bytes)}${p.error ? ` · ${p.error}` : ""}`);
+    L.push("");
     const now = Date.now();
     L.push(`RECIPIENTS: ${recipients.length} · active ${recipients.filter((r) => !r.revoked && !(r.expiresAt && r.expiresAt.getTime() < now)).length} · revoked ${recipients.filter((r) => r.revoked).length} · expired ${recipients.filter((r) => !r.revoked && r.expiresAt && r.expiresAt.getTime() < now).length}`);
     for (const r of recipients.slice(0, 25)) L.push(`  ${r.name || r.email} <${r.email}> · ${r.kind || "—"} / ${r.permission}${r.revoked ? " · revoked" : ""}${r.expiresAt ? ` · expires ${r.expiresAt.toISOString().slice(0, 10)}` : ""} · last opened ${r.lastAccessAt ? r.lastAccessAt.toISOString() : "never"}`);
@@ -792,4 +802,66 @@ export async function shareFolderDiagnostics(folderId: number): Promise<{ ok: tr
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
+}
+
+/* ---------------------------- prepared packages ---------------------------- */
+
+async function packageFiles(folderId: number) {
+  return db!.select({ id: shareFiles.id, filename: shareFiles.filename, url: shareFiles.url, sizeBytes: shareFiles.sizeBytes }).from(shareFiles).where(eq(shareFiles.folderId, folderId));
+}
+
+/** Prepare (or rebuild) the folder's download package. Packing starts right
+ *  away in the background and the minute-by-minute sweep carries it on. */
+export async function preparePackage(folderId: number): Promise<{ ok: true; summary: PackageSummary } | { ok: false; error: string }> {
+  const session = await guard();
+  if (!db) return { ok: false, error: "Database not configured." };
+  try {
+    await ensureDiscoveryTables().catch(() => {});
+    const files = await packageFiles(folderId);
+    if (!files.length) return { ok: false, error: "There are no documents to package yet." };
+    const row = await requestPackage(folderId, session.email);
+    if (!row) return { ok: false, error: "Folder not found." };
+    await audit(session.email, "update", "share-folder", String(folderId), `Prepared download package (${files.length} files, ${row.parts.length} part${row.parts.length === 1 ? "" : "s"})`);
+    if (row.status === "building") after(async () => { await buildStep(folderId, 240_000).catch((e) => console.error("[package] build failed", e)); });
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true, summary: summarize(row, files) };
+  } catch (err) {
+    console.error("[share] preparePackage failed:", err);
+    return { ok: false, error: "Couldn't start the package. Run Settings → Database updates, then try again." };
+  }
+}
+
+/** Live status for the admin card while a package builds. Also nudges a
+ *  build along if the sweep hasn't reached it (lease keeps this safe). */
+export async function packageStatus(folderId: number, nudge = false): Promise<PackageSummary | null> {
+  await guard();
+  if (!db) return null;
+  const [pkg, files] = await Promise.all([getPackage(folderId), packageFiles(folderId)]);
+  if (nudge && pkg?.status === "building" && (!pkg.lockUntil || pkg.lockUntil < new Date())) after(async () => { await buildStep(folderId, 240_000).catch(() => {}); });
+  return summarize(pkg, files);
+}
+
+export async function stopPackage(folderId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  await cancelPackageBuild(folderId);
+  await audit(session.email, "update", "share-folder", String(folderId), "Stopped the download package build");
+  revalidatePath(`/admin/share-folders/${folderId}`);
+  return { ok: true as const };
+}
+
+export async function removePackage(folderId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  await deletePackage(folderId);
+  await audit(session.email, "delete", "share-folder", String(folderId), "Removed the download package");
+  revalidatePath(`/admin/share-folders/${folderId}`);
+  return { ok: true as const };
+}
+
+export async function setPackageAuto(folderId: number, auto: boolean) {
+  await guard();
+  if (!db) return { ok: false as const };
+  await db.update(sharePackages).set({ auto, updatedAt: new Date() }).where(eq(sharePackages.folderId, folderId));
+  return { ok: true as const };
 }

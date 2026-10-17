@@ -315,6 +315,23 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE share_access_log ADD COLUMN IF NOT EXISTS ip varchar(64)`,
   `ALTER TABLE share_access_log ADD COLUMN IF NOT EXISTS user_agent text`,
   `CREATE INDEX IF NOT EXISTS share_access_log_folder_idx ON share_access_log (folder_id, at)`,
+  `CREATE TABLE IF NOT EXISTS share_packages (
+    id serial PRIMARY KEY,
+    folder_id integer NOT NULL UNIQUE,
+    status varchar(16) NOT NULL DEFAULT 'building',
+    signature text NOT NULL DEFAULT '',
+    parts jsonb NOT NULL DEFAULT '[]'::jsonb,
+    file_count integer NOT NULL DEFAULT 0,
+    total_bytes bigint NOT NULL DEFAULT 0,
+    auto boolean NOT NULL DEFAULT true,
+    part_bytes bigint NOT NULL DEFAULT 2147483648,
+    error text,
+    lock_until timestamptz,
+    requested_by varchar(255),
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    built_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;
