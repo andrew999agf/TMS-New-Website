@@ -865,3 +865,19 @@ export async function setPackageAuto(folderId: number, auto: boolean) {
   await db.update(sharePackages).set({ auto, updatedAt: new Date() }).where(eq(sharePackages.folderId, folderId));
   return { ok: true as const };
 }
+
+/** Per-folder switch: prepare a download package automatically once the
+ *  folder is large (on by default). */
+export async function setFolderAutoPackage(folderId: number, on: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const };
+  const [folder] = await db.select({ meta: shareFolders.meta }).from(shareFolders).where(eq(shareFolders.id, folderId));
+  if (!folder) return { ok: false as const };
+  const meta = normalizeMeta(folder.meta);
+  meta.autoPackage = on;
+  await db.update(shareFolders).set({ meta: meta as Record<string, unknown> }).where(eq(shareFolders.id, folderId));
+  await audit(session.email, "update", "share-folder", String(folderId), on ? "Automatic download package: on" : "Automatic download package: off");
+  if (on) after(async () => { const { ensurePackage, buildStep } = await import("@/lib/share/package"); if (await ensurePackage(folderId)) await buildStep(folderId, 240_000).catch(() => {}); });
+  revalidatePath(`/admin/share-folders/${folderId}`);
+  return { ok: true as const };
+}

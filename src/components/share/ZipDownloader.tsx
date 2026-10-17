@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, X } from "lucide-react";
-import { downloadZip, zipDiagState, DIALOG_CLOSED, type ZipInput, type ZipProgress } from "@/lib/share/zip-client";
+import { downloadZip, zipDiagState, type ZipInput, type ZipProgress } from "@/lib/share/zip-client";
 import { diagBrowserText, diagHook, diagRegister } from "@/lib/client-diag";
 
 type Start = { files: ZipInput[]; zipName: string; /** Fire-and-forget: tell the server a bulk download started (for the firm's log). */ log?: () => void };
@@ -15,7 +15,7 @@ const fmt = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` 
  * complete by construction — the card says so, or says what went wrong.
  */
 export function useZipDownloader() {
-  const [state, setState] = useState<{ p: ZipProgress | null; error: string | null; done: { files: number; archives: number; bytes: number } | null; busy: boolean; zipName: string; closed?: boolean } | null>(null);
+  const [state, setState] = useState<{ p: ZipProgress | null; error: string | null; done: { files: number; archives: number; bytes: number } | null; busy: boolean; zipName: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastRef = useRef<Start | null>(null);
   const [copied, setCopied] = useState(false);
@@ -39,7 +39,6 @@ export function useZipDownloader() {
     } catch (err) {
       const m = String((err as Error)?.message ?? err);
       if (m === "cancelled" || ac.signal.aborted) { setState(null); return; }
-      if (m === DIALOG_CLOSED) { setState({ p: null, error: null, done: null, busy: false, zipName: s.zipName, closed: true }); return; }
       setState({ p: null, error: m, done: null, busy: false, zipName: s.zipName });
     } finally {
       try { await lock?.release(); } catch { /* ignore */ }
@@ -65,15 +64,12 @@ export function useZipDownloader() {
               </p>
               {state.p.fileName && <p className="truncate text-xs text-[var(--c-ink-muted)]" title={state.p.fileName}>{state.p.fileName}</p>}
               <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--c-border)]"><div className="h-full rounded-full bg-[var(--c-accent)] transition-[width] duration-300" style={{ width: `${state.p.bytesTotal ? Math.min(100, Math.round((state.p.bytesDone / state.p.bytesTotal) * 100)) : 10}%` }} /></div>
-              <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Keep this page open. If a transfer hiccups it picks up where it left off; the ZIP is only saved once every file is complete.</p>
+              <p className="mt-1 text-[11px] text-[var(--c-ink-muted)]">Keep this page open. If a transfer hiccups it picks up where it left off; the ZIP lands in your downloads once every file is complete.</p>
             </>
           )}
-          {state.busy && !state.p && <p className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Starting… (your browser may ask where to save)</p>}
+          {state.busy && !state.p && <p className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-ink-muted)]"><Loader2 size={12} className="animate-spin" /> Starting…</p>}
           {state.done && (
             <p className="mt-1 flex items-start gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><Check size={14} className="mt-0.5 shrink-0" /> Saved — {state.done.files} file{state.done.files === 1 ? "" : "s"}, {fmt(state.done.bytes)}{state.done.archives > 1 ? `, in ${state.done.archives} archives` : ""}. Every file was received in full.</p>
-          )}
-          {state.closed && (
-            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">The save dialog was closed before anything downloaded. <button onClick={retry} className="underline">Click here</button> to try again and choose where to save.</p>
           )}
           {state.error && (
             <p className="mt-1 text-xs text-red-700 dark:text-red-300">Couldn&apos;t finish the download ({state.error}). Nothing partial was saved. <button onClick={retry} className="underline">Try again</button> · <button onClick={() => void copyDetails()} className="underline" title="Copies a short technical note (file names, sizes, what the server answered) to paste into a message to the firm — no links or document contents">{copied ? "Copied" : "Copy details"}</button></p>

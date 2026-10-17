@@ -3,14 +3,11 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, Check, Loader2, RefreshCw, Trash2, AlertTriangle, Square } from "lucide-react";
-import { preparePackage, packageStatus, stopPackage, removePackage, setPackageAuto } from "@/app/admin/(panel)/share-folders/actions";
+import { preparePackage, packageStatus, stopPackage, removePackage, setPackageAuto, setFolderAutoPackage } from "@/app/admin/(panel)/share-folders/actions";
 import type { PackageSummary } from "@/lib/share/package";
 
 const fmt = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
-
-/** Folders big enough that the browser-built ZIP is the wrong tool. */
-export const PACKAGE_SUGGEST_BYTES = 1.5 * 1024 ** 3;
 
 /**
  * "Download package" on the folder page: prepare the folder's files into
@@ -18,9 +15,10 @@ export const PACKAGE_SUGGEST_BYTES = 1.5 * 1024 ** 3;
  * will be offered. Recipients then download plain files with their browser's
  * own download manager — no tab to keep open, nothing built on the fly.
  */
-export function PackageCard({ folderId, initial }: { folderId: number; initial: PackageSummary }) {
+export function PackageCard({ folderId, initial, autoPackage: autoInitial = true }: { folderId: number; initial: PackageSummary; autoPackage?: boolean }) {
   const router = useRouter();
   const [s, setS] = useState(initial);
+  const [autoPackage, setAutoPackage] = useState(autoInitial);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [showParts, setShowParts] = useState(false);
@@ -48,13 +46,14 @@ export function PackageCard({ folderId, initial }: { folderId: number; initial: 
   const stop = () => start(async () => { await stopPackage(folderId); const r = await packageStatus(folderId); if (r) setS(r); });
   const remove = () => { if (!confirm("Remove the prepared package? Recipients go back to per-file and sub-folder downloads until it is prepared again.")) return; start(async () => { await removePackage(folderId); const r = await packageStatus(folderId); if (r) setS(r); }); };
 
-  const big = s.folderBytes >= PACKAGE_SUGGEST_BYTES;
+  const big = s.folderBytes >= s.autoBytes;
   const cur = s.currentPart ? s.parts.find((p) => p.n === s.currentPart) : null;
   const frac = cur && cur.bytes > 0 && s.currentBytes ? Math.min(0.99, s.currentBytes / cur.bytes) : 0;
   const pct = s.total ? Math.round(((s.done + frac) / s.total) * 100) : 0;
 
+  const prompt = s.state === "none" && big;
   return (
-    <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4" data-testid="package-card">
+    <section className={`rounded-lg border bg-[var(--c-surface)] p-4 ${prompt ? "border-2 border-amber-500/70" : "border-[var(--c-border)]"}`} data-testid="package-card">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="inline-flex items-center gap-2 text-base font-semibold"><Archive size={16} /> Download package</h2>
         <span className="text-xs text-[var(--c-ink-muted)]">Pre-built ZIP parts recipients download like ordinary files — pause, resume, close the tab. The right way to hand over a large production.</span>
@@ -63,7 +62,10 @@ export function PackageCard({ folderId, initial }: { folderId: number; initial: 
       <div className="mt-3 text-sm">
         {s.state === "none" && (
           <p className={big ? "text-amber-800 dark:text-amber-300" : "text-[var(--c-ink-muted)]"}>
-            {big ? <><AlertTriangle size={14} className="mr-1 inline" /> This folder holds {fmt(s.folderBytes)}. Prepare a package so recipients are not left building a {fmt(s.folderBytes)} archive in their browser.</> : <>No package prepared. Recipients can download the whole folder from their browser; for folders over about 1.5 GB, prepare a package instead.</>}
+            {big ? (autoPackage
+              ? <><AlertTriangle size={14} className="mr-1 inline" /> <strong>This folder holds {fmt(s.folderBytes)}.</strong> A download package is the only reliable way for recipients to take all of it. One is prepared automatically within a minute of sharing, or the moment a recipient opens the folder — or start it now.</>
+              : <><AlertTriangle size={14} className="mr-1 inline" /> <strong>This folder holds {fmt(s.folderBytes)} and automatic packaging is off.</strong> Recipients cannot download everything at once until you prepare a package.</>)
+              : <>No package needed yet: recipients can download the whole folder from their browser. Folders over about 1.5 GB get a package prepared automatically; you can also prepare one now.</>}
           </p>
         )}
         {s.state === "building" && (
@@ -86,17 +88,22 @@ export function PackageCard({ folderId, initial }: { folderId: number; initial: 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        {s.state === "none" && <button onClick={prepare} disabled={pending} className="btn btn-accent inline-flex items-center gap-1.5 py-1.5 px-3 disabled:opacity-50"><Archive size={13} /> Prepare package</button>}
+        {s.state === "none" && <button onClick={prepare} disabled={pending} className="btn btn-accent inline-flex items-center gap-1.5 py-1.5 px-3 disabled:opacity-50"><Archive size={13} /> {prompt ? "Prepare package now" : "Prepare package"}</button>}
         {(s.state === "stale" || s.state === "ready") && <button onClick={prepare} disabled={pending} className={`${s.state === "stale" ? "btn btn-accent" : "btn btn-outline"} inline-flex items-center gap-1.5 py-1.5 px-3 disabled:opacity-50`}><RefreshCw size={13} /> {s.state === "stale" ? "Rebuild now" : "Rebuild"}</button>}
         {s.state === "failed" && <button onClick={prepare} disabled={pending} className="btn btn-accent inline-flex items-center gap-1.5 py-1.5 px-3 disabled:opacity-50"><RefreshCw size={13} /> Try again</button>}
         {s.state === "building" && <button onClick={stop} disabled={pending} className="btn btn-outline inline-flex items-center gap-1.5 py-1.5 px-3 disabled:opacity-50"><Square size={13} /> Stop</button>}
         {s.total > 0 && <button onClick={() => setShowParts((v) => !v)} className="btn btn-outline py-1.5 px-3">{showParts ? "Hide parts" : `Show ${s.total} part${s.total === 1 ? "" : "s"}`}</button>}
         {s.state !== "none" && s.state !== "building" && <button onClick={remove} disabled={pending} className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1.5 text-red-600 hover:bg-red-500/10 disabled:opacity-50"><Trash2 size={13} /> Remove package</button>}
-        {s.state !== "none" && (
-          <label className="ml-auto inline-flex items-center gap-1.5 text-[var(--c-ink-muted)]">
-            <input type="checkbox" checked={s.auto} onChange={(e) => { const v = e.target.checked; setS({ ...s, auto: v }); void setPackageAuto(folderId, v); }} /> Rebuild automatically when documents change
+        <span className="ml-auto flex flex-wrap items-center gap-3 text-[var(--c-ink-muted)]">
+          <label className="inline-flex items-center gap-1.5" title="Large folders get a package prepared on their own — when shared, after uploads, or when a recipient opens the folder">
+            <input type="checkbox" checked={autoPackage} onChange={(e) => { const v = e.target.checked; setAutoPackage(v); void setFolderAutoPackage(folderId, v).then(() => router.refresh()); }} /> Prepare automatically when large
           </label>
-        )}
+          {s.state !== "none" && (
+            <label className="inline-flex items-center gap-1.5">
+              <input type="checkbox" checked={s.auto} onChange={(e) => { const v = e.target.checked; setS({ ...s, auto: v }); void setPackageAuto(folderId, v); }} /> Rebuild when documents change
+            </label>
+          )}
+        </span>
       </div>
 
       {showParts && s.total > 0 && (

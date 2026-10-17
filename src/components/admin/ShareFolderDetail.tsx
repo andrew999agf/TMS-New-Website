@@ -75,7 +75,7 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
 
       <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} activeRecipients={recipients.filter((r) => !r.revoked).length} />
 
-      {pkg && files.length > 0 && <PackageCard folderId={folder.id} initial={pkg} />}
+      {pkg && files.length > 0 && <PackageCard folderId={folder.id} initial={pkg} autoPackage={folder.meta.autoPackage !== false} />}
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
 

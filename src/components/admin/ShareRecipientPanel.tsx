@@ -219,9 +219,14 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady, fileL
 
       {error && <p className="text-xs text-[var(--c-error)]">{error}</p>}
 
+      {(caps.download || caps.delete) && files.length > 1 && (
+        <label className="inline-flex items-center gap-2 text-xs text-[var(--c-ink-muted)]">
+          <input type="checkbox" checked={selected.size === files.length} onChange={(e) => setSelected(e.target.checked ? new Set(files.map((f) => f.id)) : new Set())} /> Select all {files.length} documents
+        </label>
+      )}
       {selected.size > 0 && (caps.download || caps.delete) && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)] bg-[var(--c-accent)]/5 px-3 py-2 text-sm">
-          <span className="font-medium text-[var(--c-ink)]">{selected.size} selected</span>
+          <span className="font-medium text-[var(--c-ink)]">{selected.size} selected{(() => { const b = files.filter((f) => selected.has(f.id)).reduce((n, f) => n + (f.sizeBytes ?? 0), 0); return b >= 1.5 * 1024 ** 3 ? <span className="ml-2 text-xs font-normal text-amber-800 dark:text-amber-300">({(b / 1024 ** 3).toFixed(1)} GB — for everything at once, use the complete download at the top of the page; it is built for sizes like this)</span> : null; })()}</span>
           {caps.download && <button onClick={bulkDownload} disabled={zip.busy} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs hover:bg-[var(--c-surface2)] disabled:opacity-50"><Download size={13} /> Download selected</button>}
           {caps.delete && <button onClick={bulkDelete} className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1 text-xs text-red-600 hover:bg-red-500/10"><Trash2 size={13} /> Delete selected</button>}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>

@@ -1,9 +1,9 @@
 import "server-only";
-import { and, eq, isNull, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { randomBytes } from "crypto";
 import { db } from "@/db";
-import { shareFiles, shareFolders, sharePackages, type SharePackagePart } from "@/db/schema";
+import { shareFiles, shareFolders, sharePackages, shareRecipients, type SharePackagePart } from "@/db/schema";
 import { storeZip } from "./zip-store";
 
 /**
@@ -27,10 +27,15 @@ export const PART_BYTES = Math.max(1, Number(process.env.SHARE_PACKAGE_PART_MB) 
 const PART_FILES = 5000;
 const UNKNOWN_SIZE = 5 * 1024 * 1024;
 const LEASE_MS = 6 * 60_000;
-const MAX_TRIES = 3;
+const MAX_TRIES = 4;
+const RETRY_COOLDOWN_MS = 2 * 60_000;
 const MIN_PART_BYTES = 256 * 1024 * 1024;
 /** A stale package rebuilds on its own once the folder has been quiet this long. */
 export const AUTO_REBUILD_QUIET_MS = 10 * 60_000;
+/** Folders at least this big get a package prepared automatically — the
+ *  moment they are shared, uploaded to, or opened by a recipient — so nobody
+ *  has to ask the firm for anything. Below it, the browser-built ZIP is fine. */
+export const AUTO_PACKAGE_BYTES = Math.max(1, Number(process.env.SHARE_PACKAGE_AUTO_MB) || 1536) * 1024 * 1024;
 
 export type PlanFile = { id: number; filename: string; url: string; sizeBytes: number | null };
 export type PackageRow = typeof sharePackages.$inferSelect;
@@ -271,8 +276,10 @@ export async function buildStep(folderId: number, budgetMs: number): Promise<Ste
           await release({ status: "failed", error: `Part ${next.n} (${next.name}) could not be built after ${next.tries} tries: ${msg}`, parts });
           return { did: "failed", part: next.n, note: msg };
         }
-        // Leave it pending for the next tick (transient storage hiccups).
-        await release({ parts });
+        // Leave it pending with a cool-down, so a transient storage hiccup is
+        // retried a couple of minutes later by the sweep — not hammered
+        // within seconds by status polls nudging the builder.
+        await db.update(sharePackages).set({ parts, lockUntil: new Date(Date.now() + RETRY_COOLDOWN_MS), updatedAt: new Date() }).where(eq(sharePackages.folderId, folderId));
         return { did: "built", part: built, parts: parts.length, note: `retry later: ${msg}` };
       }
     }
@@ -290,6 +297,10 @@ export async function sweepPackages(budgetMs: number): Promise<{ steps: StepResu
   const out = { steps: [] as StepResult[], queued: [] as number[] };
   if (!db) return out;
   const started = Date.now();
+  // Big shared folders with no package yet: start one, no questions asked.
+  for (const id of await foldersNeedingPackages(5).catch(() => [] as number[])) {
+    if (await ensurePackage(id).catch(() => false)) out.queued.push(id);
+  }
   const building = await db.select({ folderId: sharePackages.folderId }).from(sharePackages).where(eq(sharePackages.status, "building")).orderBy(sharePackages.requestedAt);
   for (const b of building) {
     const left = budgetMs - (Date.now() - started);
@@ -327,9 +338,44 @@ export function summarize(pkg: PackageRow | null, files: PlanFile[]) {
     error: pkg?.error ?? null, auto: pkg?.auto ?? true, partBytes: pkg?.partBytes ?? PART_BYTES,
     newerFiles: state === "stale" && pkg ? Math.max(0, files.length - pkg.fileCount) : 0,
     folderBytes: files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0),
+    autoBytes: AUTO_PACKAGE_BYTES,
   };
 }
 export type PackageSummary = ReturnType<typeof summarize>;
+
+/**
+ * Make sure a big folder has a package on the way, without anyone asking:
+ * called when a recipient opens the folder and by the minute sweep for every
+ * shared folder over the threshold. Returns true when a build was started.
+ */
+export async function ensurePackage(folderId: number): Promise<boolean> {
+  if (!db) return false;
+  const existing = await getPackage(folderId);
+  if (existing) return false; // building, ready, stale (auto-rebuilds) or failed (firm decides)
+  const [folder] = await db.select({ meta: shareFolders.meta }).from(shareFolders).where(eq(shareFolders.id, folderId));
+  if (!folder || (folder.meta as { autoPackage?: boolean } | null)?.autoPackage === false) return false; // the firm switched it off for this folder
+  const files = await folderFiles(folderId);
+  const bytes = files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0);
+  if (!files.length || bytes < AUTO_PACKAGE_BYTES) return false;
+  const row = await requestPackage(folderId, null);
+  return row?.status === "building";
+}
+
+/** Shared folders over the threshold that have no package yet. */
+async function foldersNeedingPackages(limit: number): Promise<number[]> {
+  if (!db) return [];
+  const rows = await db.execute(sql`
+    select f.folder_id as id
+    from (select folder_id, sum(coalesce(size_bytes, 0))::bigint as bytes from share_files group by folder_id) f
+    join share_folders sf on sf.id = f.folder_id and sf.archived = false
+    where f.bytes >= ${AUTO_PACKAGE_BYTES}
+      and not exists (select 1 from share_packages p where p.folder_id = f.folder_id)
+      and coalesce((sf.meta->>'autoPackage')::boolean, true)
+      and exists (select 1 from share_recipients r where r.folder_id = f.folder_id and r.revoked = false and (r.expires_at is null or r.expires_at > now()))
+    order by f.bytes desc
+    limit ${limit}`);
+  return Array.from(rows as unknown as Iterable<{ id: unknown }>).map((r) => Number(r.id));
+}
 
 /** Delete the stored parts when a folder is deleted. */
 export async function dropPackageForFolder(folderId: number): Promise<void> {

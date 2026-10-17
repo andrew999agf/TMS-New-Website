@@ -12,9 +12,9 @@
  * Format: stored (no compression — these are PDFs, photos and video), UTF-8
  * names, no ZIP64. An archive that would pass 3.8 GB is split into numbered
  * archives at file boundaries, so Windows' built-in extractor (which handles
- * ZIP64 badly) always gets plain ZIPs. When the browser offers a save-file
- * picker, the archive streams to disk and headers are patched in place; else
- * it goes through a disk-backed blob download with data descriptors.
+ * ZIP64 badly) always gets plain ZIPs. The archive is assembled as a blob
+ * (the browser spills it to disk) and saved as an ordinary download, with
+ * data descriptors since sizes are not known up front.
  */
 
 import { diagLog } from "@/lib/client-diag";
@@ -28,7 +28,7 @@ type FileDiag = { name: string; expected: number | null; got: number; attempts: 
 type RunDiag = { startedAt: string; zipName: string; files: number; bytes: number; sink: string; archives: number; perFile: FileDiag[]; result: string; ms?: number };
 const runs: RunDiag[] = [];
 export function zipDiagState(): Record<string, unknown> {
-  const out: Record<string, unknown> = { runsThisPage: runs.length, saveFilePicker: typeof (window as Window & { showSaveFilePicker?: unknown }).showSaveFilePicker === "function" };
+  const out: Record<string, unknown> = { runsThisPage: runs.length };
   runs.slice(-3).forEach((r, i) => {
     const slow = [...r.perFile].filter((f) => f.ms > 0 && f.got > 0).sort((a, b) => a.got / a.ms - b.got / b.ms).slice(0, 3);
     out[`run${runs.length - Math.min(3, runs.length) + i + 1}`] = {
@@ -59,39 +59,13 @@ type Sink = {
   abort: () => Promise<void>;
 };
 
-type FileHandle = { createWritable: () => Promise<{ write: (c: Uint8Array | { type: "write"; position: number; data: Uint8Array }) => Promise<void>; close: () => Promise<void>; abort: () => Promise<void> }> };
-type PickerWindow = Window & {
-  showSaveFilePicker?: (o: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileHandle>;
-  showDirectoryPicker?: (o: { mode: "readwrite"; startIn?: string }) => Promise<{ getFileHandle: (name: string, o: { create: boolean }) => Promise<FileHandle> }>;
-};
-
-/** The user closed a save/folder dialog — not a failure, but not a download either. */
-export const DIALOG_CLOSED = "save dialog closed";
-
 /**
- * Where archives go. The browser only lets a page open a save dialog right
- * after a click, so a download that needs several archives asks ONCE for a
- * folder (Chrome/Edge) and writes every part into it; a single archive asks
- * for a file. Browsers without those dialogs get ordinary downloads.
+ * Where archives go: an ordinary browser download, exactly like Dropbox or
+ * OneDrive. Deliberately NOT the File System Access API — its "Allow this
+ * site to edit files?" prompt is something no recipient should ever see.
+ * Only folders under 1.5 GB come this way; bigger ones get a prepared
+ * package of plain, resumable downloads.
  */
-async function makeSinkOpener(count: number, firstName: string): Promise<(name: string) => Promise<Sink>> {
-  const w = window as PickerWindow;
-  const fromHandle = async (handle: FileHandle): Promise<Sink> => {
-    const writable = await handle.createWritable();
-    return { seekable: true, write: (c) => writable.write(c), patch: (position, data) => writable.write({ type: "write", position, data }), close: () => writable.close(), abort: () => writable.abort() };
-  };
-  const dialog = async <T,>(fn: () => Promise<T>): Promise<T> => { try { return await fn(); } catch (err) { if ((err as Error)?.name === "AbortError") throw new Error(DIALOG_CLOSED); throw err; } };
-  if (count > 1 && w.showDirectoryPicker) {
-    const dir = await dialog(() => w.showDirectoryPicker!({ mode: "readwrite", startIn: "downloads" }));
-    return async (name) => fromHandle(await dir.getFileHandle(name, { create: true }));
-  }
-  if (count === 1 && w.showSaveFilePicker) {
-    const handle = await dialog(() => w.showSaveFilePicker!({ suggestedName: firstName, types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }] }));
-    return async () => fromHandle(handle);
-  }
-  return blobSink;
-}
-
 async function blobSink(name: string): Promise<Sink> {
   const blobs: Blob[] = []; let chunks: Uint8Array[] = []; let size = 0;
   const flush = () => { if (chunks.length) { blobs.push(new Blob(chunks as BlobPart[])); chunks = []; size = 0; } };
@@ -238,7 +212,7 @@ export async function downloadZip(opts: { files: ZipInput[]; zipName: string; on
   const signal = opts.signal ?? new AbortController().signal;
   const groups = planArchives(opts.files);
   const stem = opts.zipName.replace(/\.zip$/i, "");
-  const openSink = await makeSinkOpener(groups.length, `${stem}.zip`);
+  const openSink = blobSink;
   const totalBytes = opts.files.reduce((n, f) => n + (f.size ?? 0), 0);
   const run: RunDiag = { startedAt: new Date().toISOString(), zipName: opts.zipName, files: opts.files.length, bytes: totalBytes, sink: "?", archives: groups.length, perFile: [], result: "running" };
   runs.push(run); if (runs.length > 5) runs.shift();

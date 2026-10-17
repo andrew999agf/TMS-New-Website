@@ -390,6 +390,9 @@ export type ShareFolderMeta = {
   fileLinks?: boolean;
   /** The unguessable folder-level token those public file links use. */
   publicToken?: string;
+  /** Prepare a download package automatically once the folder is large
+   *  (default on). Off means the firm prepares it by hand. */
+  autoPackage?: boolean;
 };
 
 export function normalizeMeta(m: unknown): ShareFolderMeta {
@@ -416,6 +419,7 @@ export function normalizeMeta(m: unknown): ShareFolderMeta {
           }))
       : [],
     fileLinks: !!o.fileLinks,
+    autoPackage: o.autoPackage !== false,
     publicToken: typeof o.publicToken === "string" && o.publicToken ? o.publicToken : undefined,
   };
 }

@@ -8,7 +8,9 @@ import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
 import { RecipientDownloadAll } from "@/components/share/RecipientDownloadAll";
 import { PackageDownload } from "@/components/share/PackageDownload";
-import { getPackage, downloadableParts, packageState } from "@/lib/share/package";
+import { after } from "next/server";
+import { getPackage, downloadableParts, packageState, ensurePackage, buildStep, summarize, AUTO_PACKAGE_BYTES } from "@/lib/share/package";
+import { PackagePreparing } from "@/components/share/PackagePreparing";
 import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta, folderSupportsWorkspace } from "@/lib/share/types";
@@ -99,15 +101,24 @@ export default async function SharePage({ params, searchParams }: { params: Prom
   }
 
   const files = await db.select().from(shareFiles).where(eq(shareFiles.folderId, folder.id));
+  const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
   // A prepared package (pre-built ZIP parts) replaces the browser-built
   // "Download all" — it is the only sane way to hand over a large production.
-  const pkg = await getPackage(folder.id).catch(() => null);
-  const pkgParts = downloadableParts(pkg);
-  const pkgState = packageState(pkg, files.map((f) => ({ id: f.id, filename: f.filename, url: f.url, sizeBytes: f.sizeBytes })));
   const folderBytes = files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0);
-  const tooBigForBrowserZip = folderBytes > 1.5 * 1024 ** 3;
+  const autoPackage = normalizeMeta(folder.meta).autoPackage !== false;
+  const tooBigForBrowserZip = folderBytes >= AUTO_PACKAGE_BYTES && autoPackage;
+  let pkg = await getPackage(folder.id).catch(() => null);
+  if (!pkg && tooBigForBrowserZip && caps.download) {
+    // A big folder opened before its package exists: start one right now, in
+    // the background of this very request. The recipient never has to ask.
+    const started = await ensurePackage(folder.id).catch(() => false);
+    if (started) { after(async () => { await buildStep(folder.id, 240_000).catch(() => {}); }); pkg = await getPackage(folder.id).catch(() => null); }
+  }
+  const pkgParts = downloadableParts(pkg);
+  const planFiles = files.map((f) => ({ id: f.id, filename: f.filename, url: f.url, sizeBytes: f.sizeBytes }));
+  const pkgState = packageState(pkg, planFiles);
+  const pkgSummary = summarize(pkg, planFiles);
   const dirs = (await db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folder.id))).map((d) => d.path);
-  const caps = { download: shareCan(rec.permission, "download"), upload: shareCan(rec.permission, "upload"), delete: shareCan(rec.permission, "delete") };
 
   if (!adminPreview) {
     try {
@@ -174,10 +185,8 @@ export default async function SharePage({ params, searchParams }: { params: Prom
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
         {caps.download && files.length > 0 && pkgParts.length === 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            {pkgState === "building" ? (
-              <span className="text-xs text-[var(--c-ink-muted)]">A complete download package is being prepared for this folder; check back shortly.</span>
-            ) : tooBigForBrowserZip ? (
-              <span className="text-xs text-[var(--c-ink-muted)]">This folder is large ({(folderBytes / 1024 ** 3).toFixed(1)} GB). Download sub-folders individually below, or ask the sender to prepare a download package.</span>
+            {pkgState === "building" || pkgState === "failed" || tooBigForBrowserZip ? (
+              <PackagePreparing token={token} done={pkgSummary.done} total={pkgSummary.total} bytes={folderBytes} />
             ) : (
               <RecipientDownloadAll token={token} folderName={folder.name} files={files.map((f) => ({ id: f.id, name: f.filename, size: f.sizeBytes }))} />
             )}
