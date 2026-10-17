@@ -2690,7 +2690,7 @@ function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: numb
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5" role="dialog" aria-label="Download documents">
+      <div className={`flex max-h-[90vh] w-full flex-col rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5 ${parts.length > 1 ? "max-w-3xl" : "max-w-md"}`} role="dialog" aria-label="Download documents">
         <h3 className="font-[family-name:var(--font-display)] text-lg">Download documents</h3>
         <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{docs.length.toLocaleString()} document{docs.length === 1 ? "" : "s"} · {pages.toLocaleString()} page{pages === 1 ? "" : "s"}{prefix && docs[0].batesStart > 0 ? <> · <span className="font-mono">{bates(prefix, docs[0].batesStart)} – {String(Math.max(...docs.map((d) => d.batesEnd)) || docs[docs.length - 1].batesEnd).padStart(6, "0")}</span></> : null}</p>
         <div className="mt-3 space-y-2">
@@ -2710,21 +2710,23 @@ function DownloadStagedDialog({ setId, docs, onClose, onStarted }: { setId: numb
           </label>
         </div>
         {mode === "merged" && parts.length > 1 && (
-          <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" role="status">
+          <div className="mt-3 flex min-h-0 flex-col rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" role="status">
             <p className="font-semibold">That&apos;s more than one PDF can hold — it comes as {parts.length} PDFs.</p>
-            <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Up to {MERGE_MAX_DOCS.toLocaleString()} documents per PDF, in Bates order; the last one holds whatever is left over. Download them all at once, or one at a time.</p>
-            <ol className="mt-2 space-y-1">
+            <p className="mt-0.5 text-xs text-[var(--c-ink-muted)]">Up to {MERGE_MAX_DOCS.toLocaleString()} documents or about 100 MB per PDF, in Bates order; the last one holds whatever is left over. Download them all at once with the button below, or pick them one at a time here{parts.length > 8 ? " (scroll the list)" : ""}.</p>
+            {/* The list scrolls inside the box, two across, so even forty parts
+                leave the Download buttons on screen. */}
+            <ol className="mt-2 grid max-h-[40vh] grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-2">
               {parts.map((p) => (
-                <li key={p.n} className="flex flex-wrap items-center gap-2 text-xs">
-                  <button onClick={() => { triggerDownload(mergeUrl(p.n)); }} className="btn btn-outline inline-flex items-center gap-1 py-1 px-2 text-xs"><Download size={11} /> PDF {p.n} of {parts.length}</button>
-                  <span>{p.docIds.length.toLocaleString()} doc{p.docIds.length === 1 ? "" : "s"} · {p.pages.toLocaleString()} pp.{p.bytes ? ` · ${mb(p.bytes)}` : ""}</span>
-                  {range(p) && <span className="font-mono text-[var(--c-ink-muted)]">{range(p)}</span>}
+                <li key={p.n} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                  <button onClick={() => { triggerDownload(mergeUrl(p.n)); }} className="btn btn-outline inline-flex shrink-0 items-center gap-1 py-1 px-2 text-xs"><Download size={11} /> PDF {p.n} of {parts.length}</button>
+                  <span className="shrink-0">{p.docIds.length.toLocaleString()} doc{p.docIds.length === 1 ? "" : "s"} · {p.pages.toLocaleString()} pp.{p.bytes ? ` · ${mb(p.bytes)}` : ""}</span>
+                  {range(p) && <span className="truncate font-mono text-[var(--c-ink-muted)]">{range(p)}</span>}
                 </li>
               ))}
             </ol>
           </div>
         )}
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex shrink-0 justify-end gap-2">
           <button onClick={onClose} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
           <button onClick={start} className="btn btn-accent inline-flex items-center gap-1.5 text-sm py-2 px-4">
             <Download size={14} /> {mode === "individual" ? (docs.length === 1 ? "Download" : "Download ZIP") : parts.length > 1 ? `Download all ${parts.length} PDFs` : "Download PDF"}
