@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { shareFiles, shareRecipients, shareAccessLog } from "@/db/schema";
+import { shareFiles, shareRecipients } from "@/db/schema";
+import { logShareAccess } from "@/lib/share/access-log";
 import { and, eq } from "drizzle-orm";
 import { shareCan } from "@/lib/share/types";
 
@@ -25,10 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const [file] = await db.select().from(shareFiles).where(and(eq(shareFiles.id, id), eq(shareFiles.folderId, rec.folderId)));
   if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  try {
-    await db.insert(shareAccessLog).values({ folderId: rec.folderId, recipientId: rec.id, action: "download", fileId: file.id });
-  } catch {
-    /* best-effort */
+  // A preview (or a view-only recipient) opens the file inline; anything else
+  // is a download. Range requests for media playback are not re-logged.
+  const inline = preview || !shareCan(rec.permission, "download");
+  if (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-")) {
+    await logShareAccess(req, { folderId: rec.folderId, recipientId: rec.id, action: inline ? "preview" : "download", fileId: file.id, meta: { name: file.filename, bytes: file.sizeBytes ?? undefined, via: "link" } });
   }
 
   // Forward a Range request to Blob so video/audio can stream and seek in the

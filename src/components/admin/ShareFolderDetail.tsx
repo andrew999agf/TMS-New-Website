@@ -26,6 +26,12 @@ import {
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
+export type ActivitySummary = {
+  total: number; views: number; previews: number; downloads: number; zips: number; uploads: number;
+  lastDownload: { at: string; who: string; what: string } | null;
+  recent: { at: string; who: string; label: string; detail: string }[];
+  byRecipient: Record<string, { downloads: number; zips: number; previews: number; views: number; lastAt: string | null }>;
+};
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; county: string; plaintiff: string; defendant: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string; by: string };
 export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; requireAuth: boolean; revoked: boolean };
@@ -39,7 +45,7 @@ const isoToDateInput = (iso: string | null) => (iso ? toDateInput(new Date(iso))
 
 export type Contact = { email: string; name: string };
 
-export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, matters, contacts, blobReady }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; dirInfo?: DirInfo; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean }) {
+export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, matters, contacts, blobReady, activity }: { folder: FolderData; files: FileRow[]; recipients: RecipientRow[]; dirs: string[]; dirInfo?: DirInfo; matters: MatterOption[]; contacts: Contact[]; blobReady: boolean; activity?: ActivitySummary }) {
   const t = shareType(folder.type);
   const s = audienceStyle(t.audience);
 
@@ -66,6 +72,8 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
       <FilesSection folderId={folder.id} folderName={folder.name} files={files} dirs={dirs} dirInfo={dirInfo} blobReady={blobReady} filePublicToken={folder.meta.fileLinks && folder.meta.publicToken ? folder.meta.publicToken : null} activeRecipients={recipients.filter((r) => !r.revoked).length} />
 
       <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
+
+      {activity && <ActivitySection folderId={folder.id} activity={activity} recipients={recipients} />}
     </div>
   );
 }
@@ -570,6 +578,63 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
 }
 
 /* ------------------------------- recipients ------------------------------- */
+
+const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+/**
+ * The firm's record of recipient activity: who opened the folder, previewed
+ * or downloaded what, and when — with a CSV of the full log. Internal only:
+ * nothing here is shown or emailed to recipients.
+ */
+function ActivitySection({ folderId, activity, recipients }: { folderId: number; activity: ActivitySummary; recipients: RecipientRow[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const rows = showAll ? activity.recent : activity.recent.slice(0, 5);
+  return (
+    <section className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4" data-testid="activity-section">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-base font-semibold">Recipient activity</h2>
+        <span className="text-xs text-[var(--c-ink-muted)]">Firm-only record · never shown or emailed to recipients</span>
+        <a href={`/admin/share-folders/${folderId}/access-log`} className="btn btn-outline ml-auto inline-flex items-center gap-1.5 text-xs py-1.5 px-3" title="Every opening, preview, download and ZIP, with time, recipient, document, size and device — as a spreadsheet">
+          <Download size={13} /> Download access log (CSV)
+        </a>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+        <span><strong>{activity.downloads + activity.zips}</strong> download{activity.downloads + activity.zips === 1 ? "" : "s"} <span className="text-xs text-[var(--c-ink-muted)]">({activity.downloads} single · {activity.zips} ZIP)</span></span>
+        <span><strong>{activity.previews}</strong> preview{activity.previews === 1 ? "" : "s"}</span>
+        <span><strong>{activity.views}</strong> folder opening{activity.views === 1 ? "" : "s"}</span>
+        {activity.uploads > 0 && <span><strong>{activity.uploads}</strong> upload{activity.uploads === 1 ? "" : "s"}</span>}
+        {activity.lastDownload && <span className="text-xs text-[var(--c-ink-muted)]">Last download: {activity.lastDownload.who ? `${activity.lastDownload.who} · ` : ""}{activity.lastDownload.what.toLowerCase()} · {fmtWhen(activity.lastDownload.at)}</span>}
+      </div>
+      {recipients.some((r) => activity.byRecipient[String(r.id)]) && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead><tr className="text-[var(--c-ink-muted)]"><th className="py-1 pr-3 font-semibold">Recipient</th><th className="py-1 pr-3 font-semibold">Downloads</th><th className="py-1 pr-3 font-semibold">ZIPs</th><th className="py-1 pr-3 font-semibold">Previews</th><th className="py-1 pr-3 font-semibold">Opened</th><th className="py-1 font-semibold">Last activity</th></tr></thead>
+            <tbody>
+              {recipients.filter((r) => activity.byRecipient[String(r.id)]).map((r) => { const t = activity.byRecipient[String(r.id)]; return (
+                <tr key={r.id} className="border-t border-[var(--c-border)]"><td className="py-1 pr-3">{r.name || r.email}{r.revoked ? <span className="ml-1 text-[var(--c-ink-muted)]">(revoked)</span> : null}</td><td className="py-1 pr-3">{t.downloads}</td><td className="py-1 pr-3">{t.zips}</td><td className="py-1 pr-3">{t.previews}</td><td className="py-1 pr-3">{t.views}</td><td className="py-1">{t.lastAt ? fmtWhen(t.lastAt) : ""}</td></tr>
+              ); })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rows.length > 0 ? (
+        <ul className="mt-3 space-y-1 text-xs">
+          {rows.map((e, i) => (
+            <li key={i} className="flex flex-wrap gap-x-2 text-[var(--c-ink)]">
+              <span className="w-36 shrink-0 text-[var(--c-ink-muted)]">{fmtWhen(e.at)}</span>
+              <span className="font-medium">{e.who || "—"}</span>
+              <span>{e.label.toLowerCase()}</span>
+              {e.detail && <span className="truncate text-[var(--c-ink-muted)]" title={e.detail}>{e.detail}</span>}
+            </li>
+          ))}
+          {activity.recent.length > 5 && <li><button onClick={() => setShowAll((v) => !v)} className="text-[var(--c-accent)] hover:underline">{showAll ? "Show fewer" : `Show the last ${activity.recent.length}`}</button> <span className="text-[var(--c-ink-muted)]">· the CSV has everything</span></li>}
+        </ul>
+      ) : (
+        <p className="mt-3 text-xs text-[var(--c-ink-muted)]">No recipient activity yet.</p>
+      )}
+    </section>
+  );
+}
 
 function RecipientsSection({ folderId, typeKey, recipients, contacts }: { folderId: number; typeKey: string; recipients: RecipientRow[]; contacts: Contact[] }) {
   return (

@@ -311,6 +311,10 @@ export const DISCOVERY_DDL = [
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS generated_docs_matter_idx ON generated_docs (matter)`,
+  `ALTER TABLE share_access_log ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'::jsonb`,
+  `ALTER TABLE share_access_log ADD COLUMN IF NOT EXISTS ip varchar(64)`,
+  `ALTER TABLE share_access_log ADD COLUMN IF NOT EXISTS user_agent text`,
+  `CREATE INDEX IF NOT EXISTS share_access_log_folder_idx ON share_access_log (folder_id, at)`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { shareFiles } from "@/db/schema";
 import { resolveDirLink, fileInDir } from "@/lib/share/dir-link";
+import { logShareAccess } from "@/lib/share/access-log";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const [f] = await db.select().from(shareFiles).where(and(eq(shareFiles.id, id), eq(shareFiles.folderId, link.folderId)));
   if (!f || !fileInDir(f.filename, link.dirPath)) return new NextResponse("Not found", { status: 404 });
+  if (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-")) {
+    await logShareAccess(req, { folderId: link.folderId, action: "preview", fileId: f.id, meta: { name: f.filename, bytes: f.sizeBytes ?? undefined, via: "dir-link", dir: link.dirPath } });
+  }
 
   const range = req.headers.get("range");
   const upstream = await fetch(f.url, range ? { headers: { Range: range } } : undefined);

@@ -586,9 +586,13 @@ export const shareAccessLog = pgTable("share_access_log", {
   id: serial("id").primaryKey(),
   folderId: integer("folder_id"),
   recipientId: integer("recipient_id"),
-  action: varchar("action", { length: 16 }).notNull(), // view | download
+  action: varchar("action", { length: 16 }).notNull(), // view | preview | download | zip | upload
   fileId: integer("file_id"),
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  /** Scope / counts / document name — see lib/share/access-log.ts. */
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  ip: varchar("ip", { length: 64 }),
+  userAgent: text("user_agent"),
 });
 
 /** External portal users (recipients who can log in). One row per person, keyed

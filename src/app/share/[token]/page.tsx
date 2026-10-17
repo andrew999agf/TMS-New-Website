@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, shareAccessLog, portalUsers } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, portalUsers } from "@/db/schema";
+import { logShareAccess } from "@/lib/share/access-log";
+import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
@@ -102,7 +104,8 @@ export default async function SharePage({ params, searchParams }: { params: Prom
   if (!adminPreview) {
     try {
       await db.update(shareRecipients).set({ lastAccessAt: new Date() }).where(eq(shareRecipients.id, rec.id));
-      await db.insert(shareAccessLog).values({ folderId: folder.id, recipientId: rec.id, action: "view" });
+      const h = await headers();
+      await logShareAccess(new Request("http://x/", { headers: { "x-forwarded-for": h.get("x-forwarded-for") ?? "", "user-agent": h.get("user-agent") ?? "" } }), { folderId: folder.id, recipientId: rec.id, action: "view", meta: { via: "link" } });
     } catch {
       /* logging is best-effort */
     }

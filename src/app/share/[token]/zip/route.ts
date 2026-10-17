@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { shareFiles, shareAccessLog } from "@/db/schema";
+import { shareFiles } from "@/db/schema";
+import { logShareAccess } from "@/lib/share/access-log";
+import { planZipParts } from "@/lib/share/zip";
 import { resolveRecipient } from "@/lib/share/access";
 import { shareCan } from "@/lib/share/types";
 import { zipOrParts, parseFileIds } from "@/lib/share/zip";
@@ -28,7 +30,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (idFilter) files = files.filter((f) => idFilter.has(f.id));
   if (since) files = files.filter((f) => f.createdAt >= since);
   if (files.length === 0) return NextResponse.json({ error: since ? "Nothing new to download in that window." : "No documents to download." }, { status: 404 });
-  try { await db.insert(shareAccessLog).values({ folderId: ctx.folder.id, recipientId: ctx.rec.id, action: "download" }); } catch { /* best-effort */ }
+  {
+    // Log the actual download, not the parts-listing page of a very big ZIP.
+    const partsPlanned = planZipParts(files.map((f) => ({ url: f.url, name: f.filename, size: f.sizeBytes }))).length;
+    const part = Number(sp.get("part")) || 0;
+    if (partsPlanned <= 1 || part > 0) {
+      await logShareAccess(req, { folderId: ctx.folder.id, recipientId: ctx.rec.id, action: "zip", meta: {
+        scope: idFilter ? "selected" : since ? "recent" : "all", files: files.length, bytes: files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0),
+        ids: files.slice(0, 200).map((f) => f.id), via: "link", ...(part > 0 ? { part, parts: partsPlanned } : {}),
+      } });
+    }
+  }
 
   const suffix = idFilter ? " - new documents" : since ? " - recent uploads" : "";
   const zipName = `${(ctx.folder.name || "documents").replace(/[\\/:*?"<>|]/g, "-")}${suffix}.zip`;

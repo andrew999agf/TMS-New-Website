@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { shareFiles, shareAccessLog } from "@/db/schema";
+import { shareFiles } from "@/db/schema";
+import { logShareAccess } from "@/lib/share/access-log";
+import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { getBlocks } from "@/lib/content";
@@ -52,9 +54,11 @@ export default async function PublicFilePage({ params }: { params: Promise<{ tok
 
   // Secure folders: the viewer must sign in (password or one-time code) as an
   // invited recipient. Once signed in, the portal session lasts ~12 hours.
+  let viewer: { id: number } | null = null;
   if (folder.requireAuth) {
     const who = await portalEmail();
     const authed = who ? await recipientOfFolder(folder.id, who) : null;
+    viewer = authed;
     if (!authed) {
       return (
         <Shell logo={logo}>
@@ -69,7 +73,13 @@ export default async function PublicFilePage({ params }: { params: Promise<{ tok
   const [file] = await db.select().from(shareFiles).where(and(eq(shareFiles.id, id), eq(shareFiles.folderId, folder.id)));
   if (!file) return closed("This document is no longer available.");
 
-  try { await db.insert(shareAccessLog).values({ folderId: folder.id, action: "view", fileId: file.id }); } catch { /* best-effort */ }
+  {
+    // Server component: rebuild just enough of a Request for the logger (ip / browser).
+    const h = await headers();
+    const fake = new Request("http://x/", { headers: { "x-forwarded-for": h.get("x-forwarded-for") ?? "", "user-agent": h.get("user-agent") ?? "" } });
+    if (!viewer) { const who = await portalEmail(); viewer = who ? await recipientOfFolder(folder.id, who) : null; }
+    await logShareAccess(fake, { folderId: folder.id, recipientId: viewer?.id ?? null, action: "preview", fileId: file.id, meta: { name: file.filename, bytes: file.sizeBytes ?? undefined, via: "file-link" } });
+  }
 
   const base = (file.filename.split("/").pop() || file.filename);
   const ext = (base.split(".").pop() || "").toLowerCase();
