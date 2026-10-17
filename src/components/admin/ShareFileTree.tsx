@@ -68,6 +68,9 @@ type Ctx = {
   onAddSubdir?: (parentPath: string) => void;
   /** When provided, each folder gets a "download this folder as a ZIP" link. */
   dirZipHref?: (path: string) => string;
+  /** When provided, each folder gets a ZIP button that hands the path back
+   *  (the parent builds the archive in the browser). */
+  onDirZip?: (path: string) => void;
   /** When provided, each folder gets a "table of contents" button (opens the
    *  format dialog in the parent). */
   onDirToc?: (path: string) => void;
@@ -93,7 +96,7 @@ type Ctx = {
   toggleOpen: (path: string) => void;
 };
 
-export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, onDirLink, copyLinkFor, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
+export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload = true, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirZip, onDirToc, onDirLink, copyLinkFor, onPreview, onUpload, dirInfo, selectable, selected, onToggleSelect, revealPath }: {
   files: TreeFile[];
   dirs?: string[];
   hrefFor: (fileId: number) => string;
@@ -112,6 +115,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
   /** When provided, folders show a download button linking to a ZIP of just
    *  that folder (and everything under it). */
   dirZipHref?: (path: string) => string;
+  onDirZip?: (path: string) => void;
   /** When provided, folders show a table-of-contents button for that folder
    *  (and everything under it). */
   onDirToc?: (path: string) => void;
@@ -161,7 +165,7 @@ export function ShareFileTree({ files, dirs = [], hrefFor, target, showDownload 
 
   const setOver = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(path); };
   const doDrop = (e: React.DragEvent, path: string) => { if (!onUpload) return; e.preventDefault(); e.stopPropagation(); setOverPath(null); onUpload(path, e.dataTransfer); };
-  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirToc, onDirLink, copyLinkFor, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
+  const ctx: Ctx = { hrefFor, target, showDownload, onDelete, deletingId, onDeleteDir, deletingDir, onRenameDir, onRenameFile, onAddSubdir, dirZipHref, onDirZip, onDirToc, onDirLink, copyLinkFor, onPreview, dirInfo, selectable, selected, onToggleSelect, onUpload, overPath, setOver, doDrop, openSet, toggleOpen };
 
   const rootHot = onUpload && overPath === "";
   return (
@@ -240,7 +244,15 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
           </span>
           <span className="shrink-0 self-center text-[11px] text-[var(--c-ink-muted)]">{n} file{n === 1 ? "" : "s"}</span>
         </button>
-        {ctx.dirZipHref && n > 0 && (
+        {ctx.onDirZip && n > 0 ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); ctx.onDirZip!(fullPath); }}
+            className="shrink-0 rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]"
+            title={`Download this folder as a ZIP (${n} file${n === 1 ? "" : "s"})`}
+          >
+            <Download size={13} />
+          </button>
+        ) : ctx.dirZipHref && n > 0 ? (
           <a
             href={ctx.dirZipHref(fullPath)}
             onClick={(e) => e.stopPropagation()}
@@ -249,7 +261,7 @@ function FolderRow({ node, depth, basePath, ctx }: { node: FolderNode; depth: nu
           >
             <Download size={13} />
           </a>
-        )}
+        ) : null}
         {ctx.onDirToc && (
           <button
             onClick={(e) => { e.stopPropagation(); ctx.onDirToc!(fullPath); }}

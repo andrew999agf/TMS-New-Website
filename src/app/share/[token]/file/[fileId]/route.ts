@@ -29,7 +29,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   // A preview (or a view-only recipient) opens the file inline; anything else
   // is a download. Range requests for media playback are not re-logged.
   const inline = preview || !shareCan(rec.permission, "download");
-  if (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-")) {
+  // Part of a browser-built ZIP (?bulk=1): the archive is logged once by
+  // zip-log, not file by file; resumed pieces (Range) aren't re-logged.
+  const bulk = new URL(req.url).searchParams.get("bulk") === "1";
+  if (!bulk && (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-"))) {
     await logShareAccess(req, { folderId: rec.folderId, recipientId: rec.id, action: inline ? "preview" : "download", fileId: file.id, meta: { name: file.filename, bytes: file.sizeBytes ?? undefined, via: "link" } });
   }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PdfThumb } from "./PdfThumb";
+import { useZipDownloader } from "@/components/share/ZipDownloader";
 import { Download, CheckSquare, List as ListIcon, LayoutGrid, FileText, Eye, Film, ImageIcon, ZoomIn, ZoomOut } from "lucide-react";
 
 export type DirFile = {
@@ -46,7 +47,18 @@ export function SharedDirView({ files, fileBase, zipBase }: { files: DirFile[]; 
   const someChecked = sel.size > 0 && sel.size < files.length;
   const toggle = (id: number) => setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleAll = () => setSel(allChecked ? new Set() : new Set(files.map((f) => f.id)));
-  const download = (href: string) => { const a = document.createElement("a"); a.href = href; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+  // ZIPs are built in this browser from per-file downloads that resume if cut
+  // off, so an archive is only ever saved complete.
+  const zip = useZipDownloader();
+  const logBase = zipBase.replace(/\/zip$/, "/zip-log");
+  const startZip = (rows: DirFile[], scope: "all" | "selected") => {
+    if (!rows.length) return;
+    void zip.start({
+      files: rows.map((f) => ({ id: f.id, name: f.rel, size: f.sizeBytes, url: `${fileBase}/${f.id}?bulk=1` })),
+      zipName: scope === "all" ? "documents.zip" : `Selected documents (${rows.length}).zip`,
+      log: () => { void fetch(logBase, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, files: rows.length, bytes: rows.reduce((n, f) => n + (f.sizeBytes ?? 0), 0), ids: rows.map((f) => f.id) }) }); },
+    });
+  };
 
   return (
     <div className="mt-8">
@@ -75,15 +87,15 @@ export function SharedDirView({ files, fileBase, zipBase }: { files: DirFile[]; 
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
-            onClick={() => download(`${zipBase}?ids=${[...sel].join(",")}`)}
-            disabled={sel.size === 0}
+            onClick={() => startZip(files.filter((f) => sel.has(f.id)), "selected")}
+            disabled={sel.size === 0 || zip.busy}
             className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10 disabled:opacity-40"
           >
             <CheckSquare size={14} /> Download checked{sel.size ? ` (${sel.size})` : ""}
           </button>
           <button
-            onClick={() => download(zipBase)}
-            disabled={files.length === 0}
+            onClick={() => startZip(files, "all")}
+            disabled={files.length === 0 || zip.busy}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-40"
           >
             <Download size={14} /> Download all ({files.length})
@@ -91,6 +103,7 @@ export function SharedDirView({ files, fileBase, zipBase }: { files: DirFile[]; 
         </div>
       </div>
 
+      {zip.panel}
       {files.length === 0 ? (
         <p className="text-sm text-[var(--c-ink-muted)]">This folder is empty.</p>
       ) : (

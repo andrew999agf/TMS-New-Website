@@ -22,7 +22,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   const [f] = await db.select().from(shareFiles).where(and(eq(shareFiles.id, id), eq(shareFiles.folderId, link.folderId)));
   if (!f || !fileInDir(f.filename, link.dirPath)) return new NextResponse("Not found", { status: 404 });
-  if (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-")) {
+  const bulk = new URL(req.url).searchParams.get("bulk") === "1";
+  if (!bulk && (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-"))) {
     await logShareAccess(req, { folderId: link.folderId, action: "preview", fileId: f.id, meta: { name: f.filename, bytes: f.sizeBytes ?? undefined, via: "dir-link", dir: link.dirPath } });
   }
 

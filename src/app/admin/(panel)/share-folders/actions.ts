@@ -218,7 +218,8 @@ export async function notifyRecipientsOfFiles(folderId: number, fileIds: number[
       if (theirs.length === 0) continue;
       const link = `${base}/share/${r.token}`;
       const canDownload = shareCan(r.permission, "download");
-      const zipLink = `${base}/share/${r.token}/zip?ids=${theirs.map((f) => f.id).join(",")}`;
+      // Downloads are built in the browser on the folder page now (no server ZIP).
+      const zipLink = link;
       const rows = theirs.map((f) =>
         `<tr><td style="padding:5px 14px 5px 0;font-size:14px;border-top:1px solid #eee">${esc(docName(f.filename))}</td>` +
         `<td style="padding:5px 0;text-align:right;border-top:1px solid #eee;white-space:nowrap"><a href="${link}" style="font-size:12px;color:#7a1f2b;text-decoration:none">View &rarr;</a></td></tr>`).join("");

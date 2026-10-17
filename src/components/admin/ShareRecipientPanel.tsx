@@ -6,6 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { Upload, FolderPlus, Loader2, Download, Trash2 } from "lucide-react";
 import { ShareFileTree, type TreeFile } from "./ShareFileTree";
 import { ShareFilePreview } from "./ShareFilePreview";
+import { useZipDownloader } from "@/components/share/ZipDownloader";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
 import { shareUploadBlockReason } from "@/lib/share/upload-limits";
 import { uploadFailureReason } from "@/lib/share/upload-failure";
@@ -46,9 +47,15 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady, fileL
   function toggleSelect(ids: number[], checked: boolean) {
     setSelected((prev) => { const n = new Set(prev); for (const id of ids) { if (checked) n.add(id); else n.delete(id); } return n; });
   }
+  const zip = useZipDownloader();
   function bulkDownload() {
-    const ids = [...selected];
-    if (ids.length) window.open(`/share/${token}/zip?ids=${ids.join(",")}`, "_blank");
+    const picked = files.filter((f) => selected.has(f.id));
+    if (!picked.length) return;
+    void zip.start({
+      files: picked.map((f) => ({ id: f.id, name: f.path, size: f.sizeBytes, url: `/share/${token}/file/${f.id}?bulk=1` })),
+      zipName: `Selected documents (${picked.length}).zip`,
+      log: () => { void fetch(`/share/${token}/zip-log`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "selected", files: picked.length, bytes: picked.reduce((n, f) => n + (f.sizeBytes ?? 0), 0), ids: picked.map((f) => f.id) }) }); },
+    });
   }
   function bulkDelete() {
     const ids = [...selected];
@@ -215,7 +222,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady, fileL
       {selected.size > 0 && (caps.download || caps.delete) && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-accent)] bg-[var(--c-accent)]/5 px-3 py-2 text-sm">
           <span className="font-medium text-[var(--c-ink)]">{selected.size} selected</span>
-          {caps.download && <button onClick={bulkDownload} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs hover:bg-[var(--c-surface2)]"><Download size={13} /> Download selected</button>}
+          {caps.download && <button onClick={bulkDownload} disabled={zip.busy} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-2.5 py-1 text-xs hover:bg-[var(--c-surface2)] disabled:opacity-50"><Download size={13} /> Download selected</button>}
           {caps.delete && <button onClick={bulkDelete} className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1 text-xs text-red-600 hover:bg-red-500/10"><Trash2 size={13} /> Delete selected</button>}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]">Clear</button>
         </div>
@@ -245,6 +252,7 @@ export function ShareRecipientPanel({ token, files, dirs, caps, blobReady, fileL
         <ShareFolderCreateDialog parent={dialogParent} busy={creatingDir} onCancel={() => setDialogParent(null)} onCreate={addFolder} />
       )}
 
+      {zip.panel}
       <ShareFilePreview
         file={preview ? { name: preview.base, previewUrl: `/share/${token}/file/${preview.id}?preview=1`, downloadUrl: `/share/${token}/file/${preview.id}`, copyLink: fileLinkToken ? fileLink(preview.id) : undefined } : null}
         onClose={() => setPreview(null)}

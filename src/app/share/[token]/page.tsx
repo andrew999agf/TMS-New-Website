@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { FIRM } from "@/lib/firm";
 import { ShareRecipientPanel } from "@/components/admin/ShareRecipientPanel";
+import { RecipientDownloadAll } from "@/components/share/RecipientDownloadAll";
 import { ShareUploadStatus } from "@/components/admin/ShareUploadStatus";
 import { FolderWorkspaceView } from "@/components/admin/ShareWorkspace";
 import { shareCan, rolePhrase, normalizeMeta, folderSupportsWorkspace } from "@/lib/share/types";
@@ -17,7 +18,7 @@ import { getSession, isFullAdmin } from "@/lib/auth";
 import { ShareAuthGate } from "@/components/admin/ShareAuthGate";
 import { DiscoveryRequestLayout } from "@/components/site/DiscoveryRequestPanel";
 import { OFFICES } from "@/lib/firm";
-import { ShieldCheck, Clock, Download, Eye } from "lucide-react";
+import { ShieldCheck, Clock, Eye } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: `Secure Share — ${FIRM.name}`, robots: { index: false, follow: false } };
@@ -157,9 +158,7 @@ export default async function SharePage({ params, searchParams }: { params: Prom
         <p className="text-sm font-medium text-[var(--c-ink)]">{files.length} document{files.length === 1 ? "" : "s"}</p>
         {caps.download && files.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <a href={`/share/${token}/zip`} className="inline-flex items-center gap-1.5 rounded-md bg-[#7a1f2b] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110">
-              <Download size={14} /> Download all (ZIP)
-            </a>
+            <RecipientDownloadAll token={token} folderName={folder.name} files={files.map((f) => ({ id: f.id, name: f.filename, size: f.sizeBytes }))} />
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Lock } from "lucide-react";
 import { shareUploadBlockReason } from "@/lib/share/upload-limits";
+import { useZipDownloader } from "@/components/share/ZipDownloader";
 import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
@@ -312,9 +313,19 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
   function toggleSelect(ids: number[], checked: boolean) {
     setSelected((prev) => { const n = new Set(prev); for (const id of ids) { if (checked) n.add(id); else n.delete(id); } return n; });
   }
+  // ZIPs are built in this browser from per-file downloads (resumable), so an
+  // archive is only ever saved complete — see lib/share/zip-client.ts.
+  const zip = useZipDownloader();
+  const zipFiles = (rows: FileRow[], stripDir = "") => rows.map((f) => ({ id: f.id, name: stripDir && f.filename.startsWith(stripDir + "/") ? f.filename.slice(stripDir.length + 1) : f.filename, size: f.sizeBytes, url: fileHref(f.id) }));
+  const safeName = (s: string) => (s || "documents").replace(/[\\/:*?"<>|]/g, "-");
   function bulkDownload() {
-    const ids = [...selected];
-    if (ids.length) window.open(`/admin/share-folders/${folderId}/zip?ids=${ids.join(",")}`, "_blank");
+    const picked = files.filter((f) => selected.has(f.id));
+    if (picked.length) void zip.start({ files: zipFiles(picked), zipName: `${safeName(folderName)} - selected (${picked.length}).zip` });
+  }
+  function downloadAll() { void zip.start({ files: zipFiles(files), zipName: `${safeName(folderName)}.zip` }); }
+  function downloadDir(p: string) {
+    const inDir = files.filter((f) => f.filename.startsWith(p + "/"));
+    if (inDir.length) void zip.start({ files: zipFiles(inDir, p), zipName: `${safeName(p.split("/").pop() || folderName)}.zip` });
   }
   function bulkDelete() {
     const ids = [...selected];
@@ -484,7 +495,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
           <FolderPlus size={13} /> New folder
         </button>
         {files.length > 0 && (
-          <a href={`/admin/share-folders/${folderId}/zip`} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><Download size={13} /> Download all</a>
+          <button onClick={downloadAll} disabled={zip.busy} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)] disabled:opacity-50"><Download size={13} /> Download all</button>
         )}
         {files.length > 0 && (
           <button onClick={() => setShowLinkTree(true)} className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2.5 py-1.5 hover:bg-[var(--c-surface2)]"><ListTree size={13} /> Download link tree</button>
@@ -510,6 +521,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         </div>
       )}
 
+      {zip.panel}
       <ShareFileTree
         files={files.map((f) => ({ id: f.id, path: f.filename, sizeBytes: f.sizeBytes, by: f.by, at: f.createdAt }))}
         dirs={dirs}
@@ -528,7 +540,7 @@ function FilesSection({ folderId, folderName, files, dirs, dirInfo, blobReady, f
         onRenameDir={handleRenameDir}
         onRenameFile={handleRenameFile}
         onAddSubdir={(p) => setDialogParent(p)}
-        dirZipHref={(p) => `/admin/share-folders/${folderId}/zip?dir=${encodeURIComponent(p)}`}
+        onDirZip={downloadDir}
         onDirToc={(p) => setTocScope(p)}
         onDirLink={(p) => setDirLinkScope(p)}
         // Only offered when per-file links are switched on for this folder.
