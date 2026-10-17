@@ -17,7 +17,30 @@
  * it goes through a disk-backed blob download with data descriptors.
  */
 
+import { diagLog } from "@/lib/client-diag";
+
 export type ZipInput = { id: number; name: string; size: number | null; url: string };
+
+/* ---------------------------- diagnostics ---------------------------- */
+/** What happened on each download attempt in this page, for the Diagnostics
+ *  report / "Copy details". Names and sizes only — never links or tokens. */
+type FileDiag = { name: string; expected: number | null; got: number; attempts: number; statuses: string[]; ms: number; ok: boolean; error?: string };
+type RunDiag = { startedAt: string; zipName: string; files: number; bytes: number; sink: string; archives: number; perFile: FileDiag[]; result: string; ms?: number };
+const runs: RunDiag[] = [];
+export function zipDiagState(): Record<string, unknown> {
+  const out: Record<string, unknown> = { runsThisPage: runs.length, saveFilePicker: typeof (window as Window & { showSaveFilePicker?: unknown }).showSaveFilePicker === "function" };
+  runs.slice(-3).forEach((r, i) => {
+    const slow = [...r.perFile].filter((f) => f.ms > 0 && f.got > 0).sort((a, b) => a.got / a.ms - b.got / b.ms).slice(0, 3);
+    out[`run${runs.length - Math.min(3, runs.length) + i + 1}`] = {
+      startedAt: r.startedAt, zip: r.zipName, files: r.files, MB: Math.round(r.bytes / 1048576), archives: r.archives, sink: r.sink, result: r.result, seconds: r.ms != null ? Math.round(r.ms / 1000) : undefined,
+      completed: r.perFile.filter((f) => f.ok).length,
+      retried: r.perFile.filter((f) => f.attempts > 1).map((f) => `${f.name} ×${f.attempts} [${f.statuses.join(",")}]`).slice(0, 10),
+      failed: r.perFile.filter((f) => !f.ok && f.error).map((f) => `${f.name}: ${f.error} (${f.got}/${f.expected ?? "?"} bytes, ${f.attempts} tries, ${f.statuses.join(",")})`).slice(0, 10),
+      slowest: slow.map((f) => `${f.name} ${(f.got / 1048576 / (f.ms / 1000)).toFixed(1)} MB/s`),
+    };
+  });
+  return out;
+}
 export type ZipProgress = { phase: "fetching" | "finishing" | "done" | "error"; fileIndex: number; fileCount: number; fileName: string; bytesDone: number; bytesTotal: number; archive: number; archives: number; message?: string };
 
 const ARCHIVE_CAP = 3.8 * 1024 ** 3;
@@ -63,20 +86,24 @@ function dosDate(d: Date) { return (((d.getFullYear() - 1980) << 9) | ((d.getMon
 /* --------------------------- resumable fetch -------------------------- */
 /** Pull a URL fully, resuming with Range requests whenever the transfer breaks
  *  before the expected size. Calls onChunk in order; returns bytes received. */
-async function pullResumable(url: string, expected: number | null, onChunk: (c: Uint8Array) => Promise<void>, onProgress: (got: number, total: number | null) => void, signal: AbortSignal): Promise<{ bytes: number; crc: number }> {
+async function pullResumable(url: string, expected: number | null, onChunk: (c: Uint8Array) => Promise<void>, onProgress: (got: number, total: number | null) => void, signal: AbortSignal, fd: FileDiag): Promise<{ bytes: number; crc: number }> {
   let got = 0, crc = 0, total = expected && expected > 0 ? expected : null, attempts = 0;
+  const note = (s: string) => { fd.statuses.push(s); fd.attempts = attempts; fd.got = got; fd.expected = total; };
   for (;;) {
     if (signal.aborted) throw new Error("cancelled");
     attempts++;
+    if (got > 0) diagLog("zip", `resuming ${fd.name} at ${got}${total ? ` of ${total}` : ""} (try ${attempts})`);
     let res: Response;
     try {
       res = await fetch(url, { headers: got > 0 ? { Range: `bytes=${got}-` } : {}, signal, cache: "no-store" });
     } catch (err) {
       if (signal.aborted) throw new Error("cancelled");
+      note(`net:${String((err as Error).message).slice(0, 40)}`);
       if (attempts >= MAX_ATTEMPTS) throw new Error(`network error after ${attempts} tries: ${(err as Error).message}`);
       await new Promise((r) => setTimeout(r, Math.min(8000, 500 * attempts)));
       continue;
     }
+    note(String(res.status));
     if (got > 0 && res.status === 200) throw new Error("the server would not resume the file"); // can't rewind the archive
     if (!(res.status === 200 || res.status === 206)) {
       if (attempts >= MAX_ATTEMPTS || res.status === 403 || res.status === 404) throw new Error(`server said ${res.status}`);
@@ -91,6 +118,8 @@ async function pullResumable(url: string, expected: number | null, onChunk: (c: 
       const cl = res.headers.get("content-length");
       if (m && Number(m[1]) > 0) total = Number(m[1]);
       else if (res.status === 200 && cl && Number(cl) > 0) total = Number(cl);
+      if (expected && total && expected !== total) diagLog("zip", `${fd.name}: server length ${total} differs from recorded ${expected}`);
+      fd.expected = total;
     }
     if (!res.body) throw new Error("empty response");
     const reader = res.body.getReader();
@@ -103,8 +132,9 @@ async function pullResumable(url: string, expected: number | null, onChunk: (c: 
     } catch (err) {
       if (signal.aborted) throw new Error("cancelled");
       // transfer broke mid-way: loop and resume from `got`
-      void err;
+      note(`cut@${got}:${String((err as Error)?.message ?? err).slice(0, 40)}`);
     }
+    fd.got = got;
     if (total == null || got >= total) {
       if (total != null && got > total) throw new Error("received more bytes than the file's size");
       return { bytes: got, crc };
@@ -116,7 +146,7 @@ async function pullResumable(url: string, expected: number | null, onChunk: (c: 
 /* --------------------------------- zip -------------------------------- */
 type Central = { name: Uint8Array; crc: number; size: number; offset: number; flags: number; time: number; date: number };
 
-async function writeArchive(sink: Sink, files: ZipInput[], report: (p: Partial<ZipProgress> & { fileIndex: number; fileName: string; bytesDone: number }) => void, signal: AbortSignal) {
+async function writeArchive(sink: Sink, files: ZipInput[], report: (p: Partial<ZipProgress> & { fileIndex: number; fileName: string; bytesDone: number }) => void, signal: AbortSignal, run: RunDiag) {
   let offset = 0;
   const central: Central[] = [];
   const out = async (c: Uint8Array) => { await sink.write(c); offset += c.byteLength; };
@@ -134,7 +164,14 @@ async function writeArchive(sink: Sink, files: ZipInput[], report: (p: Partial<Z
     const header = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(flags), ...u16(0), ...u16(dosTime(now)), ...u16(dosDate(now)), ...u32(0), ...u32(0), ...u32(0), ...u16(name.length), ...u16(0), ...name]);
     await out(header);
     report({ fileIndex: i, fileName: f.name, bytesDone: 0 });
-    const { bytes, crc } = await pullResumable(f.url, f.size, (c) => out(c), (got) => report({ fileIndex: i, fileName: f.name, bytesDone: got }), signal);
+    const fd: FileDiag = { name: f.name, expected: f.size, got: 0, attempts: 0, statuses: [], ms: 0, ok: false };
+    run.perFile.push(fd);
+    const t0 = performance.now();
+    let pulled: { bytes: number; crc: number };
+    try { pulled = await pullResumable(f.url, f.size, (c) => out(c), (got) => report({ fileIndex: i, fileName: f.name, bytesDone: got }), signal, fd); }
+    catch (err) { fd.ms = performance.now() - t0; fd.error = String((err as Error)?.message ?? err); throw err; }
+    fd.ms = performance.now() - t0; fd.ok = true;
+    const { bytes, crc } = pulled;
     if (bytes > 0xffffffff) throw new Error(`${f.name} is over 4 GB — too large for a ZIP without ZIP64`);
     if (sink.seekable && sink.patch) {
       await sink.patch(headerOffset + 14, new Uint8Array([...u32(crc), ...u32(bytes), ...u32(bytes)]));
@@ -175,17 +212,23 @@ export async function downloadZip(opts: { files: ZipInput[]; zipName: string; on
   const groups = planArchives(opts.files);
   const stem = opts.zipName.replace(/\.zip$/i, "");
   const totalBytes = opts.files.reduce((n, f) => n + (f.size ?? 0), 0);
+  const run: RunDiag = { startedAt: new Date().toISOString(), zipName: opts.zipName, files: opts.files.length, bytes: totalBytes, sink: "?", archives: groups.length, perFile: [], result: "running" };
+  runs.push(run); if (runs.length > 5) runs.shift();
+  const started = performance.now();
+  diagLog("zip", `start ${opts.zipName}: ${opts.files.length} files, ${Math.round(totalBytes / 1048576)} MB, ${groups.length} archive(s)`);
   let bytesBefore = 0, written = 0;
+  try {
   for (let g = 0; g < groups.length; g++) {
     const files = groups[g];
     const name = groups.length > 1 ? `${stem} (part ${g + 1} of ${groups.length}).zip` : `${stem}.zip`;
     const sink = await openSink(name);
+    run.sink = sink.seekable ? "save-file picker (streamed to disk)" : "browser download (in-memory blob)";
     try {
       let fileBase = 0, lastIdx = -1;
       await writeArchive(sink, files, (p) => {
         if (p.fileIndex !== lastIdx) { fileBase = files.slice(0, p.fileIndex).reduce((n, f) => n + (f.size ?? 0), 0); lastIdx = p.fileIndex; }
         opts.onProgress?.({ phase: "fetching", fileIndex: opts.files.indexOf(files[p.fileIndex]), fileCount: opts.files.length, fileName: p.fileName, bytesDone: bytesBefore + fileBase + p.bytesDone, bytesTotal: totalBytes, archive: g + 1, archives: groups.length });
-      }, signal);
+      }, signal, run);
       opts.onProgress?.({ phase: "finishing", fileIndex: opts.files.length - 1, fileCount: opts.files.length, fileName: "", bytesDone: bytesBefore + files.reduce((n, f) => n + (f.size ?? 0), 0), bytesTotal: totalBytes, archive: g + 1, archives: groups.length });
       await sink.close();
       written += files.length;
@@ -195,6 +238,14 @@ export async function downloadZip(opts: { files: ZipInput[]; zipName: string; on
       throw err;
     }
   }
+  } catch (err) {
+    run.ms = performance.now() - started;
+    run.result = /abort|cancel/i.test(String((err as Error)?.message)) ? "cancelled by user" : `failed: ${String((err as Error)?.message ?? err)}`;
+    diagLog("zip", `${run.result} after ${Math.round(run.ms / 1000)} s`);
+    throw err;
+  }
+  run.ms = performance.now() - started; run.result = "saved";
+  diagLog("zip", `saved ${opts.zipName} in ${Math.round(run.ms / 1000)} s`);
   opts.onProgress?.({ phase: "done", fileIndex: opts.files.length - 1, fileCount: opts.files.length, fileName: "", bytesDone: totalBytes, bytesTotal: totalBytes, archive: groups.length, archives: groups.length });
   return { archives: groups.length, files: written, bytes: totalBytes };
 }

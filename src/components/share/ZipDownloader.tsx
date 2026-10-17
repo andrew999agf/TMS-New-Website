@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, X } from "lucide-react";
-import { downloadZip, type ZipInput, type ZipProgress } from "@/lib/share/zip-client";
+import { downloadZip, zipDiagState, type ZipInput, type ZipProgress } from "@/lib/share/zip-client";
+import { diagBrowserText, diagHook, diagRegister } from "@/lib/client-diag";
 
 type Start = { files: ZipInput[]; zipName: string; /** Fire-and-forget: tell the server a bulk download started (for the firm's log). */ log?: () => void };
 
@@ -17,6 +18,9 @@ export function useZipDownloader() {
   const [state, setState] = useState<{ p: ZipProgress | null; error: string | null; done: { files: number; archives: number; bytes: number } | null; busy: boolean; zipName: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastRef = useRef<Start | null>(null);
+  const [copied, setCopied] = useState(false);
+  // What this page's downloads did, for the Diagnostics report / Copy details.
+  useEffect(() => { diagHook(); return diagRegister("zip downloads", zipDiagState); }, []);
 
   const start = useCallback(async (s: Start) => {
     if (!s.files.length) return;
@@ -37,6 +41,10 @@ export function useZipDownloader() {
 
   const cancel = () => { abortRef.current?.abort(); };
   const retry = () => { if (lastRef.current) void start(lastRef.current); };
+  const copyDetails = async () => {
+    const text = `ZIP DOWNLOAD — couldn't finish\n${diagBrowserText("THIS BROWSER")}`;
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { window.prompt("Copy these details:", text); }
+  };
 
   const panel = state ? (
     <div className="fixed bottom-4 right-4 z-[90] w-[min(94vw,420px)] rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-4 text-sm shadow-2xl" role="status" aria-live="polite" data-testid="zip-panel">
@@ -58,7 +66,7 @@ export function useZipDownloader() {
             <p className="mt-1 flex items-start gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><Check size={14} className="mt-0.5 shrink-0" /> Saved — {state.done.files} file{state.done.files === 1 ? "" : "s"}, {fmt(state.done.bytes)}{state.done.archives > 1 ? `, in ${state.done.archives} archives` : ""}. Every file was received in full.</p>
           )}
           {state.error && (
-            <p className="mt-1 text-xs text-red-700 dark:text-red-300">Couldn&apos;t finish the download ({state.error}). Nothing partial was saved. <button onClick={retry} className="underline">Try again</button></p>
+            <p className="mt-1 text-xs text-red-700 dark:text-red-300">Couldn&apos;t finish the download ({state.error}). Nothing partial was saved. <button onClick={retry} className="underline">Try again</button> · <button onClick={() => void copyDetails()} className="underline" title="Copies a short technical note (file names, sizes, what the server answered) to paste into a message to the firm — no links or document contents">{copied ? "Copied" : "Copy details"}</button></p>
           )}
         </div>
         {state.busy ? (

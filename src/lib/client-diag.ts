@@ -50,3 +50,19 @@ export function diagSnapshot(): { browser: Record<string, unknown>; state: Recor
   for (const [k, fn] of providers) { try { state[k] = fn(); } catch (err) { state[k] = { error: String(err) }; } }
   return { browser, state, events: [...events] };
 }
+
+/** The browser half of a report as plain text (the Discovery and Share
+ *  Folder diagnostics both start from this). */
+export function diagBrowserText(heading = "THIS BROWSER"): string {
+  const snap = diagSnapshot();
+  const lines: string[] = [heading];
+  for (const [k, v] of Object.entries(snap.browser)) lines.push(`  ${k}: ${v ?? "n/a"}`);
+  for (const [name, st] of Object.entries(snap.state)) {
+    lines.push(`  ${name}:`);
+    for (const [k, v] of Object.entries(st)) lines.push(`    ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+  }
+  lines.push(`  recent browser events (${snap.events.length}):`);
+  for (const e of snap.events.slice(-40)) lines.push(`    ${e}`);
+  if (!snap.events.length) lines.push("    (none)");
+  return lines.join("\n");
+}

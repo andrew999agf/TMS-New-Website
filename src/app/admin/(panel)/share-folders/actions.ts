@@ -9,7 +9,10 @@ import { revalidatePath } from "next/cache";
 import { eq, and, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { shareFolders, shareFiles, shareRecipients, shareDirs, shareDirLinks, portalUsers } from "@/db/schema";
+import { shareFolders, shareFiles, shareRecipients, shareDirs, shareDirLinks, portalUsers, shareAccessLog, auditLog } from "@/db/schema";
+import { desc, gte, sql } from "drizzle-orm";
+import { describeAccess } from "@/lib/share/access-describe";
+import { isBlobConfigured } from "@/lib/blob";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
@@ -686,5 +689,107 @@ export async function setRecipientRevoked(recipientId: number, revoked: boolean)
   } catch (err) {
     console.error("[share] setRecipientRevoked failed:", err);
     return { ok: false as const, error: "Couldn't update access — try again." };
+  }
+}
+
+/* ------------------------------ diagnostics ------------------------------ */
+
+const mb = (n: number | null | undefined) => (n == null ? "?" : `${(n / 1048576).toFixed(n < 1048576 ? 2 : 1)} MB`);
+
+/**
+ * One copyable text report for a share folder — what the database holds,
+ * how the stored files answer a direct request (length, range support,
+ * speed), and the recent access log — for pasting to support when a
+ * download or a share link misbehaves. Names, sizes and counts only: no
+ * links, tokens or secrets.
+ */
+export async function shareFolderDiagnostics(folderId: number): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  await guard();
+  if (!db) return { ok: false, error: "Database not configured." };
+  try {
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+    if (!folder) return { ok: false, error: "Folder not found." };
+    const meta = normalizeMeta(folder.meta);
+    const [files, recipients, dirs, dirLinks] = await Promise.all([
+      db.select({ id: shareFiles.id, filename: shareFiles.filename, url: shareFiles.url, pathname: shareFiles.pathname, contentType: shareFiles.contentType, sizeBytes: shareFiles.sizeBytes, createdAt: shareFiles.createdAt }).from(shareFiles).where(eq(shareFiles.folderId, folderId)),
+      db.select({ id: shareRecipients.id, email: shareRecipients.email, name: shareRecipients.name, revoked: shareRecipients.revoked, expiresAt: shareRecipients.expiresAt, lastAccessAt: shareRecipients.lastAccessAt, permission: shareRecipients.permission, kind: shareRecipients.kind }).from(shareRecipients).where(eq(shareRecipients.folderId, folderId)),
+      db.select({ path: shareDirs.path }).from(shareDirs).where(eq(shareDirs.folderId, folderId)),
+      db.select({ dirPath: shareDirLinks.dirPath, revoked: shareDirLinks.revoked }).from(shareDirLinks).where(eq(shareDirLinks.folderId, folderId)),
+    ]);
+    const L: string[] = [];
+    L.push(`SHARE FOLDER DIAGNOSTICS — ${new Date().toISOString()}`);
+    L.push(`  folder #${folder.id}: ${folder.name} · case ${folder.caseNumber || "—"} · type ${folder.type}${folder.archived ? " · ARCHIVED" : ""}`);
+    L.push(`  open link: ${folder.requireAuth ? "sign-in required" : "anyone with the link"} · per-file links: ${meta.fileLinks ? "on" : "off"} · public token: ${meta.publicToken ? "set" : "none"}`);
+    L.push(`  server: blob store ${isBlobConfigured() ? "configured" : "NOT configured"} · region ${process.env.VERCEL_REGION ?? "local"} · node ${process.version}`);
+
+    const total = files.reduce((n, f) => n + (f.sizeBytes ?? 0), 0);
+    const noSize = files.filter((f) => !f.sizeBytes || f.sizeBytes <= 0);
+    const huge = files.filter((f) => (f.sizeBytes ?? 0) > 3.8 * 1024 ** 3);
+    const hosts = new Map<string, number>();
+    for (const f of files) { let h = "?"; try { h = new URL(f.url).host; } catch { /* keep ? */ } hosts.set(h, (hosts.get(h) ?? 0) + 1); }
+    L.push("");
+    L.push(`FILES: ${files.length} · ${mb(total)} total · ${dirs.length} sub-folder(s) · ${dirLinks.length} sub-folder link(s) (${dirLinks.filter((d) => d.revoked).length} revoked)`);
+    L.push(`  without a recorded size: ${noSize.length}${noSize.length ? ` (${noSize.slice(0, 5).map((f) => f.filename).join("; ")}${noSize.length > 5 ? "; …" : ""})` : ""}`);
+    L.push(`  over 3.8 GB (needs its own archive, may fail): ${huge.length}${huge.length ? ` (${huge.map((f) => `${f.filename} ${mb(f.sizeBytes)}`).join("; ")})` : ""}`);
+    L.push(`  storage hosts: ${[...hosts.entries()].map(([h, n]) => `${h} ×${n}`).join(", ") || "none"}`);
+    const types = new Map<string, number>();
+    for (const f of files) { const t = (f.contentType || "unknown").split(";")[0]; types.set(t, (types.get(t) ?? 0) + 1); }
+    L.push(`  types: ${[...types.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, n]) => `${t} ×${n}`).join(", ") || "—"}`);
+    const largest = [...files].sort((a, b) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0)).slice(0, 5);
+    L.push(`  largest: ${largest.map((f) => `${f.filename} (${mb(f.sizeBytes)})`).join("; ") || "—"}`);
+
+    // Ask storage directly about the largest files: does it answer, with what
+    // length, and does it accept byte ranges (what resumable downloads need)?
+    L.push("");
+    L.push("STORAGE CHECK (largest files, asked directly from the server):");
+    for (const f of largest) {
+      const t0 = Date.now();
+      try {
+        const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 8000);
+        const head = await fetch(f.url, { method: "HEAD", signal: ac.signal, cache: "no-store" });
+        clearTimeout(timer);
+        const len = Number(head.headers.get("content-length") ?? 0);
+        const ac2 = new AbortController(); const timer2 = setTimeout(() => ac2.abort(), 8000);
+        const r = await fetch(f.url, { headers: { Range: "bytes=0-1023" }, signal: ac2.signal, cache: "no-store" });
+        clearTimeout(timer2);
+        const body = await r.arrayBuffer();
+        const sizeNote = f.sizeBytes && len && f.sizeBytes !== len ? ` ⚠ recorded ${f.sizeBytes} ≠ actual ${len}` : "";
+        L.push(`  ${f.filename}: HEAD ${head.status} length ${len || "?"}${sizeNote} · range request → ${r.status}${r.status === 206 ? " (resumable)" : r.status === 200 ? ` (NOT resumable; sent ${body.byteLength} bytes)` : ""} · ${Date.now() - t0} ms`);
+      } catch (err) {
+        L.push(`  ${f.filename}: FAILED after ${Date.now() - t0} ms — ${(err as Error).message}`);
+      }
+    }
+    if (!largest.length) L.push("  (no files)");
+
+    L.push("");
+    const now = Date.now();
+    L.push(`RECIPIENTS: ${recipients.length} · active ${recipients.filter((r) => !r.revoked && !(r.expiresAt && r.expiresAt.getTime() < now)).length} · revoked ${recipients.filter((r) => r.revoked).length} · expired ${recipients.filter((r) => !r.revoked && r.expiresAt && r.expiresAt.getTime() < now).length}`);
+    for (const r of recipients.slice(0, 25)) L.push(`  ${r.name || r.email} <${r.email}> · ${r.kind || "—"} / ${r.permission}${r.revoked ? " · revoked" : ""}${r.expiresAt ? ` · expires ${r.expiresAt.toISOString().slice(0, 10)}` : ""} · last opened ${r.lastAccessAt ? r.lastAccessAt.toISOString() : "never"}`);
+
+    const since = new Date(now - 14 * 86400_000);
+    const [recent, counts, audits] = await Promise.all([
+      db.select().from(shareAccessLog).where(eq(shareAccessLog.folderId, folderId)).orderBy(desc(shareAccessLog.at)).limit(40),
+      db.select({ action: shareAccessLog.action, n: sql<number>`count(*)::int` }).from(shareAccessLog).where(and(eq(shareAccessLog.folderId, folderId), gte(shareAccessLog.at, since))).groupBy(shareAccessLog.action),
+      db.select({ at: auditLog.createdAt, action: auditLog.action, who: auditLog.adminEmail, detail: auditLog.summary }).from(auditLog).where(and(eq(auditLog.entity, "share-folder"), eq(auditLog.entityId, String(folderId)))).orderBy(desc(auditLog.createdAt)).limit(15).catch(() => [] as { at: Date; action: string; who: string | null; detail: string | null }[]),
+    ]);
+    const recById = new Map(recipients.map((r) => [r.id, r]));
+    const fileById = new Map(files.map((f) => [f.id, f.filename]));
+    L.push("");
+    L.push(`RECIPIENT ACTIVITY — last 14 days: ${counts.map((c) => `${c.action} ×${c.n}`).join(", ") || "none"}`);
+    L.push(`  last ${recent.length} entries:`);
+    for (const r of recent) {
+      const rec = r.recipientId ? recById.get(r.recipientId) : null;
+      const d = describeAccess({ action: r.action, meta: (r.meta ?? {}) as Record<string, unknown>, fileName: r.fileId ? fileById.get(r.fileId) : undefined });
+      L.push(`    ${r.at.toISOString()} · ${rec ? rec.name || rec.email : `(${d.viaLabel})`} · ${d.label}${d.document ? ` · ${d.document}` : ""}${d.detail ? ` · ${d.detail}` : ""}${r.userAgent ? ` · ${r.userAgent.slice(0, 60)}` : ""}`);
+    }
+    if (!recent.length) L.push("    (none)");
+    if (audits.length) {
+      L.push("");
+      L.push("FIRM ACTIONS ON THIS FOLDER (recent):");
+      for (const a of audits) L.push(`  ${a.at.toISOString()} · ${a.who ?? "—"} · ${a.action} · ${(a.detail ?? "").slice(0, 160)}`);
+    }
+    return { ok: true, text: L.join("\n") };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
   }
 }

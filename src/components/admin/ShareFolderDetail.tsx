@@ -10,6 +10,7 @@ import {
 import { Lock } from "lucide-react";
 import { shareUploadBlockReason } from "@/lib/share/upload-limits";
 import { useZipDownloader } from "@/components/share/ZipDownloader";
+import { DiagnosticsButton } from "./DiagnosticsButton";
 import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
@@ -23,7 +24,7 @@ import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
   registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, renameFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
-  archiveFolder, deleteFolder, updateFolder, setFolderFileLinks, getOrCreateDirLink, revokeDirLink,
+  archiveFolder, deleteFolder, updateFolder, setFolderFileLinks, getOrCreateDirLink, revokeDirLink, shareFolderDiagnostics,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
 
@@ -609,6 +610,8 @@ function ActivitySection({ folderId, activity, recipients }: { folderId: number;
         <a href={`/admin/share-folders/${folderId}/access-log`} className="btn btn-outline ml-auto inline-flex items-center gap-1.5 text-xs py-1.5 px-3" title="Every opening, preview, download and ZIP, with time, recipient, document, size and device — as a spreadsheet">
           <Download size={13} /> Download access log (CSV)
         </a>
+        <DiagnosticsButton fetchServer={() => shareFolderDiagnostics(folderId)} browserHeading="THIS BROWSER — share folder page"
+          title="Build a copyable diagnostics report for this folder — what's stored, whether the files answer and resume properly, recent downloads — to paste to support when a download or link misbehaves" />
       </div>
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
         <span><strong>{activity.downloads + activity.zips}</strong> download{activity.downloads + activity.zips === 1 ? "" : "s"} <span className="text-xs text-[var(--c-ink-muted)]">({activity.downloads} single · {activity.zips} ZIP)</span></span>
