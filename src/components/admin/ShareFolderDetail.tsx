@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import {
-  Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check,
+  Upload, Trash2, Loader2, Mail, Send, RotateCw, Ban, Check, Copy,
   Archive, ArchiveRestore, Pencil, AlertTriangle, Link2, FolderPlus, Eye,
 } from "lucide-react";
 import { Lock } from "lucide-react";
@@ -25,7 +25,7 @@ import { ListTree, ListOrdered, FileText, X } from "lucide-react";
 import { FolderWorkspaceEditor } from "./ShareWorkspace";
 import { filesFromDrop, fromInput, isJunk, countDropItems, type PickedFile } from "@/lib/share/drop";
 import {
-  registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, renameFile, addRecipient, resendInvite, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
+  registerShareFile, notifyRecipientsOfFiles, deleteFile, deleteFiles, deleteDir, renameDir, renameFile, addRecipient, resendInvite, sendInviteNow, setRecipientRevoked, setRecipientPermission, setRecipientExpiry, createDir, clearUpload,
   archiveFolder, deleteFolder, updateFolder, setFolderFileLinks, getOrCreateDirLink, revokeDirLink, shareFolderDiagnostics,
 } from "@/app/admin/(panel)/share-folders/actions";
 import { Download } from "lucide-react";
@@ -701,6 +701,8 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
   function pick(c: Contact) { setEmail(c.email); setName(c.name); setAck(false); setOpenSug(false); }
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  // After adding: ask whether to email now; "Not now" shows the link instead.
+  const [added, setAdded] = useState<{ id: number; email: string; name: string; link: string; step: "ask" | "link"; sending?: boolean; sendError?: string | null; copied?: boolean } | null>(null);
   const [pending, start] = useTransition();
 
   const warnings = useMemo(() => {
@@ -717,7 +719,9 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
     start(async () => {
       const res = await addRecipient(folderId, email, name, permission, kind, hasDanger ? ack : true, expiry || undefined);
       if (res.ok) {
-        setOkMsg(res.error ?? `Invite sent to ${email.trim().toLowerCase()}.`);
+        const addedEmail = email.trim().toLowerCase();
+        if (res.recipientId && res.link) setAdded({ id: res.recipientId, email: addedEmail, name: name.trim(), link: res.link, step: "ask" });
+        else setOkMsg(`${addedEmail} added.`);
         setEmail(""); setName(""); setAck(false);
         router.refresh();
       } else {
@@ -790,6 +794,35 @@ function AddRecipient({ folderId, typeKey, contacts }: { folderId: number; typeK
       )}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       {okMsg && <p className="mt-2 inline-flex items-center gap-1 text-xs text-green-600"><Check size={13} /> {okMsg}</p>}
+      {added && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setAdded(null); }}>
+          <div className="w-full max-w-md rounded-lg border border-[var(--c-accent)] bg-[var(--c-surface)] p-5" role="dialog" aria-label={added.step === "ask" ? "Send the invitation email?" : "Share link"} data-testid="added-dialog">
+            {added.step === "ask" ? (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">{added.name || added.email} has been added</h3>
+                <p className="mt-1 text-sm text-[var(--c-ink-muted)]">Send them the invitation email now? It carries their private link{added.name ? ` and is addressed to ${added.name}` : ""}.</p>
+                {added.sendError && <p className="mt-2 text-sm text-red-600">{added.sendError}</p>}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button onClick={() => setAdded({ ...added, step: "link" })} disabled={added.sending} className="btn btn-outline py-1.5 px-3 text-sm">Not now, show me the link</button>
+                  <button onClick={() => { setAdded({ ...added, sending: true, sendError: null }); sendInviteNow(added.id).then((r) => { if (r.ok) { setAdded(null); setOkMsg(`Invite sent to ${added.email}.`); router.refresh(); } else setAdded((a) => (a ? { ...a, sending: false, sendError: r.error ?? "Email didn't send." } : a)); }); }} disabled={added.sending} className="btn btn-accent inline-flex items-center gap-1.5 py-1.5 px-3 text-sm disabled:opacity-50">
+                    {added.sending ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} Send the email
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="font-[family-name:var(--font-display)] text-lg">Share link for {added.name || added.email}</h3>
+                <p className="mt-1 text-sm text-[var(--c-ink-muted)]">This is their private link. Anyone holding it can open the folder as them, so pass it along the way you would a password. You can email the invitation later with <strong>Resend invite</strong> in the recipient list.</p>
+                <div className="mt-3 flex items-center gap-2 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2">
+                  <input readOnly value={added.link} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-xs outline-none" data-testid="added-link" />
+                  <button onClick={() => { navigator.clipboard?.writeText(added.link); setAdded({ ...added, copied: true }); setTimeout(() => setAdded((a) => (a ? { ...a, copied: false } : a)), 1500); }} className="btn btn-accent inline-flex items-center gap-1.5 py-1 px-2.5 text-xs">{added.copied ? <Check size={13} /> : <Copy size={13} />} {added.copied ? "Copied" : "Copy"}</button>
+                </div>
+                <div className="mt-4 flex justify-end"><button onClick={() => setAdded(null)} className="btn btn-outline py-1.5 px-3 text-sm">Done</button></div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

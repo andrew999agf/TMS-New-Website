@@ -572,7 +572,7 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
   return sendEmail({ to: email, cc, fromName: `${FIRM.name} — Secure Share`, subject: `${FIRM.shortName} shared "${folderName}" with ${recipientLabel}`, html });
 }
 
-export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean, expiresAtIso?: string): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean }> {
+export async function addRecipient(folderId: number, email: string, name: string, permission: string, kind: string, acknowledged: boolean, expiresAtIso?: string, opts?: { sendEmail?: boolean }): Promise<{ ok: boolean; error?: string; warnings?: ShareWarning[]; needsAck?: boolean; recipientId?: number; link?: string }> {
   const session = await guard();
   if (!db) return { ok: false, error: "Database not configured." };
   const cleanEmail = email.trim().toLowerCase();
@@ -599,7 +599,7 @@ export async function addRecipient(folderId: number, email: string, name: string
     const expiresAt = custom && !Number.isNaN(custom.getTime()) && custom.getTime() > Date.now()
       ? custom
       : new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
-    await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt });
+    const [inserted] = await db.insert(shareRecipients).values({ folderId, email: cleanEmail, name: name.trim(), token, permission: perm, kind: cleanKind, invitedBy: session.email, expiresAt }).returning({ id: shareRecipients.id });
     // Directory entry (one per person, keyed by email) — created if new. When a
     // name is provided we remember it (so a corrected name sticks for next time);
     // an empty name never blanks an existing one.
@@ -609,13 +609,40 @@ export async function addRecipient(folderId: number, email: string, name: string
       await db.insert(portalUsers).values({ email: cleanEmail, name: "", kind: cleanKind }).onConflictDoNothing({ target: portalUsers.email });
     }
     await db.update(shareFolders).set({ updatedAt: new Date() }).where(eq(shareFolders.id, folderId));
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc(), folder.requireAuth);
-    await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}`);
+    // The invitation email is NOT sent automatically: the person is added and
+    // the firm decides, right then, whether to email them now or pass the link
+    // along some other way (the "Resend invite" button sends it later).
+    let emailNote: string | undefined;
+    if (opts?.sendEmail) {
+      const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc(), folder.requireAuth);
+      if (!res.sent) emailNote = "Added, but the invite email didn't send (check email settings).";
+    }
+    await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}${opts?.sendEmail ? " (invite emailed)" : " (no email sent)"}`);
     revalidatePath(`/admin/share-folders/${folderId}`);
-    return { ok: true, error: res.sent ? undefined : "Added, but the invite email didn't send (check email settings)." };
+    return { ok: true, error: emailNote, recipientId: inserted.id, link: `${await baseUrl()}/share/${token}` };
   } catch (err) {
     console.error("[share] addRecipient failed:", err);
     return { ok: false, error: "Couldn't share. Try Settings → Database updates, then retry." };
+  }
+}
+
+/** Send the invitation email for a recipient who was added without one.
+ *  Leaves the expiry exactly as the firm set it (unlike a re-issue). */
+export async function sendInviteNow(recipientId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [r] = await db.select().from(shareRecipients).where(eq(shareRecipients.id, recipientId));
+    if (!r) return { ok: false as const, error: "Not found." };
+    const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, r.folderId));
+    if (!folder) return { ok: false as const, error: "Folder not found." };
+    const expiresAt = r.expiresAt ?? new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth);
+    await audit(session.email, "update", "share-recipient", String(r.id), `Invite emailed to ${r.email}`);
+    return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
+  } catch (err) {
+    console.error("[share] sendInviteNow failed:", err);
+    return { ok: false as const, error: "Couldn't send — try again." };
   }
 }
 
