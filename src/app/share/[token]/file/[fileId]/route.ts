@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { shareFiles, shareRecipients } from "@/db/schema";
+import { shareFiles, shareFolders, shareRecipients } from "@/db/schema";
+import { portalEmail } from "@/lib/share/portal-session";
+import { getSession, isFullAdmin } from "@/lib/auth";
 import { logShareAccess } from "@/lib/share/access-log";
 import { and, eq } from "drizzle-orm";
 import { shareCan } from "@/lib/share/types";
@@ -20,6 +22,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const [rec] = await db.select().from(shareRecipients).where(eq(shareRecipients.token, token));
   if (!rec || rec.revoked) return NextResponse.json({ error: "This link is no longer active." }, { status: 403 });
   if (rec.expiresAt && rec.expiresAt < new Date()) return NextResponse.json({ error: "This link has expired. Contact max@texaslawsmith.com to have it re-issued." }, { status: 403 });
+
+  // Same sign-in requirement as the share page for sensitive folders.
+  const [folder] = await db.select({ requireAuth: shareFolders.requireAuth }).from(shareFolders).where(eq(shareFolders.id, rec.folderId));
+  if (folder?.requireAuth || rec.requireAuth) {
+    const who = await portalEmail();
+    if (!who || who !== rec.email.toLowerCase()) {
+      const admin = await getSession().catch(() => null);
+      if (!admin || !isFullAdmin(admin.role)) return NextResponse.json({ error: "Sign in on the share page first." }, { status: 401 });
+    }
+  }
 
   const id = Number(fileId);
   if (!Number.isFinite(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
