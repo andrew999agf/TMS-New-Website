@@ -6,22 +6,34 @@ import { Check, Loader2, RotateCcw, Tag, X } from "lucide-react";
 import { loadPdfjs } from "./pdf-loader";
 import { applySticker, setDocSticker, setStickerDefaults, stickerBacklog } from "@/app/admin/(panel)/exhibit-reviewer/actions";
 import {
-  PARTIES, STICKER_COLORS, STICKER_W, STICKER_H, defaultPosition, normalizeDefaults, stickerSpec, wrapTitle,
-  type DocSticker, type PartyKey, type StickerColor, type StickerDefaults, type StickerSpec,
+  PARTIES, STICKER_COLORS, STICKER_W, STICKER_H, normalizeDefaults, stickerSpec, layoutSticker,
+  type DocSticker, type Measure, type PartyKey, type StickerColor, type StickerDefaults, type StickerSpec,
 } from "@/lib/exhibit-review/stickers";
 
 export type StickerDocLite = { id: number; side: string; label: string; number: number | null; sticker: DocSticker; stickerApplied: boolean; isVideo: boolean; hasFile: boolean; fileTag: string };
 
-/** The sticker as it will print, drawn with plain CSS for the preview. */
+/** Text widths for the preview, from a canvas using the same face the PDF uses (Helvetica/Arial). */
+let measureCtx: CanvasRenderingContext2D | null = null;
+const cssMeasure: Measure = (text, size, bold) => {
+  if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return text.length * size * 0.55;
+  measureCtx.font = `${bold ? "700" : "400"} ${size}px Helvetica, Arial, sans-serif`;
+  return measureCtx.measureText(text).width;
+};
+
+/** The sticker as it will print: same layout routine as the PDF stamp, scaled to pixels. */
 export function StickerFace({ spec, widthPx }: { spec: StickerSpec; widthPx: number }) {
-  const k = widthPx / STICKER_W; // px per point
-  const lines = wrapTitle(spec.title, 22);
-  const titlePx = Math.max(6, 7 * k * Math.min(1, 22 / Math.max(...lines.map((l) => l.length), 1)));
+  const L = useMemo(() => layoutSticker(spec, cssMeasure), [spec]);
+  const k = widthPx / L.w; // px per point
+  const font = "Helvetica, Arial, sans-serif";
   return (
-    <div style={{ width: widthPx, height: STICKER_H * k, background: spec.hex, border: `${Math.max(1, 0.8 * k)}px solid #1a1a1a`, borderRadius: 4 * k, color: "#000", fontFamily: "Helvetica, Arial, sans-serif", padding: 5 * k, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", textAlign: "center", lineHeight: 1.15, userSelect: "none" }}>
-      <div style={{ fontWeight: 700, fontSize: titlePx }}>{lines.map((l, i) => <div key={i}>{l}</div>)}</div>
-      <div style={{ fontWeight: 700, fontSize: Math.max(10, 17 * k), lineHeight: 1 }}>{spec.number}</div>
-      <div style={{ fontSize: Math.max(5, 5.5 * k), minHeight: spec.caseLine ? undefined : 0, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>{spec.caseLine}</div>
+    <div style={{ position: "relative", width: L.w * k, height: L.h * k, background: spec.hex, border: `${Math.max(1, L.border * k)}px solid #1a1a1a`, borderRadius: L.radius * k, boxSizing: "border-box", color: "#000", fontFamily: font, userSelect: "none", overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,.25)" }}>
+      {L.title.lines.map((line, i) => (
+        <div key={i} style={{ position: "absolute", left: 0, right: 0, top: (L.title.top + i * L.title.lineH - L.border) * k, fontWeight: 700, fontSize: L.title.size * k, lineHeight: `${L.title.lineH * k}px`, letterSpacing: L.title.tracking * k, textAlign: "center", whiteSpace: "nowrap" }}>{line}</div>
+      ))}
+      <div style={{ position: "absolute", left: 0, right: 0, top: (L.number.baseline - L.number.size * 0.72 - L.border) * k, fontWeight: 700, fontSize: L.number.size * k, lineHeight: `${L.number.size * 0.72 * k}px`, textAlign: "center", whiteSpace: "nowrap" }}>{L.number.text}</div>
+      {L.rule && <div style={{ position: "absolute", left: L.pad * k, right: L.pad * k, top: (L.rule.y - L.border) * k, borderTop: `${Math.max(1, 0.5 * spec.scale * k)}px solid #262626` }} />}
+      {L.caseLine && <div style={{ position: "absolute", left: 0, right: 0, top: (L.caseLine.baseline - L.caseLine.size * 0.72 - L.border) * k, fontSize: L.caseLine.size * k, lineHeight: `${L.caseLine.size * 0.72 * k}px`, textAlign: "center", whiteSpace: "nowrap" }}>{L.caseLine.text}</div>}
     </div>
   );
 }
@@ -218,9 +230,13 @@ export function StickerDialog({ setId, doc, docs, defaults: defaultsIn, causeNum
               <label className="block text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Number shown</span>
                 <input value={ov.numberText ?? spec.number} onChange={(e) => setOv({ ...ov, numberText: e.target.value || undefined })} className={sel} />
               </label>
-              <label className="block text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Size</span>
+              <label className="block text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Size · {(STICKER_W * spec.scale / 72).toFixed(2)}″ × {(STICKER_H * spec.scale / 72).toFixed(2)}″</span>
                 <input type="range" min={0.6} max={1.8} step={0.05} value={spec.scale} onChange={(e) => setOv({ ...ov, scale: Number(e.target.value) })} className="w-full" />
-                <span className="text-[11px] text-[var(--c-ink-muted)]">{(STICKER_W * spec.scale / 72).toFixed(2)}″ × {(STICKER_H * spec.scale / 72).toFixed(2)}″</span>
+                <span className="mt-0.5 flex gap-1 text-[11px]">
+                  {([["Small", 0.8], ["Standard", 1], ["Large", 1.3]] as const).map(([name, v]) => (
+                    <button key={name} type="button" onClick={() => setOv({ ...ov, scale: v })} className={`rounded border px-1.5 py-0.5 ${Math.abs(spec.scale - v) < 0.01 ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:bg-[var(--c-surface2)]"}`}>{name}</button>
+                  ))}
+                </span>
               </label>
             </div>
             <div className="rounded-md border border-[var(--c-border)] p-2">

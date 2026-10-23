@@ -164,17 +164,80 @@ export function stickerKey(spec: StickerSpec, sourcePathname: string): string {
   return `${(h1 >>> 0).toString(16).padStart(8, "0")}${(h2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-/** Word-wrap the title into at most `maxLines` lines that fit `maxChars`. */
-export function wrapTitle(title: string, maxChars: number, maxLines = 3): string[] {
-  const words = title.split(/\s+/);
+/** Word-wrap `title` into the fewest lines whose measured width fits `maxW`. */
+function wrapToWidth(title: string, size: number, maxW: number, measure: Measure): string[] {
+  const words = title.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
     const next = cur ? `${cur} ${w}` : w;
-    if (next.length <= maxChars || !cur) cur = next;
+    if (!cur || measure(next, size, true) <= maxW) cur = next;
     else { lines.push(cur); cur = w; }
   }
   if (cur) lines.push(cur);
-  while (lines.length > maxLines) { const last = lines.pop()!; lines[lines.length - 1] += ` ${last}`; }
   return lines;
+}
+
+/** Width of `text` in points at `size` points (bold or regular Helvetica). */
+export type Measure = (text: string, size: number, bold: boolean) => number;
+
+export type StickerLayout = {
+  w: number; h: number; radius: number; border: number; pad: number;
+  title: { lines: string[]; size: number; lineH: number; top: number; tracking: number };
+  number: { text: string; size: number; baseline: number };
+  rule: { y: number } | null;
+  caseLine: { text: string; size: number; baseline: number } | null;
+};
+
+/**
+ * The label's typography, in points from the sticker's top-left — shared by
+ * the PDF stamp and the on-screen preview so they match. The party line is
+ * kept on one line when it fits at a readable size, else wrapped to two; the
+ * number fills the middle band and shrinks to fit; the cause number sits on
+ * a thin rule at the foot, like a printed label.
+ */
+export function layoutSticker(spec: StickerSpec, measure: Measure): StickerLayout {
+  const s = spec.scale;
+  const w = STICKER_W * s, h = STICKER_H * s;
+  const pad = 5 * s, innerW = w - pad * 2;
+  const tracking = 0.4 * s;
+  const tw = (t: string, size: number) => measure(t, size, true) + tracking * Math.max(0, t.length - 1);
+
+  // Party line.
+  let size = 7.4 * s, lines = [spec.title];
+  const min1 = 6 * s;
+  while (tw(spec.title, size) > innerW && size > min1) size -= 0.2 * s;
+  if (tw(spec.title, size) > innerW) {
+    size = 7 * s;
+    lines = wrapToWidth(spec.title, size, innerW, (t, sz) => tw(t, sz));
+    while ((lines.length > 2 || lines.some((l) => tw(l, size) > innerW)) && size > 5 * s) {
+      size -= 0.2 * s;
+      lines = wrapToWidth(spec.title, size, innerW, (t, sz) => tw(t, sz));
+    }
+  }
+  const lineH = size * 1.14;
+  const titleTop = pad + 0.5 * s;
+  const titleBottom = titleTop + lines.length * lineH;
+
+  // Foot: cause number on a rule.
+  let caseLine: StickerLayout["caseLine"] = null, rule: StickerLayout["rule"] = null;
+  let bandBottom = h - pad;
+  if (spec.caseLine) {
+    let cs = 5.4 * s;
+    while (measure(spec.caseLine, cs, false) > innerW && cs > 3.6 * s) cs -= 0.2 * s;
+    const baseline = h - pad - 0.6 * s;
+    caseLine = { text: spec.caseLine, size: cs, baseline };
+    rule = { y: baseline - cs * 1.05 };
+    bandBottom = rule.y - 1.5 * s;
+  }
+
+  // Number: fills the band between the party line and the foot.
+  const bandTop = titleBottom + 1.2 * s;
+  const bandH = Math.max(6 * s, bandBottom - bandTop);
+  let ns = Math.min(bandH * 0.8, 20 * s);
+  while (measure(spec.number, ns, true) > innerW && ns > 6 * s) ns -= 0.3 * s;
+  const capH = ns * 0.72; // Helvetica Bold cap height
+  const baseline = bandTop + (bandH + capH) / 2;
+
+  return { w, h, radius: 4.5 * s, border: 0.9 * s, pad, title: { lines, size, lineH, top: titleTop, tracking }, number: { text: spec.number, size: ns, baseline }, rule, caseLine };
 }
