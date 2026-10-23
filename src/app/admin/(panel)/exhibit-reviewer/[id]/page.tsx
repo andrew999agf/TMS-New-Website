@@ -1,3 +1,5 @@
+import { ensureDiscoveryTables } from "@/db/ensure";
+import { normalizeDefaults, normalizeDocSticker, stickerSpec, stickerKey } from "@/lib/exhibit-review/stickers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -15,6 +17,8 @@ import { backfillExhibitAi } from "@/lib/exhibit-review/carry";
 export const dynamic = "force-dynamic";
 
 export default async function ExhibitSetPage({ params }: { params: Promise<{ id: string }> }) {
+  // One-time database updates (new exhibit-sticker columns) before any query.
+  await ensureDiscoveryTables().catch(() => {});
   const session = await requireAdmin();
   if (!canAccessPath("/admin/exhibit-reviewer", session.role, session.permissions)) notFound();
   const id = Number((await params).id);
@@ -37,6 +41,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         title: exhibitDocs.title, description: exhibitDocs.description, trialStatus: exhibitDocs.trialStatus, bates: exhibitDocs.bates, batesEnd: exhibitDocs.batesEnd, url: exhibitDocs.url, pathname: exhibitDocs.pathname, contentType: exhibitDocs.contentType, hiResUrl: exhibitDocs.hiResUrl, hiResPathname: exhibitDocs.hiResPathname,
         witnessIds: exhibitDocs.witnessIds, presentIds: exhibitDocs.presentIds, foundation: exhibitDocs.foundation, elementIds: exhibitDocs.elementIds, notes: exhibitDocs.notes, omitted: exhibitDocs.omitted, offerStatus: exhibitDocs.offerStatus,
         colorStatus: exhibitDocs.colorStatus, colorPages: exhibitDocs.colorPages, reviewPages: exhibitDocs.reviewPages,
+        sticker: exhibitDocs.sticker, stickerKey: exhibitDocs.stickerKey, origUrl: exhibitDocs.origUrl, origPathname: exhibitDocs.origPathname,
         pageCount: exhibitDocs.pageCount, sizeBytes: exhibitDocs.sizeBytes, sort: exhibitDocs.sort,
       })
       .from(exhibitDocs)
@@ -54,6 +59,12 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
   // pathname is unique per upload), so the viewer and browser cache reload it.
   const tagOf = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 
+  const stickerDefaults = normalizeDefaults(set.stickerDefaults);
+  const stickerFresh = (r: (typeof rows)[number]) => {
+    if (!r.origUrl || !r.stickerKey) return false;
+    const spec = stickerSpec(stickerDefaults, { side: r.side, label: r.label, number: r.number, sticker: normalizeDocSticker(r.sticker) }, set.causeNumber);
+    return !spec.hidden && stickerKey(spec, r.origPathname ?? r.pathname ?? "") === r.stickerKey;
+  };
   const docs: ReviewerDoc[] = rows.map((r) => ({
     id: r.id, side: r.side, number: r.number, label: r.label, title: r.title, description: r.description, trialStatus: r.trialStatus, bates: r.bates, batesEnd: r.batesEnd,
     witnessIds: numArr(r.witnessIds), presentIds: numArr(r.presentIds), foundation: strArr(r.foundation), elementIds: numArr(r.elementIds), notes: r.notes, omitted: r.omitted, offerStatus: r.offerStatus,
@@ -61,6 +72,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
     fileTag: tagOf(r.pathname ?? r.url ?? String(r.id)),
     hasHiRes: Boolean(r.hiResUrl), hiResTag: tagOf(r.hiResPathname ?? r.hiResUrl ?? ""),
     colorStatus: r.colorStatus, colorPageCount: numArr(r.colorPages).length, reviewPages: numArr(r.reviewPages),
+    sticker: normalizeDocSticker(r.sticker), stickerApplied: stickerFresh(r),
   }));
   const witnesses: WitnessLite[] = witnessRows.map((w) => ({ id: w.id, name: w.name }));
   const claims: ClaimLite[] = claimRows.map((c) => ({ id: c.id, name: c.name }));
@@ -79,7 +91,7 @@ export default async function ExhibitSetPage({ params }: { params: Promise<{ id:
         <Link href="/admin/exhibit-reviewer" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All sets
         </Link>
-        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} access={set.access} publicToken={set.publicToken} recipients={recipients} ocEnabled={set.ocEnabled} ocToken={set.ocToken} publicSides={set.publicSides} ocSides={set.ocSides} hasList={Boolean(set.listUrl)} listName={set.listName} listTag={tagOf(set.listPathname ?? set.listUrl ?? "")} />
+        <ExhibitReviewer setId={id} docs={docs} witnesses={witnesses} claims={claims} elements={elements} blobReady={isBlobConfigured()} access={set.access} publicToken={set.publicToken} recipients={recipients} ocEnabled={set.ocEnabled} ocToken={set.ocToken} publicSides={set.publicSides} ocSides={set.ocSides} hasList={Boolean(set.listUrl)} listName={set.listName} listTag={tagOf(set.listPathname ?? set.listUrl ?? "")} stickerDefaults={stickerDefaults} causeNumber={set.causeNumber} />
       </div>
     </>
   );

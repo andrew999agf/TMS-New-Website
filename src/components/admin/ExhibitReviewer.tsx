@@ -6,8 +6,10 @@ import {
   Upload, Loader2, Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Pencil, Trash2, FileText, ExternalLink, Hash, ListOrdered, CornerDownLeft, AlertCircle, Check, StickyNote,
   Share2, Link as LinkIcon, Download, Globe, Lock, ShieldCheck, Mail, RefreshCw, GripVertical, ListChecks, Scale, Printer, Flag,
-  LayoutGrid, List as ListIcon, Film, Plus,
+  LayoutGrid, List as ListIcon, Film, Plus, Tag,
 } from "lucide-react";
+import { StickerDialog } from "./ExhibitSticker";
+import type { DocSticker, StickerDefaults } from "@/lib/exhibit-review/stickers";
 import { upload } from "@vercel/blob/client";
 import { parseExhibitName, suggestOrder, getScheme, SIDE_LABEL, FOUNDATION_OPTIONS, type Side } from "@/lib/pretrial/exhibits";
 import { isPdfFile, isVideoFile, EXHIBIT_ACCEPT } from "@/lib/exhibit-review/media";
@@ -42,6 +44,10 @@ export type ReviewerDoc = {
   colorPageCount: number;
   /** 1-based pages the detector was unsure about, awaiting a color/gray call. */
   reviewPages: number[];
+  /** Exhibit sticker: this exhibit's overrides, and whether the current
+   *  sticker is baked into its working PDF. */
+  sticker: DocSticker;
+  stickerApplied: boolean;
 };
 
 export type WitnessLite = { id: number; name: string };
@@ -958,8 +964,8 @@ function ExhibitGrid({ setId, docs, side, proxyBase, witnesses, onSaveDoc, onBul
   );
 }
 
-export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, publicSides, ocSides, hasList, listName, listTag }: {
-  setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean;
+export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blobReady, access, publicToken, recipients, ocEnabled, ocToken, publicSides, ocSides, hasList, listName, listTag, stickerDefaults, causeNumber }: {
+  setId: number; docs: ReviewerDoc[]; witnesses: WitnessLite[]; claims: ClaimLite[]; elements: ElementLite[]; blobReady: boolean; stickerDefaults: StickerDefaults; causeNumber: string;
   access: string; publicToken: string | null; recipients: RecipientLite[]; ocEnabled: boolean; ocToken: string | null;
   publicSides: string; ocSides: string;
   hasList: boolean; listName: string | null; listTag: string;
@@ -968,6 +974,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
   const isPublic = access === "public";
   // The exhibit whose full details dialog (pencil) is open.
   const [editId, setEditId] = useState<number | null>(null);
+  const [stickerId, setStickerId] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   // A styled confirm dialog (replaces the browser's confirm box).
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; confirmLabel: string; onConfirm: () => void } | null>(null);
@@ -1785,6 +1792,7 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
                   <button onClick={() => copy(exhibitLink(current.id), "Exhibit link copied")} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Copy this exhibit's share link"><LinkIcon size={15} /></button>
                 )}
                 <button onClick={() => askReplace(current.id)} disabled={replacing} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)] disabled:opacity-50" title="Replace this exhibit's file">{replacing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}</button>
+                <button onClick={() => setStickerId(current.id)} disabled={!current.hasFile || current.isVideo} className={`rounded-md border p-1.5 hover:text-[var(--c-accent)] disabled:opacity-40 ${current.stickerApplied ? "border-emerald-500/60 text-emerald-700 dark:text-emerald-300" : "border-[var(--c-border)] text-[var(--c-ink-muted)]"}`} title={current.stickerApplied ? "Exhibit sticker (applied) — move, change or remove it" : "Exhibit sticker — place the colored exhibit label on page 1"} data-testid="sticker-button"><Tag size={15} /></button>
                 <button onClick={() => setEditId(current.id)} className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Edit this exhibit"><Pencil size={15} /></button>
                 <a href={`${proxyBase}/${current.id}?v=${current.fileTag}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-[var(--c-border)] p-1.5 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" title="Open in a new tab"><ExternalLink size={15} /></a>
                 {/* Offer plan — the colored status bar, pinned in the top-right
@@ -1859,6 +1867,15 @@ export function ExhibitReviewer({ setId, docs, witnesses, claims, elements, blob
           )}
         </div>
       </div>
+
+      {stickerId != null && (() => {
+        const d = docs.find((x) => x.id === stickerId);
+        return d ? (
+          <StickerDialog setId={setId} causeNumber={causeNumber} defaults={stickerDefaults} onClose={() => setStickerId(null)}
+            doc={{ id: d.id, side: d.side, label: d.label, number: d.number, sticker: d.sticker, stickerApplied: d.stickerApplied, isVideo: d.isVideo, hasFile: d.hasFile, fileTag: d.fileTag }}
+            docs={docs.map((x) => ({ id: x.id, side: x.side, label: x.label, number: x.number, sticker: x.sticker, stickerApplied: x.stickerApplied, isVideo: x.isVideo, hasFile: x.hasFile, fileTag: x.fileTag }))} />
+        ) : null;
+      })()}
 
       {editId != null && (() => {
         const d = docs.find((x) => x.id === editId);

@@ -1280,6 +1280,9 @@ export const exhibitSets = pgTable(
     listContentType: varchar("list_content_type", { length: 128 }),
     listSizeBytes: integer("list_size_bytes"),
     listName: varchar("list_name", { length: 255 }),
+    /** Exhibit-sticker defaults for the set (which party label each side gets,
+     *  deposition styling, default corner position/size). See lib/exhibit-review/stickers.ts. */
+    stickerDefaults: jsonb("sticker_defaults").$type<Record<string, unknown>>().notNull().default({}),
     archived: boolean("archived").notNull().default(false),
     createdBy: varchar("created_by", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1340,6 +1343,15 @@ export const exhibitDocs = pgTable(
     hiResSizeBytes: integer("hi_res_size_bytes"),
     /** Print-optimized copy: black-and-white pages re-saved as true grayscale so
      *  a printer bills them as mono. Genuine color pages stay color. */
+    /** Exhibit sticker: once applied, `url` IS the stamped copy and the
+     *  untouched upload lives here (so every viewer, share, ZIP and book
+     *  carries the sticker with no special casing). */
+    origUrl: text("orig_url"),
+    origPathname: text("orig_pathname"),
+    /** Per-exhibit sticker overrides (party, position, size, hidden…). */
+    sticker: jsonb("sticker").$type<Record<string, unknown>>().notNull().default({}),
+    /** Fingerprint of the sticker that is baked into `url` (null = none). */
+    stickerKey: varchar("sticker_key", { length: 64 }),
     printUrl: text("print_url"),
     printPathname: text("print_pathname"),
     printContentType: varchar("print_content_type", { length: 128 }),

@@ -1,3 +1,4 @@
+import { ensureDiscoveryTables } from "@/db/ensure";
 import type { Metadata } from "next";
 import { ShieldCheck } from "lucide-react";
 import { resolveExhibitRecipient, isVerifiedAs, recipientDocs } from "@/lib/exhibit-review/recipient";
@@ -19,6 +20,8 @@ function Unavailable() {
 }
 
 export default async function RecipientIndex({ params }: { params: Promise<{ token: string }> }) {
+  // One-time database updates (new exhibit-sticker columns) before any query.
+  await ensureDiscoveryTables().catch(() => {});
   const { token } = await params;
   const ctx = await resolveExhibitRecipient(token);
   if (!ctx) return <Unavailable />;

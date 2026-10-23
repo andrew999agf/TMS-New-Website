@@ -1,3 +1,4 @@
+import { ensureDiscoveryTables } from "@/db/ensure";
 import type { Metadata } from "next";
 import { FileText } from "lucide-react";
 import { getPublicSet, orderPublicDocs } from "@/lib/exhibit-review/public";
@@ -22,6 +23,8 @@ function Unavailable() {
 }
 
 export default async function PublicExhibitIndex({ params }: { params: Promise<{ token: string }> }) {
+  // One-time database updates (new exhibit-sticker columns) before any query.
+  await ensureDiscoveryTables().catch(() => {});
   const { token } = await params;
   const set = await getPublicSet(token);
   if (!set) return <Unavailable />;

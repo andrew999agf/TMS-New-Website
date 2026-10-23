@@ -15,6 +15,8 @@ import { extractPdfText } from "@/lib/exhibit-review/text";
 import { carryPages, carrySectionList } from "@/lib/exhibit-review/carry";
 import { isVideoFile } from "@/lib/exhibit-review/media";
 import { buildPrintOptimized, type ColorOverrides } from "@/lib/exhibit-review/printcopy";
+import { normalizeDefaults, normalizeDocSticker, stickerSpec, stickerKey, type StickerDefaults, type DocSticker } from "@/lib/exhibit-review/stickers";
+import { stampSticker } from "@/lib/exhibit-review/sticker-stamp";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 
@@ -479,7 +481,7 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
   if (!db) return { ok: false as const, error: "Database not configured." };
   if (!file?.url) return { ok: false as const, error: "No file to use." };
   try {
-    const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, printPathname: exhibitDocs.printPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    const [cur] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, printPathname: exhibitDocs.printPathname, origPathname: exhibitDocs.origPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (!cur) return { ok: false as const, error: "Exhibit not found." };
     const extracted = isVideoFile(file.pathname, file.contentType) ? { pageCount: 0, pages: [] as string[] } : await extractPdfText(file.url, file.size);
     await db
@@ -487,6 +489,8 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
       .set({
         url: file.url,
         pathname: file.pathname,
+        // A new file has no sticker baked in yet; the original is the new file.
+        origUrl: null, origPathname: null, stickerKey: null,
         contentType: file.contentType ?? null,
         sizeBytes: file.size ?? null,
         pageCount: extracted.pageCount || null,
@@ -499,6 +503,7 @@ export async function replaceExhibitFile(id: number, file: { url: string; pathna
     // Remove the old blobs now that nothing points at them.
     if (cur.pathname && cur.pathname !== file.pathname) { try { await del(cur.pathname); } catch { /* best-effort */ } }
     if (cur.printPathname) { try { await del(cur.printPathname); } catch { /* best-effort */ } }
+    if (cur.origPathname && cur.origPathname !== file.pathname) { try { await del(cur.origPathname); } catch { /* best-effort */ } }
     revalidatePath(`/admin/exhibit-reviewer/${cur.setId}`);
     return { ok: true as const };
   } catch (err) {
@@ -540,8 +545,9 @@ export async function deleteExhibitDoc(id: number) {
   await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   try {
-    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname, printPathname: exhibitDocs.printPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
+    const [row] = await db.select({ setId: exhibitDocs.setId, pathname: exhibitDocs.pathname, hiResPathname: exhibitDocs.hiResPathname, printPathname: exhibitDocs.printPathname, origPathname: exhibitDocs.origPathname }).from(exhibitDocs).where(eq(exhibitDocs.id, id));
     if (row?.pathname) { try { await del(row.pathname); } catch { /* best-effort */ } }
+    if (row?.origPathname && row.origPathname !== row.pathname) { try { await del(row.origPathname); } catch { /* best-effort */ } }
     if (row?.hiResPathname) { try { await del(row.hiResPathname); } catch { /* best-effort */ } }
     if (row?.printPathname) { try { await del(row.printPathname); } catch { /* best-effort */ } }
     await db.delete(exhibitDocs).where(eq(exhibitDocs.id, id));
@@ -871,4 +877,132 @@ export async function deleteExhibitElement(id: number) {
   } catch {
     return { ok: false as const, error: "Couldn't remove the element." };
   }
+}
+
+/* ------------------------------ exhibit stickers ------------------------------ */
+
+/** Save the set's sticker defaults (party per side, deposition, position, size…). */
+export async function setStickerDefaults(setId: number, defaults: Partial<StickerDefaults>) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [set] = await db.select({ stickerDefaults: exhibitSets.stickerDefaults }).from(exhibitSets).where(eq(exhibitSets.id, setId));
+    if (!set) return { ok: false as const, error: "Set not found." };
+    const merged = normalizeDefaults({ ...normalizeDefaults(set.stickerDefaults), ...defaults, party: { ...normalizeDefaults(set.stickerDefaults).party, ...(defaults.party ?? {}) } });
+    await db.update(exhibitSets).set({ stickerDefaults: merged as unknown as Record<string, unknown>, updatedAt: new Date() }).where(eq(exhibitSets.id, setId));
+    await audit(session.email, "update", "exhibit-set", String(setId), "Exhibit sticker defaults updated");
+    revalidatePath(`/admin/exhibit-reviewer/${setId}`);
+    return { ok: true as const, defaults: merged };
+  } catch (err) {
+    console.error("[exhibit-reviewer] setStickerDefaults failed:", err);
+    return { ok: false as const, error: "Couldn't save sticker settings." };
+  }
+}
+
+/** Per-exhibit sticker overrides (party, position, size, hidden, wording). */
+export async function setDocSticker(docId: number, sticker: DocSticker) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const [doc] = await db.select({ setId: exhibitDocs.setId }).from(exhibitDocs).where(eq(exhibitDocs.id, docId));
+    if (!doc) return { ok: false as const, error: "Exhibit not found." };
+    await db.update(exhibitDocs).set({ sticker: normalizeDocSticker(sticker) as Record<string, unknown> }).where(eq(exhibitDocs.id, docId));
+    revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[exhibit-reviewer] setDocSticker failed:", err);
+    return { ok: false as const, error: "Couldn't save the sticker." };
+  }
+}
+
+/**
+ * Bake the sticker into page 1 of the exhibit. The untouched upload is kept
+ * as the original; the stamped copy becomes the exhibit's working file, so
+ * the viewer, every share link, ZIP, book and print copy carry it. Re-applying
+ * after a change re-stamps from the original. Idempotent when nothing changed.
+ */
+export async function applySticker(docId: number): Promise<{ ok: true; status: "applied" | "unchanged" | "hidden" | "skipped"; note?: string } | { ok: false; error: string }> {
+  const session = await guard();
+  if (!db) return { ok: false, error: "Database not configured." };
+  try {
+    const [doc] = await db.select().from(exhibitDocs).where(eq(exhibitDocs.id, docId));
+    if (!doc) return { ok: false, error: "Exhibit not found." };
+    if (!doc.url || !doc.pathname) return { ok: false, error: "This exhibit has no file yet." };
+    if (isVideoFile(doc.pathname, doc.contentType)) return { ok: true, status: "skipped", note: "video" };
+    const [set] = await db.select({ causeNumber: exhibitSets.causeNumber, stickerDefaults: exhibitSets.stickerDefaults }).from(exhibitSets).where(eq(exhibitSets.id, doc.setId));
+    if (!set) return { ok: false, error: "Set not found." };
+    const defaults = normalizeDefaults(set.stickerDefaults);
+    const spec = stickerSpec(defaults, { side: doc.side, label: doc.label, number: doc.number, sticker: normalizeDocSticker(doc.sticker) }, set.causeNumber);
+    const srcUrl = doc.origUrl ?? doc.url;
+    const srcPathname = doc.origPathname ?? doc.pathname;
+
+    if (spec.hidden) {
+      // Sticker off for this exhibit: put the original back as the working file.
+      if (doc.origUrl && doc.origPathname) {
+        const stamped = doc.pathname;
+        await db.update(exhibitDocs).set({ url: doc.origUrl, pathname: doc.origPathname, origUrl: null, origPathname: null, stickerKey: null, printUrl: null, printPathname: null, colorStatus: null }).where(eq(exhibitDocs.id, docId));
+        if (stamped && stamped !== doc.origPathname) { try { await del(stamped); } catch { /* best-effort */ } }
+        if (doc.printPathname) { try { await del(doc.printPathname); } catch { /* best-effort */ } }
+        revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+      }
+      return { ok: true, status: "hidden" };
+    }
+    const key = stickerKey(spec, srcPathname);
+    if (doc.stickerKey === key && doc.origUrl) return { ok: true, status: "unchanged" };
+    if (doc.sizeBytes && doc.sizeBytes > 300 * 1024 * 1024) return { ok: false, error: "This file is too large to stamp here (over 300 MB)." };
+
+    const res = await fetch(srcUrl);
+    if (!res.ok) return { ok: false, error: "Couldn't fetch the exhibit file." };
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let out: Uint8Array;
+    try { out = await stampSticker(bytes, spec); }
+    catch { return { ok: false, error: "This PDF couldn't be stamped (it may be encrypted or damaged)." }; }
+    const base = (srcPathname.split("/").pop() || "exhibit.pdf").replace(/\.pdf$/i, "");
+    const blob = await put(`exhibit-stickered/${doc.setId}/${base}.pdf`, Buffer.from(out), { access: "public", contentType: "application/pdf", addRandomSuffix: true });
+    const prevStamped = doc.origUrl ? doc.pathname : null; // an older stamped copy to discard
+    await db.update(exhibitDocs).set({
+      url: blob.url, pathname: blob.pathname, contentType: "application/pdf", sizeBytes: out.byteLength,
+      origUrl: srcUrl, origPathname: srcPathname, stickerKey: key,
+      // The print copy was made from the previous file; it is rebuilt on demand.
+      printUrl: null, printPathname: null, colorStatus: null,
+    }).where(eq(exhibitDocs.id, docId));
+    if (prevStamped && prevStamped !== blob.pathname) { try { await del(prevStamped); } catch { /* best-effort */ } }
+    if (doc.printPathname) { try { await del(doc.printPathname); } catch { /* best-effort */ } }
+    await audit(session.email, "update", "exhibit-doc", String(docId), `Sticker applied: ${spec.title} ${spec.number}`);
+    revalidatePath(`/admin/exhibit-reviewer/${doc.setId}`);
+    return { ok: true, status: "applied" };
+  } catch (err) {
+    console.error("[exhibit-reviewer] applySticker failed:", err);
+    return { ok: false, error: "Couldn't apply the sticker." };
+  }
+}
+
+/** Take the sticker off an exhibit: the original upload becomes the working file again. */
+export async function removeSticker(docId: number) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [doc] = await db.select({ sticker: exhibitDocs.sticker }).from(exhibitDocs).where(eq(exhibitDocs.id, docId));
+  if (!doc) return { ok: false as const, error: "Exhibit not found." };
+  await db.update(exhibitDocs).set({ sticker: { ...normalizeDocSticker(doc.sticker), hidden: true } as Record<string, unknown> }).where(eq(exhibitDocs.id, docId));
+  const r = await applySticker(docId);
+  return r.ok ? { ok: true as const } : r;
+}
+
+/** Which exhibits in a set still need stamping (or re-stamping) — for "Apply to all". */
+export async function stickerBacklog(setId: number): Promise<number[]> {
+  await guard();
+  if (!db) return [];
+  const [set] = await db.select({ causeNumber: exhibitSets.causeNumber, stickerDefaults: exhibitSets.stickerDefaults }).from(exhibitSets).where(eq(exhibitSets.id, setId));
+  if (!set) return [];
+  const defaults = normalizeDefaults(set.stickerDefaults);
+  const rows = await db.select({ id: exhibitDocs.id, side: exhibitDocs.side, label: exhibitDocs.label, number: exhibitDocs.number, sticker: exhibitDocs.sticker, url: exhibitDocs.url, pathname: exhibitDocs.pathname, origUrl: exhibitDocs.origUrl, origPathname: exhibitDocs.origPathname, stickerKey: exhibitDocs.stickerKey, contentType: exhibitDocs.contentType })
+    .from(exhibitDocs).where(eq(exhibitDocs.setId, setId)).orderBy(asc(exhibitDocs.sort), asc(exhibitDocs.id));
+  const out: number[] = [];
+  for (const r of rows) {
+    if (!r.url || !r.pathname || isVideoFile(r.pathname, r.contentType)) continue;
+    const spec = stickerSpec(defaults, { side: r.side, label: r.label, number: r.number, sticker: normalizeDocSticker(r.sticker) }, set.causeNumber);
+    if (spec.hidden) { if (r.origUrl) out.push(r.id); continue; }
+    if (r.stickerKey !== stickerKey(spec, r.origPathname ?? r.pathname) || !r.origUrl) out.push(r.id);
+  }
+  return out;
 }

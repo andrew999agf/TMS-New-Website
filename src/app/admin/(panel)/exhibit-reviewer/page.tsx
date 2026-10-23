@@ -1,3 +1,4 @@
+import { ensureDiscoveryTables } from "@/db/ensure";
 import { AdminHeader } from "@/components/admin/AdminShell";
 import { ExhibitSets, type SetRow } from "@/components/admin/ExhibitSets";
 import { requireAdmin } from "@/lib/auth";
@@ -11,6 +12,8 @@ import type { MatterOption } from "@/components/admin/MatterCombobox";
 export const dynamic = "force-dynamic";
 
 export default async function ExhibitReviewerPage() {
+  // One-time database updates (new exhibit-sticker columns) before any query.
+  await ensureDiscoveryTables().catch(() => {});
   const session = await requireAdmin();
   if (!canAccessPath("/admin/exhibit-reviewer", session.role, session.permissions)) notFound();
 

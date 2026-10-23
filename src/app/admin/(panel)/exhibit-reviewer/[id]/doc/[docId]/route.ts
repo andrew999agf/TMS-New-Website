@@ -30,10 +30,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Serve the high-res version when asked and available; otherwise the working PDF.
-  const wantHiRes = new URL(req.url).searchParams.get("hires") === "1" && !!doc.hiResUrl;
-  const fileUrl = wantHiRes ? doc.hiResUrl! : doc.url;
+  const sp = new URL(req.url).searchParams;
+  const wantHiRes = sp.get("hires") === "1" && !!doc.hiResUrl;
+  // ?orig=1: the upload as it came in, without the exhibit sticker (the
+  // sticker placer draws its own movable sticker over this).
+  const wantOrig = sp.get("orig") === "1" && !!doc.origUrl;
+  const fileUrl = wantHiRes ? doc.hiResUrl! : wantOrig ? doc.origUrl! : doc.url;
   const fileType = wantHiRes ? doc.hiResContentType : doc.contentType;
-  const fileSize = wantHiRes ? doc.hiResSizeBytes : doc.sizeBytes;
+  const fileSize = wantHiRes ? doc.hiResSizeBytes : wantOrig ? null : doc.sizeBytes;
   if (!fileUrl) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const range = req.headers.get("range");
