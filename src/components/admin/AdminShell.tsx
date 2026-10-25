@@ -1,5 +1,7 @@
 "use client";
 
+import { DiagnosticsButton } from "./DiagnosticsButton";
+import { caseToolsDiagnostics } from "@/app/admin/(panel)/case-tools/actions";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TimeClockButton } from "./TimeClockButton";
@@ -295,6 +297,15 @@ export function AdminShell({
         {!collapsed && <PwaInstall />}
 
         <div className={`border-t border-[var(--c-dark-border)] ${collapsed ? "p-2" : "p-4"}`}>
+          {caseTools.length > 0 && (user.role === "owner" || user.role === "editor") && (
+            <div className="mb-3">
+              <DiagnosticsButton fetchServer={() => caseToolsDiagnostics()} browserHeading="THIS BROWSER — admin"
+                title="Case tools diagnostics — the button tree of the case-file tools, how they link to one another, live connectedness counts and a masked roster of matters. Mechanics only, no names."
+                className={`flex items-center gap-2 text-xs text-[var(--c-dark-ink-muted)] hover:text-[var(--c-dark-ink)] ${collapsed ? "justify-center w-full" : ""}`}>
+                {collapsed ? "" : "Case tools diagnostics"}
+              </DiagnosticsButton>
+            </div>
+          )}
           <Link
             href="/"
             target="_blank"
