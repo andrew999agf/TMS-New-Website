@@ -6,7 +6,7 @@ import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
   LayoutDashboard, MessageSquare, FolderOpen, Clock, Scale, FileText, Gavel, Search as SearchIcon,
-  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail, ClipboardList, BellRing, CalendarDays, Users, UserPlus, UserMinus,
+  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail, ClipboardList, BellRing, CalendarDays, Users, UserPlus, UserMinus, Pencil,
 } from "lucide-react";
 import {
   updatePortalMatter, addPortalTask, togglePortalTask, deletePortalTask,
@@ -456,16 +456,36 @@ const fmtDue = (d: string) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(
 function RequestItem({ r }: { r: RequestRow }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  void pending;
     const st = requestStatus(r.status);
     const over = requestOverdue(r);
     const [fn, setFn] = useState(r.firmNote);
+    // In-place edit of what the client sees: title, details, due date.
+    const [editing, setEditing] = useState(false);
+    const [eTitle, setETitle] = useState(r.title);
+    const [eDetails, setEDetails] = useState(r.details);
+    const [eDue, setEDue] = useState(r.dueOn);
+    const startEdit = () => { setETitle(r.title); setEDetails(r.details); setEDue(r.dueOn); setEditing(true); };
+    const saveEdit = () => { if (!eTitle.trim()) return; start(async () => { await updatePortalRequest(r.id, { title: eTitle, details: eDetails, dueOn: eDue }); setEditing(false); router.refresh(); }); };
     return (
       <li className="py-3" data-testid={`request-${r.id}`}>
         <div className="flex flex-wrap items-start gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{r.title}</p>
-            {r.details && <p className="text-xs text-[var(--c-ink-muted)]">{r.details}</p>}
+            {editing ? (
+              <div className="grid gap-1.5 sm:grid-cols-[1fr_150px]" data-testid={`request-edit-${r.id}`}>
+                <input value={eTitle} onChange={(e) => setETitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(false); }} placeholder="What you need" className={`${input} w-full !py-1 text-sm`} autoFocus />
+                <input type="date" value={eDue} onChange={(e) => setEDue(e.target.value)} className={`${input} w-full !py-1 text-xs`} title="Due date (optional)" />
+                <textarea value={eDetails} onChange={(e) => setEDetails(e.target.value)} rows={2} placeholder="Details the client will see (optional)" className={`${input} w-full resize-y !py-1 text-xs sm:col-span-2`} />
+                <div className="flex items-center gap-2 sm:col-span-2">
+                  <button onClick={saveEdit} disabled={pending || !eTitle.trim()} className="rounded-md border border-[var(--c-accent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--c-accent)] disabled:opacity-50">{pending ? <Loader2 size={11} className="inline animate-spin" /> : <Check size={11} className="mr-1 inline" />}Save</button>
+                  <button onClick={() => setEditing(false)} className="rounded-md border border-[var(--c-border)] px-2.5 py-1 text-[11px] text-[var(--c-ink-muted)]">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm font-medium">{r.title}</p>
+                {r.details && <p className="text-xs text-[var(--c-ink-muted)]">{r.details}</p>}
+              </>
+            )}
             <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--c-ink-muted)]">
               {r.dueOn && <span className={`inline-flex items-center gap-1 ${over ? "font-semibold text-red-700" : ""}`}><CalendarDays size={11} /> {over ? "overdue —" : "due"} {fmtDue(r.dueOn)}</span>}
               {r.respondedAt && <span>received {fmtWhen(r.respondedAt)}</span>}
@@ -477,6 +497,7 @@ function RequestItem({ r }: { r: RequestRow }) {
             {REQUEST_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${over ? "bg-red-100 text-red-800" : st.cls}`}>{over ? "Overdue" : st.label}</span>
+          <button onClick={startEdit} title="Edit the title, details, or due date" className="rounded p-1 text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]" data-testid={`request-pencil-${r.id}`}><Pencil size={13} /></button>
           <button onClick={() => { if (confirm(`Remove the request "${r.title}"? Any files sent for it stay in Client documents.`)) start(async () => { await deletePortalRequest(r.id); router.refresh(); }); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600"><Trash2 size={13} /></button>
         </div>
         <div className="mt-1.5 flex items-center gap-2">
