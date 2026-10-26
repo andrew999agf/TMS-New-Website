@@ -11,6 +11,8 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { requestOverdue } from "@/lib/portal";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
+import { PortalCasesCard, type PortalCaseGap } from "@/components/admin/PortalCasesCard";
+import { portalMatterCaseStatuses } from "@/lib/portal-cases";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +68,15 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
   const matterOptions: MatterOption[] = clioMatters.map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
   const memberRows: MemberRow[] = members.map((x) => ({ id: x.id, email: x.email, name: x.name, token: x.token, revoked: x.revoked, lastAccessAt: x.lastAccessAt ? x.lastAccessAt.toISOString() : null, matterIds: grantRows.filter((g) => g.memberId === x.id).map((g) => g.matterId) }));
 
+  // Case records in Matters / Cases for this file's open matters.
+  let missingCases: PortalCaseGap[] = [], noClio: PortalCaseGap[] = [];
+  try {
+    const st = await portalMatterCaseStatuses(groupId);
+    const gap = (x: typeof st[number]): PortalCaseGap => ({ matterId: x.matterId, title: x.title, clioMatter: x.clioMatter, groupId: x.groupId, groupName: x.groupName, companyName: x.companyName });
+    missingCases = st.filter((x) => x.caseKey && !x.caseId).map(gap);
+    noClio = st.filter((x) => !x.caseKey).map(gap);
+  } catch { /* case hub optional */ }
+
   const family = profile.kind === "family";
   return (
     <>
@@ -74,6 +85,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
         <Link href="/admin/case-portal" className="inline-flex items-center gap-1 text-sm text-[var(--c-ink-muted)] hover:text-[var(--c-accent)]">
           <ChevronLeft size={15} /> All client files
         </Link>
+        <PortalCasesCard missing={missingCases} noClio={noClio} groupId={groupId} compact />
         <CasePortalGroup group={profile} companies={companyRows} matters={matterRows} clioMatters={matterOptions} members={memberRows} overview={overview} />
       </div>
     </>

@@ -11,7 +11,7 @@ import {
 import {
   updatePortalMatter, addPortalTask, togglePortalTask, deletePortalTask,
   addPortalMessage, registerPortalDoc, deletePortalDoc, notifyClientOfUpdate,
-  addPortalRequest, updatePortalRequest, deletePortalRequest, sendRequestReminder, addMatterViewer, removeMatterViewer,
+  addPortalRequest, updatePortalRequest, deletePortalRequest, sendRequestReminder, addMatterViewer, removeMatterViewer, createCaseForPortalMatter,
 } from "@/app/admin/(panel)/case-portal/actions";
 import { REQUEST_STATUSES, requestStatus, requestOverdue } from "@/lib/portal";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
@@ -25,6 +25,8 @@ export type MatterData = {
   /** "Michael Manuel — personal" / entity name, for the header. */
   ownerLabel: string;
   exhibitSetId: number | null; exhibitSetName: string | null; shareFolderId: number | null;
+  /** Matters / Cases record keyed by this matter's Clio number (null = none yet). */
+  caseId?: number | null; caseKey?: string;
 };
 export type RequestRow = { id: number; title: string; details: string; dueOn: string; status: string; firmNote: string; respondedAt: string | null; remindedAt: string | null; files: { id: number; name: string }[] };
 export type TaskRow = { id: number; kind: "client" | "firm"; title: string; done: boolean };
@@ -170,6 +172,8 @@ function DashboardTab({ matter, companies, tasks, viewers, time, clioMatters, sh
   useCaseLookup(clio, (c) => { if (c.matter && c.matter !== clio) setClio(c.matter); });
   const [notes, setNotes] = useState(matter.notes);
   const [drive, setDrive] = useState(matter.driveFolder);
+  const [casePending, start] = useTransition();
+  const [caseErr, setCaseErr] = useState<string | null>(null);
   const openClient = tasks.filter((t) => t.kind === "client" && !t.done).length;
   const openFirm = tasks.filter((t) => t.kind === "firm" && !t.done).length;
 
@@ -236,6 +240,16 @@ function DashboardTab({ matter, companies, tasks, viewers, time, clioMatters, sh
         <section className={`${card} p-5`}>
           <h3 className="mb-3 font-[family-name:var(--font-ui)] text-sm font-semibold">Connected tools</h3>
           <div className="space-y-2.5 text-sm">
+            <div className="flex items-center gap-2" data-testid="case-record">
+              <Gavel size={15} className="shrink-0 text-[var(--c-accent)]" />
+              <span className="min-w-0 flex-1 truncate">Matters / Cases: {matter.caseId ? <strong>{matter.caseKey}</strong> : <span className="text-[var(--c-ink-muted)]">{matter.caseKey ? `no case record yet for ${matter.caseKey}` : "set the Clio matter number to connect a case record"}</span>}</span>
+              {matter.caseId ? (
+                <Link href={`/admin/cases/${matter.caseId}`} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-xs hover:border-[var(--c-accent)]"><ExternalLink size={11} /> Open</Link>
+              ) : matter.caseKey ? (
+                <button onClick={() => start(async () => { const r = await createCaseForPortalMatter(matter.id); if (r.ok) router.push(`/admin/cases/${r.id}`); else setCaseErr(r.error ?? "Couldn't create the case."); })} disabled={casePending} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--c-accent)] px-2 py-1 text-xs text-[var(--c-accent)] disabled:opacity-50" data-testid="case-create">{casePending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Create case record</button>
+              ) : null}
+            </div>
+            {caseErr && <p className="text-[11px] text-[var(--c-error)]">{caseErr}</p>}
             <div className="flex items-center gap-2">
               <Scale size={15} className="shrink-0 text-[var(--c-accent)]" />
               <span className="min-w-0 flex-1 truncate">Exhibit Reviewer: {matter.exhibitSetName ? <strong>{matter.exhibitSetName}</strong> : <span className="text-[var(--c-ink-muted)]">created automatically on the first exhibit upload</span>}</span>

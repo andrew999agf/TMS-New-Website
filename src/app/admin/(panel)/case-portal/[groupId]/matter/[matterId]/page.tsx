@@ -12,6 +12,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
 import { timeMatters } from "@/db/schema";
+import { portalMatterCaseStatuses } from "@/lib/portal-cases";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,13 @@ export default async function CasePortalMatterPage({ params }: { params: Promise
     exhibitSetName = s?.name ?? null;
   }
 
+  // Matters / Cases record for this matter (by Clio number), if any.
+  let caseId: number | null = null, caseKey = "";
+  try {
+    const st = (await portalMatterCaseStatuses(groupId)).find((x) => x.matterId === matterId);
+    caseId = st?.caseId ?? null; caseKey = st?.caseKey ?? "";
+  } catch { /* case hub optional */ }
+
   const companyName = companies.find((c) => c.id === m.companyId)?.name ?? null;
   const data: MatterData = {
     id: m.id, groupId, groupName: group.name,
@@ -87,6 +95,7 @@ export default async function CasePortalMatterPage({ params }: { params: Promise
     companyId: m.companyId, companyName,
     ownerLabel: companyName ?? (group.kind === "family" ? `${group.parentName || "Parent"} — personal` : group.name),
     exhibitSetId: m.exhibitSetId, exhibitSetName, shareFolderId: m.shareFolderId,
+    caseId, caseKey,
   };
   const taskRows: TaskRow[] = tasks.map((t) => ({ id: t.id, kind: t.kind as "client" | "firm", title: t.title, done: t.done }));
   const messageRows: MessageRow[] = messages.map((x) => ({ id: x.id, author: x.author, fromClient: x.fromClient, body: x.body, createdAt: x.createdAt.toISOString(), unread: unreadIds.has(x.id) }));

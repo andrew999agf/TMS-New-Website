@@ -13,7 +13,8 @@ import { requestStatus, type RequestStatus } from "@/lib/portal";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { partyToReviewerSide } from "@/lib/portal";
-import { resolveMatterKey } from "@/lib/cases";
+import { resolveMatterKey, getOrCreateCaseForMatter } from "@/lib/cases";
+import { portalMatterCaseStatuses, caseSeedFromPortalMatter } from "@/lib/portal-cases";
 import { sendEmail } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
 import { extractPdfText } from "@/lib/exhibit-review/text";
@@ -522,6 +523,58 @@ export async function setMemberMatter(memberId: number, matterId: number, on: bo
   await audit(session.email, "update", "portal-member", mem.email, `${on ? "Added to" : "Removed from"} matter ${matterId}`);
   reval(m.groupId, matterId);
   return { ok: true as const };
+}
+
+/* ------------------------ Matters / Cases records ------------------------ */
+
+/**
+ * Create a case record in Matters / Cases for every open portal matter that
+ * has a Clio number but no case yet (one file, or every file). Existing cases
+ * are left alone — the hub is the source of truth and only gaps get filled.
+ */
+export async function createCasesFromPortal(groupId?: number | null) {
+  const session = await guard();
+  if (!canAccessPath("/admin/cases", session.role, session.permissions)) return { ok: false as const, error: "You don't have access to Matters / Cases.", created: 0, existing: 0, noClio: 0 };
+  if (!db) return { ok: false as const, error: "Database not configured.", created: 0, existing: 0, noClio: 0 };
+  const statuses = await portalMatterCaseStatuses(groupId ?? undefined);
+  const groups = await db.select().from(portalGroups).where(inArray(portalGroups.id, Array.from(new Set(statuses.map((x) => x.groupId))).concat([-1])));
+  let created = 0, existing = 0, noClio = 0;
+  const made: string[] = [];
+  for (const st of statuses) {
+    if (!st.caseKey) { noClio++; continue; }
+    if (st.caseId) { existing++; continue; }
+    const [m] = await db.select().from(portalMatters).where(eq(portalMatters.id, st.matterId));
+    if (!m) continue;
+    const g = groups.find((x) => x.id === st.groupId);
+    const seed = caseSeedFromPortalMatter({ title: m.title, posture: m.posture, driveFolder: m.driveFolder, notes: "", groupName: st.groupName, companyName: st.companyName, parentName: g?.parentName }, st.caseKey);
+    const row = await getOrCreateCaseForMatter(seed, session.email);
+    if (row) { created++; made.push(row.matter); }
+  }
+  if (created) await audit(session.email, "create", "case", groupId ? `portal-group-${groupId}` : "portal-all", `Created ${created} case record(s) from the Client Case Portal: ${made.join(", ").slice(0, 900)}`);
+  revalidatePath("/admin/cases");
+  reval(groupId ?? undefined);
+  return { ok: true as const, created, existing, noClio };
+}
+
+/** One matter's case record: create it (or find it) and hand back the id to open. */
+export async function createCaseForPortalMatter(matterId: number) {
+  const session = await guard();
+  if (!canAccessPath("/admin/cases", session.role, session.permissions)) return { ok: false as const, error: "You don't have access to Matters / Cases." };
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [m] = await db.select().from(portalMatters).where(eq(portalMatters.id, matterId));
+  if (!m) return { ok: false as const, error: "Matter not found." };
+  if (!m.clioMatter) return { ok: false as const, error: "Set the Clio matter number first — it is the case's ID across every tool." };
+  const [st] = (await portalMatterCaseStatuses(m.groupId)).filter((x) => x.matterId === matterId);
+  if (!st?.caseKey) return { ok: false as const, error: "Set the Clio matter number first." };
+  if (st.caseId) return { ok: true as const, id: st.caseId, existed: true };
+  const [g] = await db.select().from(portalGroups).where(eq(portalGroups.id, m.groupId));
+  const seed = caseSeedFromPortalMatter({ title: m.title, posture: m.posture, driveFolder: m.driveFolder, notes: "", groupName: st.groupName, companyName: st.companyName, parentName: g?.parentName }, st.caseKey);
+  const row = await getOrCreateCaseForMatter(seed, session.email);
+  if (!row) return { ok: false as const, error: "Couldn't create the case." };
+  await audit(session.email, "create", "case", String(row.id), `Case record for matter ${row.matter} from the Client Case Portal`);
+  revalidatePath("/admin/cases");
+  reval(m.groupId, matterId);
+  return { ok: true as const, id: row.id, existed: false };
 }
 
 /* ------------------------- group & company notes ------------------------- */
