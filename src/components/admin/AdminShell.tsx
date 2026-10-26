@@ -99,7 +99,7 @@ const CASE_TOOLS = [
   { label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", icon: FileSearch },
   { label: "Litigation Support", href: "/admin/litigation-support", icon: Gavel },
   { label: "Docs & Templates", href: "/admin/documents", icon: FileSignature },
-  { label: "Case Portal", href: "/admin/case-portal", icon: Briefcase },
+  { label: "Client Case Portal", href: "/admin/case-portal", icon: Briefcase },
   { label: "AI.fred", href: "/admin/assistant", icon: Bot },
   { label: "Map Overlay", href: "/admin/map-overlay", icon: MapIcon },
 ];

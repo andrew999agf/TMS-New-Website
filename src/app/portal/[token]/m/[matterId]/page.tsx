@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronLeft } from "lucide-react";
 import { db } from "@/db";
-import { portalMatters, portalCompanies, portalTasks, portalMessages, portalDocs } from "@/db/schema";
+import { portalMatters, portalCompanies, portalTasks, portalMessages, portalDocs, portalRequests } from "@/db/schema";
+import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { resolvePortalMember, isVerifiedPortalMember } from "@/lib/portal-access";
 import { PortalGate } from "@/components/portal/PortalGate";
@@ -36,15 +37,21 @@ export default async function PortalMatterPage({ params }: { params: Promise<{ t
 
   const id = Number(matterId);
   if (!Number.isFinite(id)) return <Unavailable />;
+  await ensureDiscoveryTables().catch(() => {});
   const [m] = await db.select().from(portalMatters).where(and(eq(portalMatters.id, id), eq(portalMatters.groupId, ctx.group.id)));
   if (!m || m.status !== "open" || m.hidden) return <Unavailable />;
 
-  const [companies, tasks, messages, docs] = await Promise.all([
+  const [companies, tasks, messages, docs, requests] = await Promise.all([
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, ctx.group.id)),
     db.select().from(portalTasks).where(and(eq(portalTasks.matterId, id), eq(portalTasks.kind, "client"))).orderBy(asc(portalTasks.done), asc(portalTasks.createdAt)),
     db.select().from(portalMessages).where(eq(portalMessages.matterId, id)).orderBy(asc(portalMessages.createdAt)),
     db.select().from(portalDocs).where(and(eq(portalDocs.matterId, id), eq(portalDocs.tab, "client"))).orderBy(desc(portalDocs.createdAt)),
+    db.select().from(portalRequests).where(eq(portalRequests.matterId, id)).orderBy(asc(portalRequests.sort), asc(portalRequests.id)).catch(() => []),
   ]);
+  // Opening the matter reads the firm's messages.
+  if (messages.some((x) => !x.fromClient && !x.readByClient)) {
+    await db.update(portalMessages).set({ readByClient: true }).where(and(eq(portalMessages.matterId, id), eq(portalMessages.fromClient, false), eq(portalMessages.readByClient, false))).catch(() => {});
+  }
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-10">
@@ -64,7 +71,8 @@ export default async function PortalMatterPage({ params }: { params: Promise<{ t
         me={ctx.member.email}
         tasks={tasks.map((t) => ({ id: t.id, title: t.title, done: t.done }))}
         messages={messages.map((x) => ({ id: x.id, author: x.author, fromClient: x.fromClient, body: x.body, createdAt: x.createdAt.toISOString() }))}
-        docs={docs.map((d) => ({ id: d.id, name: d.name, sizeBytes: d.sizeBytes, mine: d.uploadedBy.toLowerCase() === ctx.member.email.toLowerCase(), createdAt: d.createdAt.toISOString() }))}
+        docs={docs.map((d) => ({ id: d.id, name: d.name, sizeBytes: d.sizeBytes, mine: d.uploadedBy.toLowerCase() === ctx.member.email.toLowerCase(), createdAt: d.createdAt.toISOString(), requestId: d.requestId ?? null }))}
+        requests={requests.map((r) => ({ id: r.id, title: r.title, details: r.details, dueOn: r.dueOn, status: r.status }))}
         blobReady={isBlobConfigured()}
         firmName={FIRM.name}
       />

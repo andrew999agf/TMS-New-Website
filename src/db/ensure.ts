@@ -160,6 +160,35 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS sticker jsonb NOT NULL DEFAULT '{}'::jsonb`,
   `ALTER TABLE exhibit_docs ADD COLUMN IF NOT EXISTS sticker_key varchar(64)`,
   `ALTER TABLE exhibit_sets ADD COLUMN IF NOT EXISTS sticker_defaults jsonb NOT NULL DEFAULT '{}'::jsonb`,
+  // Client Case Portal build-out (tables themselves come from Settings → Database updates).
+  `DO $$ BEGIN IF to_regclass('portal_companies') IS NOT NULL THEN
+    ALTER TABLE portal_groups ADD COLUMN IF NOT EXISTS kind varchar(12) NOT NULL DEFAULT 'single';
+    ALTER TABLE portal_groups ADD COLUMN IF NOT EXISTS parent_name varchar(191) NOT NULL DEFAULT '';
+    ALTER TABLE portal_groups ADD COLUMN IF NOT EXISTS parent_contact text NOT NULL DEFAULT '';
+    ALTER TABLE portal_companies ADD COLUMN IF NOT EXISTS kind varchar(16) NOT NULL DEFAULT 'company';
+    ALTER TABLE portal_companies ADD COLUMN IF NOT EXISTS aka varchar(255) NOT NULL DEFAULT '';
+    ALTER TABLE portal_companies ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT '';
+    ALTER TABLE portal_matters ADD COLUMN IF NOT EXISTS drive_folder varchar(255) NOT NULL DEFAULT '';
+    ALTER TABLE portal_messages ADD COLUMN IF NOT EXISTS read_by_firm boolean NOT NULL DEFAULT false;
+    ALTER TABLE portal_messages ADD COLUMN IF NOT EXISTS read_by_client boolean NOT NULL DEFAULT false;
+    ALTER TABLE portal_docs ADD COLUMN IF NOT EXISTS request_id integer;
+  END IF; END $$`,
+  `CREATE TABLE IF NOT EXISTS portal_requests (
+    id serial PRIMARY KEY,
+    matter_id integer NOT NULL,
+    title varchar(255) NOT NULL,
+    details text NOT NULL DEFAULT '',
+    due_on varchar(10) NOT NULL DEFAULT '',
+    status varchar(12) NOT NULL DEFAULT 'open',
+    firm_note text NOT NULL DEFAULT '',
+    sort integer NOT NULL DEFAULT 0,
+    created_by varchar(255) NOT NULL DEFAULT '',
+    responded_at timestamptz,
+    reminded_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS portal_requests_matter_idx ON portal_requests (matter_id)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_received varchar(64)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_staged varchar(64)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_produced varchar(64)`,

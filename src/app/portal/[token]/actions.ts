@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { and, eq, gt, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { portalMatters, portalTasks, portalMessages, portalDocs, portalMembers } from "@/db/schema";
+import { portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, portalRequests } from "@/db/schema";
 import { verifiedPortalCtx, type PortalCtx } from "@/lib/portal-access";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
@@ -82,6 +82,7 @@ export async function clientPostMessage(token: string, matterId: number, body: s
     author: mm.ctx.member.name.trim() || mm.ctx.member.email,
     fromClient: true,
     body: clean,
+    readByClient: true,
   });
   await notifyFirm(mm.ctx, matterId, mm.matter.title, "replied in the correspondence", clean.slice(0, 500));
   reval(token, matterId);
@@ -90,7 +91,7 @@ export async function clientPostMessage(token: string, matterId: number, body: s
 
 /** Record a document the client uploaded (always into the Client Documents tab). */
 export async function clientRegisterDoc(token: string, matterId: number, input: {
-  name: string; file: { url: string; pathname: string; contentType?: string; size?: number };
+  name: string; file: { url: string; pathname: string; contentType?: string; size?: number }; requestId?: number | null;
 }): Promise<Result> {
   const mm = await memberMatter(token, matterId);
   if (!mm || !db) return { ok: false, error: "Not allowed." };
@@ -98,6 +99,17 @@ export async function clientRegisterDoc(token: string, matterId: number, input: 
   // its pathname prefix proves it. Anything else is refused.
   if (!input.file?.url || !input.file.pathname?.startsWith(`client-portal/${mm.ctx.group.id}/`)) {
     return { ok: false, error: "Upload didn't complete — try again." };
+  }
+  // An upload answering a specific document request: the request must be on
+  // this matter and still open or already received; it flips to "received".
+  let requestId: number | null = null;
+  let requestTitle = "";
+  if (input.requestId) {
+    const [r] = await db.select().from(portalRequests).where(and(eq(portalRequests.id, input.requestId), eq(portalRequests.matterId, matterId)));
+    if (r && (r.status === "open" || r.status === "received")) {
+      requestId = r.id; requestTitle = r.title;
+      await db.update(portalRequests).set({ status: "received", respondedAt: new Date(), updatedAt: new Date() }).where(eq(portalRequests.id, r.id));
+    }
   }
   await db.insert(portalDocs).values({
     matterId,
@@ -109,6 +121,7 @@ export async function clientRegisterDoc(token: string, matterId: number, input: 
     contentType: input.file.contentType ?? null,
     sizeBytes: input.file.size ?? null,
     uploadedBy: mm.ctx.member.email,
+    requestId,
   });
   await db.update(portalMembers).set({ lastAccessAt: new Date() }).where(eq(portalMembers.id, mm.ctx.member.id));
   // One heads-up per batch: skip the email when this member already uploaded
@@ -124,7 +137,7 @@ export async function clientRegisterDoc(token: string, matterId: number, input: 
         ne(portalDocs.name, input.name.trim().slice(0, 255) || "Document"),
       ))
       .limit(1);
-    if (!recent.length) await notifyFirm(mm.ctx, matterId, mm.matter.title, "uploaded new documents", "");
+    if (!recent.length || requestTitle) await notifyFirm(mm.ctx, matterId, mm.matter.title, requestTitle ? `uploaded a document for "${requestTitle}"` : "uploaded new documents", "");
   } catch { /* best-effort */ }
   reval(token, matterId);
   return { ok: true };
@@ -152,4 +165,11 @@ export async function clientCreateMatter(token: string, input: { title: string; 
   await notifyFirm(ctx, row.id, title, "opened a new matter", details);
   revalidatePath(`/portal/${token}`);
   return { ok: true, id: row.id };
+}
+
+/** The client opened the matter: every firm message there is now read by them. */
+export async function clientMarkRead(token: string, matterId: number): Promise<void> {
+  const mm = await memberMatter(token, matterId);
+  if (!mm || !db) return;
+  await db.update(portalMessages).set({ readByClient: true }).where(and(eq(portalMessages.matterId, matterId), eq(portalMessages.fromClient, false), eq(portalMessages.readByClient, false))).catch(() => {});
 }

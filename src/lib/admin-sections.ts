@@ -32,7 +32,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "discovery-reviewer", label: "Discovery Reviewer", href: "/admin/discovery-reviewer", toggleable: true },
   { key: "exhibit-reviewer", label: "Exhibit Reviewer", href: "/admin/exhibit-reviewer", toggleable: true },
   { key: "litigation-support", label: "Litigation Support", href: "/admin/litigation-support", toggleable: true },
-  { key: "case-portal", label: "Case Portal", href: "/admin/case-portal", toggleable: true },
+  { key: "case-portal", label: "Client Case Portal", href: "/admin/case-portal", toggleable: true },
   { key: "assistant", label: "AI.fred (Assistant)", href: "/admin/assistant", toggleable: true },
   { key: "map-overlay", label: "Map Overlay", href: "/admin/map-overlay", toggleable: true },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },

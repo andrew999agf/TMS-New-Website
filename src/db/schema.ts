@@ -1991,6 +1991,14 @@ export const portalGroups = pgTable("portal_groups", {
   /** Custom display name, e.g. "Jones Enterprise Group". */
   name: varchar("name", { length: 191 }).notNull(),
   notes: text("notes").notNull().default(""),
+  /** single = one client, one set of matters · family = one parent person
+   *  (the client) with several owned entities, trusts or estates under them. */
+  kind: varchar("kind", { length: 12 }).notNull().default("single"),
+  /** The person at the top of a multi-entity file (also the client contact
+   *  on a single file). Personal matters hang directly off the parent. */
+  parentName: varchar("parent_name", { length: 191 }).notNull().default(""),
+  /** How to reach them: phone, email, "via" an assistant. Firm-only. */
+  parentContact: text("parent_contact").notNull().default(""),
   /** Lets portal members open new matters themselves (the firm is emailed). */
   clientCanCreateMatters: boolean("client_can_create_matters").notNull().default(false),
   archived: boolean("archived").notNull().default(false),
@@ -2003,6 +2011,12 @@ export const portalCompanies = pgTable(
     id: serial("id").primaryKey(),
     groupId: integer("group_id").notNull(),
     name: varchar("name", { length: 191 }).notNull(),
+    /** company | trust | estate | partnership | other */
+    kind: varchar("kind", { length: 16 }).notNull().default("company"),
+    /** Assumed names / d/b/a / misnomers to treat as this entity. */
+    aka: varchar("aka", { length: 255 }).notNull().default(""),
+    /** Entity notes: registered agent, SOS status, who signs, caveats. */
+    notes: text("notes").notNull().default(""),
     sort: integer("sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2031,6 +2045,8 @@ export const portalMatters = pgTable(
      *  and file streaming all refuse it) until unhidden. */
     hidden: boolean("hidden").notNull().default(false),
     notes: text("notes").notNull().default(""),
+    /** The firm's working folder for this matter (Drive / office server). */
+    driveFolder: varchar("drive_folder", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2059,9 +2075,12 @@ export const portalMessages = pgTable(
     id: serial("id").primaryKey(),
     matterId: integer("matter_id").notNull(),
     author: varchar("author", { length: 255 }).notNull().default(""),
-    /** For the future client-facing surface. */
     fromClient: boolean("from_client").notNull().default(false),
     body: text("body").notNull(),
+    /** Read receipts per side: a firm message is born read-by-firm, a client
+     *  message read-by-client; the other side flips when they open the matter. */
+    readByFirm: boolean("read_by_firm").notNull().default(false),
+    readByClient: boolean("read_by_client").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ matterIdx: index("portal_messages_matter_idx").on(t.matterId) }),
@@ -2085,11 +2104,41 @@ export const portalDocs = pgTable(
     sizeBytes: integer("size_bytes"),
     /** When an exhibit was pushed into the exhibit reviewer, its doc id there. */
     exhibitDocId: integer("exhibit_doc_id"),
+    /** The document request this upload answers, when it answers one. */
+    requestId: integer("request_id"),
     uploadedBy: varchar("uploaded_by", { length: 255 }).notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ matterIdx: index("portal_docs_matter_idx").on(t.matterId) }),
 );
+
+/** Documents the firm has asked the client for, on a matter: each one is a
+ *  line the client sees with a due date and an upload button; the firm marks
+ *  it received, accepted, or not needed. The backbone of a document-heavy
+ *  matter. */
+export const portalRequests = pgTable(
+  "portal_requests",
+  {
+    id: serial("id").primaryKey(),
+    matterId: integer("matter_id").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    details: text("details").notNull().default(""),
+    /** YYYY-MM-DD, or blank. */
+    dueOn: varchar("due_on", { length: 10 }).notNull().default(""),
+    /** open | received | accepted | waived */
+    status: varchar("status", { length: 12 }).notNull().default("open"),
+    /** Firm-only note (e.g. "partial — still missing March statements"). */
+    firmNote: text("firm_note").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+    createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ matterIdx: index("portal_requests_matter_idx").on(t.matterId) }),
+);
+export type PortalRequest = typeof portalRequests.$inferSelect;
 
 export type PortalGroup = typeof portalGroups.$inferSelect;
 export type PortalMatter = typeof portalMatters.$inferSelect;

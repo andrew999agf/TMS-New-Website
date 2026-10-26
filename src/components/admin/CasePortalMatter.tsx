@@ -6,25 +6,30 @@ import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
   LayoutDashboard, MessageSquare, FolderOpen, Clock, Scale, FileText, Gavel, Search as SearchIcon,
-  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail,
+  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail, ClipboardList, BellRing, CalendarDays,
 } from "lucide-react";
 import {
   updatePortalMatter, addPortalTask, togglePortalTask, deletePortalTask,
   addPortalMessage, registerPortalDoc, deletePortalDoc, notifyClientOfUpdate,
+  addPortalRequest, updatePortalRequest, deletePortalRequest, sendRequestReminder,
 } from "@/app/admin/(panel)/case-portal/actions";
+import { REQUEST_STATUSES, requestStatus, requestOverdue } from "@/lib/portal";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { useCaseLookup } from "./useCaseLookup";
 import { POSTURES, PARTY_ROLES } from "@/lib/portal";
 
 export type MatterData = {
   id: number; groupId: number; groupName: string;
-  title: string; clioMatter: string; posture: string; status: string; notes: string;
+  title: string; clioMatter: string; posture: string; status: string; notes: string; driveFolder: string;
   companyId: number | null; companyName: string | null;
+  /** "Michael Manuel — personal" / entity name, for the header. */
+  ownerLabel: string;
   exhibitSetId: number | null; exhibitSetName: string | null; shareFolderId: number | null;
 };
+export type RequestRow = { id: number; title: string; details: string; dueOn: string; status: string; firmNote: string; respondedAt: string | null; remindedAt: string | null; files: { id: number; name: string }[] };
 export type TaskRow = { id: number; kind: "client" | "firm"; title: string; done: boolean };
-export type MessageRow = { id: number; author: string; fromClient: boolean; body: string; createdAt: string };
-export type DocRow = { id: number; tab: string; party: string; name: string; sizeBytes: number | null; exhibitDocId: number | null; createdAt: string };
+export type MessageRow = { id: number; author: string; fromClient: boolean; body: string; createdAt: string; unread?: boolean };
+export type DocRow = { id: number; tab: string; party: string; name: string; sizeBytes: number | null; exhibitDocId: number | null; createdAt: string; requestId?: number | null };
 export type TimeData = {
   monthHours: number; monthAmount: number; totalHours: number; totalAmount: number; monthLabel: string;
   entries: { id: number; date: string; description: string; user: string; hours: number; amount: number; nonBillable: boolean; archived: boolean }[];
@@ -36,7 +41,7 @@ const fmtUsd = (n: number) => n.toLocaleString("en-US", { style: "currency", cur
 const fmtSize = (n: number | null) => (n == null ? "" : n < 1048576 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const fmtWhen = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-type Tab = "dashboard" | "correspondence" | "documents" | "pleadings" | "discovery" | "exhibits" | "time";
+type Tab = "dashboard" | "requests" | "correspondence" | "documents" | "pleadings" | "discovery" | "exhibits" | "time";
 
 /**
  * One matter's workspace: dashboard (to-dos, this month's time value, links to
@@ -44,12 +49,13 @@ type Tab = "dashboard" | "correspondence" | "documents" | "pleadings" | "discove
  * tabs (pleadings / discovery / exhibits — shown only for litigation posture),
  * and the running time tally read from the time tracker.
  */
-export function CasePortalMatter({ matter, companies, tasks, messages, docs, time, clioMatters, shareFolders, blobReady, me }: {
+export function CasePortalMatter({ matter, companies, tasks, messages, docs, requests = [], time, clioMatters, shareFolders, blobReady, me }: {
   matter: MatterData;
   companies: { id: number; name: string }[];
   tasks: TaskRow[];
   messages: MessageRow[];
   docs: DocRow[];
+  requests?: RequestRow[];
   time: TimeData;
   clioMatters: MatterOption[];
   shareFolders: { id: number; name: string; caseNumber: string }[];
@@ -64,9 +70,12 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, tim
   const [exhibitNotice, setExhibitNotice] = useState<{ setId: number } | null>(null);
 
   const litigation = matter.posture === "litigation";
-  const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
+  const openReq = requests.filter((r) => r.status === "open").length;
+  const unread = messages.filter((m) => m.fromClient && m.unread).length;
+  const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard; badge?: number; alert?: boolean }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "correspondence", label: "Correspondence", icon: MessageSquare },
+    { id: "requests", label: "Documents requested", icon: ClipboardList, badge: openReq, alert: requests.some(requestOverdue) },
+    { id: "correspondence", label: "Correspondence", icon: MessageSquare, badge: unread },
     { id: "documents", label: "Client Documents", icon: FolderOpen },
     ...(litigation
       ? ([
@@ -106,12 +115,14 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, tim
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${tab === t.id ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)] hover:text-[var(--c-ink)]"}`}>
+            <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${tab === t.id ? "bg-[var(--c-accent)] text-white" : "text-[var(--c-ink-muted)] hover:bg-[var(--c-surface-2)] hover:text-[var(--c-ink)]"}`} data-testid={`tab-${t.id}`}>
               <Icon size={13} /> {t.label}
+              {t.badge ? <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${tab === t.id ? "bg-white/25 text-white" : t.alert ? "bg-red-600 text-white" : "bg-[var(--c-accent)] text-white"}`}>{t.badge}</span> : null}
             </button>
           );
         })}
-        <span className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-semibold ${matter.status === "open" ? "bg-emerald-100 text-emerald-800" : "bg-[var(--c-surface-2)] text-[var(--c-ink-muted)]"}`}>
+        <span className="ml-auto hidden text-[11px] text-[var(--c-ink-muted)] md:inline">{matter.ownerLabel}</span>
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${matter.status === "open" ? "bg-emerald-100 text-emerald-800" : "bg-[var(--c-surface-2)] text-[var(--c-ink-muted)]"}`}>
           {matter.status === "open" ? "Open" : "Closed"}
         </span>
       </div>
@@ -119,6 +130,7 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, tim
       {tab === "dashboard" && (
         <DashboardTab matter={matter} companies={companies} tasks={tasks} time={time} clioMatters={clioMatters} shareFolders={shareFolders} pending={pending} onPatch={patch} />
       )}
+      {tab === "requests" && <RequestsTab matterId={matter.id} requests={requests} />}
       {tab === "correspondence" && <CorrespondenceTab matterId={matter.id} messages={messages} me={me} />}
       {tab === "documents" && <DocsTab matterId={matter.id} tabKey="client" docs={docs} blobReady={blobReady} heading="Client documents" hint="Documents to and from the client — engagement papers, records they provide, drafts for their review." />}
       {tab === "pleadings" && <DocsTab matterId={matter.id} tabKey="pleading" docs={docs} blobReady={blobReady} heading="Pleadings" hint="Petitions, answers, motions, and orders." />}
@@ -145,6 +157,7 @@ function DashboardTab({ matter, companies, tasks, time, clioMatters, shareFolder
   const [clio, setClio] = useState(matter.clioMatter);
   useCaseLookup(clio, (c) => { if (c.matter && c.matter !== clio) setClio(c.matter); });
   const [notes, setNotes] = useState(matter.notes);
+  const [drive, setDrive] = useState(matter.driveFolder);
   const openClient = tasks.filter((t) => t.kind === "client" && !t.done).length;
   const openFirm = tasks.filter((t) => t.kind === "firm" && !t.done).length;
 
@@ -190,10 +203,16 @@ function DashboardTab({ matter, companies, tasks, time, clioMatters, shareFolder
                 {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Clio matter</span>
+            <label className="text-xs"><span className="mb-1 block text-[var(--c-ink-muted)]">Clio matter (Client ID)</span>
               <div className="flex items-center gap-1.5">
                 <span className="min-w-0 flex-1"><MatterCombobox matters={clioMatters} value={clio} onChange={setClio} placeholder="Search matter…" /></span>
                 {clio !== matter.clioMatter && <button onClick={() => onPatch({ clioMatter: clio })} disabled={pending} className="rounded-md border border-[var(--c-accent)] px-2 py-1.5 text-xs text-[var(--c-accent)]">Save</button>}
+              </div>
+            </label>
+            <label className="text-xs sm:col-span-2"><span className="mb-1 block text-[var(--c-ink-muted)]">Working folder (Drive / office server)</span>
+              <div className="flex items-center gap-1.5">
+                <input value={drive} onChange={(e) => setDrive(e.target.value)} placeholder="e.g., 2026-Lit (096-368163-25)" className={`${input} min-w-0 flex-1`} />
+                {drive !== matter.driveFolder && <button onClick={() => onPatch({ driveFolder: drive })} disabled={pending} className="rounded-md border border-[var(--c-accent)] px-2 py-1.5 text-xs text-[var(--c-accent)]">Save</button>}
               </div>
             </label>
           </div>
@@ -318,7 +337,7 @@ function CorrespondenceTab({ matterId, messages, me }: { matterId: number; messa
           <div key={msg.id} className={`flex ${msg.fromClient ? "" : "justify-end"}`}>
             <div className={`max-w-[80%] rounded-lg px-3.5 py-2.5 ${msg.fromClient ? "border border-[var(--c-border)] bg-[var(--c-bg)]" : "bg-[var(--c-accent)] text-[var(--c-on-accent)]"}`}>
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.body}</p>
-              <p className={`mt-1 text-[10px] ${msg.fromClient ? "text-[var(--c-ink-muted)]" : "text-[var(--c-on-accent)]/70"}`}>{msg.author === me ? "You" : msg.author} · {fmtWhen(msg.createdAt)}</p>
+              <p className={`mt-1 text-[10px] ${msg.fromClient ? "text-[var(--c-ink-muted)]" : "text-[var(--c-on-accent)]/70"}`}>{msg.author === me ? "You" : msg.author} · {fmtWhen(msg.createdAt)}{msg.fromClient && msg.unread ? <span className="ml-2 rounded-full bg-[var(--c-accent)] px-1.5 py-0.5 text-[9px] font-bold text-white">NEW</span> : null}</p>
             </div>
           </div>
         ))}
@@ -329,6 +348,103 @@ function CorrespondenceTab({ matterId, messages, me }: { matterId: number; messa
       </div>
       {askEmail && <AskEmailClientDialog matterId={matterId} kind="message" count={1} onClose={() => setAskEmail(false)} />}
     </section>
+  );
+}
+
+/* --------------------------- document requests --------------------------- */
+
+const fmtDue = (d: string) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+
+/**
+ * What the firm has asked the client for on this matter. Each request is one
+ * line the client sees with its own upload button; uploads land here under
+ * the request, the firm marks them accepted or asks for more, and one button
+ * emails the client a digest of everything still outstanding.
+ */
+function RequestItem({ r }: { r: RequestRow }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  void pending;
+    const st = requestStatus(r.status);
+    const over = requestOverdue(r);
+    const [fn, setFn] = useState(r.firmNote);
+    return (
+      <li className="py-3" data-testid={`request-${r.id}`}>
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">{r.title}</p>
+            {r.details && <p className="text-xs text-[var(--c-ink-muted)]">{r.details}</p>}
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--c-ink-muted)]">
+              {r.dueOn && <span className={`inline-flex items-center gap-1 ${over ? "font-semibold text-red-700" : ""}`}><CalendarDays size={11} /> {over ? "overdue —" : "due"} {fmtDue(r.dueOn)}</span>}
+              {r.respondedAt && <span>received {fmtWhen(r.respondedAt)}</span>}
+              {r.remindedAt && <span>last reminded {fmtWhen(r.remindedAt)}</span>}
+              {r.files.length > 0 && <span>{r.files.length} file{r.files.length === 1 ? "" : "s"}: {r.files.map((f, i) => <a key={f.id} href={`/admin/case-portal/file/${f.id}`} target="_blank" rel="noopener noreferrer" className="text-[var(--c-accent)] hover:underline">{i ? ", " : ""}{f.name}</a>)}</span>}
+            </p>
+          </div>
+          <select value={r.status} onChange={(e) => start(async () => { await updatePortalRequest(r.id, { status: e.target.value }); router.refresh(); })} className={`${input} !py-1 text-xs ${over ? "border-red-400" : ""}`} title="Status">
+            {REQUEST_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+          <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${over ? "bg-red-100 text-red-800" : st.cls}`}>{over ? "Overdue" : st.label}</span>
+          <button onClick={() => { if (confirm(`Remove the request "${r.title}"? Any files sent for it stay in Client documents.`)) start(async () => { await deletePortalRequest(r.id); router.refresh(); }); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600"><Trash2 size={13} /></button>
+        </div>
+        <div className="mt-1.5 flex items-center gap-2">
+          <input value={fn} onChange={(e) => setFn(e.target.value)} placeholder="Firm-only note (e.g. partial — still missing March statements)" className={`${input} min-w-0 flex-1 !py-1 text-xs`} />
+          {fn !== r.firmNote && <button onClick={() => start(async () => { await updatePortalRequest(r.id, { firmNote: fn }); router.refresh(); })} className="rounded-md border border-[var(--c-accent)] px-2 py-1 text-[11px] text-[var(--c-accent)]">Save</button>}
+        </div>
+      </li>
+    );
+  }
+
+function RequestsTab({ matterId, requests }: { matterId: number; requests: RequestRow[] }) {
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [details, setDetails] = useState("");
+  const [dueOn, setDueOn] = useState("");
+  const [note, setNote] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const open = requests.filter((r) => r.status === "open");
+  const rest = requests.filter((r) => r.status !== "open");
+  const add = () => { const t = title.trim(); if (!t) return; start(async () => { const r = await addPortalRequest(matterId, { title: t, details, dueOn }); if (r.ok) { setTitle(""); setDetails(""); setDueOn(""); } else setMsg(r.error ?? "Couldn't add."); router.refresh(); }); };
+  const remind = () => start(async () => { const r = await sendRequestReminder(matterId, note); setMsg(r.ok ? (r.sent ? `Reminder for ${r.requests} item${r.requests === 1 ? "" : "s"} emailed to ${r.sent} portal member${r.sent === 1 ? "" : "s"}.` : "No active portal members to email — invite the client from the file page.") : r.error); setNote(""); router.refresh(); });
+  return (
+    <div className="space-y-5">
+      <section className={`${card} p-5`}>
+        <h3 className="mb-1 text-sm font-semibold">Ask the client for a document</h3>
+        <p className="mb-3 text-[11px] text-[var(--c-ink-muted)]">Each request becomes a line in the client&apos;s portal with its own upload button, so what comes back is already sorted. Keep the title short and put the specifics in the details.</p>
+        <div className="grid gap-2 sm:grid-cols-[1fr_170px]">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="What you need — e.g. Rental agreement for the vehicle involved" className={`${input} w-full`} data-testid="req-title" />
+          <input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} className={`${input} w-full`} title="Due date (optional)" />
+          <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={2} placeholder="Details the client will see — which dates, which account, photos are fine, etc. (optional)" className={`${input} w-full resize-y sm:col-span-2`} />
+        </div>
+        <button onClick={add} disabled={pending || !title.trim()} className="btn btn-accent mt-2 text-sm disabled:opacity-50" data-testid="req-add">{pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add request</button>
+      </section>
+
+      <section className={`${card} p-5`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold">Still needed ({open.length})</h3>
+          {open.some(requestOverdue) && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">{open.filter(requestOverdue).length} overdue</span>}
+        </div>
+        {open.length === 0 ? <p className="mt-2 text-xs text-[var(--c-ink-muted)]">Nothing outstanding on this matter.</p> : <ul className="divide-y divide-[var(--c-border)]">{open.map((r) => <RequestItem key={r.id} r={r} />)}</ul>}
+        {open.length > 0 && (
+          <div className="mt-3 border-t border-[var(--c-border)] pt-3">
+            <p className="mb-1 text-xs font-semibold">Remind the client</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Optional note at the top of the reminder…" className={`${input} min-w-[220px] flex-1 resize-y text-xs`} />
+              <button onClick={remind} disabled={pending} className="btn btn-outline text-sm disabled:opacity-50" data-testid="req-remind">{pending ? <Loader2 size={15} className="animate-spin" /> : <BellRing size={15} />} Email reminder for {open.length} item{open.length === 1 ? "" : "s"}</button>
+            </div>
+          </div>
+        )}
+        {msg && <p className="mt-2 text-xs text-[var(--c-ink-muted)]">{msg}</p>}
+      </section>
+
+      {rest.length > 0 && (
+        <section className={`${card} p-5`}>
+          <h3 className="text-sm font-semibold">Received, accepted, or no longer needed ({rest.length})</h3>
+          <ul className="divide-y divide-[var(--c-border)]">{rest.map((r) => <RequestItem key={r.id} r={r} />)}</ul>
+        </section>
+      )}
+    </div>
   );
 }
 
