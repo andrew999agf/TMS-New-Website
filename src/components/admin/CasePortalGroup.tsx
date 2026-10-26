@@ -129,7 +129,7 @@ function FileHeader({ group, companies, openCount }: { group: GroupProfile; comp
           <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${family ? "text-violet-800 dark:text-violet-300" : "text-slate-700 dark:text-slate-300"}`}>{family ? "Multi-entity client file" : "Single client file"}</p>
           {family ? (
             <>
-              <p className="mt-0.5 text-sm"><span className="text-[var(--c-ink-muted)]">Parent (the client):</span> <strong className="text-base">{group.parentName || "— not set —"}</strong></p>
+              <p className="mt-0.5 text-sm"><span className="text-[var(--c-ink-muted)]">Parent (the client):</span> <strong className="text-base">{group.parentName || "— not set —"}</strong>{!group.parentName && <button onClick={() => setEdit(true)} className="ml-2 rounded border border-amber-500/60 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Name the parent</button>}</p>
               <p className="mt-0.5 text-sm text-[var(--c-ink-muted)]">{companies.length} entit{companies.length === 1 ? "y" : "ies"} + personal matters · {openCount} open matter{openCount === 1 ? "" : "s"} in all. Everything here is one client: review it together and write them once.</p>
             </>
           ) : (

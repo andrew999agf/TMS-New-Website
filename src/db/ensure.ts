@@ -189,6 +189,9 @@ export const DISCOVERY_DDL = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS portal_requests_matter_idx ON portal_requests (matter_id)`,
+  `DO $$ BEGIN IF to_regclass('portal_companies') IS NOT NULL THEN
+    UPDATE portal_groups g SET kind = 'family' WHERE g.kind = 'single' AND EXISTS (SELECT 1 FROM portal_companies c WHERE c.group_id = g.id);
+  END IF; END $$`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_received varchar(64)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_staged varchar(64)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_produced varchar(64)`,

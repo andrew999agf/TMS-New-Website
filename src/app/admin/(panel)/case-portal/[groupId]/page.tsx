@@ -41,7 +41,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
   const titleOf = new Map(matters.map((m) => [m.id, m.title]));
   const openVisible = new Set(matters.filter((m) => m.status === "open" && !m.hidden).map((m) => m.id));
 
-  const profile: GroupProfile = { id: group.id, name: group.name, kind: group.kind ?? "single", parentName: group.parentName ?? "", parentContact: group.parentContact ?? "", notes: group.notes, clientCanCreateMatters: group.clientCanCreateMatters ?? false };
+  const profile: GroupProfile = { id: group.id, name: group.name, kind: companies.length ? "family" : (group.kind ?? "single"), parentName: group.parentName ?? "", parentContact: group.parentContact ?? "", notes: group.notes, clientCanCreateMatters: group.clientCanCreateMatters ?? false };
   const companyRows: CompanyRow[] = companies.map((c) => ({ id: c.id, name: c.name, kind: c.kind ?? "company", aka: c.aka ?? "", notes: c.notes ?? "" }));
   const matterRows: MatterRow[] = matters.map((m) => {
     const r = reqRows.filter((x) => x.matterId === m.id && x.status === "open");

@@ -9,12 +9,33 @@ import { FILE_KINDS } from "@/lib/portal";
 
 export type GroupRow = {
   id: number; name: string; archived: boolean; kind: string; parentName: string;
-  entities: string[]; open: number; closed: number;
+  entities: { name: string; kind: string; open: number }[]; personalOpen: number; open: number; closed: number;
   openRequests: number; overdue: number; unread: number;
 };
-export type SetupOption = { key: "manuel"; label: string; blurb: string };
+export type SetupOption = { key: "manuel"; label: string; blurb: string; action?: string };
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
+
+/** The oval: SINGLE CLIENT, or MULTI-ENTITY · N ENTITIES. Hovering a
+ *  multi-entity badge lists every entity (and the parent's personal matters)
+ *  with how many open matters each holds. */
+function KindBadge({ g }: { g: GroupRow }) {
+  if (g.kind !== "family") return <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">Single client</span>;
+  const n = g.entities.length;
+  return (
+    <span className="group/badge relative shrink-0" data-testid="kind-badge">
+      <span className="cursor-help rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">Multi-entity · {n} entit{n === 1 ? "y" : "ies"} + personal</span>
+      <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3 text-left text-xs normal-case tracking-normal shadow-xl group-hover/badge:block" role="tooltip">
+        <span className="block text-[10px] font-semibold uppercase tracking-wide text-violet-800">One client, several files inside</span>
+        <span className="mt-1 block font-semibold text-[var(--c-ink)]"><User size={11} className="mr-1 inline" />{g.parentName || "Parent not set"} — personal <span className="font-normal text-[var(--c-ink-muted)]">· {g.personalOpen} open</span></span>
+        {g.entities.map((e) => (
+          <span key={e.name} className="mt-1 block text-[var(--c-ink)]"><Building2 size={11} className="mr-1 inline text-[var(--c-accent)]" />{e.name} <span className="text-[var(--c-ink-muted)]">· {e.kind} · {e.open} open</span></span>
+        ))}
+        {n === 0 && <span className="mt-1 block text-[var(--c-ink-muted)]">No entities added yet.</span>}
+      </span>
+    </span>
+  );
+}
 
 /**
  * Client files. Each is either a SINGLE client file (one person or one
@@ -70,7 +91,7 @@ export function CasePortalGroups({ groups, setups = [] }: { groups: GroupRow[]; 
           {setups.map((s) => (
             <div key={s.key} className="mt-2 flex flex-wrap items-center gap-3">
               <span className="min-w-0 flex-1 text-sm"><strong>{s.label}</strong> <span className="text-[var(--c-ink-muted)]">— {s.blurb}</span></span>
-              <button onClick={() => runSetup(s.key)} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Set it up</button>
+              <button onClick={() => runSetup(s.key)} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} {s.action ?? "Set it up"}</button>
             </div>
           ))}
           {setupMsg && <p className="mt-2 text-xs text-[var(--c-ink-muted)]">{setupMsg}</p>}
@@ -132,10 +153,12 @@ export function CasePortalGroups({ groups, setups = [] }: { groups: GroupRow[]; 
                     <span className="min-w-0">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-[family-name:var(--font-ui)] font-semibold text-[var(--c-ink)]">{g.name}</span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${g.kind === "family" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"}`}>{g.kind === "family" ? "Multi-entity file" : "Single client"}</span>
+                        <KindBadge g={g} />
                       </span>
                       <span className="block truncate text-xs text-[var(--c-ink-muted)]">
-                        {g.kind === "family" ? `Parent: ${g.parentName || "—"} · ${g.entities.length ? g.entities.join(" · ") : "no entities yet"} · personal` : g.entities.length ? g.entities.join(" · ") : "—"}
+                        {g.kind === "family"
+                          ? <>Parent: <strong className={g.parentName ? "text-[var(--c-ink)]" : "text-amber-700"}>{g.parentName || "not set yet"}</strong> · {g.entities.length} entit{g.entities.length === 1 ? "y" : "ies"}: {g.entities.map((e) => e.name).join(" · ") || "none yet"} · personal</>
+                          : g.entities.length ? g.entities.map((e) => e.name).join(" · ") : "—"}
                       </span>
                     </span>
                   </Link>

@@ -597,6 +597,52 @@ export async function markClientMessagesRead(matterId: number) {
  * so the office doesn't have to key it in. Idempotent: a group with this name
  * that already has matters is left alone.
  */
+/** Loose entity-name match: "Instacar, LLC" ≈ "Instacar Rental, LLC"; "Manuel Oldsmobile, Inc." ≈ "Manuel Oldsmobile, Inc. d/b/a …". */
+function sameEntity(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/\b(d\/b\/a|dba|llc|l\.l\.c\.|inc\.?|ltd\.?|lp|llp|co\.?|corp\.?|company|the)\b/g, " ").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  const x = norm(a), y = norm(b);
+  if (!x.length || !y.length) return false;
+  return x[0] === y[0] && (x.length === 1 || y.length === 1 || x[1] === y[1]);
+}
+
+/**
+ * Where an outline set-up would land: an existing file that already holds
+ * any of the outline's Clio numbers (or has the outline's name), else a new
+ * file. Returns how many of the outline's matters are still missing.
+ */
+export async function setupTarget(key: "manuel"): Promise<{ groupId: number | null; groupName: string | null; missing: number; total: number } | null> {
+  await guard();
+  if (!db) return null;
+  const { CLIENT_SETUPS } = await import("@/lib/portal-setups");
+  const setup = CLIENT_SETUPS[key];
+  if (!setup) return null;
+  const codes = setup.matters.map((m) => m.clio);
+  const rows = await db.select({ id: portalMatters.id, groupId: portalMatters.groupId, clioMatter: portalMatters.clioMatter }).from(portalMatters);
+  const hit = rows.find((r) => codes.includes(r.clioMatter.split("-")[0].trim()));
+  let groupId: number | null = hit?.groupId ?? null;
+  if (groupId == null) { const [g] = await db.select({ id: portalGroups.id }).from(portalGroups).where(eq(portalGroups.name, setup.group)); groupId = g?.id ?? null; }
+  if (groupId == null) {
+    // No Clio match: a non-archived file whose entities match the outline's (e.g. "Instacar, LLC" ≈ "Instacar Rental, LLC").
+    const comps = await db.select({ groupId: portalCompanies.groupId, name: portalCompanies.name }).from(portalCompanies);
+    const groupsAlive = new Set((await db.select({ id: portalGroups.id }).from(portalGroups).where(eq(portalGroups.archived, false))).map((g) => g.id));
+    const byGroup = new Map<number, number>();
+    for (const c of comps) if (groupsAlive.has(c.groupId) && setup.companies.some((o) => sameEntity(o.name, c.name))) byGroup.set(c.groupId, (byGroup.get(c.groupId) ?? 0) + 1);
+    const best = [...byGroup.entries()].sort((x, y) => y[1] - x[1])[0];
+    if (best && best[1] >= 1) groupId = best[0];
+  }
+  const have = new Set(rows.filter((r) => r.groupId === groupId).map((r) => r.clioMatter.split("-")[0].trim()));
+  const missing = codes.filter((c) => !have.has(c)).length;
+  const [g] = groupId != null ? await db.select({ name: portalGroups.name }).from(portalGroups).where(eq(portalGroups.id, groupId)) : [];
+  return { groupId, groupName: g?.name ?? null, missing, total: codes.length };
+}
+
+/**
+ * Set up (or complete) a client file from an outline the firm supplied, so
+ * the office doesn't key it in. Merges into an existing file that already
+ * holds any of the outline's Clio numbers: missing entities and matters are
+ * added, matching entities are enriched (kind, a/k/a, notes) where blank,
+ * and the file is marked multi-entity with its parent. Safe to re-run.
+ */
 export async function setupClientGroup(key: "manuel") {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
@@ -604,23 +650,45 @@ export async function setupClientGroup(key: "manuel") {
   const { CLIENT_SETUPS } = await import("@/lib/portal-setups");
   const setup = CLIENT_SETUPS[key];
   if (!setup) return { ok: false as const, error: "Unknown set-up." };
-  const [existing] = await db.select().from(portalGroups).where(eq(portalGroups.name, setup.group));
-  if (existing) {
-    const [{ n } = { n: 0 }] = await db.select({ n: portalMatters.id }).from(portalMatters).where(eq(portalMatters.groupId, existing.id)).limit(1).then((r) => (r.length ? [{ n: 1 }] : [{ n: 0 }]));
-    if (n) return { ok: true as const, groupId: existing.id, created: 0, note: "Already set up." };
+  const target = await setupTarget(key);
+  let group = target?.groupId != null ? (await db.select().from(portalGroups).where(eq(portalGroups.id, target.groupId)))[0] : undefined;
+  if (!group) {
+    [group] = await db.insert(portalGroups).values({ name: setup.group, notes: setup.notes, kind: setup.kind, parentName: setup.parentName, parentContact: setup.parentContact }).returning();
+  } else {
+    await db.update(portalGroups).set({
+      kind: setup.kind === "family" ? "family" : group.kind,
+      parentName: group.parentName || setup.parentName, parentContact: group.parentContact || setup.parentContact,
+      notes: group.notes ? (group.notes.includes(setup.notes.slice(0, 40)) ? group.notes : `${group.notes}\n\n${setup.notes}`) : setup.notes,
+    }).where(eq(portalGroups.id, group.id));
   }
-  const group = existing ?? (await db.insert(portalGroups).values({ name: setup.group, notes: setup.notes, kind: setup.kind, parentName: setup.parentName, parentContact: setup.parentContact }).returning())[0];
-  if (existing) await db.update(portalGroups).set({ notes: existing.notes || setup.notes, kind: setup.kind, parentName: setup.parentName, parentContact: setup.parentContact }).where(eq(portalGroups.id, group.id));
+  const existingCompanies = await db.select().from(portalCompanies).where(eq(portalCompanies.groupId, group.id));
   const companyIds = new Map<string, number>();
-  let sort = 0;
+  let sort = existingCompanies.length;
   for (const c of setup.companies) {
-    const [row] = await db.insert(portalCompanies).values({ groupId: group.id, name: c.name, kind: c.kind ?? "company", aka: c.aka ?? "", notes: c.notes ?? "", sort: sort++ }).returning({ id: portalCompanies.id });
-    companyIds.set(c.name, row.id);
+    const match = existingCompanies.find((e) => sameEntity(e.name, c.name));
+    if (match) {
+      companyIds.set(c.name, match.id);
+      await db.update(portalCompanies).set({ kind: match.kind && match.kind !== "company" ? match.kind : (c.kind ?? "company"), aka: match.aka || (c.aka ?? ""), notes: match.notes || (c.notes ?? "") }).where(eq(portalCompanies.id, match.id));
+    } else {
+      const [row] = await db.insert(portalCompanies).values({ groupId: group.id, name: c.name, kind: c.kind ?? "company", aka: c.aka ?? "", notes: c.notes ?? "", sort: sort++ }).returning({ id: portalCompanies.id });
+      companyIds.set(c.name, row.id);
+    }
   }
-  let created = 0;
+  const have = new Map((await db.select({ id: portalMatters.id, clioMatter: portalMatters.clioMatter, companyId: portalMatters.companyId, driveFolder: portalMatters.driveFolder }).from(portalMatters).where(eq(portalMatters.groupId, group.id))).map((m) => [m.clioMatter.split("-")[0].trim(), m]));
+  let created = 0, enriched = 0;
   for (const m of setup.matters) {
+    const existing = have.get(m.clio);
+    const companyId = m.company ? (companyIds.get(m.company) ?? null) : null;
+    if (existing) {
+      // Already on the file: fill in the entity and working folder if blank; never retitle.
+      const set: Record<string, unknown> = {};
+      if (existing.companyId == null && companyId != null) set.companyId = companyId;
+      if (!existing.driveFolder && m.driveFolder) set.driveFolder = m.driveFolder;
+      if (Object.keys(set).length) { await db.update(portalMatters).set(set).where(eq(portalMatters.id, existing.id)); enriched++; }
+      continue;
+    }
     const [row] = await db.insert(portalMatters).values({
-      groupId: group.id, companyId: companyIds.get(m.company) ?? null, title: m.title, clioMatter: await resolveMatterKey(m.clio),
+      groupId: group.id, companyId, title: m.title, clioMatter: await resolveMatterKey(m.clio),
       posture: m.posture, status: "open", driveFolder: m.driveFolder ?? "", notes: m.notes ?? "",
     }).returning({ id: portalMatters.id });
     created++;
@@ -629,9 +697,9 @@ export async function setupClientGroup(key: "manuel") {
     for (const t of m.firmTasks ?? []) await db.insert(portalTasks).values({ matterId: row.id, kind: "firm", title: t });
     for (const t of m.clientTasks ?? []) await db.insert(portalTasks).values({ matterId: row.id, kind: "client", title: t });
   }
-  await audit(session.email, "create", "portal-group", String(group.id), `Set up from outline: ${created} matters`);
+  await audit(session.email, "create", "portal-group", String(group.id), `Set up from outline: ${created} matters added, ${enriched} completed`);
   reval(group.id);
-  return { ok: true as const, groupId: group.id, created };
+  return { ok: true as const, groupId: group.id, created, note: created ? undefined : "Already set up." };
 }
 
 /** The file's profile: single vs multi-entity, the parent person, how to reach them. */

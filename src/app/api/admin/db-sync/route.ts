@@ -807,6 +807,7 @@ const DDL = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS portal_requests_matter_idx ON portal_requests (matter_id)`,
+  `UPDATE portal_groups g SET kind = 'family' WHERE g.kind = 'single' AND EXISTS (SELECT 1 FROM portal_companies c WHERE c.group_id = g.id)`,
 ];
 
 export async function POST() {
