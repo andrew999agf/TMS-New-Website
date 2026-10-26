@@ -519,6 +519,10 @@ export const shareRecipients = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastAccessAt: timestamp("last_access_at", { withTimezone: true }),
     revoked: boolean("revoked").notNull().default(false),
+    /** A reviewer link for an AI assistant (Claude): the listing and each
+     *  document open inline without the sign-in step, view-only. The token is
+     *  the credential, so these are short-lived and revocable. */
+    aiReader: boolean("ai_reader").notNull().default(false),
   },
   (t) => ({ folderIdx: index("share_recipients_folder_idx").on(t.folderId) }),
 );

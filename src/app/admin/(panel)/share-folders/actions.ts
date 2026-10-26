@@ -626,6 +626,35 @@ export async function addRecipient(folderId: number, email: string, name: string
   }
 }
 
+/**
+ * A reviewer link for Claude: a view-only recipient flagged ai_reader, under
+ * the firm member's own email, that lets the listing (manifest.json) and each
+ * document open inline WITHOUT the sign-in step. The token is the only
+ * credential, so it is short-lived (default 14 days) and revocable like any
+ * other link, and every read is in the access log as "Claude reviewer link".
+ */
+export async function createAiReviewLink(folderId: number, days = 14): Promise<{ ok: true; recipientId: number; link: string; expiresAt: string } | { ok: false; error: string }> {
+  const session = await guard();
+  if (!db) return { ok: false, error: "Database not configured." };
+  const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, folderId));
+  if (!folder) return { ok: false, error: "Folder not found." };
+  const span = Math.min(90, Math.max(1, Math.round(days)));
+  const expiresAt = new Date(Date.now() + span * 86_400_000);
+  const token = randomBytes(24).toString("base64url");
+  try {
+    const [inserted] = await db.insert(shareRecipients).values({
+      folderId, email: session.email.toLowerCase(), name: "Claude reviewer link", token, permission: "view", kind: "ai",
+      invitedBy: session.email, expiresAt, aiReader: true,
+    }).returning({ id: shareRecipients.id });
+    await audit(session.email, "create", "share-recipient", String(folderId), `Claude reviewer link created (view-only, ${span} days)`);
+    revalidatePath(`/admin/share-folders/${folderId}`);
+    return { ok: true, recipientId: inserted.id, link: `${await baseUrl()}/share/${token}`, expiresAt: expiresAt.toISOString() };
+  } catch (err) {
+    console.error("[share] createAiReviewLink failed:", err);
+    return { ok: false, error: "Couldn't create the link. Run Settings → Database updates once, then retry." };
+  }
+}
+
 /** Send the invitation email for a recipient who was added without one.
  *  Leaves the expiry exactly as the firm set it (unlike a re-issue). */
 export async function sendInviteNow(recipientId: number) {

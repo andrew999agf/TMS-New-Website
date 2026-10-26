@@ -197,6 +197,7 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS share_recipients_folder_idx ON share_recipients (folder_id)`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS expires_at timestamptz`,
   `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS permission varchar(16) NOT NULL DEFAULT 'download'`,
+  `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS ai_reader boolean NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS share_dirs (
     id serial PRIMARY KEY,
     folder_id integer NOT NULL,

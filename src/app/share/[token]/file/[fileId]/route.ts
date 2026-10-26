@@ -25,7 +25,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 
   // Same sign-in requirement as the share page for sensitive folders.
   const [folder] = await db.select({ requireAuth: shareFolders.requireAuth }).from(shareFolders).where(eq(shareFolders.id, rec.folderId));
-  if (folder?.requireAuth || rec.requireAuth) {
+  // A Claude reviewer link reads documents inline without the sign-in step; it never downloads.
+  if (rec.aiReader && !preview) return NextResponse.json({ error: "This reviewer link opens documents for reading only (add ?preview=1)." }, { status: 403 });
+  if ((folder?.requireAuth || rec.requireAuth) && !rec.aiReader) {
     const who = await portalEmail();
     if (!who || who !== rec.email.toLowerCase()) {
       const admin = await getSession().catch(() => null);
@@ -45,7 +47,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   // zip-log, not file by file; resumed pieces (Range) aren't re-logged.
   const bulk = new URL(req.url).searchParams.get("bulk") === "1";
   if (!bulk && (!req.headers.get("range") || req.headers.get("range")?.startsWith("bytes=0-"))) {
-    await logShareAccess(req, { folderId: rec.folderId, recipientId: rec.id, action: inline ? "preview" : "download", fileId: file.id, meta: { name: file.filename, bytes: file.sizeBytes ?? undefined, via: "link" } });
+    await logShareAccess(req, { folderId: rec.folderId, recipientId: rec.id, action: inline ? "preview" : "download", fileId: file.id, meta: { name: file.filename, bytes: file.sizeBytes ?? undefined, via: rec.aiReader ? "ai-reviewer" : "link" } });
   }
 
   // Forward a Range request to Blob so video/audio can stream and seek in the

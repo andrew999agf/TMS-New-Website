@@ -17,6 +17,7 @@ import { uploadFailureReason } from "@/lib/share/upload-failure";
 import { SHARE_TYPES, SHARE_PERMISSIONS, RECIPIENT_KINDS, shareType, audienceStyle, recipientWarnings, classifyEmail, defaultKindForType, kindLabel, folderSupportsWorkspace, expiryDaysForType, type ShareFolderMeta } from "@/lib/share/types";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { useCaseLookup, lookupNote } from "./useCaseLookup";
+import { ShareAiReview } from "./ShareAiReview";
 import { ShareFileTree, type DirInfo } from "./ShareFileTree";
 import { ShareFilePreview, type PreviewFile } from "./ShareFilePreview";
 import { ShareFolderCreateDialog } from "./ShareFolderCreateDialog";
@@ -38,7 +39,7 @@ export type ActivitySummary = {
 };
 export type FolderData = { id: number; caseNumber: string; name: string; matter: string; court: string; county: string; plaintiff: string; defendant: string; type: string; notes: string; meta: ShareFolderMeta; requireAuth: boolean; archived: boolean };
 export type FileRow = { id: number; url: string; filename: string; contentType: string | null; sizeBytes: number | null; createdAt: string; by: string };
-export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; requireAuth: boolean; revoked: boolean };
+export type RecipientRow = { id: number; email: string; name: string; token: string; invitedAt: string; lastAccessAt: string | null; expiresAt: string | null; permission: string; kind: string; requireAuth: boolean; revoked: boolean; aiReader?: boolean };
 
 const FIRM_DOMAIN = "texaslawsmith.com";
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--c-accent)]";
@@ -77,7 +78,9 @@ export function ShareFolderDetail({ folder, files, recipients, dirs, dirInfo, ma
 
       {pkg && files.length > 0 && <PackageCard folderId={folder.id} initial={pkg} autoPackage={folder.meta.autoPackage !== false} />}
 
-      <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients} contacts={contacts} />
+      <ShareAiReview folder={{ id: folder.id, name: folder.name, caseNumber: folder.caseNumber, court: folder.court, county: folder.county, plaintiff: folder.plaintiff, defendant: folder.defendant }} files={files.map((f) => ({ filename: f.filename, sizeBytes: f.sizeBytes }))} links={recipients.filter((r) => r.aiReader).map((r) => ({ id: r.id, token: r.token, expiresAt: r.expiresAt, revoked: r.revoked, lastAccessAt: r.lastAccessAt, invitedAt: r.invitedAt }))} />
+
+      <RecipientsSection folderId={folder.id} typeKey={folder.type} recipients={recipients.filter((r) => !r.aiReader)} contacts={contacts} />
 
       {activity && <ActivitySection folderId={folder.id} activity={activity} recipients={recipients} />}
     </div>

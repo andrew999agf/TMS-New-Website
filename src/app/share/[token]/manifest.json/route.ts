@@ -34,7 +34,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (rec.expiresAt && rec.expiresAt < new Date()) return NextResponse.json({ error: "This link has expired." }, { status: 403 });
   const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, rec.folderId));
   if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (folder.requireAuth || rec.requireAuth) {
+  // A Claude reviewer link reads without the sign-in step (view-only, short-lived).
+  if ((folder.requireAuth || rec.requireAuth) && !rec.aiReader) {
     const who = await portalEmail();
     if (!who || who !== rec.email.toLowerCase()) {
       const admin = await getSession().catch(() => null);
@@ -42,9 +43,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     }
   }
 
-  const files = await db.select({ id: shareFiles.id, filename: shareFiles.filename, contentType: shareFiles.contentType, sizeBytes: shareFiles.sizeBytes, pageCount: shareFiles.pageCount, createdAt: shareFiles.createdAt })
+  let files = await db.select({ id: shareFiles.id, filename: shareFiles.filename, contentType: shareFiles.contentType, sizeBytes: shareFiles.sizeBytes, pageCount: shareFiles.pageCount, createdAt: shareFiles.createdAt })
     .from(shareFiles).where(eq(shareFiles.folderId, folder.id));
   files.sort((a, b) => collator.compare(a.filename, b.filename) || a.id - b.id);
+  // ?folder=<path> (repeatable) narrows the listing to those folders and what is under them.
+  const wanted = new URL(req.url).searchParams.getAll("folder").map((x) => x.replace(/^\/+|\/+$/g, "").toLowerCase()).filter(Boolean);
+  if (wanted.length) {
+    files = files.filter((f) => {
+      const dir = (f.filename.includes("/") ? f.filename.slice(0, f.filename.lastIndexOf("/")) : "").toLowerCase();
+      return wanted.some((w) => dir === w || dir.startsWith(`${w}/`));
+    });
+  }
   // Public origin: the forwarded host behind the hosting proxy, else the request's own.
   const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").trim();
   const proto = req.headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
@@ -65,8 +74,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
       url: `${origin}/share/${token}/file/${f.id}?preview=1`,
     };
   });
+  // Per-folder roll-up (top level of each document's path).
+  const folderMap = new Map<string, { path: string; documents: number; bytes: number; pages: number }>();
+  for (const d of documents) {
+    const top = d.folder.split("/")[0];
+    const cur = folderMap.get(top) ?? { path: top, documents: 0, bytes: 0, pages: 0 };
+    cur.documents++; cur.bytes += d.size ?? 0; cur.pages += d.pages ?? 0;
+    folderMap.set(top, cur);
+  }
   return NextResponse.json({
-    folder: { name: folder.name, caseNumber: folder.caseNumber, matter: folder.matter },
+    folder: { name: folder.name, caseNumber: folder.caseNumber, matter: folder.matter, court: folder.court, county: folder.county },
+    howToRead: "Each document's url opens that document itself (inline, no sign-in needed on this link). pages and batesStart/batesEnd are given where known; confirm Bates ranges from the stamps on the pages. Add ?folder=<path> to this listing's address to narrow it to one folder.",
+    folders: [...folderMap.values()].sort((a, b) => collator.compare(a.path, b.path)),
     generatedAt: new Date().toISOString(),
     expiresAt: rec.expiresAt?.toISOString() ?? null,
     documentCount: documents.length,

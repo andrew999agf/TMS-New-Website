@@ -128,6 +128,7 @@ export default async function ShareFolderPage({ params }: { params: Promise<{ id
     kind: r.kind,
     requireAuth: r.requireAuth,
     revoked: r.revoked,
+    aiReader: r.aiReader ?? false,
   }));
 
   return (

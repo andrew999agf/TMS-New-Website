@@ -27,7 +27,7 @@ export type ShareAccessMeta = {
   /** Document name for single-file actions. */
   name?: string;
   /** Which door: the recipient's link, a per-file direct link, a sub-folder link. */
-  via?: "link" | "file-link" | "dir-link";
+  via?: "link" | "file-link" | "dir-link" | "ai-reviewer";
   dir?: string;
 };
 

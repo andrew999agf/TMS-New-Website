@@ -205,6 +205,7 @@ export const DISCOVERY_DDL = [
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_staged varchar(64)`,
   `ALTER TABLE discovery_sets ADD COLUMN IF NOT EXISTS share_token_produced varchar(64)`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_url text`,
+  `ALTER TABLE share_recipients ADD COLUMN IF NOT EXISTS ai_reader boolean NOT NULL DEFAULT false`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_pathname text`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_request_name varchar(255)`,
   `ALTER TABLE share_folders ADD COLUMN IF NOT EXISTS discovery_prefix varchar(16) NOT NULL DEFAULT ''`,
