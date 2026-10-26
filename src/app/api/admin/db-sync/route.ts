@@ -807,6 +807,15 @@ const DDL = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE INDEX IF NOT EXISTS portal_requests_matter_idx ON portal_requests (matter_id)`,
+  `CREATE TABLE IF NOT EXISTS portal_member_matters (
+    id serial PRIMARY KEY,
+    member_id integer NOT NULL,
+    matter_id integer NOT NULL,
+    granted_by varchar(255) NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS portal_member_matters_uq ON portal_member_matters (member_id, matter_id)`,
+  `CREATE INDEX IF NOT EXISTS portal_member_matters_matter_idx ON portal_member_matters (matter_id)`,
   `UPDATE portal_groups g SET kind = 'family' WHERE g.kind = 'single' AND EXISTS (SELECT 1 FROM portal_companies c WHERE c.group_id = g.id)`,
 ];
 

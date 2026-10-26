@@ -6,7 +6,7 @@ import { CasePortalGroup, type CompanyRow, type MatterRow, type MemberRow, type 
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMembers, portalRequests, portalMessages, timeMatters } from "@/db/schema";
+import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMembers, portalMemberMatters, portalRequests, portalMessages, timeMatters } from "@/db/schema";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { requestOverdue } from "@/lib/portal";
@@ -31,13 +31,15 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
     db.select().from(portalMembers).where(eq(portalMembers.groupId, groupId)).orderBy(asc(portalMembers.createdAt)).catch(() => []),
   ]);
   const ids = matters.map((m) => m.id);
-  const [taskRows, reqRows, unreadRows] = ids.length
+  const [taskRows, reqRows, unreadRows, grantRows] = ids.length
     ? await Promise.all([
         db.select({ id: portalTasks.id, matterId: portalTasks.matterId, kind: portalTasks.kind, title: portalTasks.title, done: portalTasks.done }).from(portalTasks).where(inArray(portalTasks.matterId, ids)),
         db.select().from(portalRequests).where(inArray(portalRequests.matterId, ids)).orderBy(asc(portalRequests.dueOn), asc(portalRequests.id)).catch(() => []),
         db.select().from(portalMessages).where(and(inArray(portalMessages.matterId, ids), eq(portalMessages.fromClient, true), eq(portalMessages.readByFirm, false))).orderBy(desc(portalMessages.createdAt)).catch(() => []),
+        db.select({ memberId: portalMemberMatters.memberId, matterId: portalMemberMatters.matterId }).from(portalMemberMatters).where(inArray(portalMemberMatters.matterId, ids)).catch(() => [] as { memberId: number; matterId: number }[]),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
+  const activeMemberIds = new Set(members.filter((x) => !x.revoked).map((x) => x.id));
   const titleOf = new Map(matters.map((m) => [m.id, m.title]));
   const openVisible = new Set(matters.filter((m) => m.status === "open" && !m.hidden).map((m) => m.id));
 
@@ -52,6 +54,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
       firmTasks: taskRows.filter((t) => t.matterId === m.id && t.kind === "firm" && !t.done).length,
       openRequests: r.length, overdueRequests: r.filter(requestOverdue).length,
       unread: unreadRows.filter((u) => u.matterId === m.id).length,
+      viewers: grantRows.filter((g) => g.matterId === m.id && activeMemberIds.has(g.memberId)).length,
     };
   });
   const overview: OverviewData = {
@@ -61,7 +64,7 @@ export default async function CasePortalGroupPage({ params }: { params: Promise<
     firmTasks: taskRows.filter((t) => openVisible.has(t.matterId) && t.kind === "firm" && !t.done).map((t) => ({ id: t.id, matterId: t.matterId, matterTitle: titleOf.get(t.matterId) ?? "", title: t.title })),
   };
   const matterOptions: MatterOption[] = clioMatters.map((m) => ({ displayNumber: m.displayNumber, description: m.description }));
-  const memberRows: MemberRow[] = members.map((x) => ({ id: x.id, email: x.email, name: x.name, token: x.token, revoked: x.revoked, lastAccessAt: x.lastAccessAt ? x.lastAccessAt.toISOString() : null }));
+  const memberRows: MemberRow[] = members.map((x) => ({ id: x.id, email: x.email, name: x.name, token: x.token, revoked: x.revoked, lastAccessAt: x.lastAccessAt ? x.lastAccessAt.toISOString() : null, matterIds: grantRows.filter((g) => g.memberId === x.id).map((g) => g.matterId) }));
 
   const family = profile.kind === "family";
   return (

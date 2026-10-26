@@ -2,12 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminShell";
-import { CasePortalMatter, type MatterData, type TaskRow, type MessageRow, type DocRow, type TimeData, type RequestRow } from "@/components/admin/CasePortalMatter";
+import { CasePortalMatter, type MatterData, type TaskRow, type MessageRow, type DocRow, type TimeData, type RequestRow, type ViewerRow } from "@/components/admin/CasePortalMatter";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
-import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, portalRequests, timeEntries, exhibitSets, shareFolders } from "@/db/schema";
+import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, portalRequests, portalMembers, portalMemberMatters, timeEntries, exhibitSets, shareFolders } from "@/db/schema";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { isBlobConfigured } from "@/lib/blob";
 import type { MatterOption } from "@/components/admin/MatterCombobox";
@@ -28,7 +28,7 @@ export default async function CasePortalMatterPage({ params }: { params: Promise
   const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, groupId));
   if (!group) notFound();
 
-  const [companies, tasks, messages, docs, clioMatters, folders, requests] = await Promise.all([
+  const [companies, tasks, messages, docs, clioMatters, folders, requests, members, grants] = await Promise.all([
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, groupId)).orderBy(asc(portalCompanies.name)),
     db.select().from(portalTasks).where(eq(portalTasks.matterId, matterId)).orderBy(asc(portalTasks.done), desc(portalTasks.createdAt)),
     db.select().from(portalMessages).where(eq(portalMessages.matterId, matterId)).orderBy(asc(portalMessages.createdAt)),
@@ -36,7 +36,11 @@ export default async function CasePortalMatterPage({ params }: { params: Promise
     db.select().from(timeMatters).orderBy(asc(timeMatters.sort)),
     db.select({ id: shareFolders.id, name: shareFolders.name, caseNumber: shareFolders.caseNumber }).from(shareFolders).where(eq(shareFolders.archived, false)).orderBy(asc(shareFolders.name)),
     db.select().from(portalRequests).where(eq(portalRequests.matterId, matterId)).orderBy(asc(portalRequests.sort), asc(portalRequests.id)).catch(() => []),
+    db.select().from(portalMembers).where(eq(portalMembers.groupId, groupId)).orderBy(asc(portalMembers.createdAt)).catch(() => []),
+    db.select({ memberId: portalMemberMatters.memberId }).from(portalMemberMatters).where(eq(portalMemberMatters.matterId, matterId)).catch(() => [] as { memberId: number }[]),
   ]);
+  const grantedIds = new Set(grants.map((g) => g.memberId));
+  const viewerRows: ViewerRow[] = members.map((x) => ({ id: x.id, email: x.email, name: x.name, revoked: x.revoked, added: grantedIds.has(x.id), lastAccessAt: x.lastAccessAt ? x.lastAccessAt.toISOString() : null }));
   // Which client messages were unread when this page opened (shown as NEW),
   // then mark them read — the firm has now seen them.
   const unreadIds = new Set(messages.filter((x) => x.fromClient && !x.readByFirm).map((x) => x.id));
@@ -111,6 +115,7 @@ export default async function CasePortalMatterPage({ params }: { params: Promise
           messages={messageRows}
           docs={docRows}
           requests={requestRows}
+          viewers={viewerRows}
           time={time}
           clioMatters={matterOptions}
           shareFolders={folders}

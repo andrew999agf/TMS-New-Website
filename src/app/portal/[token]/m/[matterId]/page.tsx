@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { portalMatters, portalCompanies, portalTasks, portalMessages, portalDocs, portalRequests } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { resolvePortalMember, isVerifiedPortalMember } from "@/lib/portal-access";
+import { resolvePortalMember, isVerifiedPortalMember, memberCanSeeMatter } from "@/lib/portal-access";
 import { PortalGate } from "@/components/portal/PortalGate";
 import { ClientMatter } from "@/components/portal/ClientMatter";
 import { isBlobConfigured } from "@/lib/blob";
@@ -40,6 +40,7 @@ export default async function PortalMatterPage({ params }: { params: Promise<{ t
   await ensureDiscoveryTables().catch(() => {});
   const [m] = await db.select().from(portalMatters).where(and(eq(portalMatters.id, id), eq(portalMatters.groupId, ctx.group.id)));
   if (!m || m.status !== "open" || m.hidden) return <Unavailable />;
+  if (!(await memberCanSeeMatter(ctx.member.id, m.id))) return <Unavailable />;
 
   const [companies, tasks, messages, docs, requests] = await Promise.all([
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, ctx.group.id)),

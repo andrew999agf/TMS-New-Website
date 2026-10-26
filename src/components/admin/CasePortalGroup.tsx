@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Briefcase, Building2, User, Plus, Loader2, ChevronRight, X, Scale, FileText, Handshake, ListChecks, Share2, Link as LinkIcon, Mail, Ban, RotateCcw, Trash2, Eye, EyeOff,
-  ClipboardList, MessageSquare, Pencil, Check, Landmark, ClipboardPaste, Send,
+  ClipboardList, MessageSquare, Pencil, Check, Landmark, ClipboardPaste, Send, Users, ChevronDown,
 } from "lucide-react";
 import {
   addPortalCompany, removePortalCompany, updatePortalCompany, createPortalMatter, setMatterHidden, addPortalMember, resendPortalInvite, setPortalMemberRevoked, deletePortalMember,
-  setClientCanCreateMatters, updatePortalGroupProfile, updatePortalGroupNotes, importPortalMatters, sendGroupDigest, updatePortalMatter,
+  setClientCanCreateMatters, updatePortalGroupProfile, updatePortalGroupNotes, importPortalMatters, sendGroupDigest, updatePortalMatter, setMemberMatter,
 } from "@/app/admin/(panel)/case-portal/actions";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
 import { useCaseLookup, lookupNote } from "./useCaseLookup";
@@ -21,8 +21,10 @@ export type MatterRow = {
   id: number; title: string; companyId: number | null; companyName: string | null;
   clioMatter: string; posture: string; status: string; hidden: boolean; driveFolder: string;
   openTasks: number; firmTasks: number; openRequests: number; overdueRequests: number; unread: number;
+  /** Active members who have been added to this matter. */
+  viewers: number;
 };
-export type MemberRow = { id: number; email: string; name: string; token: string; revoked: boolean; lastAccessAt: string | null };
+export type MemberRow = { id: number; email: string; name: string; token: string; revoked: boolean; lastAccessAt: string | null; matterIds: number[] };
 export type OverviewData = {
   requests: { id: number; matterId: number; matterTitle: string; title: string; dueOn: string; status: string }[];
   unread: { id: number; matterId: number; matterTitle: string; author: string; body: string; createdAt: string }[];
@@ -100,7 +102,7 @@ export function CasePortalGroup({ group, companies, matters, clioMatters, member
         </div>
       )}
 
-      <PortalAccess groupId={group.id} members={members} clientCanCreateMatters={group.clientCanCreateMatters} />
+      <PortalAccess groupId={group.id} members={members} matters={matters.filter((m) => m.status === "open" && !m.hidden)} clientCanCreateMatters={group.clientCanCreateMatters} />
     </div>
   );
 }
@@ -177,7 +179,7 @@ function Overview({ group, overview, members }: { group: GroupProfile; overview:
   const active = members.filter((m) => !m.revoked).length;
   const send = () => start(async () => {
     const r = await sendGroupDigest(group.id, note);
-    setMsg(r.ok ? (r.sent ? `Sent to ${r.sent} portal member${r.sent === 1 ? "" : "s"}: one email covering every open matter.` : "No active portal members yet — invite the client below first.") : r.error);
+    setMsg(r.ok ? (r.sent ? `Sent to ${r.sent} portal member${r.sent === 1 ? "" : "s"}: one email each covering every open matter they have been added to.` : "Nobody has been added to any matter yet — invite the client below and tick their matters first.") : r.error);
     setNote(""); router.refresh();
   });
   const Row = ({ matterTitle, matterId, children }: { matterTitle: string; matterId: number; children: React.ReactNode }) => (
@@ -411,6 +413,9 @@ function MatterList({ groupId, items, heading, hiddenView }: { groupId: number; 
                       {[m.companyName, m.driveFolder ? `📁 ${m.driveFolder}` : "no working folder yet"].filter(Boolean).join("  ·  ")}
                     </span>
                   </span>
+                  {!hiddenView && m.status === "open" && (m.viewers === 0
+                    ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800" title="No client has been added to this matter — nobody can see it in the portal" data-testid={`nobody-${m.id}`}><Users size={11} /> Nobody added</span>
+                    : <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--c-surface-2)] px-2 py-0.5 text-[11px] font-medium text-[var(--c-ink-muted)]" title={`${m.viewers} ${m.viewers === 1 ? "person" : "people"} can see this matter`}><Users size={11} /> {m.viewers}</span>)}
                   {m.unread > 0 && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--c-accent)] px-2 py-0.5 text-[11px] font-semibold text-white" title="Unread from the client"><MessageSquare size={11} /> {m.unread}</span>}
                   {m.openRequests > 0 && <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${m.overdueRequests ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`} title="Documents still requested"><ClipboardList size={11} /> {m.openRequests}</span>}
                   {m.openTasks > 0 && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--c-accent)]" title="Client to-dos"><ListChecks size={11} /> {m.openTasks}</span>}
@@ -433,54 +438,102 @@ function MatterList({ groupId, items, heading, hiddenView }: { groupId: number; 
 
 /* ----------------------------- portal access ----------------------------- */
 
-function PortalAccess({ groupId, members, clientCanCreateMatters }: { groupId: number; members: MemberRow[]; clientCanCreateMatters: boolean }) {
+function PortalAccess({ groupId, members, matters, clientCanCreateMatters }: { groupId: number; members: MemberRow[]; matters: MatterRow[]; clientCanCreateMatters: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [picked, setPicked] = useState<number[]>([]);
+  const [open, setOpen] = useState<number | null>(null);
+  // Optimistic state for the per-member matter ticks (the server round-trip refreshes behind it).
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const togglePick = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   function invite() {
     setError(null); setMsg(null);
     start(async () => {
-      const r = await addPortalMember(groupId, { email, name });
+      const r = await addPortalMember(groupId, { email, name, matterIds: picked });
       if (!r.ok) { setError(r.error ?? "Couldn't send the invite."); return; }
-      setMsg("warning" in r && r.warning ? r.warning : r.resent ? `Invite re-sent to ${email.trim()}.` : `Invite sent to ${email.trim()}.`);
-      setName(""); setEmail(""); router.refresh();
+      const n = picked.length;
+      setMsg("warning" in r && r.warning ? r.warning : `${r.resent ? "Invite re-sent" : "Invite sent"} to ${email.trim()}${n ? ` with access to ${n} matter${n === 1 ? "" : "s"}` : " — they won't see any matters until you add them to one"}.`);
+      setName(""); setEmail(""); setPicked([]); router.refresh();
     });
   }
   const copyLink = (token: string) => { void navigator.clipboard.writeText(`${window.location.origin}/portal/${token}`); setMsg("Portal link copied — it only works for the invited email after they verify."); };
+  const matterTitle = (id: number) => matters.find((m) => m.id === id)?.title ?? "";
   return (
-    <div className={`${card} p-4`}>
+    <div className={`${card} p-4`} data-testid="portal-access">
       <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold"><Share2 size={15} className="text-[var(--c-accent)]" /> Client portal access</p>
       <p className="mb-3 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
-        Invite the client (and anyone who handles things for them) by email. Each gets a personal link and signs in with a one-time code. They see every <strong>open matter</strong> on this file grouped the same way as here, the <strong>documents requested</strong> with an upload button per item, their <strong>to-dos</strong>, <strong>client documents</strong>, and a <strong>message thread</strong> per matter. Never the firm checklist, pleadings, discovery, exhibits, notes, or time.
+        Access is <strong>per matter</strong>. Each person gets a personal link and signs in with a one-time code, and sees only the matters you add them to — the <strong>documents requested</strong> with an upload button per item, their <strong>to-dos</strong>, <strong>client documents</strong>, and a <strong>message thread</strong> on each. A new matter starts with nobody on it; add people to it when it is set up. Never the firm checklist, pleadings, discovery, exhibits, notes, or time.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className={`${input} w-40`} />
         <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") invite(); }} placeholder="email@company.com" className={`${input} min-w-[220px] flex-1`} />
         <button onClick={invite} disabled={pending || !email.trim()} className="btn btn-accent text-sm disabled:opacity-50">{pending ? <Loader2 size={15} className="animate-spin" /> : <><Mail size={14} /> Send invite</>}</button>
       </div>
+      {matters.length > 0 && (
+        <div className="mt-2 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5" data-testid="invite-matters">
+          <p className="mb-1.5 text-[11px] font-medium text-[var(--c-ink)]">Give them access to: <span className="font-normal text-[var(--c-ink-muted)]">{picked.length ? `${picked.length} of ${matters.length} matters` : "none selected yet"}</span>
+            <button onClick={() => setPicked(picked.length === matters.length ? [] : matters.map((m) => m.id))} className="ml-2 text-[11px] text-[var(--c-accent)] hover:underline">{picked.length === matters.length ? "Clear" : "Select all"}</button>
+          </p>
+          <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+            {matters.map((m) => (
+              <label key={m.id} className="flex cursor-pointer items-start gap-2 text-xs">
+                <input type="checkbox" className="mt-0.5 accent-[var(--c-accent)]" checked={picked.includes(m.id)} onChange={() => togglePick(m.id)} />
+                <span className="min-w-0 truncate">{m.title}{m.companyName ? <span className="text-[var(--c-ink-muted)]"> · {m.companyName}</span> : null}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       {msg && <p className="mt-2 text-xs text-green-700">{msg}</p>}
       {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
       <label className="mt-3 flex cursor-pointer items-start gap-2 border-t border-[var(--c-border)] pt-3 text-xs">
         <input type="checkbox" className="mt-0.5 accent-[var(--c-accent)]" checked={clientCanCreateMatters} onChange={(e) => start(async () => { await setClientCanCreateMatters(groupId, e.target.checked); router.refresh(); })} />
-        <span><span className="font-medium text-[var(--c-ink)]">Allow the client to open new matters</span><span className="block text-[11px] text-[var(--c-ink-muted)]">Adds an &ldquo;Open a new matter&rdquo; button to their portal; the office is emailed each time.</span></span>
+        <span><span className="font-medium text-[var(--c-ink)]">Allow the client to open new matters</span><span className="block text-[11px] text-[var(--c-ink-muted)]">Adds an &ldquo;Open a new matter&rdquo; button to their portal; the office is emailed each time. The person who opens it is the only one added to it.</span></span>
       </label>
       {members.length > 0 && (
         <ul className="mt-4 divide-y divide-[var(--c-border)] border-t border-[var(--c-border)]">
-          {members.map((mem) => (
-            <li key={mem.id} className={`flex flex-wrap items-center gap-2 py-2.5 ${mem.revoked ? "opacity-60" : ""}`}>
+          {members.map((mem) => {
+            const mine = mem.matterIds.filter((id) => matters.some((m) => m.id === id));
+            const expanded = open === mem.id;
+            return (
+            <li key={mem.id} className={`py-2.5 ${mem.revoked ? "opacity-60" : ""}`} data-testid={`member-${mem.id}`}>
+              <div className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-[var(--c-ink)]">{mem.name ? `${mem.name} — ` : ""}{mem.email}</span>
-                <span className="block text-[11px] text-[var(--c-ink-muted)]">{mem.revoked ? "Access revoked" : mem.lastAccessAt ? `Last visit ${new Date(mem.lastAccessAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Invited — hasn't signed in yet"}</span>
+                <span className="block text-[11px] text-[var(--c-ink-muted)]">
+                  {mem.revoked ? "Access revoked" : mem.lastAccessAt ? `Last visit ${new Date(mem.lastAccessAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Invited — hasn't signed in yet"}
+                  {" · "}
+                  <span className={mine.length === 0 && !mem.revoked ? "font-semibold text-amber-700" : ""}>{mine.length === 0 ? "sees no matters yet" : `sees ${mine.length} of ${matters.length} open matter${matters.length === 1 ? "" : "s"}`}</span>
+                </span>
               </span>
+              <button onClick={() => setOpen(expanded ? null : mem.id)} className={`rounded-md border px-2 py-1 text-[11px] ${expanded ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`} data-testid={`member-matters-${mem.id}`}><Users size={11} className="mr-1 inline" />Matters <ChevronDown size={11} className={`ml-0.5 inline transition-transform ${expanded ? "rotate-180" : ""}`} /></button>
               <button onClick={() => copyLink(mem.token)} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"><LinkIcon size={11} className="mr-1 inline" />Copy link</button>
               {!mem.revoked && <button onClick={() => start(async () => { const r = await resendPortalInvite(mem.id); setMsg(r.ok ? `Invite re-sent to ${mem.email}.` : null); setError(r.ok ? null : (r.error ?? "Couldn't resend.")); })} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"><Mail size={11} className="mr-1 inline" />Resend</button>}
               <button onClick={() => start(async () => { await setPortalMemberRevoked(mem.id, !mem.revoked); router.refresh(); })} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600">{mem.revoked ? <><RotateCcw size={11} className="mr-1 inline" />Restore</> : <><Ban size={11} className="mr-1 inline" />Revoke</>}</button>
               {mem.revoked && <button onClick={() => { if (confirm(`Delete ${mem.email}'s portal access entirely?`)) start(async () => { await deletePortalMember(mem.id); router.refresh(); }); }} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"><Trash2 size={11} className="mr-1 inline" />Delete</button>}
+              </div>
+              {expanded && (
+                <div className="mt-2 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-2.5">
+                  <p className="mb-1.5 text-[11px] text-[var(--c-ink-muted)]">Tick the matters {mem.name || mem.email} should see. Changes apply at once; no email is sent from here — use the matter page to add someone with a note.</p>
+                  {matters.length === 0 ? <p className="text-xs text-[var(--c-ink-muted)]">No open matters on this file.</p> : (
+                  <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                    {matters.map((m) => (
+                      <label key={m.id} className="flex cursor-pointer items-start gap-2 text-xs">
+                        <input type="checkbox" className="mt-0.5 accent-[var(--c-accent)]" checked={ticks[`${mem.id}:${m.id}`] ?? mine.includes(m.id)} onChange={(e) => { const on = e.target.checked; setTicks((t) => ({ ...t, [`${mem.id}:${m.id}`]: on })); start(async () => { const r = await setMemberMatter(mem.id, m.id, on); if (!r.ok) { setTicks((t) => ({ ...t, [`${mem.id}:${m.id}`]: !on })); setError(r.error ?? "Couldn't change that."); } router.refresh(); }); }} data-testid={`mm-${mem.id}-${m.id}`} />
+                        <span className="min-w-0 truncate">{m.title}{m.companyName ? <span className="text-[var(--c-ink-muted)]"> · {m.companyName}</span> : null}</span>
+                      </label>
+                    ))}
+                  </div>)}
+                  {mine.length > 0 && <p className="mt-2 text-[10px] text-[var(--c-ink-muted)]">Currently: {mine.map(matterTitle).filter(Boolean).join(", ")}</p>}
+                </div>
+              )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

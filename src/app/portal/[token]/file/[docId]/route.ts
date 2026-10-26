@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { portalDocs, portalMatters } from "@/db/schema";
-import { verifiedPortalCtx } from "@/lib/portal-access";
+import { verifiedPortalCtx, memberCanSeeMatter } from "@/lib/portal-access";
 
 export const runtime = "nodejs";
 
@@ -18,6 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!doc) return new NextResponse("Not found", { status: 404 });
   const [m] = await db.select({ groupId: portalMatters.groupId, hidden: portalMatters.hidden }).from(portalMatters).where(eq(portalMatters.id, doc.matterId));
   if (!m || m.groupId !== ctx.group.id || m.hidden) return new NextResponse("Not found", { status: 404 });
+  if (!(await memberCanSeeMatter(ctx.member.id, doc.matterId))) return new NextResponse("Not found", { status: 404 });
 
   const range = req.headers.get("range");
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);

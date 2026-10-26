@@ -6,8 +6,9 @@ import { randomBytes } from "crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 import { db } from "@/db";
-import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, portalRequests, exhibitSets, exhibitDocs } from "@/db/schema";
+import { portalGroups, portalCompanies, portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, portalRequests, portalMemberMatters, exhibitSets, exhibitDocs } from "@/db/schema";
 import { ensureDiscoveryTables } from "@/db/ensure";
+import { matterViewers, memberMatterIds } from "@/lib/portal-access";
 import { requestStatus, type RequestStatus } from "@/lib/portal";
 import { requireAdmin, audit } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
@@ -297,14 +298,17 @@ async function portalBaseUrl(): Promise<string> {
 }
 const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-async function sendPortalInviteEmail(member: { email: string; name: string; token: string }, groupName: string) {
+async function sendPortalInviteEmail(member: { email: string; name: string; token: string }, groupName: string, matterTitles: string[] = []) {
   const link = `${await portalBaseUrl()}/portal/${member.token}`;
   const who = member.name.trim() ? escHtml(member.name.trim()) : "there";
+  const list = matterTitles.length ? `<ul style="margin:0 0 12px 18px;padding:0">${matterTitles.map((t) => `<li style="margin:0 0 4px"><strong>${escHtml(t)}</strong></li>`).join("")}</ul>` : "";
   const html = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.6">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${escHtml(FIRM.name)}</p>
       <p style="margin:0 0 12px">Hi ${who},</p>
-      <p style="margin:0 0 12px">${escHtml(FIRM.name)} has set up a private client portal for <strong>${escHtml(groupName)}</strong>. In it you can see your active matters, upload documents the office needs, check off requested items, and message the team on each matter.</p>
+      <p style="margin:0 0 12px">${escHtml(FIRM.name)} has set up a private client portal for <strong>${escHtml(groupName)}</strong>${matterTitles.length ? ` and added you to the following matter${matterTitles.length === 1 ? "" : "s"}:` : "."}</p>
+      ${list}
+      <p style="margin:0 0 12px">In the portal you can upload documents the office needs, check off requested items, and message the team on each matter you have been added to.</p>
       <p style="margin:18px 0">
         <a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Open your client portal</a>
       </p>
@@ -312,6 +316,22 @@ async function sendPortalInviteEmail(member: { email: string; name: string; toke
       <p style="margin:0;font-size:12px;color:#888">If the button doesn't work, copy this address into your browser:<br/>${link}</p>
     </div>`;
   return sendEmail({ to: member.email, fromName: `${FIRM.name} — Client Portal`, subject: `Your client portal with ${FIRM.name}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
+}
+
+async function sendMatterAddedEmail(member: { email: string; name: string; token: string }, matter: { id: number; title: string }) {
+  const link = `${await portalBaseUrl()}/portal/${member.token}/m/${matter.id}`;
+  const who = member.name.trim() ? escHtml(member.name.trim()) : "there";
+  const html = `
+    <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:560px;line-height:1.6">
+      <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${escHtml(FIRM.name)}</p>
+      <p style="margin:0 0 12px">Hi ${who},</p>
+      <p style="margin:0 0 12px">${escHtml(FIRM.name)} has added you to the matter <strong>${escHtml(matter.title)}</strong> in your client portal. You can now see its requested documents, upload what the office needs, and message the team there.</p>
+      <p style="margin:18px 0">
+        <a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Open this matter</a>
+      </p>
+      <p style="margin:0;font-size:12px;color:#888">The link is personal to you (${escHtml(member.email)}); please don't forward it. If the button doesn't work, copy this address into your browser:<br/>${link}</p>
+    </div>`;
+  return sendEmail({ to: member.email, fromName: `${FIRM.name} — Client Portal`, subject: `You've been added to a matter — ${matter.title}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
 }
 
 /** Let (or stop letting) this group's portal members open new matters themselves. */
@@ -334,7 +354,7 @@ export async function notifyClientOfUpdate(matterId: number, kind: "docs" | "mes
   if (!db) return { ok: false as const, error: "Database not configured.", sent: 0 };
   const [m] = await db.select().from(portalMatters).where(eq(portalMatters.id, matterId));
   if (!m) return { ok: false as const, error: "Matter not found.", sent: 0 };
-  const members = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, m.groupId), eq(portalMembers.revoked, false)));
+  const members = await matterViewers(matterId);
   if (!members.length) return { ok: true as const, sent: 0 };
 
   const base = await portalBaseUrl();
@@ -362,25 +382,33 @@ export async function notifyClientOfUpdate(matterId: number, kind: "docs" | "mes
 
 /** Invite someone into a group's client portal: creates their personal link and
  *  emails it. Safe to call for an email already invited — it resends instead. */
-export async function addPortalMember(groupId: number, input: { email: string; name: string }) {
+export async function addPortalMember(groupId: number, input: { email: string; name: string; matterIds?: number[] }) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter a valid email address." };
   const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, groupId));
   if (!group) return { ok: false as const, error: "Group not found." };
+  // Only this file's open, un-hidden matters can be granted.
+  const wanted = Array.from(new Set((input.matterIds ?? []).filter((n) => Number.isFinite(n))));
+  const grantable = wanted.length
+    ? (await db.select({ id: portalMatters.id, title: portalMatters.title }).from(portalMatters).where(and(eq(portalMatters.groupId, groupId), inArray(portalMatters.id, wanted)))).filter(Boolean)
+    : [];
   try {
     const [existing] = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, groupId), eq(portalMembers.email, email)));
     if (existing) {
       if (existing.revoked) await db.update(portalMembers).set({ revoked: false }).where(eq(portalMembers.id, existing.id));
-      const sent = await sendPortalInviteEmail({ email, name: existing.name || input.name.trim(), token: existing.token }, group.name);
+      if (grantable.length) await db.insert(portalMemberMatters).values(grantable.map((m) => ({ memberId: existing.id, matterId: m.id, grantedBy: session.email }))).onConflictDoNothing();
+      const sent = await sendPortalInviteEmail({ email, name: existing.name || input.name.trim(), token: existing.token }, group.name, grantable.map((m) => m.title));
+      await audit(session.email, "update", "portal-member", email, grantable.length ? `Added to ${grantable.length} matter(s) on ${group.name}` : `Invite re-sent for ${group.name}`);
       reval(groupId);
       return sent.sent ? { ok: true as const, resent: true } : { ok: false as const, error: "Couldn't send the invite email." };
     }
     const token = randomBytes(18).toString("base64url");
-    await db.insert(portalMembers).values({ groupId, email, name: input.name.trim().slice(0, 191), token });
-    const sent = await sendPortalInviteEmail({ email, name: input.name.trim(), token }, group.name);
-    await audit(session.email, "create", "portal-member", email, `Invited to ${group.name}`);
+    const [created] = await db.insert(portalMembers).values({ groupId, email, name: input.name.trim().slice(0, 191), token }).returning({ id: portalMembers.id });
+    if (grantable.length) await db.insert(portalMemberMatters).values(grantable.map((m) => ({ memberId: created.id, matterId: m.id, grantedBy: session.email }))).onConflictDoNothing();
+    const sent = await sendPortalInviteEmail({ email, name: input.name.trim(), token }, group.name, grantable.map((m) => m.title));
+    await audit(session.email, "create", "portal-member", email, `Invited to ${group.name} (${grantable.length} matter(s))`);
     reval(groupId);
     return sent.sent ? { ok: true as const, resent: false } : { ok: true as const, resent: false, warning: "Invite saved, but the email couldn't be sent — use Copy link." };
   } catch {
@@ -411,7 +439,88 @@ export async function deletePortalMember(id: number) {
   await guard();
   if (!db) return { ok: false as const };
   const [mem] = await db.delete(portalMembers).where(eq(portalMembers.id, id)).returning();
+  await db.delete(portalMemberMatters).where(eq(portalMemberMatters.memberId, id)).catch(() => {});
   if (mem) reval(mem.groupId);
+  return { ok: true as const };
+}
+
+/* --------------------------- per-matter access --------------------------- */
+
+/**
+ * Add a person to ONE matter. Either an existing member of the file (by id) or
+ * a new email — the member record is created with no other access. A new
+ * member gets the portal invite naming this matter; an existing one gets an
+ * "added to a matter" note with a link straight to it.
+ */
+export async function addMatterViewer(matterId: number, input: { memberId?: number; email?: string; name?: string; notify?: boolean }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [m] = await db.select().from(portalMatters).where(eq(portalMatters.id, matterId));
+  if (!m) return { ok: false as const, error: "Matter not found." };
+  const [group] = await db.select().from(portalGroups).where(eq(portalGroups.id, m.groupId));
+  if (!group) return { ok: false as const, error: "Client file not found." };
+  const notify = input.notify !== false;
+  try {
+    let member: typeof portalMembers.$inferSelect | undefined;
+    let isNew = false;
+    if (input.memberId) {
+      [member] = await db.select().from(portalMembers).where(and(eq(portalMembers.id, input.memberId), eq(portalMembers.groupId, m.groupId)));
+      if (!member) return { ok: false as const, error: "That person isn't on this file." };
+      if (member.revoked) await db.update(portalMembers).set({ revoked: false }).where(eq(portalMembers.id, member.id));
+    } else {
+      const email = (input.email ?? "").trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter a valid email address." };
+      [member] = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, m.groupId), eq(portalMembers.email, email)));
+      if (member) {
+        if (member.revoked) await db.update(portalMembers).set({ revoked: false }).where(eq(portalMembers.id, member.id));
+      } else {
+        const token = randomBytes(18).toString("base64url");
+        [member] = await db.insert(portalMembers).values({ groupId: m.groupId, email, name: (input.name ?? "").trim().slice(0, 191), token }).returning();
+        isNew = true;
+        await audit(session.email, "create", "portal-member", email, `Invited to ${group.name} for "${m.title}"`);
+      }
+    }
+    const inserted = await db.insert(portalMemberMatters).values({ memberId: member.id, matterId, grantedBy: session.email }).onConflictDoNothing().returning({ id: portalMemberMatters.id });
+    const already = inserted.length === 0;
+    let sent = false;
+    if (notify) {
+      const r = isNew
+        ? await sendPortalInviteEmail({ email: member.email, name: member.name, token: member.token }, group.name, [m.title])
+        : await sendMatterAddedEmail({ email: member.email, name: member.name, token: member.token }, { id: m.id, title: m.title });
+      sent = r.sent;
+    }
+    if (!already) await audit(session.email, "update", "portal-matter", String(matterId), `Added ${member.email} to the matter${sent ? " (emailed)" : ""}`);
+    reval(m.groupId, matterId);
+    return { ok: true as const, memberId: member.id, email: member.email, already, sent, isNew };
+  } catch {
+    return { ok: false as const, error: "Couldn't add them. Run Settings → Database updates once, then retry." };
+  }
+}
+
+/** Take a person off ONE matter (they keep whatever else they were added to). */
+export async function removeMatterViewer(matterId: number, memberId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [m] = await db.select({ groupId: portalMatters.groupId, title: portalMatters.title }).from(portalMatters).where(eq(portalMatters.id, matterId));
+  if (!m) return { ok: false as const, error: "Matter not found." };
+  await db.delete(portalMemberMatters).where(and(eq(portalMemberMatters.matterId, matterId), eq(portalMemberMatters.memberId, memberId)));
+  const [mem] = await db.select({ email: portalMembers.email }).from(portalMembers).where(eq(portalMembers.id, memberId));
+  await audit(session.email, "update", "portal-matter", String(matterId), `Removed ${mem?.email ?? memberId} from the matter`);
+  reval(m.groupId, matterId);
+  return { ok: true as const };
+}
+
+/** From the file page: flip one member's access to one matter (no email). */
+export async function setMemberMatter(memberId: number, matterId: number, on: boolean) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const [mem] = await db.select().from(portalMembers).where(eq(portalMembers.id, memberId));
+  const [m] = await db.select({ id: portalMatters.id, groupId: portalMatters.groupId }).from(portalMatters).where(eq(portalMatters.id, matterId));
+  if (!mem || !m || mem.groupId !== m.groupId) return { ok: false as const, error: "Not found." };
+  if (on) await db.insert(portalMemberMatters).values({ memberId, matterId, grantedBy: session.email }).onConflictDoNothing();
+  else await db.delete(portalMemberMatters).where(and(eq(portalMemberMatters.matterId, matterId), eq(portalMemberMatters.memberId, memberId)));
+  await audit(session.email, "update", "portal-member", mem.email, `${on ? "Added to" : "Removed from"} matter ${matterId}`);
+  reval(m.groupId, matterId);
   return { ok: true as const };
 }
 
@@ -551,7 +660,7 @@ export async function sendRequestReminder(matterId: number, extraNote = "") {
   if (!m) return { ok: false as const, error: "Matter not found.", sent: 0 };
   const open = await db.select().from(portalRequests).where(and(eq(portalRequests.matterId, matterId), eq(portalRequests.status, "open"))).orderBy(asc(portalRequests.dueOn), asc(portalRequests.id));
   if (!open.length) return { ok: false as const, error: "Nothing is outstanding on this matter.", sent: 0 };
-  const members = await db.select().from(portalMembers).where(and(eq(portalMembers.groupId, m.groupId), eq(portalMembers.revoked, false)));
+  const members = await matterViewers(matterId);
   if (!members.length) return { ok: true as const, sent: 0 };
   const base = await portalBaseUrl();
   const today = new Date().toISOString().slice(0, 10);
@@ -740,8 +849,13 @@ export async function sendGroupDigest(groupId: number, extraNote = "") {
   const fmtDue = (d: string) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "");
   const owner = (m: typeof matters[number]) => companies.find((c) => c.id === m.companyId)?.name ?? (g.kind === "family" ? `${g.parentName || "Personal"} (personal)` : "");
   let sent = 0;
+  const covered = new Set<number>();
   for (const mem of members) {
-    const blocks = matters.map((m) => {
+    const allowed = await memberMatterIds(mem.id);
+    const mine = matters.filter((m) => allowed.has(m.id));
+    if (!mine.length) continue; // nothing shared with this person yet
+    for (const m of mine) covered.add(m.id);
+    const blocks = mine.map((m) => {
       const r = reqs.filter((x) => x.matterId === m.id);
       const t = tasks.filter((x) => x.matterId === m.id);
       const link = `${base}/portal/${mem.token}/m/${m.id}`;
@@ -758,7 +872,7 @@ export async function sendGroupDigest(groupId: number, extraNote = "") {
       <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px;line-height:1.6">
         <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${escHtml(FIRM.name)}</p>
         <p style="margin:0 0 12px">Hi ${who},</p>
-        <p style="margin:0 0 14px">Here is where everything stands across your ${matters.length} open matter${matters.length === 1 ? "" : "s"}${g.kind === "family" ? ` for ${escHtml(g.name)}` : ""}, and what we still need from you.</p>
+        <p style="margin:0 0 14px">Here is where everything stands across your ${mine.length} open matter${mine.length === 1 ? "" : "s"}${g.kind === "family" ? ` for ${escHtml(g.name)}` : ""}, and what we still need from you.</p>
         ${extraNote.trim() ? `<p style="margin:0 0 14px;padding:10px 14px;border-left:3px solid #7a1f2b;background:#faf7f2;white-space:pre-wrap">${escHtml(extraNote.trim())}</p>` : ""}
         ${blocks}
         <p style="margin:18px 0"><a href="${base}/portal/${mem.token}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Open your portal</a></p>
@@ -767,8 +881,9 @@ export async function sendGroupDigest(groupId: number, extraNote = "") {
     const r = await sendEmail({ to: mem.email, fromName: `${FIRM.name} — Client Portal`, subject: `Where everything stands — ${g.name}`, html, headers: { "X-Entity-Ref-ID": randomBytes(12).toString("hex") } });
     if (r.sent) sent++;
   }
-  if (reqs.length) await db.update(portalRequests).set({ remindedAt: new Date() }).where(inArray(portalRequests.id, reqs.map((r) => r.id)));
-  await audit(session.email, "update", "portal-group", String(groupId), `Whole-file summary emailed to ${sent} member(s): ${matters.length} matters, ${reqs.length} open requests`);
+  const remindedReqs = reqs.filter((r) => covered.has(r.matterId));
+  if (remindedReqs.length) await db.update(portalRequests).set({ remindedAt: new Date() }).where(inArray(portalRequests.id, remindedReqs.map((r) => r.id)));
+  await audit(session.email, "update", "portal-group", String(groupId), `Whole-file summary emailed to ${sent} member(s): ${covered.size} of ${matters.length} matters covered, ${reqs.length} open requests`);
   reval(groupId);
   return { ok: true as const, sent, items: reqs.length + tasks.length };
 }

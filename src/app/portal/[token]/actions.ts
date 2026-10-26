@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { and, eq, gt, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, portalRequests } from "@/db/schema";
-import { verifiedPortalCtx, type PortalCtx } from "@/lib/portal-access";
+import { portalMatters, portalTasks, portalMessages, portalDocs, portalMembers, portalRequests, portalMemberMatters } from "@/db/schema";
+import { verifiedPortalCtx, memberCanSeeMatter, type PortalCtx } from "@/lib/portal-access";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { SHARE_LEAD_TEAM_KEY, SHARE_LEAD_TEAM_DEFAULT } from "@/lib/share/settings";
@@ -45,12 +45,14 @@ async function notifyFirm(ctx: PortalCtx, matterId: number, matterTitle: string,
   }
 }
 
-/** A matter the member may touch: belongs to their group and is open. */
+/** A matter the member may touch: belongs to their group, is open, and they
+ *  have been added to it. */
 async function memberMatter(token: string, matterId: number) {
   const ctx = await verifiedPortalCtx(token);
   if (!ctx || !db) return null;
   const [m] = await db.select().from(portalMatters).where(and(eq(portalMatters.id, matterId), eq(portalMatters.groupId, ctx.group.id)));
   if (!m || m.status !== "open" || m.hidden) return null;
+  if (!(await memberCanSeeMatter(ctx.member.id, m.id))) return null;
   return { ctx, matter: m };
 }
 
@@ -159,6 +161,8 @@ export async function clientCreateMatter(token: string, input: { title: string; 
     .insert(portalMatters)
     .values({ groupId: ctx.group.id, title, posture: "transactional", status: "open", notes: details ? `Opened by ${ctx.member.email} via the portal:\n${details}` : `Opened by ${ctx.member.email} via the portal.` })
     .returning({ id: portalMatters.id });
+  // The person who opened it can see it; nobody else on the file until the firm adds them.
+  await db.insert(portalMemberMatters).values({ memberId: ctx.member.id, matterId: row.id, grantedBy: ctx.member.email }).onConflictDoNothing().catch(() => {});
   if (details) {
     await db.insert(portalMessages).values({ matterId: row.id, author: ctx.member.name.trim() || ctx.member.email, fromClient: true, body: details });
   }

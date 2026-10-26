@@ -6,12 +6,12 @@ import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
   LayoutDashboard, MessageSquare, FolderOpen, Clock, Scale, FileText, Gavel, Search as SearchIcon,
-  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail, ClipboardList, BellRing, CalendarDays,
+  Plus, Loader2, Trash2, ExternalLink, Upload, Check, X, ListChecks, DollarSign, Send, FileSearch, Mail, ClipboardList, BellRing, CalendarDays, Users, UserPlus, UserMinus,
 } from "lucide-react";
 import {
   updatePortalMatter, addPortalTask, togglePortalTask, deletePortalTask,
   addPortalMessage, registerPortalDoc, deletePortalDoc, notifyClientOfUpdate,
-  addPortalRequest, updatePortalRequest, deletePortalRequest, sendRequestReminder,
+  addPortalRequest, updatePortalRequest, deletePortalRequest, sendRequestReminder, addMatterViewer, removeMatterViewer,
 } from "@/app/admin/(panel)/case-portal/actions";
 import { REQUEST_STATUSES, requestStatus, requestOverdue } from "@/lib/portal";
 import { MatterCombobox, type MatterOption } from "./MatterCombobox";
@@ -28,6 +28,8 @@ export type MatterData = {
 };
 export type RequestRow = { id: number; title: string; details: string; dueOn: string; status: string; firmNote: string; respondedAt: string | null; remindedAt: string | null; files: { id: number; name: string }[] };
 export type TaskRow = { id: number; kind: "client" | "firm"; title: string; done: boolean };
+/** Everyone on the file, flagged with whether they have been added to THIS matter. */
+export type ViewerRow = { id: number; email: string; name: string; revoked: boolean; added: boolean; lastAccessAt: string | null };
 export type MessageRow = { id: number; author: string; fromClient: boolean; body: string; createdAt: string; unread?: boolean };
 export type DocRow = { id: number; tab: string; party: string; name: string; sizeBytes: number | null; exhibitDocId: number | null; createdAt: string; requestId?: number | null };
 export type TimeData = {
@@ -49,13 +51,14 @@ type Tab = "dashboard" | "requests" | "correspondence" | "documents" | "pleading
  * tabs (pleadings / discovery / exhibits — shown only for litigation posture),
  * and the running time tally read from the time tracker.
  */
-export function CasePortalMatter({ matter, companies, tasks, messages, docs, requests = [], time, clioMatters, shareFolders, blobReady, me }: {
+export function CasePortalMatter({ matter, companies, tasks, messages, docs, requests = [], viewers = [], time, clioMatters, shareFolders, blobReady, me }: {
   matter: MatterData;
   companies: { id: number; name: string }[];
   tasks: TaskRow[];
   messages: MessageRow[];
   docs: DocRow[];
   requests?: RequestRow[];
+  viewers?: ViewerRow[];
   time: TimeData;
   clioMatters: MatterOption[];
   shareFolders: { id: number; name: string; caseNumber: string }[];
@@ -70,6 +73,7 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, req
   const [exhibitNotice, setExhibitNotice] = useState<{ setId: number } | null>(null);
 
   const litigation = matter.posture === "litigation";
+  const activeViewers = viewers.filter((v) => v.added && !v.revoked).length;
   const openReq = requests.filter((r) => r.status === "open").length;
   const unread = messages.filter((m) => m.fromClient && m.unread).length;
   const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard; badge?: number; alert?: boolean }[] = [
@@ -109,6 +113,13 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, req
           <button onClick={() => setError(null)}><X size={14} /></button>
         </p>
       )}
+      {matter.status === "open" && activeViewers === 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900" data-testid="no-viewers">
+          <Users size={16} className="shrink-0" />
+          <span className="flex-1">Nobody has been added to this matter yet, so <strong>no client can see it</strong>. Add the people who should have it below.</span>
+          {tab !== "dashboard" && <button onClick={() => setTab("dashboard")} className="rounded-md border border-amber-700/40 px-2.5 py-1.5 text-xs font-semibold hover:bg-amber-500/10">Add people</button>}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex flex-wrap items-center gap-1 border-b border-[var(--c-border)] pb-2">
@@ -122,13 +133,14 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, req
           );
         })}
         <span className="ml-auto hidden text-[11px] text-[var(--c-ink-muted)] md:inline">{matter.ownerLabel}</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--c-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--c-ink-muted)]" title="People added to this matter" data-testid="viewer-count"><Users size={11} /> {activeViewers}</span>
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${matter.status === "open" ? "bg-emerald-100 text-emerald-800" : "bg-[var(--c-surface-2)] text-[var(--c-ink-muted)]"}`}>
           {matter.status === "open" ? "Open" : "Closed"}
         </span>
       </div>
 
       {tab === "dashboard" && (
-        <DashboardTab matter={matter} companies={companies} tasks={tasks} time={time} clioMatters={clioMatters} shareFolders={shareFolders} pending={pending} onPatch={patch} />
+        <DashboardTab matter={matter} companies={companies} tasks={tasks} viewers={viewers} time={time} clioMatters={clioMatters} shareFolders={shareFolders} pending={pending} onPatch={patch} />
       )}
       {tab === "requests" && <RequestsTab matterId={matter.id} requests={requests} />}
       {tab === "correspondence" && <CorrespondenceTab matterId={matter.id} messages={messages} me={me} />}
@@ -148,8 +160,8 @@ export function CasePortalMatter({ matter, companies, tasks, messages, docs, req
 
 /* ------------------------------- dashboard ------------------------------- */
 
-function DashboardTab({ matter, companies, tasks, time, clioMatters, shareFolders, pending, onPatch }: {
-  matter: MatterData; companies: { id: number; name: string }[]; tasks: TaskRow[]; time: TimeData;
+function DashboardTab({ matter, companies, tasks, viewers, time, clioMatters, shareFolders, pending, onPatch }: {
+  matter: MatterData; companies: { id: number; name: string }[]; tasks: TaskRow[]; viewers: ViewerRow[]; time: TimeData;
   clioMatters: MatterOption[]; shareFolders: { id: number; name: string; caseNumber: string }[];
   pending: boolean; onPatch: (p: Parameters<typeof updatePortalMatter>[1]) => void;
 }) {
@@ -249,12 +261,92 @@ function DashboardTab({ matter, companies, tasks, time, clioMatters, shareFolder
         </section>
       </div>
 
+      {/* Who on the file can see this matter */}
+      <ViewersPanel matterId={matter.id} viewers={viewers} groupId={matter.groupId} />
+
       {/* To-dos: client vs firm */}
       <div className="grid gap-5 lg:grid-cols-2">
         <TaskList matterId={matter.id} kind="client" heading="For the client to do" tasks={tasks.filter((t) => t.kind === "client")} onChanged={() => router.refresh()} />
         <TaskList matterId={matter.id} kind="firm" heading="Firm checklist" tasks={tasks.filter((t) => t.kind === "firm")} onChanged={() => router.refresh()} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Per-matter access. A matter starts with nobody; the firm adds the parent,
+ * the entity's contact, a bookkeeper — whoever should have this one. Existing
+ * people on the file are a dropdown; a new email becomes a member with access
+ * to this matter only.
+ */
+function ViewersPanel({ matterId, viewers, groupId }: { matterId: number; viewers: ViewerRow[]; groupId: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [pick, setPick] = useState<string>("");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [notify, setNotify] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const added = viewers.filter((v) => v.added);
+  const available = viewers.filter((v) => !v.added && !v.revoked);
+  const newPerson = pick === "new" || (available.length === 0 && pick === "");
+  const canAdd = newPerson ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) : pick !== "";
+  function add() {
+    setMsg(null); setError(null);
+    start(async () => {
+      const r = newPerson ? await addMatterViewer(matterId, { email, name, notify }) : await addMatterViewer(matterId, { memberId: Number(pick), notify });
+      if (!r.ok) { setError(r.error ?? "Couldn't add them."); return; }
+      setMsg(r.already ? `${r.email} already had this matter.` : r.sent ? `${r.email} added${r.isNew ? " and invited" : ""} — emailed a link to this matter.` : `${r.email} added to this matter${notify ? ", but the email couldn't be sent" : ""}.`);
+      setPick(""); setEmail(""); setName(""); router.refresh();
+    });
+  }
+  return (
+    <section className={`${card} p-5`} data-testid="viewers">
+      <div className="mb-1 flex items-center gap-2">
+        <Users size={15} className="text-[var(--c-accent)]" />
+        <h3 className="font-[family-name:var(--font-ui)] text-sm font-semibold">Who can see this matter</h3>
+        <span className="text-[11px] text-[var(--c-ink-muted)]">{added.length === 0 ? "nobody yet" : `${added.length} ${added.length === 1 ? "person" : "people"}`}</span>
+      </div>
+      <p className="mb-3 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">
+        Access is per matter. People on this file see only the matters they have been added to — add them here each time a new matter is set up. Manage everyone on the file from the <Link href={`/admin/case-portal/${groupId}`} className="underline hover:text-[var(--c-accent)]">file page</Link>.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {available.length > 0 && (
+          <select value={pick} onChange={(e) => setPick(e.target.value)} className={`${input} min-w-[220px]`} data-testid="viewer-pick">
+            <option value="">Choose someone on this file…</option>
+            {available.map((v) => <option key={v.id} value={v.id}>{v.name ? `${v.name} — ${v.email}` : v.email}</option>)}
+            <option value="new">+ Someone new (by email)</option>
+          </select>
+        )}
+        {newPerson && (
+          <>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className={`${input} w-36`} data-testid="viewer-name" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && canAdd) add(); }} placeholder="email@company.com" className={`${input} min-w-[200px] flex-1`} data-testid="viewer-email" />
+          </>
+        )}
+        <button onClick={add} disabled={pending || !canAdd} className="btn btn-accent text-sm disabled:opacity-50" data-testid="viewer-add">{pending ? <Loader2 size={15} className="animate-spin" /> : <><UserPlus size={14} /> Add to this matter</>}</button>
+      </div>
+      <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-[var(--c-ink-muted)]">
+        <input type="checkbox" className="accent-[var(--c-accent)]" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+        Email them a link to this matter
+      </label>
+      {msg && <p className="mt-2 text-xs text-green-700">{msg}</p>}
+      {error && <p className="mt-2 text-xs text-[var(--c-error)]">{error}</p>}
+      {added.length > 0 && (
+        <ul className="mt-3 divide-y divide-[var(--c-border)] border-t border-[var(--c-border)]">
+          {added.map((v) => (
+            <li key={v.id} className={`flex flex-wrap items-center gap-2 py-2 ${v.revoked ? "opacity-60" : ""}`} data-testid={`viewer-${v.id}`}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-[var(--c-ink)]">{v.name ? `${v.name} — ` : ""}{v.email}</span>
+                <span className="block text-[11px] text-[var(--c-ink-muted)]">{v.revoked ? "Portal access revoked on the file page" : v.lastAccessAt ? `Last visit ${fmtWhen(v.lastAccessAt)}` : "Hasn't signed in yet"}</span>
+              </span>
+              <button onClick={() => { if (confirm(`Remove ${v.email} from this matter? They keep any other matters they were added to.`)) start(async () => { await removeMatterViewer(matterId, v.id); router.refresh(); }); }} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] text-[var(--c-ink-muted)] hover:border-red-500 hover:text-red-600"><UserMinus size={11} className="mr-1 inline" />Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -297,7 +389,7 @@ function AskEmailClientDialog({ matterId, kind, count, onClose }: { matterId: nu
   function sendIt() {
     start(async () => {
       const r = await notifyClientOfUpdate(matterId, kind);
-      setResult(r.ok ? (r.sent ? `Emailed ${r.sent} portal member${r.sent === 1 ? "" : "s"} with a link to review.` : "No active portal members to email — invite the client from the group page.") : ("error" in r && r.error ? r.error : "Couldn't send."));
+      setResult(r.ok ? (r.sent ? `Emailed ${r.sent} portal member${r.sent === 1 ? "" : "s"} with a link to review.` : "Nobody has been added to this matter yet — add them on the Dashboard tab first.") : ("error" in r && r.error ? r.error : "Couldn't send."));
     });
   }
   return (
@@ -406,7 +498,7 @@ function RequestsTab({ matterId, requests }: { matterId: number; requests: Reque
   const open = requests.filter((r) => r.status === "open");
   const rest = requests.filter((r) => r.status !== "open");
   const add = () => { const t = title.trim(); if (!t) return; start(async () => { const r = await addPortalRequest(matterId, { title: t, details, dueOn }); if (r.ok) { setTitle(""); setDetails(""); setDueOn(""); } else setMsg(r.error ?? "Couldn't add."); router.refresh(); }); };
-  const remind = () => start(async () => { const r = await sendRequestReminder(matterId, note); setMsg(r.ok ? (r.sent ? `Reminder for ${r.requests} item${r.requests === 1 ? "" : "s"} emailed to ${r.sent} portal member${r.sent === 1 ? "" : "s"}.` : "No active portal members to email — invite the client from the file page.") : r.error); setNote(""); router.refresh(); });
+  const remind = () => start(async () => { const r = await sendRequestReminder(matterId, note); setMsg(r.ok ? (r.sent ? `Reminder for ${r.requests} item${r.requests === 1 ? "" : "s"} emailed to ${r.sent} portal member${r.sent === 1 ? "" : "s"}.` : "Nobody has been added to this matter yet — add them on the Dashboard tab first.") : r.error); setNote(""); router.refresh(); });
   return (
     <div className="space-y-5">
       <section className={`${card} p-5`}>

@@ -18,6 +18,7 @@ import {
   jsonb,
   pgEnum,
   index,
+  uniqueIndex,
   real,
   bigint,
 } from "drizzle-orm/pg-core";
@@ -2159,4 +2160,20 @@ export const portalMembers = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ groupIdx: index("portal_members_group_idx").on(t.groupId), tokenIdx: index("portal_members_token_idx").on(t.token) }),
+);
+
+/** Per-matter access for portal members. A member sees a matter only when a
+ *  row exists here — a new matter starts with no viewers until the firm adds
+ *  people to it (the parent and each entity's contacts are invited matter by
+ *  matter, never to the whole file at once). */
+export const portalMemberMatters = pgTable(
+  "portal_member_matters",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id").notNull(),
+    matterId: integer("matter_id").notNull(),
+    grantedBy: varchar("granted_by", { length: 255 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ memberMatterIdx: uniqueIndex("portal_member_matters_uq").on(t.memberId, t.matterId), matterIdx: index("portal_member_matters_matter_idx").on(t.matterId) }),
 );

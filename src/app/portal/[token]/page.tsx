@@ -6,7 +6,7 @@ import { portalMatters, portalCompanies, portalTasks, portalDocs, portalRequests
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { requestOverdue } from "@/lib/portal";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { resolvePortalMember, isVerifiedPortalMember } from "@/lib/portal-access";
+import { resolvePortalMember, isVerifiedPortalMember, memberMatterIds } from "@/lib/portal-access";
 import { PortalGate } from "@/components/portal/PortalGate";
 import { NewMatterForm } from "@/components/portal/NewMatterForm";
 import { FIRM } from "@/lib/firm";
@@ -31,12 +31,14 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
   if (!(await isVerifiedPortalMember(ctx))) return <PortalGate token={token} email={ctx.member.email} firmName={FIRM.name} />;
 
   await ensureDiscoveryTables().catch(() => {});
-  const [matters, companies] = await Promise.all([
+  const [matters, companies, allowed] = await Promise.all([
     db.select().from(portalMatters).where(eq(portalMatters.groupId, ctx.group.id)).orderBy(asc(portalMatters.title)),
     db.select().from(portalCompanies).where(eq(portalCompanies.groupId, ctx.group.id)),
+    memberMatterIds(ctx.member.id),
   ]);
-  // Hidden matters are invisible to clients entirely — not open, not closed.
-  const visible = matters.filter((m) => !m.hidden);
+  // Only matters this person was added to; hidden matters are invisible to
+  // clients entirely — not open, not closed.
+  const visible = matters.filter((m) => !m.hidden && allowed.has(m.id));
   const open = visible.filter((m) => m.status === "open");
   const closedCount = visible.length - open.length;
   const ids = open.map((m) => m.id);
@@ -55,8 +57,14 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
   // Grouped the way the firm sees it: the parent's personal matters, then each entity.
   const sections: { key: string; title: string; items: typeof open }[] = [];
   if (family) {
-    sections.push({ key: "parent", title: `${ctx.group.parentName || "Personal"} — personal`, items: open.filter((m) => m.companyId == null) });
-    for (const c of companies) sections.push({ key: `c${c.id}`, title: c.name, items: open.filter((m) => m.companyId === c.id) });
+    // Only the parts of the file this person has matters on — an entity's
+    // bookkeeper never learns which other entities exist.
+    const personal = open.filter((m) => m.companyId == null);
+    if (personal.length) sections.push({ key: "parent", title: `${ctx.group.parentName || "Personal"} — personal`, items: personal });
+    for (const c of companies) {
+      const items = open.filter((m) => m.companyId === c.id);
+      if (items.length) sections.push({ key: `c${c.id}`, title: c.name, items });
+    }
   } else {
     sections.push({ key: "all", title: "Active matters", items: open });
   }
@@ -67,7 +75,7 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--c-accent)]">{FIRM.name} — Client Portal</p>
         <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl leading-tight text-[var(--c-ink)]">{ctx.group.name}</h1>
         <p className="mt-1 text-sm text-[var(--c-ink-muted)]">
-          Welcome{ctx.member.name ? `, ${ctx.member.name}` : ""}. {family ? `This portal covers ${ctx.group.parentName || "your"} personal matters and those of ${companies.length ? companies.map((c) => c.name).join(", ") : "your entities"} — everything in one place.` : companies.length ? companies.map((c) => c.name).join("  ·  ") : ""}
+          Welcome{ctx.member.name ? `, ${ctx.member.name}` : ""}. {family ? `The matters you have been added to${sections.length ? ` for ${sections.map((x) => x.title).join(", ")}` : ""} — all in one place.` : companies.length ? companies.map((c) => c.name).join("  ·  ") : ""}
         </p>
         {(totalNeeded > 0 || totalNew > 0) && (
           <p className="mt-3 inline-flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 px-3 py-2 text-sm">
@@ -78,7 +86,7 @@ export default async function PortalHome({ params }: { params: Promise<{ token: 
       </header>
 
       {open.length === 0 ? (
-        <p className="mt-8 rounded-lg border border-dashed border-[var(--c-border)] p-6 text-center text-sm text-[var(--c-ink-muted)]">No active matters right now.</p>
+        <p className="mt-8 rounded-lg border border-dashed border-[var(--c-border)] p-6 text-center text-sm text-[var(--c-ink-muted)]">No active matters have been shared with you yet. When the office adds you to one, it appears here and you&apos;ll get an email.</p>
       ) : sections.map((sec) => (
         <section key={sec.key}>
         <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--c-ink-muted)]">{sec.title} ({sec.items.length})</h2>
