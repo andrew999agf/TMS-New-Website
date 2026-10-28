@@ -1575,6 +1575,9 @@ export const discoverySets = pgTable(
      *  Payroll records") written against the record copies. */
     stagedToc: text("staged_toc").notNull().default(""),
     stagedNotes: text("staged_notes").notNull().default(""),
+    /** Per-tab document order (name / upload date / Bates / dragged), shared
+     *  by the whole firm — see src/lib/discovery/doc-order.ts. */
+    viewOrder: jsonb("view_order").notNull().default({}),
     /** Friendly-parties share links — ONE PER TAB, each independently on/off
      *  (null = off), so a link never exposes more than its own pile. NEVER
      *  for opposing counsel — productions have their own OC link — and the

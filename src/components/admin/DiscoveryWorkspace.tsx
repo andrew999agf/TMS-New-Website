@@ -1,5 +1,7 @@
 "use client";
 
+import type { ViewOrders } from "@/lib/discovery/doc-order";
+
 import { useState } from "react";
 import { DiscoveryDiagnostics } from "./DiscoveryDiagnostics";
 import { DiscoveryReviewer } from "./DiscoveryReviewer";
@@ -14,8 +16,9 @@ type Mode = "opposing" | "received" | "staged" | "produced";
  * pale red (received from client), pale yellow (to be produced), pale green
  * (produced).
  */
-export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults, contents, shareTokens }: {
+export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, batesDefaults, contents, shareTokens, viewOrders = {} }: {
   reviewerProps: ComponentProps<typeof DiscoveryReviewer>;
+  viewOrders?: ViewOrders;
   clientFiles: ClientFile[];
   staged: StagedDoc[];
   prods: ProductionRow[];
@@ -50,7 +53,7 @@ export function DiscoveryWorkspace({ reviewerProps, clientFiles, staged, prods, 
         <DiscoveryReviewer {...reviewerProps} />
       ) : (
         <div className="min-h-0 flex-1">
-          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} />
+          <ProductionPipeline mode={mode} setId={reviewerProps.setId} clientFiles={clientFiles} staged={staged} prods={prods} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} viewOrders={viewOrders} />
         </div>
       )}
     </div>

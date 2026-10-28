@@ -7,6 +7,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { db } from "@/db";
 import { discoverySets, discoveryDocs, discoveryMarks, exhibitSets, exhibitDocs, caseHub, shareFolders, shareFiles, shareRecipients, productionDocs, productions, type CaseParty } from "@/db/schema";
 import { DiscoveryWorkspace } from "@/components/admin/DiscoveryWorkspace";
+import { viewOrdersOf } from "@/lib/discovery/doc-order";
 import { DiscoveryLiveRefresh } from "@/components/admin/DiscoveryLiveRefresh";
 import { discoveryFingerprint } from "@/lib/discovery/fingerprint";
 import { partsOf } from "@/lib/production/parts";
@@ -35,6 +36,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   if (!set) notFound();
 
   const allDocs = await db.select().from(discoveryDocs).where(eq(discoveryDocs.setId, setId)).orderBy(asc(discoveryDocs.sort), asc(discoveryDocs.id));
+  const viewOrders = viewOrdersOf(set.viewOrder);
   // The opposing-production reviewer shows only its own bucket; documents
   // moved to the client bucket surface under "Documents received from Client".
   const docs = allDocs.filter((d) => d.bucket !== "client");
@@ -140,7 +142,7 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
   try {
     const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
     staged = pdocs.map((d) => ({
-      id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, sizeBytes: d.sizeBytes, batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
+      id: d.id, name: d.name, requestLabel: d.requestLabel, url: d.url, sizeBytes: d.sizeBytes, createdAt: d.createdAt.toISOString(), batesPrefix: d.batesPrefix, batesStart: d.batesStart, batesEnd: d.batesEnd, productionId: d.productionId,
       sourceKey: d.sourceKey, sourcePages: Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [], pageBates: Array.isArray(d.pageBates) ? (d.pageBates as number[]) : [], status: d.status === "produced" ? "produced" as const : "staged" as const,
       aiLabel: d.aiLabel ?? "", aiDescription: d.aiDescription ?? "", aiSections: asSections(d.aiSections),
       pageCount: d.pageCount ?? undefined,
@@ -211,13 +213,15 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       <DiscoveryWorkspace
         reviewerProps={{
           setId,
-          docs: docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus })),
+          docs: docs.map((d) => ({ id: d.id, name: d.name, pageCount: d.pageCount, sizeBytes: d.sizeBytes, createdAt: d.createdAt.toISOString(), servedAt: d.servedAt, servedBy: d.servedBy, servedTo: d.servedTo, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiLabelStatus: d.aiLabelStatus })),
           marks: marks.map((m) => ({ id: m.id, party: m.party as "P" | "D", number: m.number, label: m.label, title: m.title, pages: (m.pages as { docId: number; page: number }[]) ?? [], exhibitSetId: m.exhibitSetId })),
           usedNumbers,
           parties,
           caseName: set.name,
           matter: set.matter,
+          viewOrder: viewOrders.opposing,
         }}
+        viewOrders={viewOrders}
         clientFiles={clientFiles}
         staged={staged}
         prods={prods}

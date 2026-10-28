@@ -22,6 +22,7 @@ import { caseDistribution, type Distribution } from "@/lib/case-distribution";
 import { sendEmail } from "@/lib/email";
 import { buildProductionEmail } from "@/lib/production/email";
 import { randomBytes } from "crypto";
+import { ORDER_MODES, ORDER_SCOPES, type OrderMode, type ViewOrder, viewOrdersOf } from "@/lib/discovery/doc-order";
 
 async function guard() {
   const session = await requireAdmin();
@@ -161,6 +162,24 @@ export async function addDiscoveryDoc(setId: number, input: { name?: string; fil
 
 /** Persist the true page count once the browser has the PDF open (covers files
  *  too large for server-side extraction at upload time). */
+/** Remember how one tab of this case lists its documents (sort mode, or the
+ *  dragged order) — for everyone at the firm, on every device. */
+export async function setDiscoveryViewOrder(setId: number, scope: string, order: ViewOrder) {
+  await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  if (!(ORDER_SCOPES as readonly string[]).includes(scope) || !ORDER_MODES.includes(order?.mode as OrderMode)) return { ok: false as const, error: "Bad order." };
+  const [set] = await db.select({ viewOrder: discoverySets.viewOrder }).from(discoverySets).where(eq(discoverySets.id, setId));
+  if (!set) return { ok: false as const, error: "Case not found." };
+  const cur = viewOrdersOf(set.viewOrder);
+  const next: ViewOrder = { mode: order.mode };
+  const custom = Array.isArray(order.custom) ? order.custom.filter((k) => typeof k === "string" && k.length <= 64).slice(0, 5000) : cur[scope]?.custom;
+  if (custom?.length) next.custom = custom;
+  cur[scope] = next;
+  await db.update(discoverySets).set({ viewOrder: cur }).where(eq(discoverySets.id, setId));
+  revalidatePath(`/admin/discovery-reviewer/${setId}`);
+  return { ok: true as const };
+}
+
 export async function setDiscoveryDocPageCount(docId: number, pageCount: number) {
   await guard();
   if (!db) return { ok: false as const };

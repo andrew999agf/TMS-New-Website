@@ -182,6 +182,11 @@ async function reviewTargets(setId: number, matter: string): Promise<ReviewRow[]
       bates: p.batesPrefix ? `${p.batesPrefix}${String(p.batesStart).padStart(6, "0")}–${String(p.batesEnd).padStart(6, "0")}` : undefined,
     });
   }
+  // Same order the tabs use by default — alphabetical within each kind — so
+  // the labels come in January, February, March… not in drop order.
+  const kindRank = { doc: 0, share: 1, production: 2 } as const;
+  const coll = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+  out.sort((a, b) => kindRank[a.kind] - kindRank[b.kind] || coll.compare(a.name, b.name) || a.id - b.id);
   return out;
 }
 

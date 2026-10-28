@@ -218,6 +218,11 @@ async function targetsFor(setId: number): Promise<Row[]> {
     }
     out.push(row);
   }
+  // Alphabetical (numeric-aware) within each kind: a big drop is read in
+  // the order the documents sort, not the order the picker handed them over.
+  const kindRank = { discovery: 0, share: 1, production: 2 } as const;
+  const coll = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+  out.sort((a, b) => kindRank[a.kind] - kindRank[b.kind] || coll.compare(a.name, b.name) || a.id - b.id);
   return out;
 }
 

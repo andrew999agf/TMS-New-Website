@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import {
-  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, Grid3x3, BookOpen, Loader2, Plus, Trash2, X, Check, ExternalLink, UploadCloud, ZoomIn, ZoomOut, GripVertical,
 } from "lucide-react";
 import {
   addDiscoveryDoc, deleteDiscoveryDoc, setDiscoveryDocPageCount, saveDesignation, createLinkedExhibitSet, deleteDesignation, updateDesignation,
@@ -13,10 +13,12 @@ import {
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import { addCaseParty } from "@/app/admin/(panel)/cases/actions";
 import { IndexAndLabel } from "@/components/admin/DiscoveryAiReview";
+import { orderDocs, byName, type ViewOrder, type OrderMode } from "@/lib/discovery/doc-order";
+import { useViewOrder, DocSortSelect, useDocDrag, dropHintClass, type DragHint } from "./DocOrderControls";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { createPdfLoader, type PdfLoader } from "./pdf-loader";
 
-type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; servedAt?: string; servedBy?: string; servedTo?: string; aiLabel?: string; aiDescription?: string; aiLabelStatus?: string };
+type DocMeta = { id: number; name: string; pageCount: number | null; sizeBytes: number | null; createdAt?: string; servedAt?: string; servedBy?: string; servedTo?: string; aiLabel?: string; aiDescription?: string; aiLabelStatus?: string };
 type Mark = { id: number; party: "P" | "D"; number: number; label: string; title: string; pages: PageRef[]; exhibitSetId: number | null };
 
 const key = (docId: number, page: number) => `${docId}:${page}`;
@@ -29,11 +31,16 @@ export { loadPdfjs } from "./pdf-loader";
 
 type Party = { name: string; role: string };
 
+const OPP_ORDER_ACC = { key: (d: DocMeta) => `doc:${d.id}`, name: (d: DocMeta) => d.name, date: (d: DocMeta) => d.createdAt };
+const OPP_MODES: OrderMode[] = ["name", "name-desc", "oldest", "newest", "custom"];
+
 export function DiscoveryReviewer({
-  setId, docs, marks, usedNumbers, parties: partiesProp, caseName, matter,
+  setId, docs: docsProp, marks, usedNumbers, parties: partiesProp, caseName, matter, viewOrder,
 }: {
   setId: number;
   docs: DocMeta[];
+  /** Saved document order for this tab (sort mode or dragged order). */
+  viewOrder?: ViewOrder;
   marks: Mark[];
   usedNumbers: { plaintiff: number[]; defendant: number[] };
   parties: Party[];
@@ -41,6 +48,11 @@ export function DiscoveryReviewer({
   matter: string;
 }) {
   const router = useRouter();
+  // Name order by default; upload date or a dragged order are saved for the firm.
+  const [order, setOrder] = useViewOrder(setId, "opposing", viewOrder, "name");
+  const docs = useMemo(() => orderDocs(docsProp, order, OPP_ORDER_ACC, "name"), [docsProp, order]);
+  const onReorder = useCallback((keys: string[]) => setOrder({ mode: "custom", custom: keys }), [setOrder]);
+  const drag = useDocDrag(docs.map((d) => `doc:${d.id}`), onReorder);
   const [view, setView] = useState<"grid" | "reader">("grid");
   // Grid density: pages per row. 6 by default; 1 (huge) to 10 (overview).
   const [cols, setCols] = useState(6);
@@ -214,8 +226,11 @@ export function DiscoveryReviewer({
   }
 
   /** Step 2: upload with the service record attached to every file in the batch. */
-  async function doUpload(pdfs: File[], service: { servedAt: string; servedBy: string; servedTo: string } | null) {
+  async function doUpload(pdfsIn: File[], service: { servedAt: string; servedBy: string; servedTo: string } | null) {
     setPendingFiles(null);
+    // Alphabetical (numeric-aware) whatever order the picker gave them, so a
+    // big drop lands — and gets read — in order.
+    const pdfs = [...pdfsIn].sort((a, b) => byName(a.name, b.name));
     setUploading({ done: 0, total: pdfs.length, current: pdfs[0].name });
     for (let i = 0; i < pdfs.length; i++) {
       const file = pdfs[i];
@@ -255,9 +270,9 @@ export function DiscoveryReviewer({
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col"
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragOver={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadFiles(Array.from(e.dataTransfer.files)); }}
+      onDrop={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(false); void uploadFiles(Array.from(e.dataTransfer.files)); }}
     >
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center border-4 border-dashed border-[var(--c-accent)] bg-[var(--c-accent)]/10">
@@ -282,6 +297,8 @@ export function DiscoveryReviewer({
                 className="px-2.5 py-1.5 hover:bg-[var(--c-bg)] disabled:opacity-40"><ZoomIn size={15} /></button>
             </div>
           )}
+
+          {docs.length > 1 && <DocSortSelect order={order} onChange={setOrder} modes={OPP_MODES} />}
 
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]">
             {uploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
@@ -348,6 +365,7 @@ export function DiscoveryReviewer({
             docs={docs} setIdForLinks={setId} cols={cols} pageCounts={pageCounts} flatIndex={flatIndex} selected={selected} badges={badges} onBadge={setOpenMarkId}
             getDoc={getDoc} onToggle={toggle}
             onOpen={(idx) => { setReaderIdx(idx); setView("reader"); }}
+            drag={drag}
             onDeleteDoc={(d) => {
               const used = marks.some((m) => m.pages.some((p) => p.docId === d.id));
               if (confirm(`Remove "${d.name}" from this case?${used ? " Its saved exhibits stay in the Exhibit Reviewer, but the page badges for it will disappear." : ""}`)) {
@@ -428,8 +446,9 @@ export function DiscoveryReviewer({
 
 /* -------------------------------- grid --------------------------------- */
 
-function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks }: {
+function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge, getDoc, onToggle, onOpen, onDeleteDoc, setIdForLinks, drag }: {
   docs: DocMeta[];
+  drag?: { handleProps: (k: string) => React.HTMLAttributes<HTMLElement> & { draggable: boolean }; dropProps: (k: string) => React.HTMLAttributes<HTMLElement>; hintFor: (k: string) => DragHint; dragging: string | null };
   cols: number;
   setIdForLinks: number;
   pageCounts: Record<number, number>;
@@ -446,9 +465,16 @@ function GridView({ docs, cols, pageCounts, flatIndex, selected, badges, onBadge
     <div className="space-y-6">
       {docs.map((d) => {
         const n = pageCounts[d.id] ?? 0;
+        const dk = `doc:${d.id}`;
         return (
-          <section key={d.id}>
+          <section key={d.id} {...(drag ? drag.dropProps(dk) : {})} className={drag ? dropHintClass(drag.hintFor(dk), drag.dragging === dk) : undefined} data-doc-key={dk}>
             <div className="mb-2 flex items-center gap-2">
+              {drag && (
+                <button type="button" {...drag.handleProps(dk)} aria-label={`Drag to move ${d.name}`} title="Drag to move this document up or down the list (the order is saved for the firm)"
+                  className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--c-ink-muted)] hover:bg-[var(--c-bg)] hover:text-[var(--c-ink)] active:cursor-grabbing" data-testid={`drag-${dk}`}>
+                  <GripVertical size={15} />
+                </button>
+              )}
               <h3 className="truncate text-sm font-semibold">{d.name}</h3>
               {d.aiLabel && (
                 <span

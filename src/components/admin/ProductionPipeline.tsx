@@ -8,6 +8,9 @@ import { UploadCloud,
   BookOpen, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsDownUp, ChevronsUpDown, EyeOff, Undo2, Copy, Download, Eraser, ExternalLink, FileText, Grid3x3, Highlighter, Link2, Loader2, MousePointer2, Pencil, Send, Share2, Sparkles, Square, Stamp, StickyNote, Trash2, Wrench, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
+import { GripVertical } from "lucide-react";
+import { orderDocs, byName, type ViewOrder, type ViewOrders, type OrderMode } from "@/lib/discovery/doc-order";
+import { useViewOrder, DocSortSelect, useDocDrag, dropHintClass, type DragHint } from "./DocOrderControls";
 import { loadPdfjs } from "./DiscoveryReviewer";
 import { createPdfLoader, type PdfLoader } from "./pdf-loader";
 import { diagRegister, diagHook, diagLog } from "@/lib/client-diag";
@@ -28,7 +31,7 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
 export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; sizeBytes?: number | null; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
-export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; sizeBytes?: number | null; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; sizeBytes?: number | null; createdAt?: string; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; parts: ProductionPart[]; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
 
@@ -333,7 +336,7 @@ export function RequestTracker({ requests }: { requests: RequestRow[] }) {
 
 export type PipelineContents = { toc: string; notes: string; tocFile: string; stagedToc: string; stagedNotes: string };
 
-export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareTokens }: {
+export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, batesDefaults, contents, shareTokens, viewOrders = {} }: {
   mode: "received" | "staged" | "produced";
   setId: number;
   clientFiles: ClientFile[];
@@ -342,10 +345,12 @@ export function ProductionPipeline({ mode, setId, clientFiles, staged, prods, ba
   batesDefaults: { prefix: string; nextStart: number };
   contents: PipelineContents;
   shareTokens: ShareTokens;
+  /** Saved per-tab document order (sort mode or dragged order). */
+  viewOrders?: ViewOrders;
 }) {
-  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} />;
-  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} batesDefaults={batesDefaults} />;
-  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} />;
+  if (mode === "received") return <ReceivedView setId={setId} files={clientFiles} stagedDocs={staged} batesDefaults={batesDefaults} contents={contents} shareTokens={shareTokens} viewOrder={viewOrders.received} />;
+  if (mode === "staged") return <StagedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} batesDefaults={batesDefaults} viewOrder={viewOrders.staged} />;
+  return <ProducedView setId={setId} staged={staged} prods={prods} contents={contents} shareTokens={shareTokens} viewOrder={viewOrders.produced} />;
 }
 
 /** The staged/produced PDF most likely to be "the review set" the table of
@@ -375,9 +380,19 @@ export type PageMark = "" | "staged" | "produced";
 /** DOM id for one page cell in the grid, so jumps can scroll to it. */
 const cellId = (key: string, page: number) => `pgc-${key.replace(/[^a-zA-Z0-9]/g, "_")}-${page}`;
 
-function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, shareTokens }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents; shareTokens: ShareTokens }) {
+const CLIENT_ORDER_ACC = { key: (f: ClientFile) => f.key, name: (f: ClientFile) => (f.dir ? `${f.dir}/${f.name}` : f.name), date: (f: ClientFile) => f.createdAt };
+const RED_MODES: OrderMode[] = ["name", "name-desc", "oldest", "newest", "custom"];
+const YELLOW_MODES: OrderMode[] = ["bates", "name", "name-desc", "oldest", "newest", "custom"];
+const GREEN_MODES: OrderMode[] = ["bates", "name", "name-desc", "oldest", "newest"];
+
+function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, contents, shareTokens, viewOrder }: { setId: number; files: ClientFile[]; stagedDocs: StagedDoc[]; batesDefaults: { prefix: string; nextStart: number }; contents: PipelineContents; shareTokens: ShareTokens; viewOrder?: ViewOrder }) {
   const shareToken = shareTokens.received;
   const router = useRouter();
+  // The tab's document order — name / upload date / dragged — saved for the firm.
+  const [order, setOrder] = useViewOrder(setId, "received", viewOrder, "name");
+  const files = useMemo(() => orderDocs(filesProp, order, CLIENT_ORDER_ACC, "name"), [filesProp, order]);
+  const onReorder = useCallback((keys: string[]) => setOrder({ mode: "custom", custom: keys }), [setOrder]);
+  const drag = useDocDrag(files.map((f) => f.key), onReorder);
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
   const [cols, setCols] = useState(5);
   const [layout, setLayout] = useGridLayout();
@@ -486,7 +501,10 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
   /** Direct uploads into the red pile — for when the firm itself has the
    *  client's documents in hand (the client portal remains the other door). */
   async function uploadClientFiles(all: File[]) {
-    const okFiles = all.filter((f) => /\.(pdf|jpe?g|png)$/i.test(f.name));
+    // A big drop goes in alphabetically (numeric-aware), whatever order the
+    // picker handed the files over in — so twelve months of statements land
+    // January to December, and the reading queue follows the same order.
+    const okFiles = all.filter((f) => /\.(pdf|jpe?g|png)$/i.test(f.name)).sort((a, b) => byName(a.name, b.name));
     if (okFiles.length === 0) { setError("Drop PDFs or photos (JPG/PNG)."); return; }
     setError(null);
     setUploading({ done: 0, total: okFiles.length, current: okFiles[0].name });
@@ -851,6 +869,7 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
         {view === "grid" && (
           <LayoutToggle value={delMode ? "docs" : layout} onChange={setLayout} disabled={delMode} disabledTitle="Select to delete works by document — finish or cancel it to switch the layout" />
         )}
+        {view !== "reader" && files.length > 1 && <DocSortSelect order={order} onChange={setOrder} modes={RED_MODES} />}
         {view === "grid" && shownFiles.length > 0 && (delMode || layout === "docs") && (
           <FoldAll allCollapsed={shownFiles.every((f) => collapsed.has(f.key))}
             onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
@@ -912,9 +931,9 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
       </div>
 
       <div className={`min-h-0 flex-1 p-4 ${dragOver ? "ring-2 ring-inset ring-[var(--c-accent)] bg-[var(--c-accent)]/5" : ""}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragOver={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadClientFiles(Array.from(e.dataTransfer.files)); }}>
+        onDrop={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(false); void uploadClientFiles(Array.from(e.dataTransfer.files)); }}>
         {notice && (
           <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
             <Check size={15} className="mt-0.5 shrink-0" /> {notice} <button onClick={() => setNotice(null)} className="ml-auto"><X size={14} /></button>
@@ -962,7 +981,8 @@ function ReceivedView({ setId, files, stagedDocs, batesDefaults, contents, share
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl}
                 collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent}
-                deleteCheck={delMode ? { checked: delSel.has(f.key), locked: delLocked(f), onToggle: () => toggleDel(f) } : undefined} />
+                deleteCheck={delMode ? { checked: delSel.has(f.key), locked: delLocked(f), onToggle: () => toggleDel(f) } : undefined}
+                drag={delMode ? undefined : { handle: drag.handleProps(f.key), drop: drag.dropProps(f.key), hint: drag.hintFor(f.key), dragging: drag.dragging === f.key }} />
             ))}
           </div>
         ) : (
@@ -1148,7 +1168,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck, flow = false }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck, flow = false, drag }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -1179,6 +1199,8 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
    *  cells (each captioned with the document name), dropped into the
    *  parent's one continuous grid. */
   flow?: boolean;
+  /** Drag-to-reorder: a grip in the header, and the section accepts drops. */
+  drag?: { handle: React.HTMLAttributes<HTMLElement> & { draggable: boolean }; drop: React.HTMLAttributes<HTMLElement>; hint: DragHint; dragging: boolean };
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
@@ -1281,8 +1303,14 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   }
 
   return (
-    <section ref={rootRef}>
+    <section ref={rootRef} {...(drag?.drop ?? {})} className={drag ? dropHintClass(drag.hint, drag.dragging) : undefined} data-doc-key={f.key}>
       <div className={`flex flex-wrap items-center gap-2 ${collapsed ? "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-1.5" : "mb-2"}`}>
+        {drag && (
+          <button type="button" {...drag.handle} aria-label={`Drag to move ${f.name}`} title="Drag to move this document up or down the list (the order is saved for the firm)"
+            className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--c-ink-muted)] hover:bg-[var(--c-bg)] hover:text-[var(--c-ink)] active:cursor-grabbing" data-testid={`drag-${f.key}`}>
+            <GripVertical size={15} />
+          </button>
+        )}
         {onToggleCollapse && (
           <button onClick={onToggleCollapse} aria-expanded={!collapsed}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"
@@ -1851,8 +1879,10 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
  * instead: remove a document from staging, or burn a late-caught redaction
  * straight into the staged copy.
  */
-function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolbarHost }: {
-  setId: number; rows: StagedDoc[]; shareToken: string | null;
+const STAGED_ORDER_ACC = { key: (d: StagedDoc) => `prod:${d.id}`, name: (d: StagedDoc) => d.name, date: (d: StagedDoc) => d.createdAt, bates: (d: StagedDoc) => d.batesStart };
+
+function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMoved, toolbarHost, viewOrder }: {
+  setId: number; rows: StagedDoc[]; shareToken: string | null; viewOrder?: ViewOrder;
   view: "grid" | "reader"; setView: (v: "grid" | "reader") => void;
   /** StagedView's frozen header: the toolbar renders there so one block
    *  stays pinned under the admin strip. */
@@ -1874,10 +1904,15 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
   // Folded document bars — every one starts expanded when the tab opens.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapse = (key: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  // Bates order by default; name / upload date / dragged order are saved for the firm.
+  const [order, setOrder] = useViewOrder(setId, "staged", viewOrder, "bates");
+  const rows = useMemo(() => orderDocs(rowsProp, order, STAGED_ORDER_ACC, "bates"), [rowsProp, order]);
+  const onReorder = useCallback((keys: string[]) => setOrder({ mode: "custom", custom: keys }), [setOrder]);
+  const drag = useDocDrag(rows.map((d) => `prod:${d.id}`), onReorder);
 
   const files: ClientFile[] = useMemo(() => rows.map((d) => ({
     key: `prod:${d.id}`, name: d.name, dir: d.requestLabel, folderId: null, folderName: "",
-    createdAt: "", status: "" as const, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiSections: d.aiSections, textStatus: "", kindHint: "pdf" as const,
+    createdAt: d.createdAt ?? "", status: "" as const, aiLabel: d.aiLabel, aiDescription: d.aiDescription, aiSections: d.aiSections, textStatus: "", kindHint: "pdf" as const,
   })), [rows]);
   const byKey = useMemo(() => new Map(rows.map((d) => [`prod:${d.id}` as string, d])), [rows]);
 
@@ -2120,6 +2155,7 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
       <div className="flex flex-wrap items-center gap-3">
         <PageTotal pages={rows.reduce((n, d) => n + stagedPages(d), 0)} docs={rows.length} />
         {view === "grid" && <LayoutToggle value={layout} onChange={setLayout} />}
+        {rows.length > 1 && <DocSortSelect order={order} onChange={setOrder} modes={YELLOW_MODES} />}
         {view === "grid" && files.length > 0 && layout === "docs" && (
           <FoldAll allCollapsed={files.every((f) => collapsed.has(f.key))}
             onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
@@ -2199,7 +2235,8 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
                 getDoc={getDoc} proxyUrl={proxyUrl} selectable={false} headerExtra={headerExtraFor(f)}
                 pageLabel={(page) => batesOf(d, page)}
-                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} />
+                collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)}
+                drag={layout === "flow" ? undefined : { handle: drag.handleProps(f.key), drop: drag.dropProps(f.key), hint: drag.hintFor(f.key), dragging: drag.dragging === f.key }} />
             );
           })}
         </div>
@@ -2336,7 +2373,7 @@ function BatesLaterButton({ setId, docs, batesDefaults, onDone }: { setId: numbe
   );
 }
 
-function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens; batesDefaults: { prefix: string; nextStart: number } }) {
+function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults, viewOrder }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens; batesDefaults: { prefix: string; nextStart: number }; viewOrder?: ViewOrder }) {
   const shareToken = shareTokens.staged;
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [view, setView] = useState<"grid" | "reader" | "list">("grid");
@@ -2509,7 +2546,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults
           Nothing staged. Select documents under <strong>Received from Client</strong> and click <strong>Intend to produce</strong>.
         </p>
       ) : view !== "list" ? (
-        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} toolbarHost={toolHost} />
+        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} toolbarHost={toolHost} viewOrder={viewOrder} />
       ) : (
         <div className="divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
           {rows.map((d) => (
@@ -2539,8 +2576,9 @@ function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults
 
 /* --------------- pale green: what has actually gone out ------------------ */
 
-function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens }) {
+function ProducedView({ setId, staged, prods, contents, shareTokens, viewOrder }: { setId: number; staged: StagedDoc[]; prods: ProductionRow[]; contents: PipelineContents; shareTokens: ShareTokens; viewOrder?: ViewOrder }) {
   const shareToken = shareTokens.produced;
+  const [order, setOrder] = useViewOrder(setId, "produced", viewOrder, "bates");
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ocCopied, setOcCopied] = useState<number | null>(null);
   const [pullBack, setPullBack] = useState<ProductionRow | null>(null);
@@ -2572,6 +2610,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
         <IndexAndLabel setId={setId} docCount={staged.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="produced" />
         <AddPreLabeled setId={setId} onDone={(msg) => setNotice(msg)} />
+        {producedDocs.length > 1 && <DocSortSelect order={order} onChange={setOrder} modes={GREEN_MODES} title="How each production lists its documents — saved for everyone at the firm" />}
       </div>
       {notice && (
         <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -2589,7 +2628,7 @@ function ProducedView({ setId, staged, prods, contents, shareTokens }: { setId: 
       ) : (
         <div className="space-y-6">
           {done.map((p) => {
-            const docs = staged.filter((d) => d.productionId === p.id).sort((a, b) => a.batesStart - b.batesStart);
+            const docs = orderDocs(staged.filter((d) => d.productionId === p.id), order, STAGED_ORDER_ACC, "bates");
             return (
               <section key={p.id} className="overflow-hidden rounded-lg border border-green-600/40">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-green-600/10 px-4 py-2.5">
