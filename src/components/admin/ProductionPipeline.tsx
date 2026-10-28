@@ -20,7 +20,7 @@ import { EmailToCounsel } from "./EmailToCounsel";
 import { partsReady, planProductionParts, encodeIdRanges, MERGE_MAX_DOCS, type ProductionPart } from "@/lib/production/parts";
 import { concatPdfParts, pickSink } from "@/lib/production/pdf-concat";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
-  stageForProduction, unstageProductionDoc, batesLabelStagedDocs, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
+  stageForProduction, unstageProductionDoc, unstampStagedDocs, batesLabelStagedDocs, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
   updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
@@ -2324,6 +2324,109 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
 }
 
 /**
+ * Yellow tab → "Unstamp…": take the Bates numbers back off a run of staged
+ * copies. Pick where the run starts; everything numbered after it comes
+ * off too (the numbering never gets a hole in the middle). Produced copies
+ * are never touched, and a produced batch above the chosen number blocks
+ * it. Two confirmations, because the stamped files are rebuilt from the
+ * red-tab originals and anything burned into the stamped copies is lost.
+ */
+function UnstampButton({ setId, staged, onDone }: { setId: number; staged: StagedDoc[]; onDone: (msg: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [fromId, setFromId] = useState<number | null>(null);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const stamped = staged.filter((d) => d.status === "staged" && d.batesStart > 0).sort((a, b) => a.batesStart - b.batesStart);
+  if (!stamped.length) return null;
+  const from = stamped.find((d) => d.id === fromId) ?? stamped[stamped.length - 1];
+  const tail = staged.filter((d) => d.batesStart >= from.batesStart).sort((a, b) => a.batesStart - b.batesStart);
+  const producedAbove = tail.find((d) => d.status === "produced");
+  const drafted = tail.find((d) => d.status === "staged" && d.productionId);
+  const noOriginal = tail.find((d) => !/^(share|doc):[1-9]\d*$/.test(d.sourceKey ?? ""));
+  const blocker = producedAbove
+    ? `${bates(producedAbove.batesPrefix, producedAbove.batesStart)} (${producedAbove.name}) has been produced and holds a higher number — nothing from ${bates(from.batesPrefix, from.batesStart)} onward can be unstamped.`
+    : drafted ? `"${drafted.name}" is in a draft production — discard the draft first.`
+    : noOriginal ? `"${noOriginal.name}" was added already labeled — there is no red-tab original to rebuild it from.`
+    : null;
+  const range = `${bates(from.batesPrefix, from.batesStart)} – ${bates(from.batesPrefix, Math.max(...tail.map((d) => d.batesEnd)))}`;
+  const pages = tail.reduce((n, d) => n + stagedPages(d), 0);
+  const openDialog = () => { setFromId(stamped[stamped.length - 1].id); setStep(1); setError(null); setOpen(true); };
+  async function run() {
+    setBusy(true); setError(null);
+    const r = await unstampStagedDocs(setId, from.id).catch(() => null);
+    setBusy(false);
+    if (!r || !r.ok) { setError(!r ? "The connection dropped — check the tab and try again." : r.error); setStep(1); return; }
+    setOpen(false);
+    onDone(`Unstamped ${r.unstamped} document${r.unstamped === 1 ? "" : "s"} (${r.range.replace("–", " – ")}) — rebuilt unlabeled from the red-tab originals, still in this tab in their order.${r.failed.length ? ` ${r.failed.length} couldn't be rebuilt: ${r.failed.join("; ")}` : ""}`);
+  }
+  return (
+    <>
+      <button onClick={openDialog} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-600"
+        title="Take the Bates numbers back off staged copies (never produced ones)" data-testid="unstamp-open">
+        <Eraser size={14} /> Unstamp…
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
+          <div className="w-full max-w-lg rounded-lg border border-red-500 bg-[var(--c-surface)] p-5" role="dialog" aria-label="Unstamp">
+            <h3 className="font-[family-name:var(--font-display)] text-lg">Unstamp staged documents</h3>
+            <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Bates numbers come off a run, never out of the middle: the document you pick and <strong>everything numbered after it</strong> are rebuilt from their red-tab originals, unlabeled, and stay in this tab in their current order. Produced documents are never touched.</p>
+            {step === 1 && (
+              <>
+                <label className="mt-4 block text-xs">
+                  <span className="mb-1 block font-semibold text-[var(--c-ink)]">Unstamp from</span>
+                  <select value={from.id} onChange={(e) => setFromId(Number(e.target.value))} className={`${input} w-full`} data-testid="unstamp-from">
+                    {stamped.map((d) => <option key={d.id} value={d.id}>{bates(d.batesPrefix, d.batesStart)} — {d.name}</option>)}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Pick the first one to unstamp. To undo only the last stamping, pick the first document of that batch.</span>
+                </label>
+                <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" data-testid="unstamp-preview">
+                  <p><strong>{tail.length} document{tail.length === 1 ? "" : "s"}</strong>, {pages} page{pages === 1 ? "" : "s"}, <span className="font-mono">{range}</span></p>
+                  <ul className="mt-1 max-h-32 overflow-auto text-xs text-[var(--c-ink-muted)]">
+                    {tail.map((d) => <li key={d.id} className="truncate"><span className="font-mono">{bates(d.batesPrefix, d.batesStart)}</span> {d.name}</li>)}
+                  </ul>
+                </div>
+                {blocker ? (
+                  <p className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300" data-testid="unstamp-blocked">{blocker}</p>
+                ) : (
+                  <p className="mt-3 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">Redactions drawn in the <strong>red tab</strong> burn in again. Anything done on these stamped copies themselves — a late redaction burned here, highlights, notes — is lost with the stamp.</p>
+                )}
+                {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => setOpen(false)} className="btn btn-outline text-sm py-2 px-4">Cancel</button>
+                  <button onClick={() => setStep(2)} disabled={!!blocker} className="btn btn-accent text-sm py-2 px-4 disabled:opacity-50" data-testid="unstamp-next">Unstamp {tail.length} document{tail.length === 1 ? "" : "s"}…</button>
+                </div>
+              </>
+            )}
+            {step === 2 && (
+              <>
+                <p className="mt-4 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"><strong>Are you sure?</strong> This removes <span className="font-mono">{range}</span> from {tail.length} outgoing cop{tail.length === 1 ? "y" : "ies"}.</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => setStep(1)} className="btn btn-outline text-sm py-2 px-4">Back</button>
+                  <button onClick={() => setStep(3)} className="btn btn-accent text-sm py-2 px-4" data-testid="unstamp-sure">Yes, unstamp</button>
+                </div>
+              </>
+            )}
+            {step === 3 && (
+              <>
+                <p className="mt-4 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm"><strong>Are you really sure?</strong> The stamped files are rebuilt from the originals. Late redactions, highlights and notes on these copies are gone for good.</p>
+                {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button onClick={() => setStep(1)} disabled={busy} className="btn btn-outline text-sm py-2 px-4">Back</button>
+                  <button onClick={() => void run()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60" data-testid="unstamp-go">
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />} {busy ? "Unstamping…" : `Yes, I'm sure — unstamp ${tail.length}`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
  * Yellow tab → "Bates label now": for copies that came over unlabeled
  * (staged as pre-labeled). Stamps them in place, numbering on from the
  * case's last number, in server-sized batches with the same split-and-
@@ -2544,6 +2647,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults
         <IndexAndLabel setId={setId} docCount={rows.length} />
         <ShareControl setId={setId} tokens={shareTokens} activeScope="staged" />
         <BatesLaterButton setId={setId} docs={rows.filter((d) => !d.batesStart && !d.productionId)} batesDefaults={batesDefaults} onDone={(msg) => { setMovedNotice(msg); router.refresh(); }} />
+        <UnstampButton setId={setId} staged={staged} onDone={(msg) => { setMovedNotice(msg); router.refresh(); }} />
         <button onClick={() => void prepare()} disabled={busy || rows.length === 0 || !!draft}
           className="btn btn-accent ml-auto inline-flex items-center gap-1.5 text-sm py-2 px-4 disabled:opacity-50"
           title={draft ? "A draft production is awaiting review below" : undefined}>

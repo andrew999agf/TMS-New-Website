@@ -1131,6 +1131,73 @@ export async function batesLabelStagedDocs(setId: number, idsIn: number[], opts:
   }
 }
 
+/**
+ * UNSTAMP: strip the Bates numbers from a run of staged copies by rebuilding
+ * each one from its red-tab original, unlabeled, through the same staging
+ * path (red-tab redaction marks burn in again; text and AI notes ride
+ * along). The numbers are not "freed" in the middle of a run: it always
+ * takes the chosen document and EVERYTHING numbered after it, so the case's
+ * numbering stays one unbroken run. Anything produced is untouchable, and a
+ * produced batch holding higher numbers blocks the whole thing.
+ *
+ * The copies keep their place in the tab's dragged order.
+ */
+export async function unstampStagedDocs(setId: number, fromDocId: number) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  try {
+    const all = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));
+    const from = all.find((d) => d.id === fromDocId);
+    if (!from) return { ok: false as const, error: "Document not found." };
+    if (from.status !== "staged") return { ok: false as const, error: "That document has been produced — produced copies are never unstamped." };
+    if (!(from.batesStart > 0)) return { ok: false as const, error: "That document carries no Bates numbers." };
+    const tail = all.filter((d) => d.batesStart >= from.batesStart).sort((a, b) => b.batesStart - a.batesStart);
+    const produced = tail.find((d) => d.status === "produced");
+    if (produced) return { ok: false as const, error: `${batesLabel(produced.batesPrefix, produced.batesStart)} (${produced.name}) has been produced and holds a higher number — nothing from ${batesLabel(from.batesPrefix, from.batesStart)} onward can be unstamped.` };
+    const drafted = tail.find((d) => d.productionId);
+    if (drafted) return { ok: false as const, error: `"${drafted.name}" is in a draft production — discard the draft first.` };
+    // Every copy needs its red-tab original to be rebuilt from.
+    const srcOf = (d: typeof from) => { const m = /^(share|doc):(\d+)$/.exec(d.sourceKey ?? ""); return m && Number(m[2]) > 0 ? { kind: m[1] as "share" | "doc", id: Number(m[2]) } : null; };
+    for (const d of tail) {
+      const src = srcOf(d);
+      if (!src) return { ok: false as const, error: `"${d.name}" was added already labeled — there is no red-tab original to rebuild it from, so it can't be unstamped.` };
+      const exists = src.kind === "share"
+        ? (await db.select({ id: shareFiles.id }).from(shareFiles).where(eq(shareFiles.id, src.id))).length > 0
+        : (await db.select({ id: discoveryDocs.id }).from(discoveryDocs).where(eq(discoveryDocs.id, src.id))).length > 0;
+      if (!exists) return { ok: false as const, error: `The red-tab original of "${d.name}" is gone, so it can't be rebuilt unlabeled.` };
+    }
+
+    const range = `${batesLabel(from.batesPrefix, from.batesStart)}–${batesLabel(tail[0].batesPrefix, Math.max(...tail.map((d) => d.batesEnd)))}`;
+    const [set] = await db.select({ viewOrder: discoverySets.viewOrder }).from(discoverySets).where(eq(discoverySets.id, setId));
+    const orders = viewOrdersOf(set?.viewOrder);
+    const custom = orders.staged?.custom ? [...orders.staged.custom] : null;
+    let unstamped = 0;
+    const failed: string[] = [];
+    // Highest numbers first, so a stop part-way leaves a run that still ends cleanly.
+    for (const d of tail) {
+      const pages = Array.isArray(d.sourcePages) ? (d.sourcePages as number[]) : [];
+      if (d.pathname) { try { await del(d.pathname); } catch { /* best-effort */ } }
+      await db.delete(productionDocs).where(eq(productionDocs.id, d.id));
+      try { await db.delete(discoveryAnnotations).where(and(eq(discoveryAnnotations.setId, setId), eq(discoveryAnnotations.fileKey, `prod:${d.id}`))); } catch { /* marks are a nicety */ }
+      const r = await stageForProduction(setId, [pages.length ? { key: d.sourceKey, pages } : { key: d.sourceKey }], { bates: false });
+      if (!r.ok || !r.staged) { failed.push(`${d.name} (${(r as { error?: string }).error ?? "couldn't rebuild"}) — its pages are back in the red tab`); continue; }
+      const [fresh] = await db.select({ id: productionDocs.id }).from(productionDocs).where(and(eq(productionDocs.setId, setId), eq(productionDocs.sourceKey, d.sourceKey))).orderBy(desc(productionDocs.id)).limit(1);
+      if (fresh && custom) { const at = custom.indexOf(`prod:${d.id}`); if (at >= 0) custom[at] = `prod:${fresh.id}`; }
+      unstamped++;
+    }
+    if (custom && orders.staged) {
+      orders.staged = { ...orders.staged, custom };
+      await db.update(discoverySets).set({ viewOrder: orders }).where(eq(discoverySets.id, setId));
+    }
+    await audit(session.email, "update", "production-docs", String(setId), `UNSTAMPED ${unstamped} staged document(s) (${range}) — rebuilt unlabeled from the red-tab originals${failed.length ? `; ${failed.length} couldn't be rebuilt` : ""}`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, unstamped, range, failed };
+  } catch (err) {
+    console.error("[discovery-reviewer] unstampStagedDocs failed:", err);
+    return { ok: false as const, error: `Couldn't unstamp (${String((err as Error)?.message ?? err).slice(0, 160)}).` };
+  }
+}
+
 /** Take a staged document back out (before it's produced). */
 export async function unstageProductionDoc(id: number) {
   const session = await guard();
