@@ -1491,7 +1491,7 @@ type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
 
 const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
 
-function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, onEditNote, variant = "received", onRemove, onBurnRedact }: {
+function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, onEditNote, variant = "received", onRemove, onBurnRedact, onDeletePage, pageLabel }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
@@ -1514,6 +1514,10 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
    *  instead of stage, and redactions burn into the staged copy on confirm. */
   variant?: "received" | "staged";
   onRemove?: (f: ClientFile) => void;
+  /** Yellow tab: pull THIS page out of the staged copy (a one-page document is removed whole). */
+  onDeletePage?: (f: ClientFile, page: number, totalPages: number) => void;
+  /** Bates label for a page, for the delete button's wording. */
+  pageLabel?: (f: ClientFile, page: number) => string;
   onBurnRedact?: (f: ClientFile, page: number, rect: { x: number; y: number; w: number; h: number }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const f = files[Math.min(state.docIdx, files.length - 1)];
@@ -1525,6 +1529,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   const taskRef = useRef<{ cancel: () => void } | null>(null);
   const [tool, setTool] = useState<ReviewTool>("select");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const textTaskRef = useRef<{ cancel: () => void } | null>(null);
@@ -1676,6 +1681,42 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
             className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${isSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}>
             <Check size={14} /> {mk ? (mk === "produced" ? "Page produced" : "Page staged") : isSel ? `Page ${state.page} selected` : `Select page ${state.page}`}
           </button>
+        )}
+        {variant === "staged" && (onDeletePage || onRemove) && (
+          <div className="relative">
+            <button onClick={() => setDelOpen((o) => !o)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:border-red-500 hover:bg-red-500/10 dark:text-red-300"
+              title="Delete this page from the outgoing copy, or remove the whole document from Documents to be produced" data-testid="reader-delete">
+              <Trash2 size={14} /> Delete
+            </button>
+            {delOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setDelOpen(false)} />
+                <div className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-1 shadow-lg">
+                  {onDeletePage && (
+                    <button onClick={() => { setDelOpen(false); onDeletePage(f, state.page, pages); }}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)]" data-testid="reader-delete-page">
+                      <Trash2 size={14} className="mt-0.5 shrink-0 text-red-600" />
+                      <span>
+                        <span className="block font-medium">{pages <= 1 ? "Remove this one-page document" : `Delete page ${state.page}${pageLabel ? ` (${pageLabel(f, state.page)})` : ""}`}</span>
+                        <span className="block text-[11px] text-[var(--c-ink-muted)]">{pages <= 1 ? "Its only page unlocks in the red tab." : "Comes out of the outgoing PDF; its Bates number is skipped. The page unlocks in the red tab."}</span>
+                      </span>
+                    </button>
+                  )}
+                  {onRemove && pages > 1 && (
+                    <button onClick={() => { setDelOpen(false); onRemove(f); }}
+                      className="flex w-full items-start gap-2 border-t border-[var(--c-border)] px-3 py-2 text-left text-sm hover:bg-[var(--c-bg)]">
+                      <Trash2 size={14} className="mt-0.5 shrink-0 text-red-600" />
+                      <span>
+                        <span className="block font-medium">Remove the whole document from production…</span>
+                        <span className="block text-[11px] text-[var(--c-ink-muted)]">All {pages} pages unlock in the red tab. Nothing is produced or lost.</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         )}
         <div className="relative">
           <button onClick={() => setMenuOpen((o) => !o)} disabled={kind !== "pdf"}
@@ -2020,30 +2061,44 @@ function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMov
   }, []);
   const deleteSelectedPages = async () => {
     if (!selByDoc.size) return;
-    // A doc losing EVERY page should be removed, not emptied.
+    // A document losing EVERY page (a one-page document, or all of its pages
+    // checked) is removed from staging whole — its pages unlock in the red
+    // tab — rather than left as an empty PDF. The rest lose just those pages.
+    const whole: StagedDoc[] = [], partial: [StagedDoc, number[]][] = [];
     for (const [docId, pages] of selByDoc) {
       const d = rows.find((r) => r.id === docId)!;
-      if (pages.length >= pagesOf(d)) { setError(`"${d.name}": that selection is the whole document — use its "remove" button instead.`); return; }
+      if (pages.length >= pagesOf(d)) whole.push(d); else partial.push([d, pages]);
     }
-    const totalPages = [...selByDoc.values()].reduce((n, v) => n + v.length, 0);
-    const preview = [...selByDoc.entries()].flatMap(([docId, pages]) => {
-      const d = rows.find((r) => r.id === docId)!;
-      return pages.map((p) => batesOf(d, p));
-    });
-    if (!confirm(`Delete ${totalPages} page${totalPages === 1 ? "" : "s"} (${preview.slice(0, 6).join(", ")}${preview.length > 6 ? "…" : ""}) from the staged cop${selByDoc.size === 1 ? "y" : "ies"}?\n\nThe pages come out of the outgoing PDF. Their Bates numbers are skipped — the remaining pages keep the numbers already stamped on them (a gap in the run). The pulled pages unlock in the red tab.`)) return;
+    const locked = whole.find((d) => d.productionId);
+    if (locked) { setError(`"${locked.name}" is in a draft production — discard the draft first, then remove it.`); return; }
+    const partialPages = partial.reduce((n, [, v]) => n + v.length, 0);
+    const preview = partial.flatMap(([d, pages]) => pages.map((p) => batesOf(d, p)));
+    const lines: string[] = [];
+    if (whole.length) lines.push(`Remove ${whole.length === 1 ? `"${whole[0].name}"` : `${whole.length} documents`} from Documents to be produced entirely (every page is checked)? ${whole.length === 1 ? "Its" : "Their"} pages unlock in the red tab; nothing is produced or lost.`);
+    if (partial.length) lines.push(`Delete ${partialPages} page${partialPages === 1 ? "" : "s"} (${preview.slice(0, 6).join(", ")}${preview.length > 6 ? "…" : ""}) from the staged cop${partial.length === 1 ? "y" : "ies"}? The pages come out of the outgoing PDF. Their Bates numbers are skipped — the remaining pages keep the numbers already stamped on them (a gap in the run). The pulled pages unlock in the red tab.`);
+    if (!confirm(lines.join("\n\n"))) return;
     setMoving(true);
-    let removed = 0;
-    for (const [docId, pages] of selByDoc) {
-      const r = await deleteStagedPages(setId, docId, pages);
+    let removed = 0, removedDocs = 0;
+    for (const d of whole) {
+      const r = await unstageProductionDoc(d.id);
+      if (!r.ok) { setError(("error" in r && r.error) || `Couldn't remove "${d.name}".`); break; }
+      removedDocs++;
+    }
+    for (const [d, pages] of partial) {
+      const r = await deleteStagedPages(setId, d.id, pages);
       if (!r.ok) { setError(("error" in r && r.error) || "Couldn't pull those pages."); break; }
       removed += r.removed;
     }
     setMoving(false);
-    if (removed) {
+    if (removed || removedDocs) {
       setSelPages(new Set());
       loader.clear();
       setTick((t) => t + 1);
-      setNotice(`${removed} page${removed === 1 ? "" : "s"} pulled from the staged cop${selByDoc.size === 1 ? "y" : "ies"} — the Bates run keeps its gap, and the source pages are selectable again in the red tab.`);
+      const bits = [
+        removedDocs ? `${removedDocs} document${removedDocs === 1 ? "" : "s"} removed from staging` : "",
+        removed ? `${removed} page${removed === 1 ? "" : "s"} pulled from the staged cop${partial.length === 1 ? "y" : "ies"} (the Bates run keeps its gap)` : "",
+      ].filter(Boolean);
+      setNotice(`${bits.join("; ")} — the source pages are selectable again in the red tab.`);
       router.refresh();
     }
   };
@@ -2116,6 +2171,27 @@ function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMov
     else { setNotice(`"${d.name}" removed from staging — its pages are selectable again under Received from Client.`); setView("grid"); router.refresh(); }
   };
 
+  /** Reader's Delete: pull one page out of the staged copy; a one-page
+   *  document is removed from staging whole instead of being left empty. */
+  const deleteReaderPage = async (f: ClientFile, page: number, totalPages: number) => {
+    const d = byKey.get(f.key);
+    if (!d) return;
+    if (d.productionId) { setError("This document is in a draft production — discard the draft first."); return; }
+    const total = totalPages || pagesOf(d);
+    if (total <= 1) { await removeDoc(f); return; }
+    if (!confirm(`Delete page ${page} (${batesOf(d, page)}) from the staged copy of "${d.name}"?\n\nIt comes out of the outgoing PDF. Its Bates number is skipped — the remaining pages keep the numbers already stamped on them. The page unlocks in the red tab.`)) return;
+    setMoving(true);
+    const r = await deleteStagedPages(setId, d.id, [page]);
+    setMoving(false);
+    if (!r.ok) { setError(("error" in r && r.error) || "Couldn't pull that page."); return; }
+    loader.clear();
+    setTick((t) => t + 1);
+    setSelPages(new Set());
+    setReader((st) => ({ ...st, page: Math.max(1, Math.min(st.page, total - 1)) }));
+    setNotice(`Page ${page} (${r.gone}) pulled from "${d.name}" — the Bates run keeps its gap, and the page is selectable again in the red tab.`);
+    router.refresh();
+  };
+
   const burnRedact = async (f: ClientFile, page: number, rect: { x: number; y: number; w: number; h: number }) => {
     const d = byKey.get(f.key);
     if (!d) return { ok: false as const, error: "Document not found." };
@@ -2180,7 +2256,7 @@ function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMov
             <span className="text-xs font-semibold">{selPages.size} page{selPages.size === 1 ? "" : "s"} in {selByDoc.size} document{selByDoc.size === 1 ? "" : "s"}</span>
             <button onClick={() => void deleteSelectedPages()} disabled={moving}
               className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-              title="Pull just these pages out of the staged copies (their Bates numbers are skipped)">
+              title="Pull these pages out of the staged copies (their Bates numbers are skipped). A document with every page checked — including a one-page document — is removed from this tab whole; its pages unlock in the red tab.">
               {moving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Delete page{selPages.size === 1 ? "" : "s"}
             </button>
             <button onClick={() => setDlDialog(true)}
@@ -2223,7 +2299,8 @@ function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMov
         <ClientReader files={files} state={reader} setState={setReader} selected={noSel} pageMark={noMark}
           setId={setId} shareToken={shareToken} onTogglePage={noop} getDoc={getDoc} proxyUrl={proxyUrl}
           annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno} noteFor={noteFor} onEditNote={saveNote}
-          onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact} />
+          onStageFromTools={noop} variant="staged" onRemove={(f) => void removeDoc(f)} onBurnRedact={burnRedact}
+          onDeletePage={(f, page, total) => void deleteReaderPage(f, page, total)} pageLabel={(f, page) => { const d = byKey.get(f.key); return d ? batesOf(d, page) : String(page); }} />
       ) : (
         <div className={layout === "flow" ? "grid gap-3" : "space-y-6"} style={layout === "flow" ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}>
           {files.map((f) => {
