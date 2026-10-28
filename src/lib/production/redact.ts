@@ -8,6 +8,10 @@ import { PDFDocument } from "pdf-lib";
  * a flat image (box already burned in) and that image REPLACES the page's
  * content. The text on that page is genuinely gone from the outgoing copy.
  *
+ * The result is rebuilt as a fresh file (see the end), so nothing of the
+ * replaced page — its text stream, fonts or images — lingers as a dead
+ * object either.
+ *
  * This only ever runs on the staged copy being built — the original client
  * document is never touched, so nothing is ever lost: re-stage from the
  * original any time.
@@ -48,5 +52,16 @@ export async function rasterizeRedactedPages(bytes: Uint8Array, pageNumbers: num
     out.removePage(n); // the old page, shifted one slot right by the insert
   }
   await src.cleanup().catch(() => {});
-  return out.save();
+  // Removing a page from the page tree leaves its content stream (the
+  // text), fonts and images behind as unreferenced objects, and pdf-lib
+  // writes those out too — invisible to search and copy-paste, but still
+  // in the bytes for a forensic tool. Copying the kept pages into a brand
+  // new document carries over only what the pages still reference, so the
+  // redacted text is genuinely gone from the file.
+  const clean = await PDFDocument.create();
+  const kept = await clean.copyPages(out, out.getPageIndices());
+  for (const pg of kept) clean.addPage(pg);
+  const title = out.getTitle(); if (title) clean.setTitle(title);
+  clean.setProducer("TMS Discovery Reviewer");
+  return clean.save();
 }

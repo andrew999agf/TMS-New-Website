@@ -1233,7 +1233,10 @@ export async function redactProductionDoc(setId: number, id: number, page: numbe
     const oldPath = doc.pathname;
     const pages = Array.isArray(doc.pageText) ? [...(doc.pageText as string[])] : [];
     if (pages.length >= p) pages[p - 1] = ""; // that text no longer exists in the copy
-    await db.update(productionDocs).set({ url: blob.url, pathname: blob.pathname, sizeBytes: flattened.byteLength, pageText: pages }).where(eq(productionDocs.id, id));
+    // AI.fred's note on that page may quote what was just redacted — drop it too.
+    const notes = Array.isArray(doc.pageNotes) ? [...(doc.pageNotes as string[])] : [];
+    if (notes.length >= p) notes[p - 1] = "";
+    await db.update(productionDocs).set({ url: blob.url, pathname: blob.pathname, sizeBytes: flattened.byteLength, pageText: pages, pageNotes: notes }).where(eq(productionDocs.id, id));
     if (oldPath) { try { await del(oldPath); } catch { /* best-effort */ } }
     await audit(session.email, "update", "production-doc", String(id), `Redaction burned into ${batesLabel(doc.batesPrefix, doc.batesStart + p - 1)} (page ${p})`);
     revalidatePath(`/admin/discovery-reviewer/${setId}`);
