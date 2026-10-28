@@ -2337,21 +2337,23 @@ function UnstampButton({ setId, staged, onDone }: { setId: number; staged: Stage
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const stamped = staged.filter((d) => d.status === "staged" && d.batesStart > 0).sort((a, b) => a.batesStart - b.batesStart);
+  // Stamped, unproduced copies, highest number first — the only order they
+  // can come off in. Ticking one ticks everything above it (numbered after).
+  const stamped = staged.filter((d) => d.status === "staged" && d.batesStart > 0).sort((a, b) => b.batesStart - a.batesStart);
   if (!stamped.length) return null;
-  const from = stamped.find((d) => d.id === fromId) ?? stamped[stamped.length - 1];
+  const from = stamped.find((d) => d.id === fromId) ?? stamped[0];
   const tail = staged.filter((d) => d.batesStart >= from.batesStart).sort((a, b) => a.batesStart - b.batesStart);
   const producedAbove = tail.find((d) => d.status === "produced");
   const drafted = tail.find((d) => d.status === "staged" && d.productionId);
   const noOriginal = tail.find((d) => !/^(share|doc):[1-9]\d*$/.test(d.sourceKey ?? ""));
   const blocker = producedAbove
     ? `${bates(producedAbove.batesPrefix, producedAbove.batesStart)} (${producedAbove.name}) has been produced and holds a higher number — nothing from ${bates(from.batesPrefix, from.batesStart)} onward can be unstamped.`
-    : drafted ? `"${drafted.name}" is in a draft production — discard the draft first.`
+    : drafted ? `"${drafted.name}" is in a draft production — discard the draft first, or start below it.`
     : noOriginal ? `"${noOriginal.name}" was added already labeled — there is no red-tab original to rebuild it from.`
     : null;
   const range = `${bates(from.batesPrefix, from.batesStart)} – ${bates(from.batesPrefix, Math.max(...tail.map((d) => d.batesEnd)))}`;
   const pages = tail.reduce((n, d) => n + stagedPages(d), 0);
-  const openDialog = () => { setFromId(stamped[stamped.length - 1].id); setStep(1); setError(null); setOpen(true); };
+  const openDialog = () => { setFromId(stamped[0].id); setStep(1); setError(null); setOpen(true); };
   async function run() {
     setBusy(true); setError(null);
     const r = await unstampStagedDocs(setId, from.id).catch(() => null);
@@ -2370,22 +2372,39 @@ function UnstampButton({ setId, staged, onDone }: { setId: number; staged: Stage
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
           <div className="w-full max-w-lg rounded-lg border border-red-500 bg-[var(--c-surface)] p-5" role="dialog" aria-label="Unstamp">
             <h3 className="font-[family-name:var(--font-display)] text-lg">Unstamp staged documents</h3>
-            <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Bates numbers come off a run, never out of the middle: the document you pick and <strong>everything numbered after it</strong> are rebuilt from their red-tab originals, unlabeled, and stay in this tab in their current order. Produced documents are never touched.</p>
+            <p className="mt-1 text-xs text-[var(--c-ink-muted)]">Unstamp as many as you like — the last one, the last eight, all of them — as long as they run to the end of the numbering. Nothing comes out of the middle, so the case&apos;s numbering never gets a hole. The copies are rebuilt from their red-tab originals, unlabeled, and stay in this tab in their current order. Produced documents are never touched.</p>
             {step === 1 && (
               <>
-                <label className="mt-4 block text-xs">
-                  <span className="mb-1 block font-semibold text-[var(--c-ink)]">Unstamp from</span>
-                  <select value={from.id} onChange={(e) => setFromId(Number(e.target.value))} className={`${input} w-full`} data-testid="unstamp-from">
-                    {stamped.map((d) => <option key={d.id} value={d.id}>{bates(d.batesPrefix, d.batesStart)} — {d.name}</option>)}
-                  </select>
-                  <span className="mt-1 block text-[11px] text-[var(--c-ink-muted)]">Pick the first one to unstamp. To undo only the last stamping, pick the first document of that batch.</span>
-                </label>
-                <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] p-3 text-sm" data-testid="unstamp-preview">
-                  <p><strong>{tail.length} document{tail.length === 1 ? "" : "s"}</strong>, {pages} page{pages === 1 ? "" : "s"}, <span className="font-mono">{range}</span></p>
-                  <ul className="mt-1 max-h-32 overflow-auto text-xs text-[var(--c-ink-muted)]">
-                    {tail.map((d) => <li key={d.id} className="truncate"><span className="font-mono">{bates(d.batesPrefix, d.batesStart)}</span> {d.name}</li>)}
-                  </ul>
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--c-ink)]">Tick a document — everything numbered after it is unstamped with it</span>
+                  <span className="flex gap-3 text-[11px]">
+                    <button onClick={() => setFromId(stamped[stamped.length - 1].id)} className="text-[var(--c-accent)] hover:underline" data-testid="unstamp-all">Select all</button>
+                    <button onClick={() => setFromId(stamped[0].id)} className="text-[var(--c-accent)] hover:underline">Last one only</button>
+                  </span>
                 </div>
+                <ul className="mt-1.5 max-h-64 divide-y divide-[var(--c-border)] overflow-auto rounded-md border border-[var(--c-border)] bg-[var(--c-bg)]" data-testid="unstamp-list">
+                  {stamped.map((d) => {
+                    const on = d.batesStart >= from.batesStart;
+                    return (
+                      <li key={d.id}>
+                        <label className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${on ? "bg-red-500/10" : ""}`} title={on && d.id !== from.id ? "Numbered after your pick — comes off with it" : "Tick to unstamp from here to the end"}>
+                          <input type="checkbox" className="accent-red-600" checked={on}
+                            onChange={() => {
+                              // Ticking selects from here up; unticking moves the start to the next higher number.
+                              if (!on) { setFromId(d.id); return; }
+                              const above = stamped.filter((x) => x.batesStart > d.batesStart); // the last one can't be unticked: at least one stays selected
+                              setFromId(above.length ? above[above.length - 1].id : stamped[0].id);
+                            }}
+                            data-testid={`unstamp-tick-${d.id}`} />
+                          <span className="font-mono text-xs">{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</span>
+                          <span className="min-w-0 flex-1 truncate">{d.name}</span>
+                          {d.productionId && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">in draft</span>}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-2 text-sm" data-testid="unstamp-preview"><strong>{tail.length} document{tail.length === 1 ? "" : "s"}</strong>, {pages} page{pages === 1 ? "" : "s"}, <span className="font-mono">{range}</span></p>
                 {blocker ? (
                   <p className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300" data-testid="unstamp-blocked">{blocker}</p>
                 ) : (
