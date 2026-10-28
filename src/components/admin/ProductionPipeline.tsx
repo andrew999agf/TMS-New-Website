@@ -643,16 +643,18 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
   const [plan, setPlan] = useState<StagePlan | null>(null);
 
   function planStaging(): StagePlan {
-    // Same order the server stamps in (full path, natural numbers), so the
-    // Bates sequence across batches reads exactly like one big batch.
+    // Stamped in the order the tab shows them (the sort menu, or the order
+    // they were dragged into) — the server keeps the order it is sent, so
+    // the Bates sequence across batches reads exactly like one big batch.
     const pathOf = (f: ClientFile) => (f.dir ? `${f.dir}/${f.name}` : f.name);
     const all: StageItem[] = [];
+    const position = new Map(files.map((f, i) => [f.key, i]));
     for (const [key, pages] of selByKey) {
       const f = files.find((x) => x.key === key);
       const isPdf = !!f && fileKind(f.name) === "pdf";
       all.push({ key, name: f?.name ?? key, path: f ? pathOf(f) : key, bytes: f?.sizeBytes ?? 0, pages: isPdf ? pages.length : 1, sel: isPdf ? { key, pages: [...pages].sort((a, b) => a - b) } : { key } });
     }
-    all.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    all.sort((a, b) => (position.get(a.key) ?? 1e9) - (position.get(b.key) ?? 1e9));
     // A single file past the server's per-call limit can't be stamped here at all.
     const tooBig = all.filter((x) => x.bytes > STAGE_MAX_BYTES);
     const items = all.filter((x) => x.bytes <= STAGE_MAX_BYTES);
@@ -1922,8 +1924,10 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
  */
 const STAGED_ORDER_ACC = { key: (d: StagedDoc) => `prod:${d.id}`, name: (d: StagedDoc) => d.name, date: (d: StagedDoc) => d.createdAt, bates: (d: StagedDoc) => d.batesStart };
 
-function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMoved, toolbarHost, viewOrder }: {
-  setId: number; rows: StagedDoc[]; shareToken: string | null; viewOrder?: ViewOrder;
+function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolbarHost, order, setOrder }: {
+  setId: number; rows: StagedDoc[]; shareToken: string | null;
+  /** The tab's saved order (owned by StagedView, which also stamps in it). */
+  order: ViewOrder; setOrder: (o: ViewOrder) => void;
   view: "grid" | "reader"; setView: (v: "grid" | "reader") => void;
   /** StagedView's frozen header: the toolbar renders there so one block
    *  stays pinned under the admin strip. */
@@ -1945,9 +1949,6 @@ function StagedGallery({ setId, rows: rowsProp, shareToken, view, setView, onMov
   // Folded document bars — every one starts expanded when the tab opens.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapse = (key: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
-  // Bates order by default; name / upload date / dragged order are saved for the firm.
-  const [order, setOrder] = useViewOrder(setId, "staged", viewOrder, "bates");
-  const rows = useMemo(() => orderDocs(rowsProp, order, STAGED_ORDER_ACC, "bates"), [rowsProp, order]);
   const onReorder = useCallback((keys: string[]) => setOrder({ mode: "custom", custom: keys }), [setOrder]);
   const drag = useDocDrag(rows.map((d) => `prod:${d.id}`), onReorder);
 
@@ -2337,7 +2338,8 @@ function BatesLaterButton({ setId, docs, batesDefaults, onDone }: { setId: numbe
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; batch: number; batches: number } | null>(null);
   if (!docs.length) return null;
-  const ordered = [...docs].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  // Stamped in the order the tab shows them (drag documents into place first).
+  const ordered = [...docs];
   const pages = ordered.reduce((n, d) => n + stagedPages(d), 0);
   const chunks: StagedDoc[][] = [];
   { let cur: StagedDoc[] = [], bytes = 0; for (const d of ordered) { const b = d.sizeBytes ?? 0; if (cur.length && (cur.length >= 25 || bytes + b > 60 * 1024 * 1024)) { chunks.push(cur); cur = []; bytes = 0; } cur.push(d); bytes += b; } if (cur.length) chunks.push(cur); }
@@ -2456,7 +2458,11 @@ function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults
   const [view, setView] = useState<"grid" | "reader" | "list">("grid");
   const router = useRouter();
   const draft = prods.find((p) => !p.producedAt) ?? null;
-  const rows = staged.filter((d) => !d.productionId || d.productionId === draft?.id).sort((a, b) => a.batesStart - b.batesStart);
+  // The tab's document order — Bates by default; name, upload date, or the
+  // dragged order are saved for the firm. "Bates label now" stamps the
+  // unlabeled documents in exactly this order.
+  const [order, setOrder] = useViewOrder(setId, "staged", viewOrder, "bates");
+  const rows = useMemo(() => orderDocs(staged.filter((d) => !d.productionId || d.productionId === draft?.id), order, STAGED_ORDER_ACC, "bates"), [staged, draft?.id, order]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<ProductionRow | null>(draft);
@@ -2623,7 +2629,7 @@ function StagedView({ setId, staged, prods, contents, shareTokens, batesDefaults
           Nothing staged. Select documents under <strong>Received from Client</strong> and click <strong>Intend to produce</strong>.
         </p>
       ) : view !== "list" ? (
-        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} toolbarHost={toolHost} viewOrder={viewOrder} />
+        <StagedGallery setId={setId} rows={rows} shareToken={shareToken} view={view} setView={(v) => setView(v)} onMoved={(msg) => setMovedNotice(msg)} toolbarHost={toolHost} order={order} setOrder={setOrder} />
       ) : (
         <div className="divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
           {rows.map((d) => (

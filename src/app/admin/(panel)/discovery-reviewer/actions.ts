@@ -959,16 +959,20 @@ export async function stageForProduction(setId: number, selectionsIn: (string | 
     const totalBytes = todo.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — stage it in smaller batches." };
 
-    // Continue the case's numbering unless the user typed a start.
+    // Continue the case's numbering unless the user typed a start — and a
+    // typed start may never land on a number already stamped on a page.
+    // Stamped numbers are permanent; new documents only ever take numbers
+    // past the highest one on file.
+    const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` })
+      .from(productionDocs).where(eq(productionDocs.setId, setId));
     let next = Math.floor(Number(opts.start));
-    if (!Number.isFinite(next) || next < 1) {
-      const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` })
-        .from(productionDocs).where(eq(productionDocs.setId, setId));
-      next = Number(maxEnd) + 1;
-    }
+    if (!Number.isFinite(next) || next < 1) next = Number(maxEnd) + 1;
+    else if (bates && next <= Number(maxEnd)) return { ok: false as const, error: `${batesLabel(prefix, next)} is already stamped on a page in this case — numbers already stamped never change. The next free number is ${batesLabel(prefix, Number(maxEnd) + 1)}.` };
 
-    // Stable order: request folder, then filename.
-    todo.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }));
+    // The order the documents were sent in IS the order on screen (the
+    // tab's sort, or the order they were dragged into): stamp in that order.
+    const sentAt = new Map(sourceKeys.map((k, i) => [k, i]));
+    todo.sort((a, b) => (sentAt.get(a.key) ?? 1e9) - (sentAt.get(b.key) ?? 1e9));
     const skipped: string[] = [];
     let staged = 0;
     for (const f of todo) {
@@ -1073,8 +1077,11 @@ export async function batesLabelStagedDocs(setId: number, idsIn: number[], opts:
   if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. the client's last name)." };
   if (!ids.length) return { ok: false as const, error: "Select at least one document." };
   try {
+    // Stamped in the order the ids were sent — the order on screen in the
+    // yellow tab (its sort, or the order the documents were dragged into).
+    const sentAt = new Map(ids.map((id, i) => [id, i]));
     const docs = (await db.select().from(productionDocs).where(and(eq(productionDocs.setId, setId), inArray(productionDocs.id, ids))))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      .sort((a, b) => (sentAt.get(a.id) ?? 1e9) - (sentAt.get(b.id) ?? 1e9));
     const skipped: string[] = [];
     const todo = docs.filter((d) => {
       if (d.status !== "staged") { skipped.push(`${d.name} (already produced)`); return false; }
@@ -1090,11 +1097,11 @@ export async function batesLabelStagedDocs(setId: number, idsIn: number[], opts:
     const totalBytes = todo.reduce((n, d) => n + (d.sizeBytes ?? 0), 0);
     if (totalBytes > MAX_STAGE_BYTES) return { ok: false as const, error: "That batch is too large to stamp at once — the page should send it in smaller batches." };
 
+    // Numbers already stamped are permanent: a typed start can never land on one.
+    const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` }).from(productionDocs).where(eq(productionDocs.setId, setId));
     let next = Math.floor(Number(opts.start));
-    if (!Number.isFinite(next) || next < 1) {
-      const [{ maxEnd }] = await db.select({ maxEnd: sql<number>`coalesce(max(${productionDocs.batesEnd}), 0)` }).from(productionDocs).where(eq(productionDocs.setId, setId));
-      next = Number(maxEnd) + 1;
-    }
+    if (!Number.isFinite(next) || next < 1) next = Number(maxEnd) + 1;
+    else if (next <= Number(maxEnd)) return { ok: false as const, error: `${batesLabel(prefix, next)} is already stamped on a page in this case — numbers already stamped never change. The next free number is ${batesLabel(prefix, Number(maxEnd) + 1)}.` };
     let labeled = 0;
     for (const d of todo) {
       const res = await fetch(d.url as string);
