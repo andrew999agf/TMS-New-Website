@@ -35,6 +35,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "case-portal", label: "Client Case Portal", href: "/admin/case-portal", toggleable: true },
   { key: "assistant", label: "AI.fred (Assistant)", href: "/admin/assistant", toggleable: true },
   { key: "map-overlay", label: "Map Overlay", href: "/admin/map-overlay", toggleable: true },
+  { key: "startbookkeeping", label: "StartBookkeeping", href: "/admin/startbookkeeping", toggleable: true },
   { key: "time-tracker", label: "Time Tracker", href: "/admin/time-tracker", toggleable: false },
   { key: "time-tracker-4", label: "Time Tracker 4.0", href: "/admin/time-tracker-4", toggleable: false },
   { key: "billing-review", label: "Billing Review", href: "/admin/billing-review", toggleable: true },

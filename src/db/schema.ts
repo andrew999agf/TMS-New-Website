@@ -2184,3 +2184,119 @@ export const portalMemberMatters = pgTable(
   },
   (t) => ({ memberMatterIdx: uniqueIndex("portal_member_matters_uq").on(t.memberId, t.matterId), matterIdx: index("portal_member_matters_matter_idx").on(t.matterId) }),
 );
+
+/* ===================== StartBookkeeping (books module) ===================== */
+/* Every table carries company_id so the module lifts out whole, and nothing
+ * in here references the firm by name — see src/lib/books/seed.ts. */
+
+export const sbCompanies = pgTable("sb_companies", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 191 }).notNull(),
+  legalName: varchar("legal_name", { length: 255 }).notNull().default(""),
+  dba: varchar("dba", { length: 191 }).notNull().default(""),
+  ein: varchar("ein", { length: 16 }).notNull().default(""),
+  /** pllc | llc | pc | corp | partnership | sole */
+  entityType: varchar("entity_type", { length: 24 }).notNull().default("pllc"),
+  /** disregarded | s_corp | partnership | c_corp */
+  taxElection: varchar("tax_election", { length: 24 }).notNull().default("disregarded"),
+  state: varchar("state", { length: 2 }).notNull().default("TX"),
+  formationState: varchar("formation_state", { length: 2 }).notNull().default("TX"),
+  fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
+  addressLine: varchar("address_line", { length: 255 }).notNull().default(""),
+  city: varchar("city", { length: 96 }).notNull().default(""),
+  addressState: varchar("address_state", { length: 2 }).notNull().default("TX"),
+  zip: varchar("zip", { length: 16 }).notNull().default(""),
+  phone: varchar("phone", { length: 32 }).notNull().default(""),
+  email: varchar("email", { length: 255 }).notNull().default(""),
+  operatingBankName: varchar("operating_bank_name", { length: 128 }).notNull().default(""),
+  operatingLast4: varchar("operating_last4", { length: 4 }).notNull().default(""),
+  ioltaBankName: varchar("iolta_bank_name", { length: 128 }).notNull().default(""),
+  ioltaLast4: varchar("iolta_last4", { length: 4 }).notNull().default(""),
+  settings: jsonb("settings").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sbUsers = pgTable("sb_users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  name: varchar("name", { length: 191 }).notNull().default(""),
+  passwordHash: text("password_hash").notNull(),
+  otpHash: varchar("otp_hash", { length: 128 }),
+  otpExpires: timestamp("otp_expires", { withTimezone: true }),
+  otpAttempts: integer("otp_attempts").notNull().default(0),
+  failedLogins: integer("failed_logins").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sbMemberships = pgTable(
+  "sb_memberships",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    companyId: integer("company_id").notNull(),
+    /** owner | bookkeeper | viewer */
+    role: varchar("role", { length: 16 }).notNull().default("viewer"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uq: uniqueIndex("sb_memberships_uq").on(t.userId, t.companyId) }),
+);
+
+export const sbAccounts = pgTable(
+  "sb_accounts",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: varchar("number", { length: 16 }).notNull(),
+    name: varchar("name", { length: 191 }).notNull(),
+    /** asset | liability | equity | income | expense */
+    type: varchar("type", { length: 16 }).notNull(),
+    subtype: varchar("subtype", { length: 32 }).notNull().default(""),
+    parentId: integer("parent_id"),
+    isTrust: boolean("is_trust").notNull().default(false),
+    /** Stable role the code looks up (operating_bank, iolta_bank, trust_liability…). */
+    systemKey: varchar("system_key", { length: 48 }),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uq: uniqueIndex("sb_accounts_uq").on(t.companyId, t.number), companyIdx: index("sb_accounts_company_idx").on(t.companyId) }),
+);
+
+export const sbTaxRules = pgTable(
+  "sb_tax_rules",
+  {
+    id: serial("id").primaryKey(),
+    year: integer("year").notNull(),
+    /** federal | a two-letter state */
+    jurisdiction: varchar("jurisdiction", { length: 8 }).notNull(),
+    key: varchar("key", { length: 64 }).notNull(),
+    label: varchar("label", { length: 255 }).notNull().default(""),
+    value: jsonb("value"),
+    unit: varchar("unit", { length: 24 }).notNull().default(""),
+    source: text("source").notNull().default(""),
+    note: text("note").notNull().default(""),
+    verified: boolean("verified").notNull().default(false),
+    verifiedBy: varchar("verified_by", { length: 255 }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uq: uniqueIndex("sb_tax_rules_uq").on(t.year, t.jurisdiction, t.key) }),
+);
+
+export const sbAudit = pgTable(
+  "sb_audit",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id"),
+    userEmail: varchar("user_email", { length: 255 }).notNull().default(""),
+    action: varchar("action", { length: 32 }).notNull(),
+    entity: varchar("entity", { length: 48 }).notNull().default(""),
+    entityId: varchar("entity_id", { length: 64 }).notNull().default(""),
+    detail: text("detail").notNull().default(""),
+    ip: varchar("ip", { length: 64 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ companyIdx: index("sb_audit_company_idx").on(t.companyId, t.createdAt) }),
+);

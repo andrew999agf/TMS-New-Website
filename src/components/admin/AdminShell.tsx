@@ -46,6 +46,7 @@ import {
   ShieldCheck,
   X,
   type LucideIcon,
+  Calculator,
 } from "lucide-react";
 import { logoutAction } from "@/app/admin/auth-actions";
 import { allowedSections, sectionForPath } from "@/lib/admin-sections";
@@ -80,6 +81,7 @@ const NAV = [
   { label: "Billing Review", href: "/admin/billing-review", icon: ClipboardCheck },
   { label: "Time Clock", href: "/admin/timeclock", icon: AlarmClock },
   { label: "Training", href: "/admin/training", icon: GraduationCap },
+  { label: "StartBookkeeping", href: "/admin/startbookkeeping", icon: Calculator },
   { label: "User Management", href: "/admin/logins", icon: KeyRound },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];

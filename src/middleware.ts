@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 import { canAccessPath } from "@/lib/admin-sections";
+import { BOOKS_COOKIE, verifyBooksToken } from "@/lib/books/session";
+import { isBooksHost } from "@/lib/books/host";
 
 /**
  * Hostnames that serve the dedicated Patriot Series experience instead of the
@@ -86,6 +88,28 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
+  // StartBookkeeping: its own hostname serves the /books app at the root;
+  // on the firm host the same app answers under /books. Either way it has
+  // its own session cookie — the admin login does not open it.
+  const onBooksHost = isBooksHost(hostOf(req));
+  if (onBooksHost || pathname === "/books" || pathname.startsWith("/books/")) {
+    const appPath = onBooksHost && !pathname.startsWith("/books") ? `/books${pathname === "/" ? "" : pathname}` : pathname;
+    const base = onBooksHost ? "" : "/books";
+    const open = appPath === "/books/login" || appPath.startsWith("/books/login/") || appPath === "/books/logout";
+    if (!open) {
+      const token = req.cookies.get(BOOKS_COOKIE)?.value;
+      const valid = token ? await verifyBooksToken(token) : null;
+      if (!valid) {
+        const url = req.nextUrl.clone();
+        url.pathname = `${base}/login`;
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+    }
+    if (appPath !== pathname) return NextResponse.rewrite(new URL(appPath + req.nextUrl.search, req.url));
+    return NextResponse.next();
+  }
+
   // Firm site: middleware now also matches "/", so anything outside /admin is a
   // no-op pass-through (keeps the homepage etc. untouched).
   if (!pathname.startsWith("/admin")) {
@@ -130,5 +154,8 @@ export const config = {
   // "/" is matched so the Patriot host can serve the watch page at the root;
   // for the firm host it's a cheap pass-through. "/admin/:path*" keeps the
   // firm's admin guard (and powers the Patriot "/admin" → console rewrite).
-  matcher: ["/", "/admin/:path*", "/teams", "/past-tournaments", "/records", "/stadium", "/news", "/news/:path*"],
+  // Every page path except Next internals, API routes and static files, so the
+  // StartBookkeeping hostname can serve its app at the root; for the firm host
+  // anything outside /admin and /books is a cheap pass-through.
+  matcher: ["/((?!_next/|api/|favicon.ico|.*\\.[a-zA-Z0-9]+$).*)"],
 };

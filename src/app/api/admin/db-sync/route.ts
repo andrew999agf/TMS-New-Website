@@ -1,3 +1,4 @@
+import { BOOKS_DDL } from "@/lib/books/ensure";
 import { NextResponse } from "next/server";
 import { sql, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -831,7 +832,7 @@ export async function POST() {
   // 1) Ensure tables/columns exist. Run each statement independently so one
   //    problematic statement (e.g. an enum change) can't abort the rest or the
   //    seeding below. All statements are idempotent (IF NOT EXISTS).
-  for (const stmt of DDL) {
+  for (const stmt of [...DDL, ...BOOKS_DDL]) {
     try {
       await db.execute(sql.raw(stmt));
     } catch (err) {
