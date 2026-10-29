@@ -95,6 +95,31 @@ function fromAddress(fromName?: string) {
 
 type Attachment = { filename: string; content: string | Buffer; contentType?: string };
 
+/**
+ * Where a reply should land. The sending mailbox (office@) isn't read by
+ * anyone, so every message carries a Reply-To: the signed-in staff member
+ * who triggered it when there is one, otherwise the firm's lead team (the
+ * same list the share-folder alerts use). Never the sending mailbox.
+ */
+async function defaultReplyTo(): Promise<string | undefined> {
+  const sender = (SENDER_ADDRESS ?? "").toLowerCase();
+  try {
+    // Dynamic import: auth pulls in email (reset links), so a static import would cycle.
+    const { getSession } = await import("@/lib/auth");
+    const session = await getSession();
+    const who = session?.email?.trim().toLowerCase();
+    if (who && who.includes("@") && who !== sender) return who;
+  } catch { /* no request context (cron, background) or no admin signed in */ }
+  try {
+    const { getSetting } = await import("@/lib/content");
+    const { SHARE_LEAD_TEAM_KEY, SHARE_LEAD_TEAM_DEFAULT } = await import("@/lib/share/settings");
+    const team = await getSetting<string[]>(SHARE_LEAD_TEAM_KEY, SHARE_LEAD_TEAM_DEFAULT);
+    const list = (Array.isArray(team) && team.length ? team : SHARE_LEAD_TEAM_DEFAULT).map((x) => x.trim().toLowerCase()).filter((x) => x.includes("@") && x !== sender);
+    if (list.length) return list.join(", ");
+  } catch { /* settings unavailable */ }
+  return undefined;
+}
+
 export async function sendEmail({
   to,
   cc,
@@ -103,6 +128,7 @@ export async function sendEmail({
   attachments,
   fromName,
   headers,
+  replyTo,
 }: {
   to: string | string[];
   cc?: string | string[];
@@ -112,10 +138,14 @@ export async function sendEmail({
   fromName?: string;
   /** Extra MIME headers (e.g. a unique X-Entity-Ref-ID to stop Gmail threading). */
   headers?: Record<string, string>;
+  /** Override the automatic Reply-To (staff member who triggered the email, else the lead team). */
+  replyTo?: string | string[];
 }): Promise<{ sent: boolean; reason?: string }> {
   const recipients = (Array.isArray(to) ? to : [to]).map((s) => s.trim()).filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: "no-recipients" };
   const ccList = (Array.isArray(cc) ? cc : cc ? [cc] : []).map((s) => s.trim()).filter(Boolean);
+  const replyList = (Array.isArray(replyTo) ? replyTo : replyTo ? [replyTo] : []).map((s) => s.trim()).filter(Boolean);
+  const reply = replyList.length ? replyList.join(", ") : await defaultReplyTo();
   // Every message gets its own thread. Gmail stacks same-subject mail from
   // one sender into a single conversation (so ten turn-back letters to ten
   // different people read as one thread, and a reply drags them all along);
@@ -130,6 +160,7 @@ export async function sendEmail({
         from: fromAddress(fromName),
         to: recipients,
         cc: ccList.length ? ccList : undefined,
+        replyTo: reply,
         subject,
         html,
         headers,
@@ -149,6 +180,7 @@ export async function sendEmail({
         from: fromAddress(fromName),
         to: recipients,
         cc: ccList.length ? ccList : undefined,
+        replyTo: reply ? reply.split(",").map((x) => x.trim()) : undefined,
         subject,
         html,
         headers,
