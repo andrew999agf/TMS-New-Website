@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,7 +21,7 @@ import { partsReady, planProductionParts, encodeIdRanges, MERGE_MAX_DOCS, type P
 import { concatPdfParts, pickSink } from "@/lib/production/pdf-concat";
 import { updatePageNote, addDiscoveryDoc, addDiscoveryAnnotation, deleteDiscoveryAnnotation, listFileAnnotations, getPageNotes,
   stageForProduction, unstageProductionDoc, unstampStagedDocs, batesLabelStagedDocs, prepareProduction, buildProductionPart, finalizeProduction, discardProductionDraft, sendStagedToProduced, updateRequestDeadlines,
-  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived,
+  updateAiLabel, setDiscoveryShare, redactProductionDoc, deleteStagedPages, returnProductionToStaged, deleteClientDocs, addPreLabeledProduction, mirrorProductionToReceived, assignProducedBatesRange,
   type FileAnnotation, type AnnotationKind, type StageSelection, type LabelTarget,
 } from "@/app/admin/(panel)/discovery-reviewer/actions";
 import type { StampStyle } from "@/lib/production/build";
@@ -2215,9 +2215,9 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
           className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${selByDoc.has(d.id) ? "border-[var(--c-accent)] text-[var(--c-accent)]" : "border-[var(--c-border)] text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)]"}`}>
           {selByDoc.has(d.id) ? <CheckSquare size={12} /> : <Square size={12} />} select all
         </button>
-        <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-yellow-900">
-          {d.batesPrefix ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "pre-labeled"}
-        </span>
+        {d.batesStart > 0
+          ? <span className="rounded-full bg-yellow-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-yellow-900">{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</span>
+          : <AssignBatesRange setId={setId} doc={d} fallbackPrefix="" onDone={(msg) => { setNotice(msg); router.refresh(); }} />}
         <AiStateChip state={d.aiState} done={d.aiNotesDone} total={d.aiNotesTotal} issue={d.aiIssue} />
         <button onClick={() => void removeDoc(f)} disabled={!!d.productionId}
           title={d.productionId ? "In a draft production — discard the draft first" : "Remove from Documents to be produced (pages unlock in the red tab)"}
@@ -2320,6 +2320,55 @@ function StagedGallery({ setId, rows, shareToken, view, setView, onMoved, toolba
         </div>
       )}
     </div>
+  );
+}
+
+/** "ESQ_002759-3421" or "ESQ_002759-ESQ_003421" in a filename → the printed range. */
+function rangeFromName(name: string): { prefix: string; start: string; end: string } | null {
+  const m = /([A-Z]{1,12}[_-]?)(\d{3,})\s*[-–]\s*(?:[A-Z]{1,12}[_-]?)?(\d{1,})/i.exec(name);
+  if (!m) return null;
+  const prefix = m[1].toUpperCase(), start = m[2];
+  let end = m[3];
+  // A short second number keeps the first number's leading digits ("002759-3421" → 003421).
+  if (end.length < start.length) end = (start.slice(0, start.length - end.length) + end);
+  return { prefix, start, end };
+}
+
+/**
+ * A copy that arrived already Bates-labeled carries numbers the site didn't
+ * print. Record them here — prefix, first, last — so the case's numbering
+ * continues after them and the production shows its real range. Pre-filled
+ * from the filename when it says so.
+ */
+function AssignBatesRange({ setId, doc, fallbackPrefix, onDone }: { setId: number; doc: { id: number; name: string; pageCount?: number }; fallbackPrefix: string; onDone: (msg: string) => void }) {
+  const router = useRouter();
+  const guess = rangeFromName(doc.name);
+  const [open, setOpen] = useState(false);
+  const [prefix, setPrefix] = useState(guess?.prefix ?? fallbackPrefix);
+  const [start, setStart] = useState(guess?.start ?? "");
+  const [end, setEnd] = useState(guess?.end ?? "");
+  const [pending, startT] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const n = Number(start) >= 1 && Number(end) >= Number(start) ? Number(end) - Number(start) + 1 : 0;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-800" title="This copy arrived with Bates numbers already printed on it; the site hasn't recorded which ones">already labeled</span>
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="rounded-md border border-[var(--c-accent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)]/10" data-testid={`set-range-${doc.id}`}>Set Bates range…</button>
+      ) : (
+        <span className="inline-flex flex-wrap items-center gap-1.5 rounded-md border border-[var(--c-accent)]/50 bg-[var(--c-accent)]/5 px-2 py-1" data-testid={`range-form-${doc.id}`}>
+          <input value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="prefix" className={`${input} w-20 !py-0.5 font-mono text-xs`} title="Bates prefix as printed (e.g. ESQ_)" data-testid={`range-prefix-${doc.id}`} />
+          <input value={start} onChange={(e) => setStart(e.target.value.replace(/\D/g, ""))} placeholder="first #" className={`${input} w-24 !py-0.5 font-mono text-xs`} title="Number on the first page" data-testid={`range-start-${doc.id}`} />
+          <span className="text-xs text-[var(--c-ink-muted)]">to</span>
+          <input value={end} onChange={(e) => setEnd(e.target.value.replace(/\D/g, ""))} placeholder="last #" className={`${input} w-24 !py-0.5 font-mono text-xs`} title="Number on the last page" data-testid={`range-end-${doc.id}`} />
+          {n > 0 && <span className="text-[11px] text-[var(--c-ink-muted)]">{n} page{n === 1 ? "" : "s"}{doc.pageCount && doc.pageCount !== n ? <span className="text-red-600"> · copy has {doc.pageCount}</span> : ""}</span>}
+          <button onClick={() => { setError(null); startT(async () => { const r = await assignProducedBatesRange(setId, doc.id, { prefix, start: Number(start), end: Number(end) }); if (r.ok) { setOpen(false); onDone(`Recorded ${r.label} — the case's numbering continues at ${String(r.next).padStart(6, "0")}.`); router.refresh(); } else setError(r.error); }); }}
+            disabled={pending || !prefix || n === 0} className="btn btn-accent !py-0.5 text-xs disabled:opacity-50" data-testid={`range-save-${doc.id}`}>{pending ? <Loader2 size={12} className="animate-spin" /> : "Save"}</button>
+          <button onClick={() => setOpen(false)} className="text-[11px] text-[var(--c-ink-muted)]">cancel</button>
+          {error && <span className="basis-full text-[11px] text-red-600">{error}</span>}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -2789,7 +2838,9 @@ function ProducedView({ setId, staged, prods, contents, shareTokens, viewOrder }
   const [ocCopied, setOcCopied] = useState<number | null>(null);
   const [pullBack, setPullBack] = useState<ProductionRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const done = prods.filter((p) => p.producedAt).sort((a, b) => a.batesStart - b.batesStart);
+  // Oldest production first; numbers break ties. A production whose copies
+  // arrived already labeled (range not yet recorded) stays in date order.
+  const done = prods.filter((p) => p.producedAt).sort((a, b) => (a.producedAt! < b.producedAt! ? -1 : a.producedAt! > b.producedAt! ? 1 : a.batesStart - b.batesStart));
   const producedDocs = staged.filter((d) => d.productionId && done.some((p) => p.id === d.productionId));
   // Link + Bates base come from the most recent production with a file.
   const latest = [...done].reverse().find((p) => p.fileUrl && p.parts.length <= 1) ?? null;
@@ -2868,7 +2919,9 @@ function ProducedView({ setId, staged, prods, contents, shareTokens, viewOrder }
                 <div className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
                   {docs.map((d) => (
                     <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
-                      <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{d.batesStart > 0 ? <>{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</> : "already labeled"}</span>
+                      {d.batesStart > 0
+                        ? <span className="font-mono text-xs font-semibold text-[var(--c-accent)]">{bates(d.batesPrefix, d.batesStart)}{d.batesEnd > d.batesStart ? `–${String(d.batesEnd).padStart(6, "0")}` : ""}</span>
+                        : <AssignBatesRange setId={setId} doc={d} fallbackPrefix={prods.find((p) => p.batesPrefix)?.batesPrefix ?? ""} onDone={(msg) => { setNotice(msg); }} />}
                       <span className="min-w-0 flex-1 break-words">{d.name}</span>
                       <LabelChip setId={setId} target={{ kind: "production", id: d.id }} label={d.aiLabel} description={d.aiDescription} />
                       {d.requestLabel && <span className="rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{d.requestLabel}</span>}

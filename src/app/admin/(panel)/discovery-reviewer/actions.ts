@@ -1852,6 +1852,48 @@ export async function addPreLabeledProduction(setId: number, files: { name: stri
  * linked as the produced document's source, so it shows the green
  * "produced" badge there rather than looking like something still to do.
  */
+/**
+ * Record the Bates range already printed on a copy that arrived labeled
+ * (added through "Add already Bates labeled documents", or staged as-is).
+ * Nothing is stamped — the numbers are what the pages carry. From then on
+ * the case's numbering continues after this range, and the production's
+ * own range widens to include it. Overlapping an existing range is refused.
+ */
+export async function assignProducedBatesRange(setId: number, docId: number, input: { prefix: string; start: number; end: number }) {
+  const session = await guard();
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const prefix = (input.prefix ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
+  const start = Math.floor(Number(input.start)), end = Math.floor(Number(input.end));
+  if (!prefix) return { ok: false as const, error: "Enter the Bates prefix (e.g. ESQ_)." };
+  if (!(start >= 1) || !(end >= start)) return { ok: false as const, error: "Enter the first and last numbers printed on the pages (last can equal first)." };
+  try {
+    const [doc] = await db.select().from(productionDocs).where(and(eq(productionDocs.id, docId), eq(productionDocs.setId, setId)));
+    if (!doc) return { ok: false as const, error: "Document not found." };
+    if (doc.batesStart > 0) return { ok: false as const, error: `This copy is already ${batesLabel(doc.batesPrefix, doc.batesStart)} — numbers already recorded never change.` };
+    const others = (await db.select({ id: productionDocs.id, name: productionDocs.name, batesPrefix: productionDocs.batesPrefix, batesStart: productionDocs.batesStart, batesEnd: productionDocs.batesEnd }).from(productionDocs).where(eq(productionDocs.setId, setId)))
+      .filter((d) => d.id !== docId && d.batesStart > 0);
+    const clash = others.find((d) => start <= d.batesEnd && end >= d.batesStart);
+    if (clash) return { ok: false as const, error: `${batesLabel(prefix, start)}–${String(end).padStart(6, "0")} overlaps ${batesLabel(clash.batesPrefix, clash.batesStart)}–${String(clash.batesEnd).padStart(6, "0")} (${clash.name}).` };
+    const pages = end - start + 1;
+    if (doc.pageCount && doc.pageCount !== pages) return { ok: false as const, error: `That range is ${pages} page${pages === 1 ? "" : "s"}, but this copy has ${doc.pageCount}. Check the numbers on the first and last pages.` };
+    const pageBates = Array.from({ length: pages }, (_, i) => start + i);
+    await db.update(productionDocs).set({ batesPrefix: prefix, batesStart: start, batesEnd: end, pageBates, pageCount: doc.pageCount ?? pages }).where(eq(productionDocs.id, docId));
+    // The production's own range: the span of every numbered copy in it.
+    if (doc.productionId) {
+      const inProd = (await db.select({ batesPrefix: productionDocs.batesPrefix, batesStart: productionDocs.batesStart, batesEnd: productionDocs.batesEnd }).from(productionDocs).where(eq(productionDocs.productionId, doc.productionId))).filter((d) => d.batesStart > 0);
+      if (inProd.length) {
+        await db.update(productions).set({ batesPrefix: inProd[0].batesPrefix, batesStart: Math.min(...inProd.map((d) => d.batesStart)), batesEnd: Math.max(...inProd.map((d) => d.batesEnd)) }).where(eq(productions.id, doc.productionId));
+      }
+    }
+    await audit(session.email, "update", "production-doc", String(docId), `Recorded the printed Bates range ${batesLabel(prefix, start)}–${String(end).padStart(6, "0")} on "${doc.name}" (arrived already labeled)`);
+    revalidatePath(`/admin/discovery-reviewer/${setId}`);
+    return { ok: true as const, label: `${batesLabel(prefix, start)}–${String(end).padStart(6, "0")}`, next: end + 1 };
+  } catch (err) {
+    console.error("[discovery-reviewer] assignProducedBatesRange failed:", err);
+    return { ok: false as const, error: "Couldn't record the range." };
+  }
+}
+
 export async function mirrorProductionToReceived(setId: number, productionId: number) {
   const session = await guard();
   if (!db) return { ok: false as const, error: "Database not configured." };
