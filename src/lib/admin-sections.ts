@@ -87,9 +87,18 @@ export function canReviewBilling(role?: string, permissions?: string[]): boolean
   return isFullAdminRole(role) || (permissions ?? []).includes("billing-review");
 }
 
+/** An editor's "turned off" marker for a section: "-<section key>" in the
+ *  same permissions array. Owners can't be turned off; editors start with
+ *  every section and lose only the ones unticked in User Management. */
+export const sectionOffKey = (key: string) => `-${key}`;
+export function editorSectionOff(permissions: string[] | undefined, key: string): boolean {
+  return (permissions ?? []).includes(sectionOffKey(key));
+}
+
 /** All section keys a given account may access. */
 export function allowedSections(role?: string, permissions?: string[]): string[] {
-  if (isFullAdminRole(role)) return ADMIN_SECTIONS.map((s) => s.key);
+  if (role === "owner") return ADMIN_SECTIONS.map((s) => s.key);
+  if (role === "editor") return ADMIN_SECTIONS.filter((s) => !s.toggleable || !editorSectionOff(permissions, s.key)).map((s) => s.key);
   // Every account (including interns/timekeepers) gets Time Tracker 4.0, Training,
   // Intake, and the Document Generator by default, plus any granted sections. The
   // original Time Tracker (1.0) is admin-only.
@@ -107,7 +116,7 @@ export function sectionForPath(pathname: string): string | null {
 }
 
 export function canAccessPath(pathname: string, role?: string, permissions?: string[]): boolean {
-  if (isFullAdminRole(role)) return true;
+  if (role === "owner") return true;
   const section = sectionForPath(pathname);
   if (!section) return false;
   return allowedSections(role, permissions).includes(section);

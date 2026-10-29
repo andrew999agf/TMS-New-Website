@@ -108,11 +108,46 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(token);
 }
 
-/** Use at the top of admin server components / actions. Redirects if unauthed. */
+/**
+ * The role and permissions as they stand in the database right now — the
+ * token carries the values from sign-in, and User Management may have
+ * changed them since. Returns null when the row can't be read (keep the
+ * token's values) or the account is gone.
+ */
+export async function freshAccess(session: SessionPayload): Promise<{ role: string; permissions: string[]; changed: boolean } | null> {
+  if (!db) return null;
+  try {
+    const [row] = await db.select({ role: admins.role, permissions: admins.permissions }).from(admins).where(eq(admins.id, Number(session.sub)));
+    if (!row) return null;
+    const permissions = ((row.permissions as string[]) ?? []).slice().sort();
+    const changed = row.role !== session.role || JSON.stringify(permissions) !== JSON.stringify((session.permissions ?? []).slice().sort());
+    return { role: row.role, permissions, changed };
+  } catch {
+    return null;
+  }
+}
+
+/** Use at the top of admin server components / actions. Redirects if unauthed.
+ *  Role and section permissions come from the database, not the sign-in
+ *  token, so a change in User Management applies on the person's next
+ *  request rather than their next login. */
 export async function requireAdmin(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session) redirect("/admin/login");
-  return session;
+  const fresh = await freshAccess(session);
+  return fresh ? { ...session, role: fresh.role, permissions: fresh.permissions } : session;
+}
+
+/** Re-sign the session cookie with the database's current role and permissions
+ *  (server action / route handler context only — cookies can't be set during render). */
+export async function refreshSessionCookie(): Promise<boolean> {
+  const session = await getSession();
+  if (!session) return false;
+  const fresh = await freshAccess(session);
+  if (!fresh || !fresh.changed) return false;
+  const token = await createSessionToken({ ...session, role: fresh.role, permissions: fresh.permissions });
+  (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SESSION_MAX_AGE });
+  return true;
 }
 
 /** True for full administrators (not time-tracker-only logins). */
@@ -122,8 +157,7 @@ export function isFullAdmin(role?: string): boolean {
 
 /** Gate full-admin areas. Timekeeper logins are bounced to Time Tracker 4.0. */
 export async function requireFullAdmin(): Promise<SessionPayload> {
-  const session = await getSession();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdmin();
   if (!isFullAdmin(session.role)) redirect("/admin/time-tracker-4");
   return session;
 }

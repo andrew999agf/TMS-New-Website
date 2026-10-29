@@ -6,13 +6,13 @@ import {
   createLogin, resetLoginPassword, updateLoginRole, updateLoginHourly, deleteLogin,
   updateLoginPermissions, sendSetupLink, setUserActivityDefault,
 } from "@/app/admin/(panel)/logins/actions";
-import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFullAdminRole } from "@/lib/admin-sections";
+import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFullAdminRole, sectionOffKey } from "@/lib/admin-sections";
 import { UserTrainingPanel } from "@/components/admin/training/UserTrainingPanel";
 
 type Login = { id: number; name: string; email: string; role: string; permissions: string[]; lastLoginAt: string | null; hourly: boolean };
 type Role = "owner" | "editor" | "timekeeper";
 const ROLES: Role[] = ["timekeeper", "editor", "owner"];
-const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (full access)", owner: "Owner (full access)" };
+const roleLabel: Record<string, string> = { timekeeper: "Timekeeper (Time Tracker & Training)", editor: "Editor (everything on, sections can be turned off)", owner: "Owner (everything, always)" };
 
 export function LoginsManager({ initial, selfId, selfRole = "", activityUsers = [], ttDefaults = {} }: { initial: Login[]; selfId: number; selfRole?: string; activityUsers?: string[]; ttDefaults?: Record<string, string> }) {
   const [ttMap, setTtMap] = useState<Record<string, string>>(ttDefaults);
@@ -160,7 +160,28 @@ export function LoginsManager({ initial, selfId, selfRole = "", activityUsers = 
               {openAccess === u.id && (
                 <div className="px-4 pb-4 -mt-1">
                   <div className="rounded-md bg-[var(--c-surface2)] p-3">
-                    {!fullAdmin ? (
+                    {u.role === "owner" ? (
+                      <>
+                        <p className="text-xs text-[var(--c-ink-muted)] mb-2">Owners have every section, always.</p>
+                        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 opacity-70">
+                          {TOGGLEABLE_SECTIONS.map((s) => (
+                            <label key={s.key} className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-[var(--c-accent)]" checked disabled /> {s.label}</label>
+                          ))}
+                        </div>
+                      </>
+                    ) : u.role === "editor" ? (
+                      <>
+                        <p className="text-xs text-[var(--c-ink-muted)] mb-2">Editors start with every section on. Untick any this person should not see — it disappears from their sidebar and the page refuses them:</p>
+                        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                          {TOGGLEABLE_SECTIONS.map((s) => (
+                            <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input type="checkbox" className="accent-[var(--c-accent)]" checked={!u.permissions.includes(sectionOffKey(s.key))} disabled={pending} onChange={(e) => togglePerm(u, sectionOffKey(s.key), !e.target.checked)} data-testid={`sec-${u.id}-${s.key}`} />
+                              {s.label}
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
                       <>
                         <p className="text-xs text-[var(--c-ink-muted)] mb-2">Time Tracker and Training are always on. Toggle any extra sections this person can access:</p>
                         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
@@ -172,9 +193,8 @@ export function LoginsManager({ initial, selfId, selfRole = "", activityUsers = 
                           ))}
                         </div>
                       </>
-                    ) : (
-                      <p className="text-xs text-[var(--c-ink-muted)]">Full-access role — every section is already on. Special abilities below are granted person by person:</p>
                     )}
+                    {fullAdmin && <p className="mt-2 text-xs text-[var(--c-ink-muted)]">Special abilities below are granted person by person:</p>}
                     {/* Special abilities: fine-grained grants inside a section.
                         Owners always hold them; owner-only ones can only be
                         changed by an owner. */}

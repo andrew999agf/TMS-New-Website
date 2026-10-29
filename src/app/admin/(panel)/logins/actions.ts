@@ -9,7 +9,7 @@ import { admins, settings } from "@/db/schema";
 import { requireFullAdmin, audit } from "@/lib/auth";
 import { sendEmail, describeSendFailure } from "@/lib/email";
 import { FIRM } from "@/lib/firm";
-import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFeaturePermission } from "@/lib/admin-sections";
+import { TOGGLEABLE_SECTIONS, FEATURE_PERMISSIONS, isFeaturePermission, sectionOffKey } from "@/lib/admin-sections";
 
 /** Per-admin default Time Tracker activity user, keyed by admin id. */
 const TT_USER_DEFAULTS_KEY = "tt.userDefaults";
@@ -83,7 +83,8 @@ export async function updateLoginRole(id: number, role: Role) {
 export async function updateLoginPermissions(id: number, permissions: string[]) {
   const session = await requireFullAdmin();
   if (!db) return { ok: false, error: "Database not configured." };
-  const allowed = new Set([...TOGGLEABLE_SECTIONS.map((s) => s.key), ...FEATURE_PERMISSIONS.map((f) => f.key)]);
+  // Section grants (for timekeepers), section "off" markers (for editors), and feature grants.
+  const allowed = new Set([...TOGGLEABLE_SECTIONS.map((s) => s.key), ...TOGGLEABLE_SECTIONS.map((s) => sectionOffKey(s.key)), ...FEATURE_PERMISSIONS.map((f) => f.key)]);
   let clean = [...new Set(permissions.filter((p) => allowed.has(p)))];
   // Owner-only feature grants (e.g. the Assistant's Coding tool) can only be
   // changed by an owner — anyone else's save keeps them exactly as they are.
