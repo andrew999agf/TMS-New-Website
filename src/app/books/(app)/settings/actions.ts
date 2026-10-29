@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { sbCompanies, sbMemberships, sbTaxRules, sbUsers } from "@/db/schema";
-import { requireBooks, sbAudit_, upsertBooksUser } from "@/lib/books/auth";
+import { requireBooks, sbAudit_, upsertBooksUser, sendBooksSetupLink, booksCompany } from "@/lib/books/auth";
+import bcrypt from "bcryptjs";
 import { ENTITY_TYPES, TAX_ELECTIONS, US_STATES } from "@/lib/books/seed";
 
 const str = (v: unknown, max = 191) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -45,6 +46,8 @@ export async function removeUser(userId: number) {
   if (s.role !== "owner") return { ok: false as const, error: "Only an owner can remove logins." };
   if (!db) return { ok: false as const, error: "Database not configured." };
   if (String(userId) === s.sub) return { ok: false as const, error: "You can't remove your own login." };
+  const target = await memberOf(userId, s.companyId);
+  if (target?.role === "owner" && (await ownersLeft(s.companyId, userId)) === 0) return { ok: false as const, error: "That's the only owner — make someone else an owner first." };
   await db.delete(sbMemberships).where(and(eq(sbMemberships.userId, userId), eq(sbMemberships.companyId, s.companyId)));
   const [u] = await db.select({ email: sbUsers.email }).from(sbUsers).where(eq(sbUsers.id, userId));
   await sbAudit_(s.companyId, s.email, "delete", "user", String(userId), `Removed ${u?.email ?? userId} from this company`);
@@ -62,4 +65,76 @@ export async function setRuleVerified(id: number, verified: boolean, value?: unk
   await sbAudit_(s.companyId, s.email, "update", "tax-rule", String(id), `${verified ? "Confirmed" : "Unconfirmed"}${value !== undefined ? ` value=${JSON.stringify(value)}` : ""}`);
   revalidatePath("/books/settings"); revalidatePath("/books");
   return { ok: true as const };
+}
+
+const ROLES = ["owner", "bookkeeper", "viewer"] as const;
+type Role = (typeof ROLES)[number];
+
+async function ownerGuard() {
+  const s = await requireBooks();
+  if (s.role !== "owner") throw new Error("Only an owner can manage logins.");
+  if (!db) throw new Error("Database not configured.");
+  return s;
+}
+async function memberOf(userId: number, companyId: number) {
+  const [m] = await db!.select().from(sbMemberships).where(and(eq(sbMemberships.userId, userId), eq(sbMemberships.companyId, companyId)));
+  return m ?? null;
+}
+async function ownersLeft(companyId: number, exceptUserId: number) {
+  const rows = await db!.select({ id: sbMemberships.id }).from(sbMemberships).where(and(eq(sbMemberships.companyId, companyId), eq(sbMemberships.role, "owner")));
+  const mine = await memberOf(exceptUserId, companyId);
+  return rows.length - (mine?.role === "owner" ? 1 : 0);
+}
+
+/** Name, email and role — fix a typo, or promote/demote. The last owner can't be demoted. */
+export async function updateUser(userId: number, patch: { name?: string; email?: string; role?: Role }) {
+  try {
+    const s = await ownerGuard();
+    const m = await memberOf(userId, s.companyId);
+    if (!m) return { ok: false as const, error: "That login isn't on this company." };
+    const set: Record<string, unknown> = {};
+    if (patch.name !== undefined) set.name = str(patch.name, 191);
+    if (patch.email !== undefined) {
+      const email = str(patch.email, 255).toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false as const, error: "Enter a valid email." };
+      const [dupe] = await db!.select({ id: sbUsers.id }).from(sbUsers).where(eq(sbUsers.email, email));
+      if (dupe && dupe.id !== userId) return { ok: false as const, error: "Another login already uses that email." };
+      set.email = email;
+    }
+    if (Object.keys(set).length) await db!.update(sbUsers).set(set).where(eq(sbUsers.id, userId));
+    if (patch.role !== undefined) {
+      if (!ROLES.includes(patch.role)) return { ok: false as const, error: "Pick a role." };
+      if (m.role === "owner" && patch.role !== "owner" && (await ownersLeft(s.companyId, userId)) === 0) return { ok: false as const, error: "That's the only owner — make someone else an owner first." };
+      await db!.update(sbMemberships).set({ role: patch.role }).where(eq(sbMemberships.id, m.id));
+    }
+    await sbAudit_(s.companyId, s.email, "update", "user", String(userId), `Login edited: ${Object.keys({ ...set, ...(patch.role !== undefined ? { role: patch.role } : {}) }).join(", ")}`);
+    revalidatePath("/books/settings");
+    return { ok: true as const };
+  } catch (err) { return { ok: false as const, error: (err as Error).message }; }
+}
+
+/** An owner types a password for someone (hand it over out of band). */
+export async function setUserPassword(userId: number, password: string) {
+  try {
+    const s = await ownerGuard();
+    if (!(await memberOf(userId, s.companyId))) return { ok: false as const, error: "That login isn't on this company." };
+    if ((password ?? "").length < 12) return { ok: false as const, error: "Use at least 12 characters." };
+    await db!.update(sbUsers).set({ passwordHash: await bcrypt.hash(password, 12), failedLogins: 0, lockedUntil: null, resetToken: null, resetExpires: null }).where(eq(sbUsers.id, userId));
+    await sbAudit_(s.companyId, s.email, "update", "user", String(userId), "Password set by an owner");
+    revalidatePath("/books/settings");
+    return { ok: true as const };
+  } catch (err) { return { ok: false as const, error: (err as Error).message }; }
+}
+
+/** Email (or re-email) a one-hour set-your-password link. */
+export async function sendSetupLink(userId: number) {
+  try {
+    const s = await ownerGuard();
+    if (!(await memberOf(userId, s.companyId))) return { ok: false as const, error: "That login isn't on this company." };
+    const c = await booksCompany(s.companyId);
+    const r = await sendBooksSetupLink(userId, s.name || s.email, c?.name ?? "the company");
+    if (r.ok) await sbAudit_(s.companyId, s.email, "update", "user", String(userId), "Set-password link emailed");
+    revalidatePath("/books/settings");
+    return r;
+  } catch (err) { return { ok: false as const, error: (err as Error).message }; }
 }

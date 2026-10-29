@@ -95,7 +95,7 @@ export async function middleware(req: NextRequest) {
   if (onBooksHost || pathname === "/books" || pathname.startsWith("/books/")) {
     const appPath = onBooksHost && !pathname.startsWith("/books") ? `/books${pathname === "/" ? "" : pathname}` : pathname;
     const base = onBooksHost ? "" : "/books";
-    const open = appPath === "/books/login" || appPath.startsWith("/books/login/") || appPath === "/books/logout";
+    const open = appPath === "/books/login" || appPath.startsWith("/books/login/") || appPath === "/books/logout" || appPath === "/books/reset";
     if (!open) {
       const token = req.cookies.get(BOOKS_COOKIE)?.value;
       const valid = token ? await verifyBooksToken(token) : null;

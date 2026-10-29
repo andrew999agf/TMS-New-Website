@@ -18,6 +18,8 @@ export const BOOKS_DDL: string[] = [
     id serial PRIMARY KEY, email varchar(255) NOT NULL UNIQUE, name varchar(191) NOT NULL DEFAULT '', password_hash text NOT NULL,
     otp_hash varchar(128), otp_expires timestamptz, otp_attempts integer NOT NULL DEFAULT 0, failed_logins integer NOT NULL DEFAULT 0, locked_until timestamptz,
     last_login_at timestamptz, created_at timestamptz NOT NULL DEFAULT now())`,
+  `ALTER TABLE sb_users ADD COLUMN IF NOT EXISTS reset_token varchar(128)`,
+  `ALTER TABLE sb_users ADD COLUMN IF NOT EXISTS reset_expires timestamptz`,
   `CREATE TABLE IF NOT EXISTS sb_memberships (id serial PRIMARY KEY, user_id integer NOT NULL, company_id integer NOT NULL, role varchar(16) NOT NULL DEFAULT 'viewer', created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sb_memberships_uq ON sb_memberships (user_id, company_id)`,
   `CREATE TABLE IF NOT EXISTS sb_accounts (

@@ -2228,6 +2228,9 @@ export const sbUsers = pgTable("sb_users", {
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  /** One-hour "set your password" link (emailed by an owner). */
+  resetToken: varchar("reset_token", { length: 128 }),
+  resetExpires: timestamp("reset_expires", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, Trash2, UserPlus } from "lucide-react";
-import { updateCompany, addUser, removeUser, setRuleVerified } from "@/app/books/(app)/settings/actions";
+import { Loader2, Check, Trash2, UserPlus, Pencil, Mail, KeyRound, X } from "lucide-react";
+import { updateCompany, addUser, removeUser, setRuleVerified, updateUser, setUserPassword, sendSetupLink } from "@/app/books/(app)/settings/actions";
 import { ENTITY_TYPES, TAX_ELECTIONS, US_STATES } from "@/lib/books/seed";
 
 export type CompanyForm = { name: string; legalName: string; dba: string; ein: string; entityType: string; taxElection: string; state: string; formationState: string; fiscalYearStartMonth: number; addressLine: string; city: string; addressState: string; zip: string; phone: string; email: string; operatingBankName: string; operatingLast4: string; ioltaBankName: string; ioltaLast4: string };
@@ -62,13 +62,7 @@ export function CompanySettings({ company, users, rules, owner }: { company: Com
         <h2 className="text-sm font-semibold">Logins</h2>
         <p className="mt-0.5 text-[11px] text-[var(--c-ink-muted)]">Separate from the admin site. Every sign-in needs the password and an emailed code. Owner: everything. Bookkeeper: enter and reconcile. Viewer: read reports.</p>
         <ul className="mt-3 divide-y divide-[var(--c-border)]">
-          {users.map((u) => (
-            <li key={u.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-              <span className="min-w-0 flex-1"><span className="font-medium">{u.name || u.email}</span>{u.name && <span className="text-[var(--c-ink-muted)]"> · {u.email}</span>}<span className="ml-2 rounded-full border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] uppercase">{u.role}</span>{u.me && <span className="ml-1 text-[10px] text-[var(--c-ink-muted)]">(you)</span>}</span>
-              <span className="text-[11px] text-[var(--c-ink-muted)]">{u.lastLoginAt ? `last sign-in ${new Date(u.lastLoginAt).toLocaleDateString("en-US")}` : "never signed in"}</span>
-              {owner && !u.me && <button onClick={() => { if (confirm(`Remove ${u.email} from this company?`)) start(async () => { const r = await removeUser(u.id); if (!r.ok) setError(r.error); router.refresh(); }); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600"><Trash2 size={13} /></button>}
-            </li>
-          ))}
+          {users.map((u) => <LoginRow key={u.id} u={u} owner={owner} onMsg={setMsg} onError={setError} />)}
         </ul>
         {owner && (
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_120px_auto]">
@@ -106,5 +100,52 @@ export function CompanySettings({ company, users, rules, owner }: { company: Com
         ))}
       </section>
     </div>
+  );
+}
+
+
+/** One login: edit name / email / role in place, set a password, email a set-password link, remove. */
+function LoginRow({ u, owner, onMsg, onError }: { u: UserRow; owner: boolean; onMsg: (m: string | null) => void; onError: (m: string | null) => void }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState({ name: u.name, email: u.email, role: u.role as "owner" | "bookkeeper" | "viewer" });
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => { onMsg(null); onError(null); start(async () => { const r = await fn(); if (r.ok) { onMsg(okMsg); router.refresh(); } else onError(r.error ?? "Couldn't do that."); }); };
+  return (
+    <li className="py-2 text-sm" data-testid={`login-${u.id}`}>
+      {!editing ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 flex-1"><span className="font-medium">{u.name || u.email}</span>{u.name && <span className="text-[var(--c-ink-muted)]"> · {u.email}</span>}<span className="ml-2 rounded-full border border-[var(--c-border)] px-1.5 py-0.5 text-[10px] uppercase">{u.role}</span>{u.me && <span className="ml-1 text-[10px] text-[var(--c-ink-muted)]">(you)</span>}</span>
+          <span className="text-[11px] text-[var(--c-ink-muted)]">{u.lastLoginAt ? `last sign-in ${new Date(u.lastLoginAt).toLocaleDateString("en-US")}` : "never signed in"}</span>
+          {owner && (
+            <>
+              <button onClick={() => { setF({ name: u.name, email: u.email, role: u.role as typeof f.role }); setEditing(true); }} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] hover:border-[var(--c-accent)]" title="Edit name, email or role" data-testid={`login-edit-${u.id}`}><Pencil size={11} className="mr-1 inline" />Edit</button>
+              <button onClick={() => run(() => sendSetupLink(u.id), `Set-password link emailed to ${u.email} (good for one hour).`)} disabled={pending} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] hover:border-[var(--c-accent)] disabled:opacity-50" title="Email them a link to choose their own password (works for one hour; send again any time)" data-testid={`login-link-${u.id}`}><Mail size={11} className="mr-1 inline" />Email set-password link</button>
+              <button onClick={() => { setPw(""); setPwOpen((o) => !o); }} className="rounded-md border border-[var(--c-border)] px-2 py-1 text-[11px] hover:border-[var(--c-accent)]" title="Type a password for them yourself" data-testid={`login-pw-${u.id}`}><KeyRound size={11} className="mr-1 inline" />Set password</button>
+              {!u.me && <button onClick={() => { if (confirm(`Remove ${u.email} from this company?`)) run(() => removeUser(u.id), `${u.email} removed.`); }} className="rounded p-1 text-[var(--c-ink-muted)] hover:text-red-600" title="Remove from this company"><Trash2 size={13} /></button>}
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_140px_auto]">
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="name" className={input} data-testid={`login-name-${u.id}`} />
+          <input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="email" className={input} data-testid={`login-email-${u.id}`} />
+          <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as typeof f.role })} className={input} data-testid={`login-role-${u.id}`}><option value="owner">Owner</option><option value="bookkeeper">Bookkeeper</option><option value="viewer">Viewer</option></select>
+          <span className="flex gap-1">
+            <button onClick={() => run(async () => { const r = await updateUser(u.id, f); if (r.ok) setEditing(false); return r; }, "Login updated.")} disabled={pending} className="btn btn-accent text-sm disabled:opacity-50" data-testid={`login-save-${u.id}`}>{pending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}</button>
+            <button onClick={() => setEditing(false)} className="rounded-md border border-[var(--c-border)] px-2 text-sm"><X size={14} /></button>
+          </span>
+        </div>
+      )}
+      {pwOpen && owner && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="new password (12+ characters)" className={`${input} max-w-xs`} data-testid={`login-newpw-${u.id}`} />
+          <button onClick={() => run(async () => { const r = await setUserPassword(u.id, pw); if (r.ok) { setPwOpen(false); setPw(""); } return r; }, `Password set for ${u.email} — hand it over in person, not by email.`)} disabled={pending || pw.length < 12} className="btn btn-accent text-sm disabled:opacity-50" data-testid={`login-newpw-save-${u.id}`}>Save password</button>
+          <button onClick={() => setPwOpen(false)} className="text-xs text-[var(--c-ink-muted)]">cancel</button>
+        </div>
+      )}
+    </li>
   );
 }

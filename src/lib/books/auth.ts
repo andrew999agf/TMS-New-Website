@@ -3,12 +3,12 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { randomInt } from "crypto";
+import { randomInt, randomBytes } from "crypto";
 import { db } from "@/db";
 import { sbAudit, sbCompanies, sbMemberships, sbUsers } from "@/db/schema";
 import { sendEmail } from "@/lib/email";
 import { BOOKS_COOKIE, BOOKS_MAX_AGE, createBooksToken, verifyBooksToken, type BooksSession } from "./session";
-import { BOOKS_NAME, booksBase } from "./host";
+import { BOOKS_NAME, booksBase, booksHomeUrl, isBooksHost } from "./host";
 import { ensureBooks } from "./ensure";
 
 export async function requestHost(): Promise<string> {
@@ -112,4 +112,46 @@ export async function booksCompany(companyId: number) {
   if (!db) return null;
   const [c] = await db.select().from(sbCompanies).where(eq(sbCompanies.id, companyId));
   return c ?? null;
+}
+
+/** Where links in emails should point: the product's own hostname on the firm domain, else this host. */
+async function booksPublicBase(): Promise<string> {
+  const host = await requestHost();
+  if (isBooksHost(host)) { const local = host.startsWith("localhost") || host.startsWith("127."); return `${local ? "http" : "https"}://${host}`; }
+  const home = booksHomeUrl(host); // "https://startbookkeeping.<domain>/" or "/books"
+  if (home.startsWith("http")) return home.replace(/\/$/, "");
+  const local = host.startsWith("localhost") || host.startsWith("127.");
+  return `${local ? "http" : "https"}://${host}/books`;
+}
+
+/** Email a one-hour "set your password" link to a login (owner action). */
+export async function sendBooksSetupLink(userId: number, by: string, companyName: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!db) return { ok: false, error: "Database not configured." };
+  const [u] = await db.select().from(sbUsers).where(eq(sbUsers.id, userId));
+  if (!u) return { ok: false, error: "Login not found." };
+  const token = randomBytes(24).toString("base64url");
+  await db.update(sbUsers).set({ resetToken: await bcrypt.hash(token, 10), resetExpires: new Date(Date.now() + 60 * 60_000) }).where(eq(sbUsers.id, u.id));
+  const link = `${await booksPublicBase()}/reset?u=${u.id}&t=${token}`;
+  const html = `<div style="font-family:Georgia,serif;max-width:520px;line-height:1.6;color:#1a1a1a">
+    <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${BOOKS_NAME}</p>
+    <p>Hi ${u.name ? u.name.split(" ")[0] : "there"},</p>
+    <p>${by} set you up with a ${BOOKS_NAME} login for <strong>${companyName}</strong>. Choose your password here:</p>
+    <p style="margin:18px 0"><a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Set my password</a></p>
+    <p style="font-size:13px;color:#555">The link works for one hour. Each time you sign in you'll also get a one-time code at this address. If the button doesn't work, copy this into your browser:<br/>${link}</p>
+  </div>`;
+  const sent = await sendEmail({ to: u.email, fromName: BOOKS_NAME, subject: `Set your ${BOOKS_NAME} password`, html });
+  return sent.sent ? { ok: true } : { ok: false, error: "The email couldn't be sent — check email settings." };
+}
+
+/** The link's landing: check the token, store the new password, clear the link. */
+export async function booksResetPassword(userId: number, token: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!db) return { ok: false, error: "Database not configured." };
+  if ((password ?? "").length < 12) return { ok: false, error: "Use at least 12 characters." };
+  const [u] = await db.select().from(sbUsers).where(eq(sbUsers.id, userId));
+  if (!u?.resetToken || !u.resetExpires) return { ok: false, error: "This link isn't valid. Ask an owner to send a new one." };
+  if (u.resetExpires < new Date()) return { ok: false, error: "This link has expired. Ask an owner to send a new one." };
+  if (!(await bcrypt.compare(token, u.resetToken))) return { ok: false, error: "This link isn't valid. Ask an owner to send a new one." };
+  await db.update(sbUsers).set({ passwordHash: await bcrypt.hash(password, 12), resetToken: null, resetExpires: null, failedLogins: 0, lockedUntil: null }).where(eq(sbUsers.id, u.id));
+  await sbAudit_(null, u.email, "password-set", "user", String(u.id), "Password set from emailed link");
+  return { ok: true };
 }
