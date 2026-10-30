@@ -1,11 +1,11 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { randomInt, randomBytes } from "crypto";
 import { db } from "@/db";
-import { sbAudit, sbCompanies, sbMemberships, sbUsers } from "@/db/schema";
+import { sbAccessRequests, sbAudit, sbCompanies, sbMemberships, sbUsers } from "@/db/schema";
 import { sendEmail } from "@/lib/email";
 import { BOOKS_COOKIE, BOOKS_MAX_AGE, createBooksToken, verifyBooksToken, type BooksSession } from "./session";
 import { BOOKS_NAME, booksBase, booksHomeUrl, isBooksHost } from "./host";
@@ -114,6 +114,37 @@ export async function booksCompany(companyId: number) {
   return c ?? null;
 }
 
+/** The company's primary admin: the owner marked primary, else the earliest
+ *  owner. They issue logins and receive access requests. Null only before the
+ *  company has any owner at all. */
+export async function primaryAdmin(companyId: number): Promise<{ id: number; email: string; name: string } | null> {
+  if (!db) return null;
+  const [c] = await db.select({ primaryUserId: sbCompanies.primaryUserId }).from(sbCompanies).where(eq(sbCompanies.id, companyId));
+  const owners = await db.select({ id: sbUsers.id, email: sbUsers.email, name: sbUsers.name })
+    .from(sbMemberships).innerJoin(sbUsers, eq(sbUsers.id, sbMemberships.userId))
+    .where(and(eq(sbMemberships.companyId, companyId), eq(sbMemberships.role, "owner"))).orderBy(asc(sbMemberships.id));
+  return owners.find((o) => o.id === c?.primaryUserId) ?? owners[0] ?? null;
+}
+
+/** Email the primary admin that someone on the admin site is asking for a login. */
+export async function sendAccessRequestEmail(companyId: number, requester: { email: string; name: string; adminRole: string }, requestId: number): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  const primary = await primaryAdmin(companyId);
+  if (!primary) return { ok: false, error: `${BOOKS_NAME} has no owner yet to ask.` };
+  const company = await booksCompany(companyId);
+  const link = `${await booksPublicBase()}/settings#users`;
+  const who = requester.name ? `${requester.name} (${requester.email})` : requester.email;
+  const html = `<div style="font-family:Georgia,serif;max-width:520px;line-height:1.6;color:#1a1a1a">
+    <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">${BOOKS_NAME}</p>
+    <p>Hi ${primary.name ? primary.name.split(" ")[0] : "there"},</p>
+    <p><strong>${who}</strong> is asking for a ${BOOKS_NAME} login for <strong>${company?.name ?? "the company"}</strong>. On the admin site they are ${requester.adminRole === "owner" ? "an owner" : requester.adminRole === "editor" ? "an editor" : "a timekeeper"}.</p>
+    <p>You decide. Nothing is created until you add them under Settings → Logins, where you also pick their role (bookkeeper, viewer or owner):</p>
+    <p style="margin:18px 0"><a href="${link}" style="background:#7a1f2b;color:#fbf7f0;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">Review the request</a></p>
+    <p style="font-size:13px;color:#555">Request #${requestId}. Replying to this email reaches the requester. If the button doesn't work, copy this into your browser:<br/>${link}</p>
+  </div>`;
+  const sent = await sendEmail({ to: primary.email, fromName: BOOKS_NAME, subject: `${who} is asking for ${BOOKS_NAME} access`, html, replyTo: requester.email });
+  return sent.sent ? { ok: true, to: primary.email } : { ok: false, error: "The email couldn't be sent — check email settings." };
+}
+
 /** Where links in emails should point: the product's own hostname on the firm domain, else this host. */
 async function booksPublicBase(): Promise<string> {
   const host = await requestHost();
@@ -141,6 +172,12 @@ export async function sendBooksSetupLink(userId: number, by: string, companyName
   </div>`;
   const sent = await sendEmail({ to: u.email, fromName: BOOKS_NAME, subject: `Set your ${BOOKS_NAME} password`, html });
   return sent.sent ? { ok: true } : { ok: false, error: "The email couldn't be sent — check email settings." };
+}
+
+/** Open requests for a company, newest first. */
+export async function pendingAccessRequests(companyId: number) {
+  if (!db) return [];
+  return db.select().from(sbAccessRequests).where(and(eq(sbAccessRequests.companyId, companyId), eq(sbAccessRequests.status, "pending"))).orderBy(asc(sbAccessRequests.createdAt));
 }
 
 /** The link's landing: check the token, store the new password, clear the link. */

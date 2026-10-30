@@ -31,6 +31,11 @@ export const BOOKS_DDL: string[] = [
     id serial PRIMARY KEY, year integer NOT NULL, jurisdiction varchar(8) NOT NULL, key varchar(64) NOT NULL, label varchar(255) NOT NULL DEFAULT '', value jsonb, unit varchar(24) NOT NULL DEFAULT '',
     source text NOT NULL DEFAULT '', note text NOT NULL DEFAULT '', verified boolean NOT NULL DEFAULT false, verified_by varchar(255), verified_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sb_tax_rules_uq ON sb_tax_rules (year, jurisdiction, key)`,
+  `ALTER TABLE sb_companies ADD COLUMN IF NOT EXISTS primary_user_id integer`,
+  `CREATE TABLE IF NOT EXISTS sb_access_requests (
+    id serial PRIMARY KEY, company_id integer NOT NULL, email varchar(255) NOT NULL, name varchar(191) NOT NULL DEFAULT '', admin_role varchar(24) NOT NULL DEFAULT '',
+    status varchar(16) NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, resolved_by varchar(255))`,
+  `CREATE INDEX IF NOT EXISTS sb_access_requests_company_idx ON sb_access_requests (company_id, status)`,
   `CREATE TABLE IF NOT EXISTS sb_audit (
     id serial PRIMARY KEY, company_id integer, user_email varchar(255) NOT NULL DEFAULT '', action varchar(32) NOT NULL, entity varchar(48) NOT NULL DEFAULT '', entity_id varchar(64) NOT NULL DEFAULT '',
     detail text NOT NULL DEFAULT '', ip varchar(64) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`,

@@ -63,6 +63,12 @@ export const FEATURE_PERMISSIONS: FeaturePermission[] = [
     hint: "The Assistant's Coding tab (writes and debugs code). Owners always have it; everyone else — editors included — needs this checked, and only an owner can change it.",
     ownerOnly: true,
   },
+  {
+    key: "bookkeeper",
+    label: "Bookkeeper — StartBookkeeping access",
+    hint: "May ask StartBookkeeping's primary admin for a login from the admin panel. Owners always may; nobody can create their own books login.",
+    ownerOnly: true,
+  },
 ];
 const FEATURE_KEYS = new Set(FEATURE_PERMISSIONS.map((f) => f.key));
 
@@ -75,6 +81,13 @@ export function isFeaturePermission(key: string): boolean {
  *  (editors included) only with the explicit per-user grant. */
 export function canUseAssistantCode(role?: string, permissions?: string[]): boolean {
   return role === "owner" || (permissions ?? []).includes("assistant-code");
+}
+
+/** Who may ask StartBookkeeping's primary admin for a login: admin owners
+ *  always; everyone else (editors included) only with the "bookkeeper" grant.
+ *  Nobody creates their own books login from the admin side. */
+export function canRequestBooksAccess(role?: string, permissions?: string[]): boolean {
+  return role === "owner" || (permissions ?? []).includes("bookkeeper");
 }
 
 export function isFullAdminRole(role?: string): boolean {

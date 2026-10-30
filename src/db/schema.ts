@@ -2212,6 +2212,8 @@ export const sbCompanies = pgTable("sb_companies", {
   operatingLast4: varchar("operating_last4", { length: 4 }).notNull().default(""),
   ioltaBankName: varchar("iolta_bank_name", { length: 128 }).notNull().default(""),
   ioltaLast4: varchar("iolta_last4", { length: 4 }).notNull().default(""),
+  /** The owner who issues logins and receives access requests; falls back to the first owner. */
+  primaryUserId: integer("primary_user_id"),
   settings: jsonb("settings").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2286,6 +2288,26 @@ export const sbTaxRules = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ uq: uniqueIndex("sb_tax_rules_uq").on(t.year, t.jurisdiction, t.key) }),
+);
+
+/** "Please give me a StartBookkeeping login" — raised from the admin panel,
+ *  answered by the company's primary admin inside the product. */
+export const sbAccessRequests = pgTable(
+  "sb_access_requests",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
+    name: varchar("name", { length: 191 }).notNull().default(""),
+    /** The requester's admin-site role at the time (owner / editor / timekeeper). */
+    adminRole: varchar("admin_role", { length: 24 }).notNull().default(""),
+    /** pending | granted | dismissed */
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: varchar("resolved_by", { length: 255 }),
+  },
+  (t) => ({ companyIdx: index("sb_access_requests_company_idx").on(t.companyId, t.status) }),
 );
 
 export const sbAudit = pgTable(

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { sbCompanies, sbMemberships, sbTaxRules, sbUsers } from "@/db/schema";
-import { requireBooks, sbAudit_, upsertBooksUser, sendBooksSetupLink, booksCompany } from "@/lib/books/auth";
+import { sbAccessRequests, sbCompanies, sbMemberships, sbTaxRules, sbUsers } from "@/db/schema";
+import { requireBooks, sbAudit_, upsertBooksUser, sendBooksSetupLink, booksCompany, primaryAdmin } from "@/lib/books/auth";
 import bcrypt from "bcryptjs";
 import { ENTITY_TYPES, TAX_ELECTIONS, US_STATES } from "@/lib/books/seed";
 
@@ -37,6 +37,9 @@ export async function addUser(input: { email: string; name: string; password: st
   if (!["owner", "bookkeeper", "viewer"].includes(input.role)) return { ok: false as const, error: "Pick a role." };
   const r = await upsertBooksUser(input.email, input.name, input.password, s.companyId, input.role);
   await sbAudit_(s.companyId, s.email, r.created ? "create" : "update", "user", String(r.user.id), `${r.created ? "Added" : "Reset password for"} ${r.user.email} (${input.role})`);
+  // An open access request from this address is answered by the login itself.
+  await db!.update(sbAccessRequests).set({ status: "granted", resolvedAt: new Date(), resolvedBy: s.email })
+    .where(and(eq(sbAccessRequests.companyId, s.companyId), eq(sbAccessRequests.email, r.user.email), eq(sbAccessRequests.status, "pending")));
   revalidatePath("/books/settings");
   return { ok: true as const, created: r.created };
 }
@@ -108,6 +111,33 @@ export async function updateUser(userId: number, patch: { name?: string; email?:
       await db!.update(sbMemberships).set({ role: patch.role }).where(eq(sbMemberships.id, m.id));
     }
     await sbAudit_(s.companyId, s.email, "update", "user", String(userId), `Login edited: ${Object.keys({ ...set, ...(patch.role !== undefined ? { role: patch.role } : {}) }).join(", ")}`);
+    revalidatePath("/books/settings");
+    return { ok: true as const };
+  } catch (err) { return { ok: false as const, error: (err as Error).message }; }
+}
+
+/** Turn down an access request. The requester can ask again after a day. */
+export async function dismissAccessRequest(id: number) {
+  try {
+    const s = await ownerGuard();
+    const [r] = await db!.update(sbAccessRequests).set({ status: "dismissed", resolvedAt: new Date(), resolvedBy: s.email })
+      .where(and(eq(sbAccessRequests.id, id), eq(sbAccessRequests.companyId, s.companyId), eq(sbAccessRequests.status, "pending"))).returning({ email: sbAccessRequests.email });
+    if (!r) return { ok: false as const, error: "That request is no longer open." };
+    await sbAudit_(s.companyId, s.email, "update", "access-request", String(id), `Dismissed request from ${r.email}`);
+    revalidatePath("/books/settings");
+    return { ok: true as const };
+  } catch (err) { return { ok: false as const, error: (err as Error).message }; }
+}
+
+/** Hand the primary-admin role to another owner: they receive access requests from then on. */
+export async function setPrimaryAdmin(userId: number) {
+  try {
+    const s = await ownerGuard();
+    const m = await memberOf(userId, s.companyId);
+    if (!m || m.role !== "owner") return { ok: false as const, error: "The primary admin must be an owner on this company." };
+    await db!.update(sbCompanies).set({ primaryUserId: userId, updatedAt: new Date() }).where(eq(sbCompanies.id, s.companyId));
+    const p = await primaryAdmin(s.companyId);
+    await sbAudit_(s.companyId, s.email, "update", "company", String(s.companyId), `Primary admin is now ${p?.email ?? userId}`);
     revalidatePath("/books/settings");
     return { ok: true as const };
   } catch (err) { return { ok: false as const, error: (err as Error).message }; }
