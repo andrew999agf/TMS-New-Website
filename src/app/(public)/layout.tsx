@@ -64,28 +64,69 @@ export default async function PublicLayout({
     { label: "Contact", href: "/contact" },
   ];
 
+  const social = ["facebook", "instagram", "linkedin", "x", "youtube", "tiktok"].map((k) => (global[`global.social.${k}`] ?? "").trim()).filter((u) => /^https?:\/\//.test(u));
+  const principal = OFFICES.find((o) => o.isPrincipal) ?? OFFICES[0];
+  const place = (o: typeof OFFICES[number]) => ({
+    "@type": "LegalService",
+    "@id": `${baseUrl}/#office-${o.id}`,
+    name: `${FIRM.name} — ${o.name}`,
+    parentOrganization: { "@id": `${baseUrl}/#organization` },
+    telephone: o.phone,
+    address: { "@type": "PostalAddress", streetAddress: o.street2 ? `${o.street}, ${o.street2}` : o.street, addressLocality: o.city, addressRegion: "TX", postalCode: o.zip, addressCountry: "US" },
+    ...(o.byAppointment ? { openingHours: "By appointment" } : {}),
+  });
   const legalServiceSchema = {
     "@context": "https://schema.org",
-    "@type": "LegalService",
-    name: FIRM.name,
-    url: baseUrl,
-    faxNumber: FIRM.fax,
-    description:
-      "A Texas trial firm. Civil and commercial litigation, personal injury, appeals, debt defense, business, and estate matters — prepared for trial.",
-    areaServed: LITIGATION_COUNTIES.map((c) => ({ "@type": "AdministrativeArea", name: `${c} County, Texas` })),
-    address: OFFICES.map((o) => ({
-      "@type": "PostalAddress",
-      streetAddress: o.street,
-      addressLocality: o.city,
-      addressRegion: "TX",
-      postalCode: o.zip,
-      addressCountry: "US",
-    })),
-    employee: {
-      "@type": "Attorney",
-      name: FIRM.attorney.fullName,
-      jobTitle: FIRM.attorney.title,
-    },
+    "@graph": [
+      {
+        "@type": ["LegalService", "Organization"],
+        "@id": `${baseUrl}/#organization`,
+        name: FIRM.name,
+        alternateName: FIRM.shortName,
+        url: baseUrl,
+        ...(logoUrl ? { logo: logoUrl.startsWith("http") ? logoUrl : `${baseUrl}${logoUrl}`, image: logoUrl.startsWith("http") ? logoUrl : `${baseUrl}${logoUrl}` } : {}),
+        telephone: principal.phone,
+        faxNumber: FIRM.fax,
+        email: FIRM.email,
+        description: "A Texas trial firm. Personal injury, wrongful death, civil and commercial litigation, appeals, probate and estate administration, and consumer debt defense — prepared for trial from day one.",
+        address: { "@type": "PostalAddress", streetAddress: principal.street, addressLocality: principal.city, addressRegion: "TX", postalCode: principal.zip, addressCountry: "US" },
+        location: OFFICES.map(place),
+        areaServed: LITIGATION_COUNTIES.map((c) => ({ "@type": "AdministrativeArea", name: `${c} County, Texas` })),
+        founder: { "@id": `${baseUrl}/#attorney` },
+        employee: [{ "@id": `${baseUrl}/#attorney` }],
+        knowsAbout: practices.map((p) => p.title),
+        hasOfferCatalog: { "@type": "OfferCatalog", name: "Practice areas", itemListElement: practices.map((p) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: p.title, url: `${baseUrl}/practice-areas/${p.slug}` } })) },
+        ...(social.length ? { sameAs: social } : {}),
+        priceRange: "$$",
+      },
+      {
+        "@type": "Attorney",
+        "@id": `${baseUrl}/#attorney`,
+        name: FIRM.attorney.fullName,
+        alternateName: FIRM.attorney.displayName,
+        jobTitle: FIRM.attorney.title,
+        url: `${baseUrl}/about/${team.find((m) => m.isAttorney)?.slug ?? "thomas-maxwell-smith"}`,
+        worksFor: { "@id": `${baseUrl}/#organization` },
+        identifier: { "@type": "PropertyValue", propertyID: "Texas Bar Number", value: FIRM.attorney.barNumber },
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${baseUrl}/#website`,
+        url: baseUrl,
+        name: FIRM.name,
+        publisher: { "@id": `${baseUrl}/#organization` },
+        potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${baseUrl}/search?q={search_term_string}` }, "query-input": "required name=search_term_string" },
+      },
+      {
+        "@type": "ItemList",
+        "@id": `${baseUrl}/#sitenav`,
+        name: "Main navigation",
+        itemListElement: [
+          { label: "Our Team", href: "/about" }, { label: "Practice Areas", href: "/practice-areas" }, { label: "Results", href: "/results" },
+          { label: "Insights", href: "/blog" }, { label: "Contact", href: "/contact" }, { label: "Request a Consultation", href: "/consultation" },
+        ].map((n, i) => ({ "@type": "SiteNavigationElement", position: i + 1, name: n.label, url: `${baseUrl}${n.href}` })),
+      },
+    ],
   };
 
   return (

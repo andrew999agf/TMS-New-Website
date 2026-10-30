@@ -7,9 +7,9 @@ import { getPublishedPosts, getPracticeAreas, getBlocks, getResults } from "@/li
 import { slugify } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Insights",
+  title: "Insights — Texas Law, Trials & Appeals",
   description:
-    "Plain-English explainers on Texas litigation, appeals, injury, debt defense, business, estate planning, and probate.",
+    "Plain-English articles on Texas law, litigation, and what to expect from a case, written by the attorneys of T. Maxwell Smith, PLLC.",
 };
 
 export const dynamic = "force-dynamic";

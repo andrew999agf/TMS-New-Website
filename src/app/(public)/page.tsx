@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { HeroBanner, type BannerMedia } from "@/components/site/HeroBanner";
@@ -34,6 +35,11 @@ import {
 // Always render from current database content (banners, copy, team, badges)
 // so admin changes appear immediately — never a stale prebuilt snapshot.
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: { absolute: "T. Maxwell Smith, PLLC | Texas Trial Attorneys" },
+  description: "A Texas trial firm with offices in Fort Worth, Weatherford, and Meridian. Hundreds of matters — jury trials, bench trials, and appeals. Personal injury, wrongful death, civil and commercial litigation, probate, and consumer debt defense.",
+};
 
 export default async function HomePage() {
   const [home, global, banner, results, practices, testimonials, team, badges] = await Promise.all([

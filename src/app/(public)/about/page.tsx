@@ -6,9 +6,9 @@ import { TeamProfile, TeamCard } from "@/components/site/TeamProfile";
 import { getBlocks, getTeam, getLeadMember } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: "Our Team",
+  title: "Our Attorneys & Team",
   description:
-    "The team behind T. Maxwell Smith, PLLC — led by trial attorney Max Smith, supported by staff across Bosque County and Fort Worth.",
+    "Meet the attorneys and staff of T. Maxwell Smith, PLLC — a Texas trial firm led by Max Smith, with offices in Fort Worth, Weatherford, and Meridian.",
 };
 
 export const dynamic = "force-dynamic";

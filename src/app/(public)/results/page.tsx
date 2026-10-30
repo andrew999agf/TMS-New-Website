@@ -12,9 +12,9 @@ import {
 } from "@/lib/firm";
 
 export const metadata: Metadata = {
-  title: "Results",
+  title: "Case Results — Verdicts, Judgments & Appeals",
   description:
-    "The record talks. Summary-judgment dismissals, appellate affirmances, recoveries, and jury-trial experience across Texas.",
+    "Jury verdicts, bench rulings, judgments, and appellate decisions from T. Maxwell Smith, PLLC. Every case is different; past results don't guarantee a future outcome.",
 };
 
 export const dynamic = "force-dynamic";

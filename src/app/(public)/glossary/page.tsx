@@ -4,7 +4,7 @@ import { GlossaryIndex } from "@/components/site/GlossaryIndex";
 import { getGlossaryTerms, getBlocks, getPracticeAreas } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: "Glossary",
+  title: "Legal Glossary — Texas Litigation Terms Explained",
   description:
     "Plain-English definitions of Texas legal terms, each with a worked hypothetical. From summary judgment to supersedeas bonds.",
 };

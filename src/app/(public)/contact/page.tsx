@@ -10,9 +10,9 @@ import { telHref } from "@/lib/utils";
 import { media } from "@/lib/media";
 
 export const metadata: Metadata = {
-  title: "Contact",
+  title: "Contact Us — Fort Worth, Weatherford & Meridian Offices",
   description:
-    "Three Texas offices — Bosque County principal office, Fort Worth litigation hub, and Weatherford by appointment. Talk to the firm.",
+    "Call or visit T. Maxwell Smith, PLLC. Offices in Fort Worth, Weatherford, and Meridian (Bosque County), Texas. Request a consultation or send us a message.",
 };
 
 export const dynamic = "force-dynamic";

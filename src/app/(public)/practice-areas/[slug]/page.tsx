@@ -160,6 +160,7 @@ export default async function PracticeAreaPage({
       <PageHero eyebrow="Practice Area" title={pa.title} lead={pa.tagline} bgImage={pa.heroImage ?? undefined} focal={pa.heroFocal}>
         <div className="mt-2">
           <Breadcrumbs
+            jsonLd={false}
             items={[
               { label: "Practice Areas", href: "/practice-areas" },
               { label: pa.title },

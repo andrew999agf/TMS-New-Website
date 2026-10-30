@@ -48,9 +48,18 @@ export function PageHero({
   );
 }
 
-export function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
+/** Visible breadcrumb trail; also tells Google the page's place in the site
+ *  (BreadcrumbList) unless the page emits its own. */
+export function Breadcrumbs({ items, jsonLd = true }: { items: { label: string; href?: string }[]; jsonLd?: boolean }) {
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://texaslawsmith.com";
+  const list = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: base }, ...items.map((it, i) => ({ "@type": "ListItem", position: i + 2, name: it.label, ...(it.href ? { item: `${base}${it.href}` } : {}) }))],
+  };
   return (
     <nav aria-label="Breadcrumb" className="text-xs text-[var(--c-dark-ink-muted)] mb-6">
+      {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(list) }} />}
       <ol className="flex flex-wrap items-center gap-2">
         {items.map((it, i) => (
           <li key={i} className="flex items-center gap-2">
