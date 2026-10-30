@@ -10,7 +10,7 @@ import { telHref } from "@/lib/utils";
 import { media } from "@/lib/media";
 
 export const metadata: Metadata = {
-  title: "Contact Us — Fort Worth, Weatherford & Meridian Offices",
+  title: "Contact — Fort Worth, Weatherford & Meridian",
   description:
     "Call or visit T. Maxwell Smith, PLLC. Offices in Fort Worth, Weatherford, and Meridian (Bosque County), Texas. Request a consultation or send us a message.",
 };
@@ -44,7 +44,7 @@ export default async function ContactPage() {
             return (
             <div key={o.id} className="border border-[var(--c-border)] p-8 bg-[var(--c-surface)] flex flex-col">
               <span className="eyebrow">{o.role}</span>
-              <h2 className="font-[family-name:var(--font-display)] text-2xl mt-2">{o.name}</h2>
+              <h2 className="font-[family-name:var(--font-display)] text-2xl mt-2"><Link href={`/locations/${o.id}`} className="hover:text-[var(--c-accent)]">{o.name}</Link></h2>
               {o.county && (
                 <span className="text-sm text-[var(--c-ink-muted)]">{o.county}</span>
               )}

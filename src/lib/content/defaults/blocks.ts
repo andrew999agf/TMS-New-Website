@@ -38,7 +38,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   { key: "global.social.tiktok", page: "global", section: "social", label: "TikTok URL", type: "url", value: "" },
 
   // ---- Home: Hero ----
-  { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow", type: "text", value: "Bosque County, Texas | Fort Worth, Texas" },
+  { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow (this is the page's H1 for search — say what the firm is and where)", type: "text", value: "Texas Trial Lawyers — Fort Worth, Weatherford & Bosque County" },
   { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "Preparing for trial from day one." },
   { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "Generally trained for your specific legal matter. The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches." },
   { key: "home.hero.ctaLabel", page: "home", section: "hero", label: "Hero button label", type: "text", value: "Request a Consultation" },

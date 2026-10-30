@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PageHero } from "@/components/site/PageHero";
 import { FIRM } from "@/lib/firm";
 
-export const metadata: Metadata = { title: "Privacy Policy" };
+export const metadata: Metadata = { title: "Privacy Policy", description: "How T. Maxwell Smith, PLLC handles the information you share through this website and the client portal." };
 
 export default function PrivacyPage() {
   return (

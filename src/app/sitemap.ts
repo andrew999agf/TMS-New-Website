@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
 import { getPracticeAreas, getPublishedPosts, getGlossaryTerms, getTeam, getResults } from "@/lib/content";
 import { slugify } from "@/lib/utils";
-import { FIRM } from "@/lib/firm";
+import { SITE_URL } from "@/lib/seo";
+import { OFFICES } from "@/lib/firm";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const base = SITE_URL;
   const staticPaths = [
     "",
     "/about",
@@ -15,7 +16,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/texas-rules",
     "/contact",
     "/consultation",
-    "/payment",
     "/privacy",
     "/disclaimer",
   ];
@@ -35,6 +35,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: now,
       changeFrequency: "monthly" as const,
       priority: p === "" ? 1 : 0.7,
+    })),
+    ...OFFICES.map((o) => ({
+      url: `${base}/locations/${o.id}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
     })),
     ...practices.map((p) => ({
       url: `${base}/practice-areas/${p.slug}`,

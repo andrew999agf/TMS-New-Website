@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PageHero } from "@/components/site/PageHero";
 import { FIRM, PRINCIPAL_OFFICE } from "@/lib/firm";
 
-export const metadata: Metadata = { title: "Legal Disclaimer" };
+export const metadata: Metadata = { title: "Legal Disclaimer", description: "Attorney advertising notice and the limits of this website: nothing here is legal advice, and reading it does not make you a client." };
 
 export default function DisclaimerPage() {
   return (

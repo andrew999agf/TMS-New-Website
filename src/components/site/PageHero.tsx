@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { media } from "@/lib/media";
+import { SITE_URL } from "@/lib/seo";
 
 /** Dark, editorial header band used at the top of interior pages. */
 export function PageHero({
@@ -51,7 +52,7 @@ export function PageHero({
 /** Visible breadcrumb trail; also tells Google the page's place in the site
  *  (BreadcrumbList) unless the page emits its own. */
 export function Breadcrumbs({ items, jsonLd = true }: { items: { label: string; href?: string }[]; jsonLd?: boolean }) {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://texaslawsmith.com";
+  const base = SITE_URL;
   const list = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",

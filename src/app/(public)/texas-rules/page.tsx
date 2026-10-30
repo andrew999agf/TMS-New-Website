@@ -5,7 +5,7 @@ import { getSetting } from "@/lib/content";
 import { TEXAS_RULES_KEY, DEFAULT_TEXAS_RULES, TXCOURTS_RULES_URL, type TexasRule } from "@/lib/texas-rules";
 
 export const metadata: Metadata = {
-  title: "Texas Rules of Civil Procedure & Evidence — Quick Reference",
+  title: "Texas Rules of Procedure & Evidence",
   description:
     "Download the current Texas Rules of Civil Procedure, Appellate Procedure, Evidence, and more — the latest versions approved by the Supreme Court of Texas.",
 };

@@ -20,6 +20,7 @@ import {
   NELSON_VIDEO_ID,
 } from "@/lib/firm";
 import { formatDate } from "@/lib/utils";
+import { SITE_URL, ORG_ID, ATTORNEY_ID, stripFirmSuffix, clampTitle, clampDescription } from "@/lib/seo";
 
 export async function generateStaticParams() {
   const all = await getPracticeAreas();
@@ -35,8 +36,8 @@ export async function generateMetadata({
   const pa = await getPracticeArea(slug);
   if (!pa) return {};
   return {
-    title: pa.seoTitle ?? pa.title,
-    description: pa.seoDescription ?? pa.tagline,
+    title: clampTitle(stripFirmSuffix(pa.seoTitle ?? `${pa.title} | Fort Worth & Meridian, Texas`)),
+    description: clampDescription(pa.seoDescription || pa.tagline || pa.body[0], `${pa.title} — ${FIRM.name}, a Texas trial firm with offices in Fort Worth, Weatherford, and Meridian.`),
   };
 }
 
@@ -65,8 +66,8 @@ function practiceSchema(opts: {
 }) {
   const { pa, baseUrl, attorney } = opts;
   const url = `${baseUrl}/practice-areas/${pa.slug}`;
-  const firmId = `${baseUrl}/#firm`;
-  const attorneyId = `${baseUrl}/#attorney`;
+  const firmId = ORG_ID;
+  const attorneyId = ATTORNEY_ID;
   const hub = OFFICES.find((o) => o.isHub) ?? OFFICES[0];
   const areaServed = LITIGATION_COUNTIES.map((c) => ({
     "@type": "AdministrativeArea",
@@ -143,7 +144,7 @@ export default async function PracticeAreaPage({
 
   const isAppellate = slug === "appellate-law";
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const baseUrl = SITE_URL;
   const schema = practiceSchema({
     pa,
     baseUrl,
@@ -202,6 +203,20 @@ export default async function PracticeAreaPage({
               <p className="mt-3 font-[family-name:var(--font-display)] text-xl lg:text-2xl leading-snug">
                 {pa.approach}
               </p>
+            </div>
+
+            {/* Where these matters are handled — the offices, each with its own page. */}
+            <div className="mt-12">
+              <h2 className="eyebrow eyebrow-muted mb-4">Offices handling these matters</h2>
+              <ul className="grid gap-4 sm:grid-cols-3 text-sm">
+                {OFFICES.map((o) => (
+                  <li key={o.id} className="border border-[var(--c-border)] p-4">
+                    <Link href={`/locations/${o.id}`} className="font-[family-name:var(--font-ui)] font-semibold hover:text-[var(--c-accent)]">{o.name}{o.county ? ` · ${o.county}` : ""}</Link>
+                    <p className="mt-1 text-[var(--c-ink-muted)]">{o.city}, Texas · <a href={`tel:${o.phone.replace(/[^\d+]/g, "")}`} className="hover:text-[var(--c-accent)]">{o.phone}</a></p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-[var(--c-ink-muted)]">Litigation experience across {LITIGATION_COUNTIES.length} Texas counties, the Northern District of Texas, and the Fifth Circuit.</p>
             </div>
 
             {/* CTA */}

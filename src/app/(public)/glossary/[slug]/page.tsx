@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { JsonLd } from "@/components/site/JsonLd";
+import { clampTitle, clampDescription } from "@/lib/seo";
 import {
   getGlossaryTerm,
   getGlossaryTerms,
@@ -24,8 +25,8 @@ export async function generateMetadata({
   const term = await getGlossaryTerm(slug);
   if (!term) return {};
   return {
-    title: `${term.term} — Glossary`,
-    description: term.definition,
+    title: clampTitle(`${term.term} — Texas Legal Glossary`),
+    description: clampDescription(term.definition),
   };
 }
 

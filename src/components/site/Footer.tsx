@@ -149,9 +149,9 @@ export async function Footer() {
           {OFFICES.map((o) => (
             <div key={o.id} className="text-sm">
               <div className="flex items-baseline gap-2">
-                <span className="font-[family-name:var(--font-ui)] font-semibold text-[var(--c-dark-ink)]">
+                <Link href={`/locations/${o.id}`} className="font-[family-name:var(--font-ui)] font-semibold text-[var(--c-dark-ink)] hover:text-[var(--c-dark-accent)]">
                   {o.name}
-                </span>
+                </Link>
                 <span className="text-xs text-[var(--c-dark-accent)]">{o.role}</span>
               </div>
               <address className="not-italic mt-2 text-[var(--c-dark-ink-muted)] leading-relaxed">

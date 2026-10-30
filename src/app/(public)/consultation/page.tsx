@@ -5,7 +5,7 @@ import { getBlocks } from "@/lib/content";
 import { estateDocsToAnswers } from "@/lib/intake/config";
 
 export const metadata: Metadata = {
-  title: "Request a Consultation — Talk to a Texas Trial Attorney",
+  title: "Request a Consultation",
   description:
     "Tell us about your matter and we'll be in touch. Personal injury, civil litigation, appeals, probate, and debt defense across Texas.",
 };

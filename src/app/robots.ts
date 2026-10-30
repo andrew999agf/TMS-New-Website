@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
-import { FIRM } from "@/lib/firm";
+import { SITE_URL } from "@/lib/seo";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const base = SITE_URL;
   return {
     rules: [{ userAgent: "*", allow: ["/", "/share/*/manifest.json", "/share/*/file/*"], disallow: ["/admin", "/api"] }],
     sitemap: `${base}/sitemap.xml`,

@@ -6,9 +6,9 @@ import { getPracticeAreas, getBlocks } from "@/lib/content";
 import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 
 export const metadata: Metadata = {
-  title: "Practice Areas — Personal Injury, Litigation, Appeals & More",
+  title: "Practice Areas — Injury, Litigation & Appeals",
   description:
-    "What we take to trial: personal injury, wrongful death, civil and commercial litigation, appellate law, probate and estate administration, and consumer debt defense across Texas.",
+    "What we take to trial: personal injury, wrongful death, civil and commercial litigation, appeals, probate and estate matters, and consumer debt defense.",
 };
 
 export const dynamic = "force-dynamic";

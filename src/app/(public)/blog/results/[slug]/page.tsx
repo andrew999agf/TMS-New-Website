@@ -1,3 +1,4 @@
+import { clampTitle, clampDescription } from "@/lib/seo";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -20,8 +21,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const result = await findResult(slug);
   if (!result) return {};
-  const description = result.summary ?? result.detail ?? "Case result.";
-  const base: Metadata = { title: result.title, description };
+  const description = clampDescription(result.summary || result.detail, `${result.title}${result.stat ? ` — ${result.stat}` : ""}${result.year ? ` (${result.year})` : ""}. A case result of T. Maxwell Smith, PLLC, a Texas trial firm. Past results do not guarantee a similar outcome.`);
+  const base: Metadata = { title: clampTitle(result.title), description };
   // No custom share card → inherit the site's (home page) share exactly.
   if (!result.shareImage && !result.shareTitle && !result.shareDescription) return base;
 

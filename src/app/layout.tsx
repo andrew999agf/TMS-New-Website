@@ -4,18 +4,19 @@ import { fontVariables } from "./fonts";
 import { getActiveTheme, getBlocks } from "@/lib/content";
 import { themeToCss } from "@/lib/theme/css";
 import { FIRM } from "@/lib/firm";
+import { SITE_URL } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
   const blocks = await getBlocks("global");
   const name = blocks["global.firmName"] ?? FIRM.name;
   const tagline = blocks["global.tagline"] ?? "Generally trained for your specific legal matter.";
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const baseUrl = SITE_URL;
   const socialImage = blocks["global.socialImage"] || "";
   // Favicon: the admin-managed upload when present, otherwise the bundled firm
   // icon (the same graphic the PWA manifest uses). Always emit ONE concrete icon
   // so the public site and the admin portal show the identical favicon.
   const favicon = blocks["global.favicon"] || "/icon-512.png";
-  const description = "Texas trial attorneys in Fort Worth, Weatherford, and Meridian. Personal injury, wrongful death, civil and commercial litigation, appeals, probate, and consumer debt defense — prepared for trial from day one.";
+  const description = "Texas trial attorneys in Fort Worth, Weatherford, and Meridian. Personal injury, civil litigation, appeals, probate, and debt defense — prepared for trial.";
   // Android / WhatsApp / most non-Apple previewers are stricter than iMessage:
   // they want a declared image type and dimensions, an absolute URL, and og
   // title + description present. Declare the MIME type from the file extension.

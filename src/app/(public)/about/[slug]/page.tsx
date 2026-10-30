@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHero, Breadcrumbs } from "@/components/site/PageHero";
 import { TeamProfile } from "@/components/site/TeamProfile";
 import { JsonLd } from "@/components/site/JsonLd";
+import { clampTitle, clampDescription } from "@/lib/seo";
 import { getTeam, getTeamMember } from "@/lib/content";
 
 export async function generateStaticParams() {
@@ -19,8 +20,8 @@ export async function generateMetadata({
   const member = await getTeamMember(slug);
   if (!member) return {};
   return {
-    title: `${member.name} — ${member.role}`,
-    description: member.bioProfessional?.slice(0, 160),
+    title: clampTitle(`${member.name}, ${member.isAttorney ? "Trial Attorney" : member.role}`),
+    description: clampDescription(member.bioProfessional, `${member.name}, ${member.role} at T. Maxwell Smith, PLLC, a Texas trial firm.`),
   };
 }
 

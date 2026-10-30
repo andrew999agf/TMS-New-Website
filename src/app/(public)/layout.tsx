@@ -5,6 +5,7 @@ import { PageViewTracker, GA4 } from "@/components/site/Analytics";
 import { getBlocks, getSetting, getPracticeAreas, getTeam } from "@/lib/content";
 import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
+import { SITE_URL } from "@/lib/seo";
 
 export default async function PublicLayout({
   children,
@@ -17,7 +18,7 @@ export default async function PublicLayout({
   const [practices, team] = await Promise.all([getPracticeAreas(), getTeam()]);
   const ga4Id = (await getSetting<string>("ga4", process.env.NEXT_PUBLIC_GA4_ID ?? "")) || "";
   const logoUrl = (await getSetting<string>("logo", "")) || "";
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${FIRM.domain}`;
+  const baseUrl = SITE_URL;
 
   const fortWorth = OFFICES.find((o) => o.id === "fort-worth");
   const meridian = OFFICES.find((o) => o.id === "meridian");
@@ -71,8 +72,10 @@ export default async function PublicLayout({
     "@id": `${baseUrl}/#office-${o.id}`,
     name: `${FIRM.name} — ${o.name}`,
     parentOrganization: { "@id": `${baseUrl}/#organization` },
+    url: `${baseUrl}/locations/${o.id}`,
     telephone: o.phone,
     address: { "@type": "PostalAddress", streetAddress: o.street2 ? `${o.street}, ${o.street2}` : o.street, addressLocality: o.city, addressRegion: "TX", postalCode: o.zip, addressCountry: "US" },
+    hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${o.street}, ${o.city}, TX ${o.zip}`)}`,
     ...(o.byAppointment ? { openingHours: "By appointment" } : {}),
   });
   const legalServiceSchema = {

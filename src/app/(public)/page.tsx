@@ -37,8 +37,8 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: { absolute: "T. Maxwell Smith, PLLC | Texas Trial Attorneys" },
-  description: "A Texas trial firm with offices in Fort Worth, Weatherford, and Meridian. Hundreds of matters — jury trials, bench trials, and appeals. Personal injury, wrongful death, civil and commercial litigation, probate, and consumer debt defense.",
+  title: { absolute: "Texas Trial Lawyers | Fort Worth & Bosque County | T. Maxwell Smith, PLLC" },
+  description: "Texas trial firm in Fort Worth, Weatherford and Meridian. Jury trials, bench trials and appeals — injury, civil litigation, probate, debt defense.",
 };
 
 export default async function HomePage() {
@@ -77,12 +77,14 @@ export default async function HomePage() {
       <section className="relative min-h-[68vh] flex items-end text-[var(--c-dark-ink)]">
         <HeroBanner items={bannerMedia} />
         <div className="container-page relative z-10 pb-16 pt-32 lg:pb-20">
-          <p className="eyebrow text-[var(--c-dark-accent)] fade-up">
+          {/* The H1 is the small line: it carries what the firm is and where,
+              for search; the big display line keeps the voice. Same look. */}
+          <h1 className="eyebrow text-[var(--c-dark-accent)] fade-up">
             {home["home.hero.eyebrow"]}
-          </p>
-          <h1 className="display-2 mt-5 max-w-4xl text-[var(--c-dark-ink)] fade-up">
-            {home["home.hero.headline"]}
           </h1>
+          <p className="display-2 mt-5 max-w-4xl text-[var(--c-dark-ink)] fade-up">
+            {home["home.hero.headline"]}
+          </p>
           <p className="lead mt-6 max-w-2xl text-[var(--c-dark-ink-muted)] fade-up">
             {home["home.hero.support"]}
           </p>
