@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -30,7 +30,9 @@ const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-bg)] px-3 
 
 export type AiDocState = "done" | "partial" | "pending" | "photo" | "failed";
 export type DocSection = { from: number; to: number; title: string };
-export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; sizeBytes?: number | null; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
+export type ClientFile = { key: string; name: string; dir: string; folderId: number | null; folderName: string; createdAt: string; status: "" | "staged" | "produced"; sizeBytes?: number | null; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; textStatus: string; kindHint?: "pdf" | "image" | "other"; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number;
+  /** Red tab: how many pages have server-made pictures (see lib/documents/page-images). */
+  rendered?: number; renderStatus?: string };
 export type StagedDoc = { id: number; name: string; requestLabel: string; url: string | null; sizeBytes?: number | null; createdAt?: string; batesPrefix: string; batesStart: number; batesEnd: number; productionId: number | null; sourceKey: string; sourcePages: number[]; pageBates?: number[]; status: "staged" | "produced"; aiLabel: string; aiDescription: string; aiSections?: DocSection[]; aiState?: AiDocState; aiNotesDone?: number; aiNotesTotal?: number; aiIssue?: string; pageCount?: number };
 export type ProductionRow = { id: number; label: string; batesPrefix: string; batesStart: number; batesEnd: number; producedAt: string | null; letterUrl: string | null; fileUrl: string | null; fileName: string; parts: ProductionPart[]; token: string; emailedAt?: string | null };
 export type RequestRow = { folderId: number; who: string; sentAt: string; responseDue: string; clientDue: string; files: number; rfp: boolean };
@@ -390,7 +392,44 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
   const router = useRouter();
   // The tab's document order — name / upload date / dragged — saved for the firm.
   const [order, setOrder] = useViewOrder(setId, "received", viewOrder, "name");
-  const files = useMemo(() => orderDocs(filesProp, order, CLIENT_ORDER_ACC, "name"), [filesProp, order]);
+  // Page pictures: made once on the server; the grid and reader show them
+  // instead of opening the PDF in the browser. Progress updates live while
+  // the tab drives the rendering (the minute cron carries on when it isn't).
+  const [renderMap, setRenderMap] = useState<Record<string, { rendered: number; pageCount: number | null; status: string }>>({});
+  const [renderProgress, setRenderProgress] = useState<{ left: number; total: number; current?: string } | null>(null);
+  const pageImg = useCallback((key: string, page: number, size: "t" | "r") => `/admin/discovery-reviewer/${setId}/page-image/${key.replace(":", "-")}/${page}?s=${size}`, [setId]);
+  const filesLive = useMemo(() => filesProp.map((f) => {
+    const r = renderMap[f.key];
+    if (!r) return f;
+    return { ...f, rendered: Math.max(f.rendered ?? 0, r.rendered), renderStatus: r.status, pageCount: f.pageCount ?? r.pageCount ?? undefined };
+  }), [filesProp, renderMap]);
+  const renderedOf = useCallback((f: ClientFile) => Math.max(f.rendered ?? 0, renderMap[f.key]?.rendered ?? 0), [renderMap]);
+  useEffect(() => {
+    const needs = filesProp.some((f) => kindOf(f) === "pdf" && !["failed", "skipped"].includes(f.renderStatus ?? "") && (!f.pageCount || (f.rendered ?? 0) < f.pageCount));
+    if (!needs) return;
+    let alive = true;
+    const apply = (r: { jobs?: { docKey: string; rendered: number; pageCount: number | null; status: string }[]; pagesLeft?: number; pagesTotal?: number; done?: boolean; current?: string }) => {
+      if (!alive) return;
+      if (r.jobs) setRenderMap(Object.fromEntries(r.jobs.map((j) => [j.docKey, { rendered: j.rendered, pageCount: j.pageCount, status: j.status }])));
+      setRenderProgress(r.done ? null : { left: r.pagesLeft ?? 0, total: r.pagesTotal ?? 0, current: r.current });
+    };
+    void (async () => {
+      // One sweep after another until nothing is left; a status read first so
+      // work the cron already did shows at once.
+      try { apply(await (await fetch(`/api/admin/discovery/render-pages?setId=${setId}`)).json()); } catch { /* shown as not ready */ }
+      for (let i = 0; alive && i < 400; i++) {
+        let r: { done?: boolean } = {};
+        try { r = await (await fetch("/api/admin/discovery/render-pages", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ setId }) })).json(); apply(r); }
+        catch { await new Promise((res) => setTimeout(res, 5000)); continue; }
+        if (r.done) break;
+        await new Promise((res) => setTimeout(res, 800));
+      }
+    })();
+    return () => { alive = false; };
+    // Runs once per tab open: the initial file list decides whether there is work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setId]);
+  const files = useMemo(() => orderDocs(filesLive, order, CLIENT_ORDER_ACC, "name"), [filesLive, order]);
   const onReorder = useCallback((keys: string[]) => setOrder({ mode: "custom", custom: keys }), [setOrder]);
   const drag = useDocDrag(files.map((f) => f.key), onReorder);
   const [view, setView] = useState<"grid" | "reader" | "docs">("grid");
@@ -441,7 +480,7 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
   const notePages = useCallback((key: string, n: number) => setPageCounts((prev) => (prev[key] === n ? prev : { ...prev, [key]: n })), []);
 
   const pagesOf = (f: ClientFile): number | undefined =>
-    f.pageCount ?? pageCounts[f.key] ?? (fileKind(f.name) === "pdf" ? undefined : 1);
+    f.pageCount ?? renderMap[f.key]?.pageCount ?? pageCounts[f.key] ?? (fileKind(f.name) === "pdf" ? undefined : 1);
   const totalPages = files.reduce((n, f) => n + (pagesOf(f) ?? 0), 0);
   const unknownPages = files.filter((f) => pagesOf(f) === undefined).length;
   /** Every page of the document is already staged or produced. */
@@ -876,6 +915,12 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
           <FoldAll allCollapsed={shownFiles.every((f) => collapsed.has(f.key))}
             onCollapseAll={() => setCollapsed(new Set(files.map((f) => f.key)))} onExpandAll={() => setCollapsed(new Set())} />
         )}
+        {renderProgress && renderProgress.total > 0 && (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-xs text-[var(--c-ink-muted)]" data-testid="render-progress"
+            title={`Page pictures are made once on the server so big scans open instantly${renderProgress.current ? ` — working on ${renderProgress.current}` : ""}`}>
+            <Loader2 size={12} className="animate-spin" /> Preparing pages · {(renderProgress.total - renderProgress.left).toLocaleString()} of {renderProgress.total.toLocaleString()}
+          </span>
+        )}
         {view !== "reader" && (
           <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${hideSent ? "border-yellow-500 bg-yellow-100 text-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-200" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}
             title="Hide documents (and pages) already sent to Documents to be produced or produced. Partly-sent documents stay, showing only the pages still here.">
@@ -953,7 +998,7 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
         ) : view === "reader" ? (
           <ClientReader files={files} state={reader} setState={setReader} selected={selected} pageMark={pageMark}
             setId={setId} shareToken={shareToken} noteFor={noteFor} onEditNote={saveNote}
-            onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl}
+            onTogglePage={togglePage} getDoc={getDoc} proxyUrl={proxyUrl} pageImg={pageImg} renderedOf={renderedOf}
             annos={annos} ensureAnnos={ensureAnnos} addAnno={addAnno} delAnno={delAnno}
             onStageFromTools={(f) => {
               if (selected.size === 0 && !pageMark(f, reader.page)) togglePage(f, reader.page);
@@ -973,7 +1018,7 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
                     setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
                     onTogglePage={togglePage} onToggleDoc={(shift) => void toggleDoc(f, shift)} onPagesKnown={pagesKnown}
                     onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
-                    getDoc={getDoc} proxyUrl={proxyUrl} hideMarked={hideSent} />
+                    getDoc={getDoc} proxyUrl={proxyUrl} hideMarked={hideSent} pageImg={pageImg} renderedPages={renderedOf(f)} />
                 ))}
               </div>
             ) : shownFiles.map((f) => (
@@ -981,7 +1026,7 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
                 setId={setId} shareToken={shareToken} flash={flash} noteFor={noteFor}
                 onTogglePage={togglePage} onToggleDoc={(shift) => void toggleDoc(f, shift)} onPagesKnown={pagesKnown}
                 onOpen={(page) => { setReader({ docIdx: files.findIndex((x) => x.key === f.key), page }); setView("reader"); }}
-                getDoc={getDoc} proxyUrl={proxyUrl}
+                getDoc={getDoc} proxyUrl={proxyUrl} pageImg={pageImg} renderedPages={renderedOf(f)}
                 collapsed={collapsed.has(f.key)} onToggleCollapse={() => toggleCollapse(f.key)} hideMarked={hideSent}
                 deleteCheck={delMode ? { checked: delSel.has(f.key), locked: delLocked(f), onToggle: () => toggleDel(f) } : undefined}
                 drag={delMode ? undefined : { handle: drag.handleProps(f.key), drop: drag.dropProps(f.key), hint: drag.hintFor(f.key), dragging: drag.dragging === f.key }} />
@@ -1170,7 +1215,7 @@ const labelTargetFor = (f: ClientFile): LabelTarget =>
   : { kind: "doc", id: Number(f.key.slice(4)) };
 
 /* one client document: header + its pages, rendered like the opposing grid */
-function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck, flow = false, drag }: {
+function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flash, onTogglePage, onToggleDoc, onPagesKnown, onOpen, getDoc, proxyUrl, selectable = true, headerExtra, noteFor, pageLabel, cellTitle, collapsed = false, onToggleCollapse, hideMarked = false, deleteCheck, flow = false, drag, pageImg, renderedPages = 0 }: {
   f: ClientFile; cols: number; selected: Set<string>;
   pageMark: (f: ClientFile, page: number) => PageMark;
   setId: number; shareToken: string | null; flash: { key: string; page: number } | null;
@@ -1203,10 +1248,20 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   flow?: boolean;
   /** Drag-to-reorder: a grip in the header, and the section accepts drops. */
   drag?: { handle: React.HTMLAttributes<HTMLElement> & { draggable: boolean }; drop: React.HTMLAttributes<HTMLElement>; hint: DragHint; dragging: boolean };
+  /** Server-made page pictures (red tab): URL builder and how many pages have one. */
+  pageImg?: (key: string, page: number, size: "t" | "r") => string;
+  renderedPages?: number;
 }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const kind = kindOf(f);
   const [pages, setPages] = useState(f.pageCount ?? 0);
+  // Cells are memoized; they get these two stable callbacks instead of a
+  // fresh closure per render, so clicking one page re-renders ONE cell, not
+  // the 3,000 in this document.
+  const handlers = useRef({ onTogglePage, onOpen });
+  useEffect(() => { handlers.current = { onTogglePage, onOpen }; }, [onTogglePage, onOpen]);
+  const cellClick = useCallback((page: number, shiftKey: boolean) => handlers.current.onTogglePage(f, page, shiftKey), [f]);
+  const cellOpen = useCallback((page: number) => handlers.current.onOpen(page), []);
   const [failed, setFailed] = useState(false);
   // Open the PDF only once this document is near the viewport. Until then
   // the recorded page count (from upload-time indexing) lays out the cells,
@@ -1221,15 +1276,21 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
     io.observe(el);
     return () => io.disconnect();
   }, [kind, collapsed]);
+  // A big scan is never opened in the browser: pdf.js has to walk every page
+  // object before it can show page 1, and a scanner spreads them through
+  // the whole file (3,000 pages = the whole 300 MB, every open). Its pages
+  // come as server-made pictures; until those exist the cells wait.
+  // (Only where pictures exist — the yellow/green copies are our own
+  // pdf-lib output, which pdf.js opens cheaply, so they keep the direct path.)
+  const bigDoc = !!pageImg && ((f.pageCount ?? 0) > BIG_DOC_PAGES || (f.sizeBytes ?? 0) > BIG_DOC_BYTES);
   useEffect(() => {
     if (kind !== "pdf") return;
-    if (f.pageCount && !near) { setPages(f.pageCount); onPagesKnown(f.key, f.pageCount); return; }
-    if (!near && f.pageCount == null && !collapsed) { /* count unknown: wait until it's near, then ask the file */ }
-    if (!near) return;
+    if (f.pageCount) { setPages(f.pageCount); onPagesKnown(f.key, f.pageCount); return; }
+    if (!near || bigDoc) return; // count unknown: a small file is asked once it's near; a big one waits for its pictures
     let alive = true;
     getDoc(f).then((d) => { if (alive) { setPages(d.numPages); onPagesKnown(f.key, d.numPages); } }).catch(() => { if (alive && !f.pageCount) setFailed(true); });
     return () => { alive = false; };
-  }, [kind, f, near, collapsed, getDoc, onPagesKnown]);
+  }, [kind, f, near, bigDoc, getDoc, onPagesKnown]);
   const renderW = cols >= 8 ? 220 : cols >= 6 ? 300 : cols >= 4 ? 460 : cols >= 2 ? 720 : 1200;
 
   // Header checkbox state + this document's staged-page tally.
@@ -1287,11 +1348,12 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
           const note = noteFor?.(f, page) ?? "";
           return (
             <div key={page} className="min-w-0">
-              <ClientPageCell f={f} page={page} renderW={renderW}
+              <LazyPageCell f={f} page={page} renderW={renderW}
                 selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
                 flash={!!flash && flash.key === f.key && flash.page === page}
-                onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)}
+                onClick={cellClick} onOpen={cellOpen}
                 label={pageLabel?.(page)} cellTitle={cellTitle}
+                img={pageImg && renderedPages >= page ? pageImg(f.key, page, "t") : undefined} waitForImg={bigDoc && renderedPages < page}
                 onVisible={page === 1 ? markNear : undefined} />
               {caption(page, pages)}
               {note && cols <= 7 && (
@@ -1350,7 +1412,7 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
         )}
         <AiStateChip state={f.aiState} done={f.aiNotesDone} total={f.aiNotesTotal} issue={f.aiIssue} />
         <LabelChip setId={setId} target={labelTargetFor(f)} label={f.aiLabel} description={f.aiDescription} />
-        <span className="text-xs text-[var(--c-ink-muted)]">{kind === "pdf" ? (failed ? "couldn't open" : pages ? `${pages} page${pages === 1 ? "" : "s"}` : "opening…") : ""}</span>
+        <span className="text-xs text-[var(--c-ink-muted)]">{kind === "pdf" ? (failed ? "couldn't open" : pages ? `${pages} page${pages === 1 ? "" : "s"}${bigDoc && renderedPages < pages ? ` · pictures ${renderedPages.toLocaleString()} ready` : ""}` : bigDoc ? "preparing pages…" : "opening…") : ""}</span>
         <span className="ml-auto inline-flex items-center gap-2">
           {shareToken && (
             <button onClick={async () => { if (await copyText(shareUrl(shareToken, shareKeyFor(f.key)))) { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); } }}
@@ -1383,11 +1445,12 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
             const note = noteFor?.(f, page) ?? "";
             return (
               <div key={page} className="min-w-0">
-                <ClientPageCell f={f} page={page} renderW={renderW}
+                <LazyPageCell f={f} page={page} renderW={renderW}
                   selected={selected.has(pk(f.key, page))} mark={pageMark(f, page)} getDoc={getDoc}
                   flash={!!flash && flash.key === f.key && flash.page === page}
-                  onClick={(shiftKey) => onTogglePage(f, page, shiftKey)} onOpen={() => onOpen(page)}
-                  label={pageLabel?.(page)} cellTitle={cellTitle} />
+                  onClick={cellClick} onOpen={cellOpen}
+                  label={pageLabel?.(page)} cellTitle={cellTitle}
+                  img={pageImg && renderedPages >= page ? pageImg(f.key, page, "t") : undefined} waitForImg={bigDoc && renderedPages < page} />
                 {note && cols <= 7 && (
                   <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-[var(--c-ink-muted)]" title={note}>{note}</p>
                 )}
@@ -1404,17 +1467,59 @@ function ClientDocSection({ f, cols, selected, pageMark, setId, shareToken, flas
   );
 }
 
-function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle, onVisible }: {
+type PageCellProps = {
   f: ClientFile; page: number; renderW: number; selected: boolean; mark: PageMark; flash?: boolean;
   getDoc: (f: ClientFile, priority?: boolean) => Promise<import("pdfjs-dist").PDFDocumentProxy>;
-  onClick: (shiftKey: boolean) => void; onOpen: () => void;
+  onClick: (page: number, shiftKey: boolean) => void; onOpen: (page: number) => void;
+  /** A server-made picture of this page — shown instead of a pdf.js render. */
+  img?: string;
+  /** Big document whose picture isn't made yet: wait, never open the PDF here. */
+  waitForImg?: boolean;
   /** Fired the first time the cell comes near the viewport. */
   onVisible?: () => void;
   /** Overrides the little corner badge (e.g. the page's Bates number). */
   label?: string;
   /** Overrides the hover tooltip (yellow tab: clicking selects the DOCUMENT). */
   cellTitle?: string;
-}) {
+};
+
+/* One IntersectionObserver for every page cell on the screen (not one per
+   cell — 3,000 observers was part of the lag). Callbacks keyed by element. */
+let nearIO: IntersectionObserver | null = null;
+const nearCbs = new Map<Element, (near: boolean) => void>();
+function watchNear(el: Element, cb: (near: boolean) => void): () => void {
+  if (!nearIO) nearIO = new IntersectionObserver((entries) => { for (const e of entries) nearCbs.get(e.target)?.(e.isIntersecting); }, { rootMargin: "1500px 0px" });
+  nearCbs.set(el, cb);
+  nearIO.observe(el);
+  return () => { nearCbs.delete(el); nearIO?.unobserve(el); };
+}
+
+/**
+ * A page cell that exists in the DOM only as an empty box until it is within
+ * ~1.5 screens of the viewport; then the real cell (canvas, pdf.js render)
+ * mounts, and it unmounts again once scrolled well away so its bitmap is
+ * freed. A 3,000-page document is 3,000 light boxes and a few dozen live
+ * canvases instead of 3,000 live canvases (≈750 MB of bitmaps).
+ */
+const LazyPageCell = memo(function LazyPageCell(props: PageCellProps) {
+  const holder = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => { const el = holder.current; if (!el) return; return watchNear(el, setNear); }, []);
+  if (!near) {
+    return (
+      <div ref={holder} id={cellId(props.f.key, props.page)} onClick={(e) => { if (!props.mark) props.onClick(props.page, e.shiftKey); }} onDoubleClick={() => props.onOpen(props.page)}
+        className={`relative aspect-[8.5/11] rounded-md border bg-[var(--c-surface)] ${props.mark ? "" : "cursor-pointer"} ${props.selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
+        <span className="absolute bottom-1 right-1.5 rounded bg-black/35 px-1 text-[10px] leading-4 text-white">{props.label ?? props.page}</span>
+      </div>
+    );
+  }
+  return <div ref={holder}><ClientPageCell {...props} /></div>;
+});
+
+const BIG_DOC_PAGES = 120;
+const BIG_DOC_BYTES = 25 * 1024 * 1024;
+
+const ClientPageCell = memo(function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onClick, onOpen, label, cellTitle, onVisible, img, waitForImg }: PageCellProps) {
   const holder = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<"idle" | "done" | "error">("idle");
@@ -1429,19 +1534,34 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
   // every thumbnail it passed and the page stops responding.
   const visibleRef = useRef(false);
   const [retry, setRetry] = useState(0);
+  // The picture is requested only once the cell has sat in view for a
+  // moment, and the request is dropped if it leaves before it arrives — a
+  // fast scroll through 3,000 pages then costs a handful of requests, not
+  // one per page passed.
+  const [src, setSrc] = useState<string | undefined>(undefined);
+  const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedRef = useRef(false);
   useEffect(() => {
     const el = holder.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
       const vis = entries.some((e) => e.isIntersecting);
       visibleRef.current = vis;
-      if (vis) { setInView(true); onVisible?.(); if (renderedW.current !== renderW) setRetry((t) => t + 1); }
+      if (vis) {
+        setInView(true); onVisible?.(); if (renderedW.current !== renderW) setRetry((t) => t + 1);
+        if (img && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; if (visibleRef.current) setSrc(img); }, 150);
+      } else {
+        if (dwell.current) { clearTimeout(dwell.current); dwell.current = null; }
+        if (!loadedRef.current) setSrc(undefined); // abort a picture nobody is looking at
+      }
     }, { rootMargin: "300px" });
     io.observe(el);
-    return () => io.disconnect();
-  }, [renderW, onVisible]);
+    return () => { io.disconnect(); if (dwell.current) clearTimeout(dwell.current); };
+  }, [renderW, onVisible, img]);
+  useEffect(() => { loadedRef.current = false; setSrc(undefined); if (img && visibleRef.current && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; if (visibleRef.current) setSrc(img); }, 150); }, [img]);
 
   useEffect(() => {
+    if (img || waitForImg) return; // picture path (or waiting for it): pdf.js stays closed
     if (!inView || renderedW.current === renderW || !visibleRef.current) return;
     const seq = ++seqRef.current;
     void (async () => {
@@ -1467,15 +1587,24 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
         if (seq === seqRef.current) setState("error");
       }
     })();
-  }, [inView, retry, renderW, f, page, getDoc]);
+  }, [inView, retry, renderW, f, page, getDoc, img, waitForImg]);
 
   return (
-    <div ref={holder} id={cellId(f.key, page)} onClick={(e) => { if (!mark) onClick(e.shiftKey); }} onDoubleClick={onOpen}
+    <div ref={holder} id={cellId(f.key, page)} onClick={(e) => { if (!mark) onClick(page, e.shiftKey); }} onDoubleClick={() => onOpen(page)}
       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} // shift-click shouldn't drag-select text
       className={`group relative aspect-[8.5/11] overflow-hidden rounded-md border bg-white shadow-sm ${mark ? "cursor-default" : "cursor-pointer"} ${flash ? "ring-4 ring-amber-400" : selected ? "border-[var(--c-accent)] ring-[3px] ring-[var(--c-accent)]" : "border-[var(--c-border)]"} ${selected && !flash ? "border-[var(--c-accent)]" : ""} ${!mark && !selected && !flash ? "hover:ring-1 hover:ring-[var(--c-accent)]/50" : ""}`}
       title={mark === "produced" ? "Already produced" : mark === "staged" ? "Already staged — see the yellow tab" : cellTitle ?? "Click to select this page · Shift-click for a range · Double-click to read"}>
-      <canvas ref={canvasRef} className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} />
-      {state === "idle" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
+      {img ? (
+        src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="" decoding="async" draggable={false} onLoad={() => { loadedRef.current = true; setState("done"); }} onError={() => setState("error")}
+            className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} data-testid="page-img" />
+        ) : <div className="h-full w-full" />
+      ) : (
+        <canvas ref={canvasRef} className={`h-full w-full object-contain ${mark ? "opacity-60 grayscale-[35%]" : ""}`} />
+      )}
+      {state === "idle" && !waitForImg && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)]"><Loader2 size={16} className="animate-spin text-[var(--c-ink-muted)]" /></div>}
+      {state === "idle" && waitForImg && !img && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)] text-[10px] text-[var(--c-ink-muted)]" title="This page's picture is being made on the server">preparing…</div>}
       {state === "error" && <div className="absolute inset-0 flex items-center justify-center bg-[var(--c-bg)] text-xs text-[var(--c-ink-muted)]">page {page}</div>}
       {mark && (
         <span className={`absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold shadow ${mark === "produced" ? "bg-green-300 text-green-950" : "bg-yellow-300 text-yellow-950"}`}>
@@ -1485,7 +1614,7 @@ function ClientPageCell({ f, page, renderW, selected, mark, flash, getDoc, onCli
       <span className={`absolute bottom-1 right-1.5 rounded bg-black/55 px-1 text-[10px] leading-4 text-white ${label ? "font-mono" : ""}`}>{label ?? page}</span>
     </div>
   );
-}
+});
 
 /* reader: one client document at a time, full width */
 
@@ -1493,7 +1622,7 @@ type ReviewTool = "select" | "highlight" | "redact" | "note" | "eraser";
 
 const TOOL_LABELS: Record<ReviewTool, string> = { select: "Select", highlight: "Highlighter", redact: "Redaction", note: "Note", eraser: "Eraser" };
 
-function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, onEditNote, variant = "received", onRemove, onBurnRedact, onDeletePage, pageLabel }: {
+function ClientReader({ files, state, setState, selected, pageMark, setId, shareToken, onTogglePage, getDoc, proxyUrl, annos, ensureAnnos, addAnno, delAnno, onStageFromTools, noteFor, onEditNote, variant = "received", onRemove, onBurnRedact, onDeletePage, pageLabel, pageImg, renderedOf }: {
   files: ClientFile[];
   state: { docIdx: number; page: number };
   setState: (s: { docIdx: number; page: number }) => void;
@@ -1521,10 +1650,16 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   /** Bates label for a page, for the delete button's wording. */
   pageLabel?: (f: ClientFile, page: number) => string;
   onBurnRedact?: (f: ClientFile, page: number, rect: { x: number; y: number; w: number; h: number }) => Promise<{ ok: boolean; error?: string }>;
+  /** Red tab: server-made page pictures — shown instead of a pdf.js render when they exist. */
+  pageImg?: (key: string, page: number, size: "t" | "r") => string;
+  renderedOf?: (f: ClientFile) => number;
 }) {
   const f = files[Math.min(state.docIdx, files.length - 1)];
   const kind = kindOf(f);
   const [pages, setPages] = useState(0);
+  const bigDoc = !!pageImg && ((f.pageCount ?? 0) > BIG_DOC_PAGES || (f.sizeBytes ?? 0) > BIG_DOC_BYTES);
+  const imgSrc = kind === "pdf" && pageImg && renderedOf && renderedOf(f) >= state.page ? pageImg(f.key, state.page, "r") : null;
+  const [cssW, setCssW] = useState(800);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendering, setRendering] = useState(true);
   const renderSeq = useRef(0);
@@ -1556,15 +1691,23 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
 
   useEffect(() => {
     if (kind !== "pdf") { setPages(1); return; }
+    if (f.pageCount) { setPages(f.pageCount); return; }
+    if (bigDoc) { setPages(0); return; } // never open a big scan in the browser; its count arrives with its pictures
     let alive = true;
     getDoc(f, true).then((d) => { if (alive) setPages(d.numPages); }).catch(() => { if (alive) setPages(0); });
     return () => { alive = false; };
-  }, [kind, f, getDoc]);
+  }, [kind, f, bigDoc, getDoc]);
+  // Fit width from the stable OUTER column; zoom re-renders at the larger size.
+  useEffect(() => {
+    const fitW = Math.min(940, Math.max(480, (outerRef.current?.clientWidth ?? 800) - 16));
+    setCssW(Math.round(fitW * zoom));
+  }, [zoom, f.key, state.page]);
 
   useEffect(() => {
     if (kind !== "pdf") return;
     const seq = ++renderSeq.current;
     setRendering(true);
+    if (imgSrc || bigDoc) { if (imgSrc) return; setRendering(false); return; } // picture path: the <img> below reports when it's up
     void (async () => {
       try {
         const doc = await getDoc(f, true);
@@ -1609,7 +1752,7 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
         if (seq === renderSeq.current) setRendering(false);
       }
     })();
-  }, [kind, f, state.page, getDoc, zoom]);
+  }, [kind, f, state.page, getDoc, zoom, imgSrc, bigDoc]);
 
   const prev = () => {
     if (state.page > 1) setState({ ...state, page: state.page - 1 });
@@ -1619,6 +1762,23 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
     if (state.page < pages) setState({ ...state, page: state.page + 1 });
     else if (state.docIdx < files.length - 1) setState({ docIdx: state.docIdx + 1, page: 1 });
   };
+  // Arrow keys page like a PDF viewer (not while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); next(); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); prev(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  // Warm the next and previous pictures so paging is instant.
+  useEffect(() => {
+    if (!imgSrc || !pageImg || !renderedOf) return;
+    const n = renderedOf(f);
+    for (const q of [state.page + 1, state.page - 1]) if (q >= 1 && q <= n) { const i = new Image(); i.src = pageImg(f.key, q, "r"); }
+  }, [imgSrc, pageImg, renderedOf, f, state.page]);
   const mk = pageMark(f, state.page);
   const isSel = selected.has(pk(f.key, state.page));
   const pageAnnos = (annos[f.key] ?? []).filter((a) => a.page === state.page);
@@ -1671,13 +1831,13 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
   return (
     <div ref={outerRef} className="mx-auto max-w-5xl">
       <div className="mb-3 flex flex-wrap items-center justify-center gap-3">
-        <button onClick={prev} disabled={state.docIdx === 0 && state.page <= 1} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]"><ChevronLeft size={16} /></button>
+        <button onClick={prev} disabled={state.docIdx === 0 && state.page <= 1} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]" title="Previous page (←)" data-testid="reader-prev"><ChevronLeft size={16} /></button>
         <span className="text-sm">
           <strong>{f.name}</strong>
           {f.dir && <span className="ml-2 rounded-full bg-[var(--c-accent)]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-accent)]">{f.dir}</span>}
           <span className="ml-2 text-xs text-[var(--c-ink-muted)]">page {state.page}{pages ? ` of ${pages}` : ""} · document {state.docIdx + 1} of {files.length}</span>
         </span>
-        <button onClick={next} disabled={state.docIdx >= files.length - 1 && state.page >= pages} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]"><ChevronRight size={16} /></button>
+        <button onClick={next} disabled={state.docIdx >= files.length - 1 && state.page >= pages} className="rounded-md border border-[var(--c-border)] p-1.5 disabled:opacity-40 hover:border-[var(--c-accent)]" title="Next page (→)" data-testid="reader-next"><ChevronRight size={16} /></button>
         {variant === "received" && (
           <button onClick={() => onTogglePage(f, state.page)} disabled={!!mk}
             className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${isSel ? "border-[var(--c-accent)] bg-[var(--c-accent)] text-[var(--c-on-accent)]" : "border-[var(--c-border)] hover:border-[var(--c-accent)]"}`}>
@@ -1844,8 +2004,16 @@ function ClientReader({ files, state, setState, selected, pageMark, setId, share
       <div className={`relative mx-auto w-fit overflow-hidden rounded-md border bg-white shadow ${isSel ? "ring-2 ring-[var(--c-accent)] border-[var(--c-accent)]" : "border-[var(--c-border)]"}`}>
         {kind === "pdf" ? (
           <>
-            <canvas ref={canvasRef} className={mk ? "opacity-60 grayscale-[35%]" : ""} />
-            <div ref={textLayerRef} className="pdf-text-layer" style={{ pointerEvents: tool === "select" ? "auto" : "none" }} />
+            {imgSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={imgSrc} alt={`Page ${state.page}`} draggable={false} style={{ width: `${cssW}px` }} className={`block ${mk ? "opacity-60 grayscale-[35%]" : ""}`}
+                onLoad={() => setRendering(false)} onError={() => setRendering(false)} data-testid="reader-img" />
+            ) : bigDoc ? (
+              <div style={{ width: `${cssW}px`, aspectRatio: "8.5 / 11" }} className="flex items-center justify-center text-sm text-[var(--c-ink-muted)]">This page&apos;s picture is still being prepared on the server…</div>
+            ) : (
+              <canvas ref={canvasRef} className={mk ? "opacity-60 grayscale-[35%]" : ""} />
+            )}
+            {!imgSrc && <div ref={textLayerRef} className="pdf-text-layer" style={{ pointerEvents: tool === "select" ? "auto" : "none" }} />}
             <div ref={overlayRef} data-testid="reader-overlay" className="absolute inset-0"
               style={{ cursor: drawing || tool === "note" ? "crosshair" : tool === "eraser" ? "pointer" : "default", pointerEvents: tool === "select" ? "none" : "auto" }}
               onMouseDown={onOverlayDown} onMouseMove={onOverlayMove} onMouseUp={finishDrag} onMouseLeave={finishDrag} onClick={onOverlayClick}>

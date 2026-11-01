@@ -380,6 +380,33 @@ export const DISCOVERY_DDL = [
     built_at timestamptz,
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  // Pre-rendered page pictures for the Discovery Reviewer's red tab: one
+  // thumbnail + one reading-size JPEG per page, made once on the server, so
+  // the browser never has to open a 300 MB scan to show a page.
+  `CREATE TABLE IF NOT EXISTS discovery_render_jobs (
+    doc_key varchar(40) PRIMARY KEY,
+    set_id integer NOT NULL,
+    name text NOT NULL DEFAULT '',
+    page_count integer,
+    rendered integer NOT NULL DEFAULT 0,
+    status varchar(16) NOT NULL DEFAULT 'pending',
+    error text NOT NULL DEFAULT '',
+    attempts integer NOT NULL DEFAULT 0,
+    lock_until timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS discovery_render_jobs_set_idx ON discovery_render_jobs (set_id, status)`,
+  `CREATE TABLE IF NOT EXISTS discovery_page_images (
+    id serial PRIMARY KEY,
+    doc_key varchar(40) NOT NULL,
+    page integer NOT NULL,
+    thumb_url text NOT NULL,
+    read_url text NOT NULL,
+    width integer NOT NULL DEFAULT 0,
+    height integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS discovery_page_images_uq ON discovery_page_images (doc_key, page)`,
 ];
 
 let discoveryEnsured: Promise<void> | null = null;

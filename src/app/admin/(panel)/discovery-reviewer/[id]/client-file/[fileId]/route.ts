@@ -7,6 +7,10 @@ import { canAccessPath } from "@/lib/admin-sections";
 
 export const runtime = "nodejs";
 
+/** Same slice-after-slice traffic as the doc proxy: remember the checked row a few minutes. */
+const rowCache = new Map<string, { url: string; filename: string; contentType: string; at: number }>();
+const ROW_TTL = 10 * 60_000;
+
 /**
  * Sign-in-checked proxy for a client-uploaded share file, so the Discovery
  * Reviewer's "received from client" grid can render its pages same-origin.
@@ -24,13 +28,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const fid = Number(fileId);
   if (!Number.isFinite(setId) || !Number.isFinite(fid)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const [set] = await db.select({ matter: discoverySets.matter }).from(discoverySets).where(eq(discoverySets.id, setId));
-  if (!set?.matter) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const [file] = await db.select().from(shareFiles).where(eq(shareFiles.id, fid));
-  if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const [folder] = await db.select({ id: shareFolders.id }).from(shareFolders)
-    .where(and(eq(shareFolders.id, file.folderId), eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")));
-  if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const ck = `${setId}:${fid}`;
+  let file = rowCache.get(ck);
+  if (!file || Date.now() - file.at > ROW_TTL) {
+    const [set] = await db.select({ matter: discoverySets.matter }).from(discoverySets).where(eq(discoverySets.id, setId));
+    if (!set?.matter) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const [row] = await db.select().from(shareFiles).where(eq(shareFiles.id, fid));
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const [folder] = await db.select({ id: shareFolders.id }).from(shareFolders)
+      .where(and(eq(shareFolders.id, row.folderId), eq(shareFolders.matter, set.matter), eq(shareFolders.type, "client")));
+    if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    file = { url: row.url, filename: row.filename, contentType: row.contentType ?? "", at: Date.now() };
+    rowCache.set(ck, file);
+    if (rowCache.size > 2000) rowCache.clear();
+  }
 
   const range = req.headers.get("range");
   const upstream = await fetch(file.url, range ? { headers: { Range: range } } : undefined);

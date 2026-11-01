@@ -7,6 +7,12 @@ import { canAccessPath } from "@/lib/admin-sections";
 
 export const runtime = "nodejs";
 
+/** pdf.js asks for a big file one slice at a time, every slice a request
+ *  here. The document row doesn't change between slices, so remember it for
+ *  a few minutes per server instance (the sign-in check still runs each time). */
+const rowCache = new Map<string, { url: string; name: string; contentType: string; sizeBytes: number; at: number }>();
+const ROW_TTL = 10 * 60_000;
+
 /**
  * Sign-in-checked PDF proxy for the Discovery Reviewer, mirroring the Exhibit
  * Reviewer's. The page renderer fetches this same-origin URL (never the raw
@@ -25,8 +31,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const did = Number(docId);
   if (!Number.isFinite(setId) || !Number.isFinite(did)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const [doc] = await db.select().from(discoveryDocs).where(and(eq(discoveryDocs.id, did), eq(discoveryDocs.setId, setId)));
-  if (!doc?.url) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const ck = `${setId}:${did}`;
+  let doc = rowCache.get(ck);
+  if (!doc || Date.now() - doc.at > ROW_TTL) {
+    const [row] = await db.select({ url: discoveryDocs.url, name: discoveryDocs.name, contentType: discoveryDocs.contentType, sizeBytes: discoveryDocs.sizeBytes }).from(discoveryDocs).where(and(eq(discoveryDocs.id, did), eq(discoveryDocs.setId, setId)));
+    if (!row?.url) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    doc = { url: row.url, name: row.name ?? "", contentType: row.contentType ?? "", sizeBytes: Number(row.sizeBytes ?? 0), at: Date.now() };
+    rowCache.set(ck, doc);
+    if (rowCache.size > 2000) rowCache.clear();
+  }
 
   const range = req.headers.get("range");
   const upstream = await fetch(doc.url, range ? { headers: { Range: range } } : undefined);

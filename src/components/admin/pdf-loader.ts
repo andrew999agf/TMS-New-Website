@@ -34,6 +34,13 @@ const MAX_IN_FLIGHT = 4;
 const WORKERS = 3;
 const MAX_OPEN = 40;
 const IDLE_MS = 3_000;
+/** Every byte comes through the sign-in-checked proxy — one server round
+ *  trip per slice. pdf.js's default is 64 KB slices AND a background download
+ *  of the whole file, which for a 3,000-page scan meant thousands of round
+ *  trips before the grid settled. Now: 1 MB slices (a scanned page is
+ *  100–300 KB, so one slice covers the neighbours too) and nothing fetched
+ *  that nobody is looking at. */
+const RANGE_CHUNK = 1024 * 1024;
 
 type Entry = { promise: Promise<PDFDocumentProxy>; doc: PDFDocumentProxy | null; task: { destroy: () => Promise<void> } | null; lastUsed: number; failed?: string };
 type Job = { url: string; priority: boolean; run: () => void };
@@ -89,6 +96,7 @@ export function createPdfLoader(label: string): PdfLoader {
               const worker = await pickWorker(lib);
               const task = lib.getDocument({
                 url, worker,
+                rangeChunkSize: RANGE_CHUNK, disableAutoFetch: true, disableStream: true,
                 wasmUrl: "/pdfjs/wasm/", iccUrl: "/pdfjs/iccs/", cMapUrl: "/pdfjs/cmaps/", standardFontDataUrl: "/pdfjs/standard_fonts/",
               });
               const doc = await task.promise;

@@ -13,6 +13,7 @@ import { discoveryFingerprint } from "@/lib/discovery/fingerprint";
 import { partsOf } from "@/lib/production/parts";
 import { RequestTracker, type ClientFile, type StagedDoc, type ProductionRow, type RequestRow } from "@/components/admin/ProductionPipeline";
 import { aiStateOf } from "@/lib/discovery/ai-state";
+import { renderedCountsFor } from "@/lib/documents/page-images";
 import { RequestClientDocs, type ClientFolderChip } from "@/components/admin/RequestClientDocs";
 import { ensureDiscoveryTables } from "@/db/ensure";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -138,6 +139,10 @@ export default async function DiscoverySetPage({ params }: { params: Promise<{ i
       ...aiStateOf({ name: d.name, contentType: d.contentType, pageCount: d.pageCount, pageText: d.pageText, pageNotes: d.pageNotes, aiLabelStatus: d.aiLabelStatus ?? "", textStatus: d.textStatus ?? "", textError: d.textError ?? "" }),
     });
   }
+
+  // Server-made page pictures (lib/documents/page-images): how far each red-tab PDF has got.
+  const rend = await renderedCountsFor(setId);
+  clientFiles = clientFiles.map((f) => { const r = rend[f.key]; return r ? { ...f, rendered: r.rendered, renderStatus: r.status, pageCount: f.pageCount ?? r.pageCount ?? undefined } : f; });
 
   try {
     const pdocs = await db.select().from(productionDocs).where(eq(productionDocs.setId, setId));

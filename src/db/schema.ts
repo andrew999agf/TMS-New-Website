@@ -2290,6 +2290,41 @@ export const sbTaxRules = pgTable(
   (t) => ({ uq: uniqueIndex("sb_tax_rules_uq").on(t.year, t.jurisdiction, t.key) }),
 );
 
+/** One Discovery Reviewer document's page-picture job (red tab only). */
+export const discoveryRenderJobs = pgTable(
+  "discovery_render_jobs",
+  {
+    docKey: varchar("doc_key", { length: 40 }).primaryKey(),
+    setId: integer("set_id").notNull(),
+    name: text("name").notNull().default(""),
+    pageCount: integer("page_count"),
+    rendered: integer("rendered").notNull().default(0),
+    /** pending | running | done | failed | skipped */
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    error: text("error").notNull().default(""),
+    attempts: integer("attempts").notNull().default(0),
+    lockUntil: timestamp("lock_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ setIdx: index("discovery_render_jobs_set_idx").on(t.setId, t.status) }),
+);
+
+/** One page's pictures: a thumbnail for the grid, a reading size for the reader. */
+export const discoveryPageImages = pgTable(
+  "discovery_page_images",
+  {
+    id: serial("id").primaryKey(),
+    docKey: varchar("doc_key", { length: 40 }).notNull(),
+    page: integer("page").notNull(),
+    thumbUrl: text("thumb_url").notNull(),
+    readUrl: text("read_url").notNull(),
+    width: integer("width").notNull().default(0),
+    height: integer("height").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uq: uniqueIndex("discovery_page_images_uq").on(t.docKey, t.page) }),
+);
+
 /** "Please give me a StartBookkeeping login" — raised from the admin panel,
  *  answered by the company's primary admin inside the product. */
 export const sbAccessRequests = pgTable(
