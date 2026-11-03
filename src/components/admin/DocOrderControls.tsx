@@ -66,7 +66,11 @@ export function useDocDrag(keys: string[], onReorder: (keys: string[]) => void) 
     },
     onDragLeave: (e: DragEvent<HTMLElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o?.key === key ? null : o)); },
     onDrop: (e: DragEvent<HTMLElement>) => {
-      e.preventDefault(); e.stopPropagation(); // never reaches the tab's file-drop zone
+      // Files from the desktop are not ours: let them bubble to the tab's
+      // file-drop zone. (This handler once swallowed every drop that landed
+      // on a document row — with a full tab, that was every drop.)
+      if (!dragging && e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault(); e.stopPropagation(); // a document move never reaches the file-drop zone
       const moved = dragging ?? (() => { try { return e.dataTransfer.getData("text/plain"); } catch { return ""; } })();
       const target = key;
       setDragging(null); setOver(null);

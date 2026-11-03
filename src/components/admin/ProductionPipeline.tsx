@@ -544,25 +544,33 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
     // picker handed the files over in — so twelve months of statements land
     // January to December, and the reading queue follows the same order.
     const okFiles = all.filter((f) => /\.(pdf|jpe?g|png)$/i.test(f.name)).sort((a, b) => byName(a.name, b.name));
-    if (okFiles.length === 0) { setError("Drop PDFs or photos (JPG/PNG)."); return; }
+    const skipped = all.filter((f) => !okFiles.includes(f)).map((f) => f.name);
+    diagLog("upload", `start: ${okFiles.length} of ${all.length} file(s) accepted${skipped.length ? `; skipped ${skipped.slice(0, 5).join(", ")}` : ""}`);
+    if (okFiles.length === 0) { setError(`Drop PDFs or photos (JPG/PNG).${skipped.length ? ` Not accepted: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""}` : ""}`); return; }
     setError(null);
     setUploading({ done: 0, total: okFiles.length, current: okFiles[0].name });
+    let added = 0; const failed: string[] = [];
     for (let i = 0; i < okFiles.length; i++) {
       const file = okFiles[i];
       setUploading({ done: i, total: okFiles.length, current: file.name });
+      const t0 = Date.now();
       try {
         const blob = await upload(`discovery/${setId}/client/${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`, file, {
           access: "public", handleUploadUrl: "/api/admin/trial-upload", clientPayload: String(setId), multipart: true,
           contentType: file.type || undefined,
         });
         const r = await addDiscoveryDoc(setId, { name: file.name, file: { url: blob.url, pathname: blob.pathname, contentType: file.type || undefined, size: file.size }, bucket: "client" });
-        if (!r.ok) setError(r.error ?? `Couldn't save "${file.name}".`);
+        if (!r.ok) { failed.push(`${file.name}: ${r.error ?? "couldn't save"}`); diagLog("upload", `save failed: ${file.name} — ${r.error ?? "unknown"}`); }
+        else { added++; diagLog("upload", `ok: ${file.name} (${Math.round(file.size / 1024)} KB in ${Date.now() - t0} ms)`); }
       } catch (err) {
-        setError(`Upload failed for "${file.name}": ${(err as Error).message}`);
+        failed.push(`${file.name}: ${(err as Error).message}`);
+        diagLog("upload", `failed: ${file.name} — ${(err as Error).message}`);
       }
     }
     setUploading(null);
-    setNotice(`${okFiles.length} document${okFiles.length === 1 ? "" : "s"} added to Received from Client.`);
+    diagLog("upload", `end: ${added} added, ${failed.length} failed`);
+    if (failed.length) setError(`${failed.length} of ${okFiles.length} didn't upload — ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "; …" : ""}`);
+    if (added) setNotice(`${added} document${added === 1 ? "" : "s"} added to Received from Client.${skipped.length ? ` Not accepted (not PDF/JPG/PNG): ${skipped.slice(0, 5).join(", ")}.` : ""}`);
     router.refresh();
   }
 
@@ -978,9 +986,15 @@ function ReceivedView({ setId, files: filesProp, stagedDocs, batesDefaults, cont
       </div>
 
       <div className={`min-h-0 flex-1 p-4 ${dragOver ? "ring-2 ring-inset ring-[var(--c-accent)] bg-[var(--c-accent)]/5" : ""}`}
-        onDragOver={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(true); }}
+        onDragOver={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); if (!dragOver) { setDragOver(true); diagLog("drop", `files dragged over the red tab (types: ${Array.from(e.dataTransfer.types).join(",")})`); } }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); setDragOver(false); void uploadClientFiles(Array.from(e.dataTransfer.files)); }}>
+        onDrop={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) { diagLog("drop", `drop ignored — no files (types: ${Array.from(e.dataTransfer.types).join(",")})`); return; }
+          e.preventDefault(); setDragOver(false);
+          const dropped = Array.from(e.dataTransfer.files);
+          diagLog("drop", `${dropped.length} file(s) dropped on the red tab: ${dropped.slice(0, 5).map((x) => `${x.name} (${Math.round(x.size / 1024)} KB)`).join(", ")}${dropped.length > 5 ? ", …" : ""}`);
+          void uploadClientFiles(dropped);
+        }}>
         {notice && (
           <p className="mb-3 flex items-start gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
             <Check size={15} className="mt-0.5 shrink-0" /> {notice} <button onClick={() => setNotice(null)} className="ml-auto"><X size={14} /></button>
