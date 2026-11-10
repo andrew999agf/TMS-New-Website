@@ -90,6 +90,13 @@ const nextConfig: NextConfig = {
         destination: "/practice-areas/personal-injury",
         permanent: true,
       },
+      // Withdrawn subject (src/lib/content/retired.ts): the practice page, its
+      // posts and its glossary term leave the site; old links land somewhere useful.
+      { source: "/practice-areas/dtpa", destination: "/practice-areas/civil-commercial-litigation", permanent: true },
+      { source: "/blog/dtpa-basics-for-consumers", destination: "/blog", permanent: true },
+      { source: "/blog/dtpa-notice-letter", destination: "/blog", permanent: true },
+      { source: "/blog/dtpa-laundry-list-violations", destination: "/blog", permanent: true },
+      { source: "/glossary/dtpa", destination: "/glossary", permanent: true },
     ];
   },
 };

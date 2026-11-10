@@ -640,31 +640,6 @@ const eduRaw: EduInput[] = [
       ["p", "By the time many people call a lawyer, the sale is close. The earlier you act, the more options remain — including litigation that can reach an appeal."],
     ],
   },
-  // ---- DTPA (2) ----
-  {
-    slug: "dtpa-basics-for-consumers",
-    title: "DTPA Basics: When a Business Deceives You",
-    excerpt:
-      "The Texas Deceptive Trade Practices Act gives consumers real leverage against businesses that lie.",
-    category: "dtpa",
-    related: ["dtpa"],
-    body: [
-      ["p", "The DTPA protects consumers from false, misleading, and deceptive practices. Used correctly, it can allow recovery beyond your actual loss and shift attorney's fees."],
-      ["p", "The statute has strict notice and proof requirements. Handled precisely, it shifts the leverage to the consumer."],
-    ],
-  },
-  {
-    slug: "dtpa-notice-letter",
-    title: "The DTPA Notice Letter: A Required First Step",
-    excerpt:
-      "Before most DTPA suits, the law requires written notice. Done right, it can produce a settlement before filing.",
-    category: "dtpa",
-    related: ["dtpa", "civil-commercial-litigation"],
-    body: [
-      ["p", "The DTPA generally requires a pre-suit notice letter giving the business a chance to make things right. Skipping it can cost you remedies."],
-      ["p", "A credible notice letter — from a firm prepared to try the case — often resolves the matter before a lawsuit is ever filed."],
-    ],
-  },
   // ---- Criminal defense (2) ----
   {
     slug: "your-rights-during-a-police-encounter",
@@ -963,20 +938,6 @@ const eduRaw2027: EduInput[] = [
     body: [
       ["p", "A judgment unlocks abstracts of judgment, writs of garnishment, turnover orders, and more. Each reaches different assets in different ways."],
       ["p", "Whether collecting or defending, we know the post-judgment toolkit and how to deploy — or blunt — it."],
-    ],
-  },
-  // DTPA / criminal
-  {
-    slug: "dtpa-laundry-list-violations",
-    title: "The DTPA 'Laundry List': What Counts as Deceptive",
-    excerpt:
-      "The DTPA spells out specific deceptive acts. Knowing the list tells you whether you have a claim.",
-    category: "dtpa",
-    related: ["dtpa", "civil-commercial-litigation"],
-    relatedPosts: ["dtpa-basics-for-consumers"],
-    body: [
-      ["p", "The DTPA's so-called laundry list enumerates deceptive practices — passing off goods, misrepresenting quality or sponsorship, and many more. A claim usually starts by matching the conduct to a listed item."],
-      ["p", "We map the facts to the statute precisely, because the right citation is what makes the demand credible."],
     ],
   },
   {

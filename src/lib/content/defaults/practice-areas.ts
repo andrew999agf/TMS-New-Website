@@ -197,34 +197,6 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
       "Texas plaintiff's litigation attorney. Bank fraud, partnership disputes, and high-stakes business claims prepared for trial so the other side has to take your number seriously.",
   },
   {
-    slug: "dtpa",
-    title: "Deceptive Trade Practices Act (DTPA)",
-    group: "litigation",
-    sort: 5,
-    tagline: "When a business lied to you, Texas law has teeth.",
-    body: [
-      "The Texas Deceptive Trade Practices Act exists because ordinary consumers cannot out-lawyer a company on their own. Used right, it shifts the leverage — and it can multiply damages and shift fees.",
-      "We bring DTPA claims for buyers who were deceived, sold defective goods, or strung along by businesses that counted on them giving up. We also defend businesses against DTPA claims that overreach.",
-      "These cases turn on notice, intent, and proof. We handle each step precisely, because a procedural slip can cost the statute's best remedies.",
-      "One limit, stated plainly so nobody wastes their time: we do not take DTPA claims against vehicle dealerships. That includes car lots, truck dealers, trailer lots, and RV dealers, new or used. It is a large share of the DTPA calls we get and it is not work this firm does — if that is your matter, we will tell you on the first call rather than let you lose weeks.",
-    ],
-    approach:
-      "The DTPA's leverage only matters if the defendant believes you will try the case to a verdict. We build the notice letter and the file to do exactly that.",
-    keywords: [
-      "deceptive",
-      "dtpa",
-      "consumer",
-      "ripped off",
-      "scammed",
-      "defective",
-      "false advertising",
-      "misrepresentation",
-    ],
-    seoTitle: "DTPA Attorney | Texas Deceptive Trade Practices Act Claims",
-    seoDescription:
-      "Texas DTPA attorney. Consumer deception, defective goods, and misrepresentation claims and defense prepared for trial. We do not handle claims against vehicle dealerships.",
-  },
-  {
     slug: "data-center-easements",
     title: "Data Center & Utility Easements",
     group: "litigation",
@@ -647,4 +619,6 @@ export function groupPracticeAreas<T extends { group: string; sort: number }>(
  */
 export const PRACTICE_AREA_REDIRECTS: Record<string, string> = {
   "personal-injury-wrongful-death": "personal-injury",
+  // Withdrawn subject (see src/lib/content/retired.ts); its traffic goes to civil litigation.
+  "dtpa": "civil-commercial-litigation",
 };

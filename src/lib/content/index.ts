@@ -21,6 +21,7 @@ import { PRACTICE_AREAS, type PracticeAreaSeed } from "./defaults/practice-areas
 import { CASE_RESULTS, type CaseResultSeed } from "./defaults/results";
 import { GLOSSARY_TERMS, type GlossaryTermSeed } from "./defaults/glossary";
 import { BLOG_POSTS, type BlogPostSeed } from "./defaults/posts";
+import { isRetiredPractice, isRetiredPost, isRetiredTerm, liveRelated } from "./retired";
 import {
   DEFAULT_COLOR_PALETTE_ID,
   DEFAULT_FONT_PALETTE_ID,
@@ -112,8 +113,9 @@ export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
         .orderBy(asc(paTable.sort)),
     [],
   );
-  if (rows.length) {
-    return rows.map((r) => ({
+  const live = rows.filter((r) => !isRetiredPractice(r.slug));
+  if (live.length) {
+    return live.map((r) => ({
       slug: r.slug,
       title: r.title,
       group: r.group as PracticeAreaSeed["group"],
@@ -128,7 +130,7 @@ export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
       heroFocal: r.heroFocal ?? "center",
     }));
   }
-  return PRACTICE_AREAS;
+  return PRACTICE_AREAS.filter((p) => !isRetiredPractice(p.slug));
 }
 
 export async function getPracticeArea(slug: string): Promise<PracticeAreaView | null> {
@@ -209,7 +211,7 @@ function postFromRow(r: typeof blogPosts.$inferSelect): PostView {
     publishAt: r.publishAt ? r.publishAt.toISOString() : undefined,
     seoTitle: r.seoTitle ?? undefined,
     seoDescription: r.seoDescription ?? undefined,
-    relatedPractices: (r.relatedPractices as string[]) ?? [],
+    relatedPractices: liveRelated(r.relatedPractices as string[]),
     relatedPosts: (r.relatedPosts as string[]) ?? [],
     publishedAtDate: r.publishedAt ?? r.publishAt ?? undefined,
   };
@@ -232,10 +234,11 @@ export async function getPublishedPosts(): Promise<PostView[]> {
         .orderBy(desc(blogPosts.publishAt)),
     [],
   );
-  if (rows.length) return rows.map(postFromRow);
+  if (rows.length) return rows.map(postFromRow).filter((p) => !isRetiredPost(p));
 
   // Fallback to seed: published, or scheduled whose time has arrived.
   return BLOG_POSTS.filter((p) => {
+    if (isRetiredPost(p)) return false;
     if (p.status === "published") return true;
     if (p.status === "scheduled" && p.publishAt) return new Date(p.publishAt) <= now;
     return false;
@@ -247,8 +250,9 @@ export async function getPost(slug: string): Promise<PostView | null> {
     () => db!.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1),
     [],
   );
-  if (rows.length) return postFromRow(rows[0]);
-  return BLOG_POSTS.find((p) => p.slug === slug) ?? null;
+  if (rows.length) { const p = postFromRow(rows[0]); return isRetiredPost(p) ? null : p; }
+  const seed = BLOG_POSTS.find((p) => p.slug === slug) ?? null;
+  return seed && !isRetiredPost(seed) ? seed : null;
 }
 
 export async function getPostsForPractice(slug: string, limit = 3): Promise<PostView[]> {
@@ -263,16 +267,16 @@ export async function getPostsForPractice(slug: string, limit = 3): Promise<Post
 export async function getGlossaryTerms(): Promise<GlossaryTermSeed[]> {
   const rows = await safe(() => db!.select().from(glossaryTerms).orderBy(asc(glossaryTerms.term)), []);
   if (rows.length) {
-    return rows.map((r) => ({
+    return rows.filter((r) => !isRetiredTerm(r.slug)).map((r) => ({
       slug: r.slug,
       term: r.term,
       definition: r.definition,
       hypothetical: r.hypothetical ?? "",
-      relatedPractices: (r.relatedPractices as string[]) ?? [],
+      relatedPractices: liveRelated(r.relatedPractices as string[]),
       aliases: (r.aliases as string[]) ?? [],
     }));
   }
-  return [...GLOSSARY_TERMS].sort((a, b) => a.term.localeCompare(b.term));
+  return GLOSSARY_TERMS.filter((t) => !isRetiredTerm(t.slug)).map((t) => ({ ...t, relatedPractices: liveRelated(t.relatedPractices) })).sort((a, b) => a.term.localeCompare(b.term));
 }
 
 export async function getGlossaryTerm(slug: string): Promise<GlossaryTermSeed | null> {

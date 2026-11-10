@@ -101,15 +101,6 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     aliases: ["uninsured motorist", "underinsured motorist"],
   },
   {
-    slug: "dtpa",
-    term: "DTPA",
-    definition:
-      "The Texas Deceptive Trade Practices–Consumer Protection Act, which protects consumers from false, misleading, or deceptive business practices and can allow recovery of additional damages and attorney's fees.",
-    hypothetical:
-      "A dealer sells a truck as 'never wrecked' when it had major collision damage. The buyer sues under the DTPA, which may let him recover more than his actual loss because the misrepresentation was knowing.",
-    relatedPractices: ["dtpa"],
-  },
-  {
     slug: "receivership",
     term: "Receivership",
     definition:
@@ -262,7 +253,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Also called exemplary damages — money awarded not to compensate but to punish especially reckless or malicious conduct and deter it. Texas caps them in most cases.",
     hypothetical:
       "A company knowingly sells a dangerous product to cut costs. Beyond compensating the injured buyer, the jury awards punitive damages to punish the deliberate disregard for safety.",
-    relatedPractices: ["personal-injury", "wrongful-death", "dtpa"],
+    relatedPractices: ["personal-injury", "wrongful-death"],
     aliases: ["exemplary damages"],
   },
   {

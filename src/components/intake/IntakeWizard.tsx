@@ -258,6 +258,7 @@ export function IntakeWizard({
   // branch's own questions, then the remaining shared steps.
   const allSteps: Step[] = (() => {
     if (!branch) return [];
+    if (branch.declineOnly) return branch.steps; // told at once; no details asked
     const common = COMMON_STEPS
       .map((s) => branch.commonOverrides?.[s.id] ?? s)
       .filter((s) => !s.skipForBranches?.includes(branch.id));
