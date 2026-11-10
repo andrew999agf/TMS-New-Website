@@ -188,9 +188,6 @@ export type Branch = {
   /** Per-branch replacements for shared COMMON_STEPS, keyed by step id
    *  (e.g. reword the "conflict" or "urgency" step for this matter type). */
   commonOverrides?: Record<string, Step>;
-  /** A dead-end branch (a matter type the firm turns away): only its own
-   *  steps run — no contact details, nothing shared, nothing submitted. */
-  declineOnly?: boolean;
 };
 
 /** Reused help text guiding a prospect to identify the exact court. */
@@ -1406,37 +1403,6 @@ export const BRANCHES: Branch[] = [
             help: "Appellate deadlines are short — this helps us flag urgency.",
           },
           { name: "representedAtTrial", label: "Were you represented at trial?", type: "yesno" },
-        ],
-      },
-    ],
-  },
-  // First click, zero time: a matter type the firm does not take is told so at
-  // once and pointed to the bar's referral services. No form, no call.
-  {
-    id: "vehicle",
-    label: "A vehicle I bought or leased",
-    blurb: "A dispute over a car, truck, trailer or RV purchase",
-    practiceSlug: "civil-commercial-litigation",
-    summaryNoun: "a vehicle purchase dispute",
-    declineOnly: true,
-    keywords: [
-      "car", "truck", "suv", "vehicle", "auto", "dealer", "dealership", "car lot", "used car", "new car", "bought a car",
-      "lemon", "lemon law", "warranty", "extended warranty", "odometer", "title washing", "salvage title", "financing",
-      "repossession", "repo", "trailer", "rv", "motorhome", "camper", "boat", "motorcycle", "as is", "buy here pay here",
-      "scammed", "ripped off", "deceptive trade", "dtpa", "consumer protection",
-    ],
-    steps: [
-      {
-        id: "decline",
-        title: "We don't take this kind of matter",
-        fields: [
-          {
-            name: "vehicleDecline",
-            label: "Not something this firm handles",
-            type: "notice",
-            blocking: true,
-            help: "Disputes over the purchase or lease of a personal vehicle are not work this firm does, so rather than take your time we're saying so now. Two services will match you with an attorney who does: the State Bar of Texas Lawyer Referral & Information Service, (800) 252-9690, texasbar.com; and in Tarrant County, the Tarrant County Bar Association Lawyer Referral Service, (817) 336-4101, tarrantbar.org. If you were hurt in a wreck, or your dispute is about a business or commercial vehicle, go back and choose the matter that fits.",
-          },
         ],
       },
     ],
