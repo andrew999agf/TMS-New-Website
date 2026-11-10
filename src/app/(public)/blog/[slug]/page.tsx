@@ -14,9 +14,8 @@ import {
 import { annotateGlossary } from "@/lib/content/glossary-annotate";
 import { formatDate, readingTime } from "@/lib/utils";
 import { FIRM } from "@/lib/firm";
-const FIRM_NAME = FIRM.name; const BAR_NO = FIRM.attorney.barNumber;
-import { SITE_URL, ORG_ID, ATTORNEY_ID, stripFirmSuffix, clampTitle, clampDescription } from "@/lib/seo";
-import { getLeadMember } from "@/lib/content";
+const FIRM_NAME = FIRM.name;
+import { SITE_URL, ORG_ID, stripFirmSuffix, clampTitle, clampDescription } from "@/lib/seo";
 
 export async function generateStaticParams() {
   const posts = await getPublishedPosts();
@@ -72,7 +71,7 @@ export default async function PostPage({
       hypothetical: t.hypothetical,
     }));
 
-  const [category, lead] = await Promise.all([post.category ? getPracticeArea(post.category) : Promise.resolve(null), getLeadMember()]);
+  const category = post.category ? await getPracticeArea(post.category) : null;
 
   // Hand-picked related posts first; otherwise the newest in the same
   // practice area (or sharing a tag), so no article is a dead end.
@@ -98,7 +97,8 @@ export default async function PostPage({
           url,
           headline: post.title,
           description: post.excerpt,
-          author: lead && post.author === lead.name ? { "@id": ATTORNEY_ID } : { "@type": "Person", name: post.author },
+          // Posts are the firm's voice: authored and published by the firm.
+          author: { "@id": ORG_ID },
           publisher: { "@id": ORG_ID },
           datePublished: post.publishAt,
           dateModified: updated ?? post.publishAt,
@@ -112,7 +112,7 @@ export default async function PostPage({
       />
       <PageHero eyebrow={category?.title ?? "Insights"} title={post.title} bgImage={post.bannerImage} focal={post.bannerFocal}>
         <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[var(--c-dark-ink-muted)]">
-          <span>{post.author}</span>
+          <span>{FIRM_NAME}</span>
           {post.publishAt && <span>· {formatDate(post.publishAt)}</span>}
           {updated && <span>· Updated {formatDate(updated)}</span>}
           <span>· {readingTime(post.body)}</span>
@@ -134,14 +134,6 @@ export default async function PostPage({
         <div className="mt-10 border-t border-[var(--c-border)] pt-6">
           <ShareButtons title={post.title} />
         </div>
-
-        {/* Who wrote it — the attorney's own page carries the credentials. */}
-        {lead && post.author === lead.name && (
-          <div className="mt-10 border-t border-[var(--c-border)] pt-6 text-sm">
-            <p className="eyebrow eyebrow-muted mb-2">About the author</p>
-            <p><Link href={`/about/${lead.slug}`} className="font-[family-name:var(--font-display)] text-lg hover:text-[var(--c-accent)]">{lead.name}</Link><span className="text-[var(--c-ink-muted)]"> — {lead.role}, {FIRM_NAME}. Texas Bar No. {BAR_NO}.</span></p>
-          </div>
-        )}
 
         {(newer || older) && (
           <nav aria-label="More articles" className="mt-10 flex flex-wrap justify-between gap-4 border-t border-[var(--c-border)] pt-6 text-sm">
