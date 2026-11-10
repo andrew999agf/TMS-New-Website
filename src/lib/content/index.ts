@@ -15,13 +15,14 @@ import {
   intakeRecipients as intakeRecipientsTable,
   type CaseResult,
 } from "@/db/schema";
-import { and, asc, desc, eq, inArray, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { BLOCK_DEFAULTS } from "./defaults/blocks";
 import { PRACTICE_AREAS, type PracticeAreaSeed } from "./defaults/practice-areas";
 import { CASE_RESULTS, type CaseResultSeed } from "./defaults/results";
 import { GLOSSARY_TERMS, type GlossaryTermSeed } from "./defaults/glossary";
 import { BLOG_POSTS, type BlogPostSeed } from "./defaults/posts";
 import { isRetiredPractice, isRetiredPost, isRetiredTerm, liveRelated } from "./retired";
+import { POST_CORRECTIONS, GLOSSARY_CORRECTIONS, encodedVariants } from "./corrections";
 import {
   DEFAULT_COLOR_PALETTE_ID,
   DEFAULT_FONT_PALETTE_ID,
@@ -217,8 +218,43 @@ function postFromRow(r: typeof blogPosts.$inferSelect): PostView {
   };
 }
 
+/**
+ * Apply the legal-accuracy corrections (./corrections.ts) to the posts stored
+ * in the database: one sentence swapped per entry, only where the old sentence
+ * is still present, so a post edited in the admin keeps its edits. Runs once —
+ * a settings marker records the list version — and never blocks a page if it
+ * fails.
+ */
+const CORRECTIONS_MARKER = `blog-corrections:${POST_CORRECTIONS.length}+${GLOSSARY_CORRECTIONS.length}:2026-11`;
+let correctionsRun: Promise<void> | null = null;
+export function ensureBlogCorrections(): Promise<void> {
+  if (!db) return Promise.resolve();
+  correctionsRun ??= (async () => {
+    const done = await db!.select({ key: settings.key }).from(settings).where(eq(settings.key, CORRECTIONS_MARKER)).limit(1);
+    if (done.length) return;
+    let changed = 0;
+    for (const c of POST_CORRECTIONS) {
+      for (const find of encodedVariants(c.find)) {
+        const r = c.field === "body"
+          ? await db!.execute(sql`UPDATE blog_posts SET body = replace(body, ${find}, ${c.replace}), updated_at = now() WHERE slug = ${c.slug} AND position(${find} in body) > 0`)
+          : await db!.execute(sql`UPDATE blog_posts SET excerpt = replace(excerpt, ${find}, ${c.replace}), seo_description = replace(coalesce(seo_description, ''), ${find}, ${c.replace}), updated_at = now() WHERE slug = ${c.slug} AND position(${find} in excerpt) > 0`);
+        changed += Number((r as { rowCount?: number }).rowCount ?? (r as { count?: number }).count ?? 0);
+      }
+    }
+    for (const c of GLOSSARY_CORRECTIONS) {
+      for (const find of encodedVariants(c.find)) {
+        const r = await db!.execute(sql`UPDATE glossary_terms SET definition = replace(definition, ${find}, ${c.replace}) WHERE slug = ${c.slug} AND position(${find} in definition) > 0`);
+        changed += Number((r as { rowCount?: number }).rowCount ?? (r as { count?: number }).count ?? 0);
+      }
+    }
+    await db!.insert(settings).values({ key: CORRECTIONS_MARKER, value: { applied: changed, at: new Date().toISOString() } }).onConflictDoNothing();
+  })().catch((err) => { console.error("[content] blog corrections:", err); correctionsRun = null; });
+  return correctionsRun;
+}
+
 /** Public list: only posts that should currently be visible to the world. */
 export async function getPublishedPosts(): Promise<PostView[]> {
+  await ensureBlogCorrections();
   const now = new Date();
   const rows = await safe(
     () =>
@@ -246,6 +282,7 @@ export async function getPublishedPosts(): Promise<PostView[]> {
 }
 
 export async function getPost(slug: string): Promise<PostView | null> {
+  await ensureBlogCorrections();
   const rows = await safe(
     () => db!.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1),
     [],
@@ -265,6 +302,7 @@ export async function getPostsForPractice(slug: string, limit = 3): Promise<Post
 /* ---- Glossary ---- */
 
 export async function getGlossaryTerms(): Promise<GlossaryTermSeed[]> {
+  await ensureBlogCorrections();
   const rows = await safe(() => db!.select().from(glossaryTerms).orderBy(asc(glossaryTerms.term)), []);
   if (rows.length) {
     return rows.filter((r) => !isRetiredTerm(r.slug)).map((r) => ({

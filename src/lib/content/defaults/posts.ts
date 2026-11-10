@@ -222,7 +222,7 @@ const eduRaw: EduInput[] = [
       ["h2", "Why it matters"],
       ["p", "A granted motion can dismiss claims entirely. We have used it to remove a client from multi-million-dollar litigation. But these motions are won on the record built long before they are filed."],
       ["h2", "What it takes"],
-      ["p", "The moving party must show there is nothing for a jury to decide. That requires evidence, not argument — which is why discovery and motion practice are inseparable."],
+      ["p", "In a traditional motion, the moving party must show there is nothing for a jury to decide. That requires evidence, not argument — which is why discovery and motion practice are inseparable."],
     ],
   },
   {
@@ -233,8 +233,8 @@ const eduRaw: EduInput[] = [
     category: "civil-commercial-litigation",
     related: ["civil-commercial-litigation"],
     body: [
-      ["p", "Texas gives defendants a powerful tool: the no-evidence motion for summary judgment. It says, in effect, 'you have had time to find your proof; show it or the claim is gone.'"],
-      ["p", "The claimant must then point to actual evidence on each challenged element. If it cannot, the court dismisses the claim. This is why a plaintiff who files without proof, hoping to find it later, takes a serious risk."],
+      ["p", "Texas gives the party that does not carry the burden of proof — usually the defendant — a powerful tool: the no-evidence motion for summary judgment. It says, in effect, 'you have had time to find your proof; show it or the claim is gone.'"],
+      ["p", "The claimant must then point to actual evidence on each challenged element. If it cannot, the court must grant the motion and the claim is over. This is why a plaintiff who files without proof, hoping to find it later, takes a serious risk."],
     ],
   },
   {
@@ -282,7 +282,7 @@ const eduRaw: EduInput[] = [
     related: ["civil-commercial-litigation", "business-related-matters"],
     body: [
       ["p", "When someone breaks a contract, the law aims to put you where performance would have. That usually means the benefit of the bargain, not punishment."],
-      ["p", "Some contracts shift attorney's fees; many do not. Knowing the real recovery before you sue keeps expectations — and strategy — grounded."],
+      ["p", "Attorney's fees are a separate question. In Texas, a party who wins a claim on an oral or written contract can generally recover reasonable attorney's fees by statute, even when the contract says nothing about fees (Civil Practice and Remedies Code § 38.001). The contract itself can also shift fees, including to a defendant who wins. Knowing the real recovery before you sue keeps expectations — and strategy — grounded."],
     ],
   },
   {
@@ -318,8 +318,8 @@ const eduRaw: EduInput[] = [
     category: "appellate-law",
     related: ["appellate-law"],
     body: [
-      ["p", "When you appeal a money judgment, the winner can normally try to collect immediately. A supersedeas bond suspends that, protecting both sides during the appeal."],
-      ["p", "If you win the appeal, the bond comes back. Getting the amount and the security right at the outset is part of the work."],
+      ["p", "Filing an appeal does not, by itself, stop the winner from collecting on a money judgment. A supersedeas bond suspends that, protecting both sides during the appeal."],
+      ["p", "The amount is set by statute: the compensatory damages awarded, interest for the estimated length of the appeal, and costs — capped at the lesser of half the judgment debtor's net worth or $25 million (Civil Practice and Remedies Code § 52.006). If you win the appeal, the bond is released. Getting the amount and the security right at the outset is part of the work."],
     ],
   },
   {
@@ -428,7 +428,7 @@ const eduRaw: EduInput[] = [
     category: "civil-commercial-litigation",
     related: ["civil-commercial-litigation", "plaintiffs-litigation"],
     body: [
-      ["p", "Fraud requires a knowing misrepresentation of a material fact, intended to be relied on, that causes harm. A mere unkept promise is usually not enough."],
+      ["p", "Fraud requires a false statement of material fact, made knowing it was false or recklessly without knowing whether it was true, intended to be relied on, that the other side actually and justifiably relied on to its harm. A mere unkept promise is usually not enough — unless the person never intended to keep it when it was made."],
       ["p", "Because the bar is high, fraud cases live or die on evidence of intent — which is exactly what disciplined discovery is built to find."],
     ],
   },
@@ -440,7 +440,7 @@ const eduRaw: EduInput[] = [
     category: "civil-commercial-litigation",
     related: ["civil-commercial-litigation", "business-related-matters"],
     body: [
-      ["p", "Partners and certain co-owners owe one another fiduciary duties — loyalty, candor, and fair dealing. Self-dealing breaches those duties."],
+      ["p", "By statute, a partner owes the partnership and the other partners a duty of loyalty and a duty of care, and must carry them out in good faith (Business Organizations Code §§ 152.204–152.206). Self-dealing and competing with the partnership breach the duty of loyalty."],
       ["p", "Where a partner has lined his own pockets at the venture's expense, the remedies can be significant, including disgorgement."],
     ],
   },
@@ -464,7 +464,7 @@ const eduRaw: EduInput[] = [
     category: "business-related-matters",
     related: ["business-related-matters", "civil-commercial-litigation"],
     body: [
-      ["p", "Texas will enforce a non-compete that is reasonable in time, area, and scope and tied to a legitimate interest. Overbroad agreements get narrowed or struck."],
+      ["p", "Texas will enforce a non-compete that is part of an otherwise enforceable agreement and reasonable in time, geographic area, and scope of activity — no broader than needed to protect goodwill or another business interest (Business & Commerce Code § 15.50). An overbroad covenant is not thrown out: the court must rewrite it to a reasonable scope and enforce it as rewritten, though no damages can be awarded for conduct before the rewrite (§ 15.51(c))."],
       ["p", "Whether you are enforcing one or fighting one, the analysis is fact-specific and worth getting right before the dispute escalates."],
     ],
   },
@@ -489,7 +489,7 @@ const eduRaw: EduInput[] = [
     category: "business-formations-transactions",
     related: ["business-formations-transactions", "civil-commercial-litigation"],
     body: [
-      ["p", "An operating agreement governs who decides what, how profits split, and what happens when an owner wants out. Skipping it means defaulting to statutes that may not fit."],
+      ["p", "Texas law calls an LLC's operating agreement a “company agreement” (Business Organizations Code § 101.052). It governs who decides what, how profits split, and what happens when an owner wants out. Skipping it means defaulting to statutes that may not fit."],
       ["p", "We draft these documents as a litigator reads them — looking for the ambiguity a future opponent would exploit, and closing it."],
     ],
   },
@@ -550,7 +550,7 @@ const eduRaw: EduInput[] = [
     category: "estate-succession-planning",
     related: ["estate-succession-planning"],
     body: [
-      ["p", "A durable power of attorney and a medical directive decide who manages your affairs and your care if you are incapacitated. Without them, your family may need a court."],
+      ["p", "Three documents do the work. A durable power of attorney names who manages your finances and property. A medical power of attorney names who makes health-care decisions when you cannot. A directive to physicians — the “living will” — states your wishes about life-sustaining treatment. Without them, your family may need a court."],
       ["p", "These documents are simple to sign and invaluable when needed. They belong in every plan."],
     ],
   },
@@ -636,7 +636,7 @@ const eduRaw: EduInput[] = [
     category: "foreclosures",
     related: ["foreclosures"],
     body: [
-      ["p", "Most Texas foreclosures are non-judicial: notice of default, notice of sale, then a sale on the first Tuesday of the month. It can happen in a matter of weeks."],
+      ["p", "Most Texas foreclosures are non-judicial. For a home, the servicer must send a notice of default giving at least 20 days to cure, then a notice of sale at least 21 days before the sale, and the sale is held at the courthouse on the first Tuesday of the month (Property Code § 51.002). From the first notice to the auction can be as little as about six weeks."],
       ["p", "By the time many people call a lawyer, the sale is close. The earlier you act, the more options remain — including litigation that can reach an appeal."],
     ],
   },
@@ -661,7 +661,7 @@ const eduRaw: EduInput[] = [
     category: "criminal-defense",
     related: ["criminal-defense"],
     body: [
-      ["p", "A criminal case moves from arrest and bond through charging, pretrial hearings, and, if it does not resolve, trial. The State carries the burden at every step."],
+      ["p", "A criminal case moves from arrest and bond through charging, pretrial hearings, and, if it does not resolve, trial. At trial the State carries the burden of proving every element beyond a reasonable doubt (Penal Code § 2.01)."],
       ["p", "A case prepared for a jury is evaluated very differently by a prosecutor than one expected to fold. Preparation is leverage."],
     ],
   },
@@ -723,7 +723,7 @@ const eduRaw2027: EduInput[] = [
     related: ["civil-commercial-litigation", "plaintiffs-litigation"],
     body: [
       ["p", "When conduct threatens immediate, irreparable harm, a temporary restraining order can stop it within days, followed by a temporary injunction that holds through trial."],
-      ["p", "These remedies demand proof on a short fuse — a likely-to-prevail claim, real harm, and no adequate remedy in money alone. We build that record fast."],
+      ["p", "These remedies demand proof on a short fuse — a valid cause of action, a probable right to the relief sought, and a probable, imminent injury that money cannot adequately repair. We build that record fast."],
       ["p", `Injunctive relief is litigation at speed. We treat it like the opening of a case we are ${paLink("civil-commercial-litigation", "prepared to try")}.`],
     ],
   },
@@ -786,7 +786,7 @@ const eduRaw2027: EduInput[] = [
     category: "appellate-law",
     related: ["appellate-law"],
     body: [
-      ["p", "Most orders are not appealable until final judgment, but Texas allows interlocutory appeals of specific rulings — temporary injunctions, certain dismissals, and more."],
+      ["p", "Most orders are not appealable until final judgment, but a statute lists specific rulings that can be appealed right away — among them orders granting or refusing a temporary injunction, appointing a receiver, ruling on a special appearance, or denying a motion to dismiss under the Texas Citizens Participation Act (Civil Practice and Remedies Code § 51.014)."],
       ["p", "Recognizing an appealable order, and the tight deadline that comes with it, can be decisive. We watch for them throughout a case."],
     ],
   },
@@ -795,11 +795,11 @@ const eduRaw2027: EduInput[] = [
     slug: "comparative-fault-in-texas",
     title: "Comparative Fault: How Blame Is Divided",
     excerpt:
-      "In Texas, being partly at fault does not always end your claim — but cross fifty-one percent and it does.",
+      "In Texas, being partly at fault does not always end your claim — but be found more than fifty percent responsible and it does.",
     category: "personal-injury",
     related: ["personal-injury"],
     body: [
-      ["p", "Texas uses modified comparative fault. Your recovery is reduced by your share of responsibility, and barred entirely if you are more than fifty percent at fault."],
+      ["p", "Texas calls it proportionate responsibility. Your recovery is reduced by your percentage of responsibility, and barred entirely if that percentage is greater than fifty (Civil Practice and Remedies Code §§ 33.001, 33.012)."],
       ["p", "That makes the fight over percentages central. We build the liability case to keep fault where it belongs — on the other side."],
     ],
   },
@@ -836,7 +836,7 @@ const eduRaw2027: EduInput[] = [
     category: "business-related-matters",
     related: ["business-related-matters", "civil-commercial-litigation"],
     body: [
-      ["p", "Texas sets a high bar to pierce the corporate veil, generally requiring actual fraud for direct personal benefit. But the bar is not unreachable."],
+      ["p", "Texas sets a high bar to pierce the corporate veil. To hold an owner liable on a company's contract debt, a creditor must show the owner used the company to commit an actual fraud on the creditor, primarily for the owner's direct personal benefit (Business Organizations Code § 21.223; § 101.002 applies the same rule to LLCs). But the bar is not unreachable."],
       ["p", "Whether you are protecting owners or pursuing them, the analysis turns on how the entity was actually run. We litigate both sides."],
     ],
   },
@@ -849,7 +849,7 @@ const eduRaw2027: EduInput[] = [
     related: ["business-formations-transactions", "business-related-matters"],
     body: [
       ["p", "A series LLC can wall off the assets and liabilities of each series from the others — attractive for owners holding multiple properties or ventures."],
-      ["p", "The protection depends on strict separateness in records and operations. We set them up to actually hold up if tested."],
+      ["p", "The protection is conditional: each series must keep records that account for its assets separately, and both the company agreement and the certificate of formation must state the limitation (Business Organizations Code § 101.602). We set them up to actually hold up if tested."],
     ],
   },
   {
@@ -875,7 +875,7 @@ const eduRaw2027: EduInput[] = [
     relatedPosts: ["what-to-expect-in-probate"],
     body: [
       ["p", "Independent administration lets an executor settle the estate with minimal court involvement — faster and cheaper. Dependent administration requires court approval at most steps."],
-      ["p", "A well-drafted will requests independent administration. Without one, the estate may be stuck in the costlier process."],
+      ["p", "A well-drafted will provides for independent administration. Without that language — or without a will at all — it is still available if every distributee agrees and the court approves (Estates Code §§ 401.002–401.003). If they cannot agree, the estate may be stuck in the costlier process."],
     ],
   },
   {
@@ -912,7 +912,7 @@ const eduRaw2027: EduInput[] = [
     related: ["consumer-debt-defense"],
     relatedPosts: ["sued-by-a-debt-buyer"],
     body: [
-      ["p", "The Fair Debt Collection Practices Act bars harassment, false statements, and unfair practices by debt collectors. Violations can entitle you to statutory damages and fees."],
+      ["p", "The Fair Debt Collection Practices Act bars harassment, false statements, and unfair practices by debt collectors. Violations can entitle you to statutory damages and fees. The federal act generally covers third-party collectors and debt buyers, not the original creditor collecting its own account; the Texas Debt Collection Act (Finance Code chapter 392) reaches creditors too."],
       ["p", "A collector who breaks the rules hands you leverage. We use FDCPA violations both as a shield and, where appropriate, a sword."],
     ],
   },
@@ -924,8 +924,8 @@ const eduRaw2027: EduInput[] = [
     category: "consumer-debt-defense",
     related: ["consumer-debt-defense"],
     body: [
-      ["p", "Most Texas debt claims must be brought within four years of default. Suit filed after that is time-barred — a complete defense if raised."],
-      ["p", "Be careful: certain actions can restart the clock. Before you pay or promise anything on an old debt, know where the deadline stands."],
+      ["p", "Most Texas debt claims must be brought within four years after the claim accrues, usually the default (Civil Practice and Remedies Code § 16.004). Suit filed after that is time-barred — a complete defense if raised."],
+      ["p", "Be careful what you sign. A written, signed acknowledgment of an old debt can take away the limitations defense (Civil Practice and Remedies Code § 16.065). A debt buyer, though, may not sue on a time-barred consumer debt at all, and a payment or new promise does not revive it (Finance Code § 392.307). Before you pay or sign anything on an old debt, know where the deadline stands."],
     ],
   },
   {

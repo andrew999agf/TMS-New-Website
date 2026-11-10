@@ -131,7 +131,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "fiduciary",
     term: "Fiduciary Duty",
     definition:
-      "The highest legal duty of trust, requiring a person who acts on another's behalf — like a partner, trustee, or executor — to act with loyalty and in the other's best interest, not their own.",
+      "The highest legal duty of trust, requiring a person who acts on another's behalf — like a trustee, executor, or agent under a power of attorney — to act with loyalty and in the other's best interest, not their own.",
     hypothetical:
       "An executor quietly sells estate land to himself at a discount. Because he owes a fiduciary duty to the beneficiaries, that self-dealing breaches his duty and can be undone.",
     relatedPractices: ["probate", "civil-commercial-litigation", "business-related-matters"],
@@ -214,7 +214,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "beyond-reasonable-doubt",
     term: "Beyond a Reasonable Doubt",
     definition:
-      "The high standard of proof required to convict in a criminal case — enough certainty that a reasonable person would not hesitate to rely on it in their most important affairs.",
+      "The standard of proof required to convict in a criminal case, and the highest in the law: every element of the offense must be proved beyond a reasonable doubt (Penal Code § 2.01). Texas does not give jurors a definition of the phrase; each juror decides what it means.",
     hypothetical:
       "The jury thinks the defendant probably did it, but has a real, reasoned doubt. Because 'probably' is not 'beyond a reasonable doubt,' they must acquit.",
     relatedPractices: ["criminal-defense"],
@@ -250,7 +250,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "punitive-damages",
     term: "Punitive Damages",
     definition:
-      "Also called exemplary damages — money awarded not to compensate but to punish especially reckless or malicious conduct and deter it. Texas caps them in most cases.",
+      "Called exemplary damages in Texas — money awarded not to compensate but to punish and deter. They require clear and convincing proof of fraud, malice, or gross negligence, and the amount is capped in most cases (Civil Practice and Remedies Code §§ 41.003, 41.008).",
     hypothetical:
       "A company knowingly sells a dangerous product to cut costs. Beyond compensating the injured buyer, the jury awards punitive damages to punish the deliberate disregard for safety.",
     relatedPractices: ["personal-injury", "wrongful-death"],
@@ -269,7 +269,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "fraud",
     term: "Fraud",
     definition:
-      "A knowing misrepresentation of a material fact, made to induce reliance, that causes harm to the person who reasonably relies on it.",
+      "A false statement of material fact, made knowingly or recklessly to induce reliance, that causes harm to the person who justifiably relies on it.",
     hypothetical:
       "An investor is told a company is profitable when the promoter knows it is broke. Relying on the lie, the investor buys in and loses everything — the makings of a fraud claim.",
     relatedPractices: ["civil-commercial-litigation", "plaintiffs-litigation"],
@@ -305,7 +305,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "turnover-order",
     term: "Turnover Order",
     definition:
-      "A post-judgment order requiring a debtor to turn over non-exempt property that cannot be reached by ordinary means, sometimes through a receiver.",
+      "A post-judgment order requiring a debtor to turn over non-exempt property to satisfy the judgment, sometimes through a court-appointed receiver (Civil Practice and Remedies Code § 31.002).",
     hypothetical:
       "A judgment debtor hides income in hard-to-reach business interests. The creditor obtains a turnover order forcing those assets to be delivered toward the debt.",
     relatedPractices: ["commercial-debt-collection-defense", "receivership-matters"],
@@ -399,7 +399,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     slug: "will",
     term: "Will",
     definition:
-      "A signed, witnessed document directing how your property is distributed after death and naming an executor and guardians. Without one, the state's intestacy rules decide.",
+      "A signed document, attested by two witnesses unless it is written entirely in your own handwriting, directing how your property is distributed after death and naming an executor and guardians (Estates Code §§ 251.051–251.052). Without one, the state's intestacy rules decide.",
     hypothetical:
       "A young couple signs wills naming guardians for their children and leaving everything to each other. If something happens, their wishes — not a court guessing — control.",
     relatedPractices: ["estate-succession-planning", "probate"],
