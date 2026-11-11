@@ -28,6 +28,11 @@ export type IntakePartner = {
   slug: string;
   name: string;
   website: string;
+  /** The starting logo (a file under /public). The admin can upload a different one. */
+  logo?: string;
+  /** Their contact details as first given: one office per block, blocks
+   *  separated by a blank line. The admin can edit this text. */
+  contact?: string;
   areas: PartnerArea[];
 };
 
@@ -44,7 +49,15 @@ export const PARTNER_AREAS: PartnerArea[] = [
 ];
 
 export const INTAKE_PARTNERS: IntakePartner[] = [
-  { slug: "texas-mexico-law", name: "Texas Mexico Law", website: "https://texasmexicolaw.com", areas: PARTNER_AREAS },
+  {
+    slug: "texas-mexico-law", name: "Texas Mexico Law", website: "https://texasmexicolaw.com",
+    logo: "/partners/texas-mexico-law.png",
+    contact: [
+      "800 W Weatherford St,\nFort Worth, TX, United States\nCriminal Phone: (817) 335-2331\nEmail: phillip@texasmexicolaw.com",
+      "1550 West Berry St,\nFort Worth, TX, 76110\nImmigration Phone: (817) 546-7320\nEmail: rocio@texasmexicolaw.com",
+    ].join("\n\n"),
+    areas: PARTNER_AREAS,
+  },
 ];
 
 export function getIntakePartner(slug: string | null | undefined): IntakePartner | null {

@@ -1,7 +1,7 @@
 import { INTAKE_FIELDS, fieldLabel, formatAnswerValue } from "./config";
 
 // Internal/technical keys that shouldn't appear in the readable sheet.
-const HIDE = new Set(["consent", "company", "turnstileToken", "referrer", "resumeToken", "website", "description"]);
+const HIDE = new Set(["consent", "company", "turnstileToken", "referrer", "resumeToken", "website", "description", "partnerSlug"]);
 
 /**
  * A clean, readable "Field, Answer" spreadsheet of one submission for the intake

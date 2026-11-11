@@ -11,6 +11,7 @@ import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
 import { brandedEmailHtml } from "@/lib/email-template";
 import { getIntakePartner, partnerPath } from "@/lib/intake/partners";
 import { getPartnerContacts, savePartnerContacts, MAX_PARTNER_CONTACTS, type PartnerContact } from "@/lib/intake/partner-contacts";
+import { updatePartnerProfile, MAX_PARTNER_CONTACT_CHARS } from "@/lib/intake/partner-profile";
 
 const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -97,7 +98,8 @@ export async function sendPartnerLink(input: { partner: string; id?: string }): 
     </table>
     <p style="margin:0 0 16px">The form takes about three minutes and has an <strong>English / Espa&ntilde;ol</strong> switch at the top.</p>
     <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>What happens next.</strong> Each submission goes straight to our intake team, and you are copied on the notice so you know it arrived. We follow up with the person directly.</p>
-    <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>`;
+    <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>
+    <p style="margin:18px 0 0;padding-top:12px;border-top:1px solid ${colors.border};color:${colors.inkMuted};font-size:12px;line-height:1.6">${esc(firmName)} and ${esc(partner.name)} are separate, independent law firms and are not a partnership.</p>`;
 
   const sentIds: string[] = [];
   let lastFailure = "";
@@ -119,4 +121,48 @@ export async function sendPartnerLink(input: { partner: string; id?: string }): 
   if (sentIds.length === targets.length) return { ok: true, message: targets.length === 1 ? `Sent to ${targets[0].name || targets[0].email}.` : `Sent to all ${targets.length} people.` };
   if (sentIds.length === 0) return { ok: false, error: lastFailure || "The email could not be sent. Check the email settings." };
   return { ok: false, error: `Sent to ${sentIds.length} of ${targets.length}. ${lastFailure}`.trim() };
+}
+
+/**
+ * The partner's logo on its intake form. `url` is the address of an image the
+ * admin just uploaded; "" shows no logo; null goes back to the starting logo.
+ */
+export async function savePartnerLogo(input: { partner: string; url: string | null }): Promise<Result> {
+  const session = await requireAdmin();
+  const partner = getIntakePartner(input.partner);
+  if (!partner) return { ok: false, error: "Unknown partner." };
+  let url = input.url;
+  if (typeof url === "string" && url !== "") {
+    url = url.trim();
+    let parsed: URL | null = null;
+    try { parsed = new URL(url); } catch { /* not a web address */ }
+    if (!parsed || !/^https?:$/.test(parsed.protocol) || url.length > 1000) return { ok: false, error: "That upload didn't return a usable image address. Try again." };
+  }
+  try {
+    await updatePartnerProfile(partner.slug, { logoUrl: url });
+    await audit(session.email, "update", "intake-partner-profile", partner.slug, url === null ? `Put back the original ${partner.name} logo` : url === "" ? `Removed the ${partner.name} logo` : `Uploaded a new ${partner.name} logo`);
+    revalidatePath("/admin/intake");
+    revalidatePath(partnerPath(partner.slug));
+    return { ok: true, message: url === null ? "The original logo is back." : url === "" ? "Logo removed. Their name shows in its place." : "Logo saved." };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** The partner's contact details as shown at the bottom of its intake form. */
+export async function savePartnerContactDetails(input: { partner: string; text: string }): Promise<Result> {
+  const session = await requireAdmin();
+  const partner = getIntakePartner(input.partner);
+  if (!partner) return { ok: false, error: "Unknown partner." };
+  const text = String(input.text ?? "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (text.length > MAX_PARTNER_CONTACT_CHARS) return { ok: false, error: `Keep it under ${MAX_PARTNER_CONTACT_CHARS} characters.` };
+  try {
+    await updatePartnerProfile(partner.slug, { contact: text });
+    await audit(session.email, "update", "intake-partner-profile", partner.slug, `Updated the ${partner.name} contact details`);
+    revalidatePath("/admin/intake");
+    revalidatePath(partnerPath(partner.slug));
+    return { ok: true, message: "Contact details saved." };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }

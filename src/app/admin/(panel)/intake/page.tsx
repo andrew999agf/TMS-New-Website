@@ -23,6 +23,8 @@ import { PartnerIntakeTabs, PartnerLinkCard, type PartnerTab } from "@/component
 import { SITE_URL } from "@/lib/seo";
 import { PartnerContacts } from "@/components/admin/PartnerContacts";
 import { getPartnerContacts } from "@/lib/intake/partner-contacts";
+import { PartnerProfile } from "@/components/admin/PartnerProfile";
+import { getPartnerProfile } from "@/lib/intake/partner-profile";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -174,6 +176,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   const shownRows = activePartner ? rows.filter((r) => partnerOfAnswers(r.answers)?.slug === activePartner.slug) : rows;
   const activeTab = activePartner ? partnerTabs.find((t) => t.slug === activePartner.slug) ?? null : null;
   // The partner office's own intake staff: copied on that partner's lead emails.
+  const partnerProfile = activePartner ? await getPartnerProfile(activePartner) : null;
   const partnerContacts = activePartner ? (await getPartnerContacts(activePartner.slug)).map((c) => ({ id: c.id, name: c.name, email: c.email, linkSentAt: c.linkSentAt })) : [];
 
   return (
@@ -193,6 +196,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         {activeTab ? (
           <>
             <PartnerLinkCard partner={activeTab} />
+            {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />
             <IntakeTable key={activeTab.slug} rows={shownRows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />
           </>

@@ -8,6 +8,10 @@ import type { PartnerArea } from "@/lib/intake/partners";
 type Props = {
   partner: { slug: string; name: string };
   areas: PartnerArea[];
+  /** The partner office's logo ("" = none: its name is shown as text). */
+  logoUrl?: string;
+  /** The partner office's contact details: one office per block, blank line between. */
+  contact?: string;
   firmName: string;
   /** The firm's own consent wording (English), from the admin. */
   consentText: string;
@@ -55,7 +59,7 @@ const T = {
     how: { Telephone: "telephone", Text: "text message", Email: "email" } as Record<string, string>,
     doneNote: (firm: string) => `Sending this form has not created an attorney-client relationship. ${firm} does not represent you until you have signed a representation agreement issued by the firm and paid the applicable retainer fee.`,
     again: "Start another intake",
-    footer: (firm: string, partner: string) => `${firm} is a separate law firm from ${partner}. Matters submitted here are reviewed and, if accepted, handled by ${firm}.`,
+    footer: (firm: string, partner: string) => `${firm} and ${partner} are separate, independent law firms and are not a partnership. Matters submitted here are reviewed and, if accepted, handled by ${firm}.`,
   },
   es: {
     sub: (firm: string) => <>Asuntos civiles, sucesorios y de lesiones — servicios legales prestados por <strong className="font-semibold text-[var(--c-ink)]">{firm}</strong></>,
@@ -78,7 +82,7 @@ const T = {
     how: { Telephone: "teléfono", Text: "mensaje de texto", Email: "correo electrónico" } as Record<string, string>,
     doneNote: (firm: string) => `Enviar este formulario no ha creado una relación abogado-cliente. ${firm} no le representa hasta que usted haya firmado un contrato de representación emitido por el despacho y haya pagado el anticipo de honorarios correspondiente.`,
     again: "Comenzar otro formulario",
-    footer: (firm: string, partner: string) => `${firm} es un despacho de abogados independiente de ${partner}. Los asuntos enviados aquí son revisados y, si se aceptan, atendidos por ${firm}.`,
+    footer: (firm: string, partner: string) => `${firm} y ${partner} son despachos de abogados separados e independientes, y no forman una sociedad. Los asuntos enviados aquí son revisados y, si se aceptan, atendidos por ${firm}.`,
   },
 };
 
@@ -96,7 +100,24 @@ const LANG_KEY = "partner-intake-lang";
  * the same endpoint, tagged with the partner, so it lands in the same place.
  * A prominent English / Español switch changes every word on the page.
  */
-export function PartnerIntake({ partner, areas, firmName, consentText, turnstileSiteKey }: Props) {
+/** Phone numbers and email addresses inside a line of contact text become links. */
+function linkify(line: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /([^\s@<>,;]+@[^\s@<>,;]+\.[A-Za-z]{2,})|(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4})/g;
+  let last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(line))) {
+    if (m.index > last) out.push(line.slice(last, m.index));
+    const hit = m[0];
+    out.push(m[1]
+      ? <a key={m.index} href={`mailto:${hit}`} className="underline decoration-[var(--c-border)] underline-offset-2 hover:text-[var(--c-accent)]">{hit}</a>
+      : <a key={m.index} href={`tel:+1${hit.replace(/\D/g, "")}`} className="whitespace-nowrap underline decoration-[var(--c-border)] underline-offset-2 hover:text-[var(--c-accent)]">{hit}</a>);
+    last = m.index + hit.length;
+  }
+  if (last < line.length) out.push(line.slice(last));
+  return out;
+}
+
+export function PartnerIntake({ partner, areas, logoUrl, contact, firmName, consentText, turnstileSiteKey }: Props) {
   const [lang, setLangState] = useState<Lang>("en");
   const [area, setArea] = useState<PartnerArea | null>(null);
   const [step, setStep] = useState(0); // 0 pick · 1 you · 2 the matter
@@ -281,6 +302,9 @@ export function PartnerIntake({ partner, areas, firmName, consentText, turnstile
     );
   }
 
+  // Their contact details: one office per block of text.
+  const offices = (contact ?? "").split(/\n\s*\n/).map((b) => b.split("\n").map((l) => l.trim()).filter(Boolean)).filter((b) => b.length > 0);
+
   const langBtn = (l: Lang, label: string) => (
     <button type="button" onClick={() => setLang(l)} aria-pressed={lang === l} lang={l} data-testid={`lang-${l}`}
       className={`min-w-[6.5rem] rounded-full px-5 py-2.5 text-base font-semibold transition-colors ${lang === l ? "bg-[var(--c-accent)] text-white shadow" : "text-[var(--c-ink)] hover:bg-[var(--c-surface2)]"}`}>{label}</button>
@@ -291,8 +315,11 @@ export function PartnerIntake({ partner, areas, firmName, consentText, turnstile
       <header className="border-b border-[var(--c-border)] bg-[var(--c-surface)]">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-5 py-5">
           <div className="min-w-0">
-            <p className="font-[family-name:var(--font-display)] text-2xl leading-tight">{partner.name}</p>
-            <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{t.sub(firmName)}</p>
+            {logoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <h1 className="m-0 leading-none"><img src={logoUrl} alt={partner.name} className="block h-16 w-auto max-w-full rounded-md sm:h-[72px]" data-testid="partner-logo" /></h1>
+              : <h1 className="font-[family-name:var(--font-display)] text-2xl leading-tight" data-testid="partner-name">{partner.name}</h1>}
+            <p className={`${logoUrl ? "mt-2.5" : "mt-1"} text-sm text-[var(--c-ink-muted)]`}>{t.sub(firmName)}</p>
           </div>
           {/* The language switch: always in view at the top, both names in their own language. */}
           <div className="inline-flex items-center gap-1 rounded-full border-2 border-[var(--c-accent)] bg-[var(--c-bg)] p-1" role="group" aria-label="Language / Idioma" data-testid="lang-switch">
@@ -303,7 +330,17 @@ export function PartnerIntake({ partner, areas, firmName, consentText, turnstile
         </div>
       </header>
       <div className="mx-auto max-w-3xl px-5 py-10 sm:py-14" ref={top} style={{ scrollMarginTop: "16px" }}>{body}</div>
-      <footer className="mx-auto max-w-3xl px-5 pb-10 text-xs leading-relaxed text-[var(--c-ink-muted)]">{t.footer(firmName, partner.name)}</footer>
+      <footer className="mx-auto max-w-3xl px-5 pb-10">
+        {offices.length > 0 && (
+          <div className="border-t border-[var(--c-border)] pt-6" data-testid="partner-contact">
+            <p className="font-[family-name:var(--font-ui)] text-sm font-semibold">{partner.name}</p>
+            <div className="mt-3 grid gap-x-10 gap-y-5 text-sm leading-relaxed text-[var(--c-ink-muted)] sm:grid-cols-2">
+              {offices.map((lines, i) => <address key={i} className="not-italic">{lines.map((l, j) => <span key={j} className="block">{linkify(l)}</span>)}</address>)}
+            </div>
+          </div>
+        )}
+        <p className={`${offices.length ? "mt-6" : ""} border-t border-[var(--c-border)] pt-4 text-[13px] leading-relaxed text-[var(--c-ink-muted)]`} data-testid="partner-disclaimer">{t.footer(firmName, partner.name)}</p>
+      </footer>
     </>
   );
 }
