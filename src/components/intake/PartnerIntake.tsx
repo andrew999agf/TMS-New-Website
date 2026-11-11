@@ -39,7 +39,6 @@ const EMPTY: Form = {
  */
 const T = {
   en: {
-    sub: (firm: string) => <>Civil, probate and injury matters — legal services provided by <strong className="font-semibold text-[var(--c-ink)]">{firm}</strong></>,
     pickTitle: "What do you need help with?", pickSub: "Choose the closest fit. It takes about three minutes.",
     youTitle: "First, about you", matterTitle: "Now, about the matter",
     name: "Full name", phone: "Phone", email: "Email", address: "Mailing address", street: "Street", city: "City", state: "State", zip: "ZIP",
@@ -62,7 +61,6 @@ const T = {
     footer: (firm: string, partner: string) => `${firm} and ${partner} are separate, independent law firms and are not a partnership. Matters submitted here are reviewed and, if accepted, handled by ${firm}.`,
   },
   es: {
-    sub: (firm: string) => <>Asuntos civiles, sucesorios y de lesiones — servicios legales prestados por <strong className="font-semibold text-[var(--c-ink)]">{firm}</strong></>,
     pickTitle: "¿En qué necesita ayuda?", pickSub: "Elija la opción más cercana. Toma unos tres minutos.",
     youTitle: "Primero, sobre usted", matterTitle: "Ahora, sobre el asunto",
     name: "Nombre completo", phone: "Teléfono", email: "Correo electrónico", address: "Dirección postal", street: "Calle", city: "Ciudad", state: "Estado", zip: "Código postal",
@@ -319,7 +317,6 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, firmName, cons
               // eslint-disable-next-line @next/next/no-img-element
               ? <h1 className="m-0 leading-none"><img src={logoUrl} alt={partner.name} className="block h-16 w-auto max-w-full rounded-md sm:h-[72px]" data-testid="partner-logo" /></h1>
               : <h1 className="font-[family-name:var(--font-display)] text-2xl leading-tight" data-testid="partner-name">{partner.name}</h1>}
-            <p className={`${logoUrl ? "mt-2.5" : "mt-1"} text-sm text-[var(--c-ink-muted)]`}>{t.sub(firmName)}</p>
           </div>
           {/* The language switch: always in view at the top, both names in their own language. */}
           <div className="inline-flex items-center gap-1 rounded-full border-2 border-[var(--c-accent)] bg-[var(--c-bg)] p-1" role="group" aria-label="Language / Idioma" data-testid="lang-switch">
