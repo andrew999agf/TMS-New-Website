@@ -83,7 +83,7 @@ export async function sendPartnerLink(input: { partner: string; id?: string }): 
 
   const bodyFor = (c: PartnerContact) => `
     <p style="margin:0 0 14px">Dear ${esc(c.name || "there")},</p>
-    <p style="margin:0 0 16px">Here is the intake link for <strong>${esc(partner.name)}</strong>. Use it whenever someone at your office needs help with a civil, probate or injury matter.</p>
+    <p style="margin:0 0 16px">Here is the intake link for <strong>${esc(partner.name)}</strong>. Use it to let our office know when one of your clients may have a civil, probate or injury matter.</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px"><tr>
       <td align="center" bgcolor="${colors.accent}" style="background-color:${colors.accent};border-radius:8px">
         <a href="${href}" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:${colors.onAccent};text-decoration:none">Open the intake form &rarr;</a>
