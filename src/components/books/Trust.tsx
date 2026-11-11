@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Ban, Plus } from "lucide-react";
-import { addClient, recordDeposit, recordDisbursement, recordFeeTransfer, setClientActive } from "@/app/books/(app)/trust/actions";
+import { Ban, Link2, Plus } from "lucide-react";
+import { addClient, recordDeposit, recordDisbursement, recordFeeTransfer, recordStatementRow, setClientActive } from "@/app/books/(app)/trust/actions";
+import { excludeRow, matchRow } from "@/app/books/(app)/banking/actions";
 import { voidEntryAction } from "@/app/books/(app)/journal/actions";
 import { fmtCents } from "@/lib/books/money";
 
@@ -114,5 +115,67 @@ export function ClientLedger({ client, lines, canEdit, today }: { client: TrustC
       </table>
       {canEdit && <p className="mt-3 text-right text-xs"><button type="button" disabled={pending} onClick={() => { setMsg(null); start(async () => { const r = await setClientActive({ id: client.id, active: !client.active }); if (r.ok) router.refresh(); else setMsg({ ok: false, text: r.error }); }); }} className="text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" data-testid="client-toggle">{client.active ? "Close this ledger" : "Reopen this ledger"}</button></p>}
     </section>
+  );
+}
+
+export type StatementRow = { id: number; date: string; amount: number; description: string; ref: string; matches: { lineId: number; entryId: number; date: string; memo: string }[] };
+
+function StatementLine({ row, clients, canEdit, onDone }: { row: StatementRow; clients: TrustClient[]; canEdit: boolean; onDone: (r: Res) => void }) {
+  const moneyIn = row.amount > 0;
+  const [client, setClient] = useState(0);
+  const [kind, setKind] = useState<"deposit" | "disbursement" | "transfer">(moneyIn ? "deposit" : "disbursement");
+  const [f, setF] = useState({ who: "", ref: row.ref, memo: "", invoice: "", purpose: "fees" });
+  const [pending, start] = useTransition();
+  const go = (fn: () => Promise<Res>) => start(async () => onDone(await fn()));
+  return (
+    <tr className="border-t border-[var(--c-border)] align-top" data-testid={`st-${row.id}`}>
+      <td className="py-2 font-mono text-xs">{row.date}</td>
+      <td className="py-2 pr-3">
+        <p className="text-sm">{row.description || "(no description)"}{row.ref ? <span className="text-[var(--c-ink-muted)]"> · check {row.ref}</span> : null}</p>
+        {row.matches.map((m) => (
+          <p key={m.lineId} className="mt-1 text-xs">
+            <button type="button" disabled={pending || !canEdit} onClick={() => go(() => matchRow({ txnId: row.id, lineId: m.lineId }))} className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-900 hover:border-emerald-500 disabled:opacity-50" data-testid={`st-match-${row.id}`}><Link2 size={11} /> Already recorded: match to entry #{m.entryId}</button>
+            <span className="ml-2 text-[var(--c-ink-muted)]">{m.date} · {m.memo}</span>
+          </p>
+        ))}
+      </td>
+      <td className={`py-2 text-right font-mono text-xs ${moneyIn ? "text-emerald-700" : ""}`} data-testid={`st-amount-${row.id}`}>{fmtCents(row.amount)}</td>
+      {canEdit && (
+        <td className="py-2 pl-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select className={`${input} max-w-[13rem]`} value={client} onChange={(e) => setClient(Number(e.target.value))} aria-label="Client" data-testid={`st-client-${row.id}`}>
+              <option value={0}>Whose money…</option>
+              {clients.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name}{c.matter ? ` — ${c.matter}` : ""}</option>)}
+            </select>
+            {!moneyIn && <select className={input} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Type" data-testid={`st-kind-${row.id}`}><option value="disbursement">Disbursement</option><option value="transfer">Transfer to operating</option></select>}
+            {kind !== "transfer" && <input className={`${input} w-36`} value={f.who} onChange={(e) => setF({ ...f, who: e.target.value })} placeholder={moneyIn ? "Received from" : "Paid to"} aria-label={moneyIn ? "Received from" : "Paid to"} data-testid={`st-who-${row.id}`} />}
+            {kind === "disbursement" && <input className={`${input} w-24`} value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} placeholder="Check no." aria-label="Check number" data-testid={`st-ref-${row.id}`} />}
+            {kind !== "transfer" && <input className={`${input} w-40`} value={f.memo} onChange={(e) => setF({ ...f, memo: e.target.value })} placeholder={moneyIn ? "What it is for" : "Purpose"} aria-label={moneyIn ? "What it is for" : "Purpose"} data-testid={`st-memo-${row.id}`} />}
+            {kind === "transfer" && <input className={`${input} w-32`} value={f.invoice} onChange={(e) => setF({ ...f, invoice: e.target.value })} placeholder="Invoice no." aria-label="Invoice number" data-testid={`st-invoice-${row.id}`} />}
+            {kind === "transfer" && <select className={input} value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} aria-label="For" data-testid={`st-purpose-${row.id}`}><option value="fees">Earned legal fees</option><option value="flat_fees">Earned flat fee</option><option value="reimbursed_costs">Client costs billed</option><option value="client_advances">Repay a cost the firm advanced</option></select>}
+            <button type="button" disabled={pending || !client} onClick={() => go(() => recordStatementRow({ txnId: row.id, clientId: client, kind, ...f }))} className="rounded-md bg-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-on-accent)] disabled:opacity-50" data-testid={`st-record-${row.id}`}>Record</button>
+            <button type="button" disabled={pending} onClick={() => go(() => excludeRow({ txnId: row.id, excluded: true }))} className="text-xs text-[var(--c-ink-muted)] hover:text-[var(--c-ink)]" title="Leave this row out of the trust ledger" data-testid={`st-exclude-${row.id}`}>Set aside</button>
+          </div>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+/** Rows from the IOLTA statement waiting to be assigned to a client. */
+export function StatementReview({ rows, clients, canEdit }: { rows: StatementRow[]; clients: TrustClient[]; canEdit: boolean }) {
+  const router = useRouter();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const done = (r: Res) => { if (r.ok) { setMsg(null); router.refresh(); } else setMsg({ ok: false, text: r.error }); };
+  if (rows.length === 0) return <p className="mt-4 rounded-lg border border-dashed border-[var(--c-border)] p-5 text-sm text-[var(--c-ink-muted)]" data-testid="st-empty">Nothing waiting. Every row from the statement has been recorded, matched or set aside.</p>;
+  return (
+    <div className="mt-4">
+      {msg && <p className={`mb-2 text-xs ${msg.ok ? "text-emerald-700" : "text-red-700"}`} role="status" data-testid="st-msg">{msg.text}</p>}
+      {canEdit && clients.filter((c) => c.active).length === 0 && <p className="mb-2 text-xs text-amber-800">Add the client under Client ledgers first, then come back to assign these rows.</p>}
+      <table className="w-full text-sm" data-testid="st-review">
+        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)]"><th className="w-24 pb-1 font-medium">Date</th><th className="pb-1 font-medium">Description</th><th className="w-28 pb-1 text-right font-medium">Amount</th>{canEdit && <th className="pb-1 pl-3 font-medium">Whose money, and what it is</th>}</tr></thead>
+        <tbody>{rows.map((r) => <StatementLine key={r.id} row={r} clients={clients} canEdit={canEdit} onDone={done} />)}</tbody>
+      </table>
+    </div>
   );
 }

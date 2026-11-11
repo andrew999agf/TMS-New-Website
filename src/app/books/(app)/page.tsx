@@ -26,11 +26,13 @@ export default async function BooksDashboard() {
   const sumOf = (pred: (a: (typeof chart)[number]) => boolean) => chart.filter(pred).reduce((t, a) => t + natural(a, bal.get(a.id)), 0);
   const cash = sumOf((a) => a.subtype === "bank" && !a.isTrust), cards = sumOf((a) => a.subtype === "credit_card"), trustBank = sumOf((a) => a.subtype === "trust_bank");
   const trustHeld = trustClients.reduce((t, c) => t + c.balance, 0);
-  const toReview = [...counts.values()].reduce((t, c) => t + c.new, 0);
+  const trustIds = new Set(chart.filter((a) => a.subtype === "trust_bank").map((a) => a.id));
+  const toReview = [...counts.entries()].filter(([id]) => !trustIds.has(id)).reduce((t, [, c]) => t + c.new, 0);
+  const trustToAssign = [...counts.entries()].filter(([id]) => trustIds.has(id)).reduce((t, [, c]) => t + c.new, 0);
   const tiles: { label: string; value: string; href: string; warn?: string; id: string }[] = [
     { id: "cash", label: "Operating cash", value: fmtCents(cash, { paren: true, dollar: true }), href: `${base}/banking` },
     { id: "cards", label: "Credit cards owed", value: fmtCents(cards, { paren: true, dollar: true }), href: `${base}/banking` },
-    { id: "trust", label: "Held in trust for clients", value: fmtCents(trustHeld, { paren: true, dollar: true }), href: `${base}/trust`, warn: trustBank !== trustHeld || trustClients.some((c) => c.balance < 0) ? "Does not agree with the IOLTA account" : undefined },
+    { id: "trust", label: "Held in trust for clients", value: fmtCents(trustHeld, { paren: true, dollar: true }), href: `${base}/trust`, warn: trustBank !== trustHeld || trustClients.some((c) => c.balance < 0) ? "Does not agree with the IOLTA account" : trustToAssign ? `${trustToAssign} statement row${trustToAssign === 1 ? "" : "s"} to assign` : undefined },
     { id: "review", label: "Statement rows to review", value: String(toReview), href: `${base}/banking` },
     { id: "net", label: `Net income, ${today.slice(0, 4)} to date`, value: fmtCents(ytd.net, { paren: true, dollar: true }), href: `${base}/reports?r=pl` },
   ];

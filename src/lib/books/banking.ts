@@ -133,7 +133,7 @@ export async function setExcluded(companyId: number, txnId: number, excluded: bo
   await db.update(sbBankTxns).set({ status: excluded ? "excluded" : "new" }).where(eq(sbBankTxns.id, t.id));
 }
 
-/** Put a handled row back to "to review". If categorizing it wrote the entry, that entry is voided; if it was matched, it is only untied. */
+/** Put a handled row back to "to review". If categorizing it wrote the entry, that entry is voided; if it was matched (or is a trust row), it is only untied — a trust entry is voided from the client's own ledger. */
 export async function undoTxn(companyId: number, txnId: number, by: string): Promise<void> {
   if (!db) throw new LedgerError("Database not configured.");
   const [t] = await db.select().from(sbBankTxns).where(and(eq(sbBankTxns.companyId, companyId), eq(sbBankTxns.id, txnId))).limit(1);

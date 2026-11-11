@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileUp, Link2, Undo2 } from "lucide-react";
 import { categorizeRow, excludeRow, importStatement, matchRow, undoRow } from "@/app/books/(app)/banking/actions";
+import { importTrustStatement } from "@/app/books/(app)/trust/actions";
 import { fmtCents } from "@/lib/books/money";
 
 export type CategoryOption = { id: number; number: string; name: string; type: string; needsClient: boolean };
@@ -15,7 +16,7 @@ type Res = { ok: true; message?: string } | { ok: false; error: string };
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 
 /** Choose a CSV exported from the bank's website. The file is read here and never leaves the firm's own site. */
-export function BankImport({ accountId, isCard }: { accountId: number; isCard: boolean }) {
+export function BankImport({ accountId, isCard, trust }: { accountId: number; isCard: boolean; trust?: boolean }) {
   const router = useRouter();
   const ref = useRef<HTMLInputElement>(null);
   const [flip, setFlip] = useState(false);
@@ -28,7 +29,7 @@ export function BankImport({ accountId, isCard }: { accountId: number; isCard: b
       try {
         if (file.size > 1_400_000) { setMsg({ ok: false, text: "That file is too large. Export a shorter date range and import it in pieces." }); return; }
         const text = await file.text();
-        const r = await importStatement({ accountId, filename: file.name, text, flip });
+        const r = trust ? await importTrustStatement({ filename: file.name, text, flip }) : await importStatement({ accountId, filename: file.name, text, flip });
         setMsg(r.ok ? { ok: true, text: r.message ?? "Imported." } : { ok: false, text: r.error });
         if (r.ok) router.refresh();
       } catch { setMsg({ ok: false, text: "That file couldn't be read. Choose the CSV export of the account activity." }); }
@@ -37,7 +38,7 @@ export function BankImport({ accountId, isCard }: { accountId: number; isCard: b
   };
   return (
     <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4" data-testid="bank-import">
-      <p className="text-sm font-semibold">Bring in a statement file</p>
+      <p className="text-sm font-semibold">{trust ? "Bring in the IOLTA statement file" : "Bring in a statement file"}</p>
       <p className="mt-0.5 text-xs leading-relaxed text-[var(--c-ink-muted)]">On the bank&apos;s website, download the account activity as a CSV (sometimes called &quot;spreadsheet&quot; or &quot;Excel&quot;) and choose it here. Importing the same dates twice is safe: rows already on file are skipped.</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={ref} type="file" accept=".csv,text/csv,.txt" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} data-testid="bank-file" />

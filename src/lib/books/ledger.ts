@@ -23,7 +23,7 @@ export type LineInput = { accountId: number; debit?: number; credit?: number; me
 export type EntryInput = { date: string; memo: string; source: "manual" | "bank" | "trust" | "payroll"; sourceRef?: string; kind?: string; lines: LineInput[] };
 
 type Tx = Parameters<Parameters<NonNullable<typeof db>["transaction"]>[0]>[0];
-type Runner = NonNullable<typeof db> | Tx;
+export type Runner = NonNullable<typeof db> | Tx;
 
 export const canWrite = (role: string) => role === "owner" || role === "bookkeeper";
 

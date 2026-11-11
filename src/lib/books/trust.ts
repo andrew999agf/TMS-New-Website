@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { sbAccounts, sbClients } from "@/db/schema";
+import { sbAccounts, sbBankTxns, sbClients } from "@/db/schema";
 import { accountByKey, clientLowPoint, LedgerError, postEntry } from "./ledger";
 import { isIsoDate } from "./money";
 
@@ -105,6 +105,33 @@ export async function trustFeeTransfer(companyId: number, input: { clientId: num
       { accountId: target.id, credit: amount, clientId: c.id, ref: invoice, memo: `${c.name} — invoice ${invoice}` },
     ],
   }, by);
+}
+
+/**
+ * Record a row from the IOLTA bank statement: it becomes a deposit, a
+ * disbursement or a transfer to operating for one client — under the same
+ * rules as typing it in — and the statement row is tied to that entry, all in
+ * one step. The date and the amount come from the statement, not the form.
+ */
+export async function recordFromStatement(companyId: number, txnId: number, input: { clientId: number; kind: string; who: string; ref: string; memo: string; invoice: string; purpose: string }, by: string): Promise<{ entryId: number }> {
+  if (!db) throw new LedgerError("Database not configured.");
+  const bank = await accountByKey(companyId, "iolta_bank");
+  if (!bank) throw new LedgerError("The IOLTA bank account is missing from the chart of accounts.");
+  const [t] = await db.select().from(sbBankTxns).where(and(eq(sbBankTxns.companyId, companyId), eq(sbBankTxns.id, txnId), eq(sbBankTxns.accountId, bank.id))).limit(1);
+  if (!t) throw new LedgerError("That statement row no longer exists.");
+  if (t.status !== "new") throw new LedgerError("That row has already been handled.");
+  const amount = Math.abs(t.amount);
+  if (input.kind === "deposit" ? t.amount <= 0 : t.amount >= 0) throw new LedgerError(t.amount > 0 ? "Money coming in is recorded as a deposit." : "Money going out is a disbursement or a transfer to operating.");
+  // The entry is written first (its own all-or-nothing step), then the
+  // statement row is tied to it. If the tie ever failed, the row would simply
+  // offer "match to entry" — nothing would be counted twice.
+  let e: { id: number; lineIds: number[] }, bankLine: number;
+  if (input.kind === "deposit") { e = await trustDeposit(companyId, { clientId: input.clientId, date: t.txnDate, amount, payor: input.who, memo: input.memo, ref: input.ref }, by); bankLine = e.lineIds[0]; }
+  else if (input.kind === "disbursement") { e = await trustDisbursement(companyId, { clientId: input.clientId, date: t.txnDate, amount, payee: input.who, ref: input.ref, memo: input.memo }, by); bankLine = e.lineIds[1]; }
+  else if (input.kind === "transfer") { e = await trustFeeTransfer(companyId, { clientId: input.clientId, date: t.txnDate, amount, invoice: input.invoice, purpose: input.purpose }, by); bankLine = e.lineIds[1]; }
+  else throw new LedgerError("Choose what this row is.");
+  await db.update(sbBankTxns).set({ status: "posted", entryId: e.id, lineId: bankLine }).where(and(eq(sbBankTxns.id, t.id), eq(sbBankTxns.status, "new")));
+  return { entryId: e.id };
 }
 
 export type ClientLedgerLine = { entryId: number; date: string; kind: string; memo: string; payee: string; ref: string; in: number; out: number; balance: number; createdBy: string };
