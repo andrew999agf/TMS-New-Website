@@ -54,12 +54,12 @@ const T = {
     deadline: "Any deadline or court date?", helped: (partner: string) => `${partner} staff member helping with this form`,
     contact: (partner: string) => `Your contact at ${partner}`, contactPick: "Choose a name…", contactHelp: "The person you choose will receive a copy of this request.",
     back: "Back", next: "Continue", submit: "Submit request", sending: "Sending…",
-    opts: { Telephone: "Telephone", Text: "Text", Email: "Email", English: "English", "Español": "Español", Other: "Other", Yes: "Yes", No: "No", "Not sure": "Not sure" } as Record<string, string>,
+    opts: { Telephone: "Telephone", Email: "Email", English: "English", "Español": "Español", Other: "Other", Yes: "Yes", No: "No", "Not sure": "Not sure" } as Record<string, string>,
     errs: { name: "Please enter your full name.", phone: "Please enter a phone number with area code.", email: "That email doesn't look right.", description: "Please tell us briefly what happened.", county: "Please enter the county.", urgent: "Please choose one.", consent: "Please check the box to continue." } as Record<string, string>,
     failed: "That didn't go through. Please try again.", offline: "We couldn't reach the server. Check the connection and try again.",
     doneTitle: "Thank you. We have it.",
     doneBody: (firm: string, partner: string, how: string) => `${firm} will review what you sent and follow up${how ? ` by ${how}` : ""}. If this is urgent, tell the front desk at ${partner} before you leave.`,
-    how: { Telephone: "telephone", Text: "text message", Email: "email" } as Record<string, string>,
+    how: { Telephone: "telephone", Email: "email" } as Record<string, string>,
     doneNote: (firm: string) => `Sending this form has not created an attorney-client relationship. ${firm} does not represent you until you have signed a representation agreement issued by the firm and paid the applicable retainer fee.`,
     again: "Start another intake",
     footer: (firm: string, partner: string) => `${firm} and ${partner} are separate, independent law firms and are not a partnership. Matters submitted here are reviewed and, if accepted, handled by ${firm}.`,
@@ -77,12 +77,12 @@ const T = {
     deadline: "¿Alguna fecha límite o fecha de audiencia?", helped: (partner: string) => `Empleado(a) de ${partner} que ayuda con este formulario`,
     contact: (partner: string) => `Su contacto en ${partner}`, contactPick: "Elija un nombre…", contactHelp: "La persona que elija recibirá una copia de esta solicitud.",
     back: "Atrás", next: "Continuar", submit: "Enviar solicitud", sending: "Enviando…",
-    opts: { Telephone: "Teléfono", Text: "Mensaje de texto", Email: "Correo electrónico", English: "English", "Español": "Español", Other: "Otro", Yes: "Sí", No: "No", "Not sure": "No estoy seguro(a)" } as Record<string, string>,
+    opts: { Telephone: "Teléfono", Email: "Correo electrónico", English: "English", "Español": "Español", Other: "Otro", Yes: "Sí", No: "No", "Not sure": "No estoy seguro(a)" } as Record<string, string>,
     errs: { name: "Escriba su nombre completo.", phone: "Escriba un número de teléfono con código de área.", email: "Ese correo electrónico no parece correcto.", description: "Cuéntenos brevemente qué pasó.", county: "Escriba el condado.", urgent: "Elija una opción.", consent: "Marque la casilla para continuar." } as Record<string, string>,
     failed: "No se pudo enviar. Inténtelo de nuevo.", offline: "No pudimos conectar con el servidor. Revise la conexión e inténtelo de nuevo.",
     doneTitle: "Gracias. Lo recibimos.",
     doneBody: (firm: string, partner: string, how: string) => `${firm} revisará lo que envió y se comunicará con usted${how ? ` por ${how}` : ""}. Si es urgente, avise en la recepción de ${partner} antes de irse.`,
-    how: { Telephone: "teléfono", Text: "mensaje de texto", Email: "correo electrónico" } as Record<string, string>,
+    how: { Telephone: "teléfono", Email: "correo electrónico" } as Record<string, string>,
     doneNote: (firm: string) => `Enviar este formulario no ha creado una relación abogado-cliente. ${firm} no le representa hasta que usted haya firmado un contrato de representación emitido por el despacho y haya pagado el anticipo de honorarios correspondiente.`,
     again: "Comenzar otro formulario",
     footer: (firm: string, partner: string) => `${firm} y ${partner} son despachos de abogados separados e independientes, y no forman una sociedad. Los asuntos enviados aquí son revisados y, si se aceptan, atendidos por ${firm}.`,
@@ -261,7 +261,7 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
                   <input className={input} value={f.zip} onChange={(e) => set("zip", e.target.value)} placeholder={t.zip} autoComplete="postal-code" aria-label={t.zip} inputMode="numeric" data-testid="pi-zip" />
                 </div>
               </div>
-              <div><span className={labelCls}>{t.reach}</span>{radios("preferredContact", ["Telephone", "Text", "Email"])}</div>
+              <div><span className={labelCls}>{t.reach}</span>{radios("preferredContact", ["Telephone", "Email"])}</div>
               <div><span className={labelCls}>{t.language}</span>{radios("preferredLanguage", ["English", "Español", "Other"])}</div>
             </div>
           </>
