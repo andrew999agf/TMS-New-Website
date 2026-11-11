@@ -18,6 +18,9 @@ import { getIntakeRecipients, getBlocks } from "@/lib/content";
 import { EngagementDefaults } from "@/components/admin/EngagementDefaults";
 import { emailConfigured } from "@/lib/email";
 import { BRANCHES } from "@/lib/intake/config";
+import { INTAKE_PARTNERS, getIntakePartner, partnerOfAnswers, partnerPath } from "@/lib/intake/partners";
+import { PartnerIntakeTabs, PartnerLinkCard, type PartnerTab } from "@/components/admin/PartnerIntakeTabs";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,6 +28,8 @@ export const maxDuration = 60;
 export default async function IntakeAdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const initialLeadId = typeof sp.lead === "string" ? Number(sp.lead) : null;
+  // A partner office's sub-tab: the same leads, filtered to that partner.
+  const activePartner = getIntakePartner(typeof sp.partner === "string" ? sp.partner : null);
   const recipients = await getIntakeRecipients(false);
   const branches = BRANCHES.map((b) => ({ id: b.id, label: b.label }));
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
@@ -160,6 +165,13 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
     }
   }
 
+  const partnerTabs: PartnerTab[] = INTAKE_PARTNERS.map((p) => {
+    const mine = rows.filter((r) => partnerOfAnswers(r.answers)?.slug === p.slug);
+    return { slug: p.slug, name: p.name, website: p.website, url: `${SITE_URL}${partnerPath(p.slug)}`, total: mine.length, fresh: mine.filter((r) => r.status === "new" && !r.archived).length };
+  });
+  const shownRows = activePartner ? rows.filter((r) => partnerOfAnswers(r.answers)?.slug === activePartner.slug) : rows;
+  const activeTab = activePartner ? partnerTabs.find((t) => t.slug === activePartner.slug) ?? null : null;
+
   return (
     <>
       <AdminHeader
@@ -173,6 +185,14 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         }
       />
       <div className="p-8">
+        <PartnerIntakeTabs partners={partnerTabs} active={activePartner?.slug ?? null} allCount={rows.length} />
+        {activeTab ? (
+          <>
+            <PartnerLinkCard partner={activeTab} />
+            <IntakeTable key={activeTab.slug} rows={shownRows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />
+          </>
+        ) : (
+        <>
         <IntakeRecipientsManager
           initial={recipients}
           branches={branches}
@@ -189,6 +209,8 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         <ReferralSources referrers={referrers} />
         <OutboundReferrals referrals={outbound} />
         <IntakeTable rows={rows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />
+        </>
+        )}
       </div>
     </>
   );

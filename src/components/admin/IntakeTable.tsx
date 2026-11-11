@@ -206,8 +206,11 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div>{r.branch}</div>
+                  <div>{typeof r.answers.practiceArea === "string" && r.answers.practiceArea ? r.answers.practiceArea : r.branch}</div>
                   <div className="text-xs text-[var(--c-ink-muted)]">{r.county}</div>
+                  {typeof r.answers.partnerName === "string" && r.answers.partnerName && (
+                    <div className="mt-1 inline-block rounded-full bg-[var(--c-accent)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--c-accent)]" title="Came in through this partner office's intake link" data-testid={`via-${r.id}`}>via {r.answers.partnerName}</div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-[var(--c-ink-muted)]">
                   {new Date(r.createdAt).toLocaleDateString()}

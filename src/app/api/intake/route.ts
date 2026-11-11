@@ -12,6 +12,7 @@ import { brandedEmailHtml } from "@/lib/email-template";
 import { FIRM } from "@/lib/firm";
 import { LEGAL_DOCS } from "@/lib/documents/legal-specs";
 import { renderDoc, wrapForWord } from "@/lib/documents/legal";
+import { getIntakePartner } from "@/lib/intake/partners";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,8 @@ const schema = z.object({
   referrer: z.string().optional(),
   turnstileToken: z.string().optional(),
   resumeToken: z.string().min(16).max(64).regex(/^[\w-]+$/).optional(),
+  /** A partner office's intake link (see src/lib/intake/partners.ts). */
+  partner: z.string().max(64).optional(),
   // Honeypot — must be empty.
   company: z.string().optional(),
 });
@@ -90,6 +93,9 @@ export async function POST(req: Request) {
   }
 
   const { branch, practiceSlug, answers, referrer, company, turnstileToken, resumeToken } = parsed.data;
+  // Only the server decides whether a lead came through a partner: the tag is
+  // set from a slug we recognize and stripped from anything the browser sent.
+  const partner = getIntakePartner(parsed.data.partner);
 
   // Honeypot tripped — pretend success, drop silently.
   if (company && company.trim()) {
@@ -102,6 +108,8 @@ export async function POST(req: Request) {
   }
 
   const a = answers as Record<string, unknown>;
+  delete a.partnerSlug; delete a.partnerName;
+  if (partner) { a.partnerSlug = partner.slug; a.partnerName = partner.name; }
   const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : undefined);
 
   const deadline = str("deadline") || str("courtDate") || str("judgmentDate");
@@ -109,9 +117,11 @@ export async function POST(req: Request) {
     str("hasDeadline") === "Yes" ||
     Boolean(deadline) ||
     str("inCustody") === "Yes" ||
-    str("served") === "Yes";
+    str("served") === "Yes" ||
+    str("urgent") === "Yes";
 
-  const referralSource = str("referralSource") || undefined;
+  // A partner's walk-in didn't "hear about us" anywhere else: the partner is the source.
+  const referralSource = str("referralSource") || partner?.name || undefined;
 
   const branchDef = getBranch(branch);
   const branchLabel = branchDef?.label ?? branch;
@@ -211,8 +221,8 @@ export async function POST(req: Request) {
   // A clean, labeled list of every remaining answer (executor, beneficiaries,
   // POA agents, family, gifts, etc.), in the order asked — skipping empties and
   // anything already shown in the summary above, so nothing repeats.
-  const summaryShown = new Set(["name", "email", "phone", "preferredContact", "opposingParty", "county", "court", "trialCourt", "courtNamed", "chargeCounty", "deathCounty", "referralSource", "referralOther", "referrerName", "referrerAttorney", "isUrgent", "deadline"]);
-  const internalKeys = new Set(["consent", "company", "turnstileToken", "referrer", "resumeToken", "website", "description", "message"]);
+  const summaryShown = new Set(["name", "email", "phone", "preferredContact", "opposingParty", "opposingCounsel", "county", "court", "trialCourt", "courtNamed", "chargeCounty", "deathCounty", "referralSource", "referralOther", "referrerName", "referrerAttorney", "isUrgent", "deadline"]);
+  const internalKeys = new Set(["consent", "company", "turnstileToken", "referrer", "resumeToken", "website", "description", "message", "partnerSlug", "partnerName", "practiceArea"]);
   const narrativeShown = new Set(NARRATIVE_FIELDS.map((f) => f.name));
   const detailShown = new Set<string>();
   const detailRow = (key: string): string => {
@@ -274,11 +284,13 @@ export async function POST(req: Request) {
   // The intake team gets a SINGLE email: a clean, professional summary on top,
   // then the full submission details (and the CSV / draft docs) below.
   const clientName = (str("name") || "A prospective client").trim();
-  const matterNoun = branchDef?.summaryNoun ?? `a ${branchLabel.toLowerCase()} matter`;
-  const matterShort = (branchDef?.summaryNoun ?? branchLabel).replace(/^an?\s+/i, "");
+  // A partner lead names its own matter type (Civil Defense, Probate, …).
+  const partnerArea = partner ? str("practiceArea") : undefined;
+  const matterNoun = partnerArea ? `${/^[aeiou]/i.test(partnerArea) ? "an" : "a"} ${partnerArea} matter` : branchDef?.summaryNoun ?? `a ${branchLabel.toLowerCase()} matter`;
+  const matterShort = partnerArea ?? (branchDef?.summaryNoun ?? branchLabel).replace(/^an?\s+/i, "");
   const matterSubject = matterShort.charAt(0).toUpperCase() + matterShort.slice(1);
   const pref = str("preferredContact");
-  const preferredPhrase = pref === "Email" ? "email" : pref === "Telephone" || pref === "Phone" ? "telephone" : "telephone or email";
+  const preferredPhrase = pref === "Email" ? "email" : pref === "Telephone" || pref === "Phone" ? "telephone" : pref === "Text" ? "text message" : "telephone or email";
   const phone = str("phone");
   const email = str("email");
   const county = str("county");
@@ -301,13 +313,14 @@ export async function POST(req: Request) {
 
   const adminBase = (process.env.NEXT_PUBLIC_SITE_URL || `https://${FIRM.domain}`).replace(/\/$/, "");
   const openLeadButton = id != null
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px"><tr><td align="center" bgcolor="#7a1f2b" style="background-color:#7a1f2b;border-radius:6px"><a href="${adminBase}/admin/intake?lead=${id}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Open this lead in the admin portal &rarr;</a></td></tr></table>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px"><tr><td align="center" bgcolor="#7a1f2b" style="background-color:#7a1f2b;border-radius:6px"><a href="${adminBase}/admin/intake?${partner ? `partner=${partner.slug}&` : ""}lead=${id}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Open this lead in the admin portal &rarr;</a></td></tr></table>`
     : "";
 
   const summaryHtml = `
     <div style="font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;max-width:600px;line-height:1.55;font-size:15px">
       <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#7a1f2b;margin:0 0 16px">T. Maxwell Smith, PLLC</p>
-      <p style="margin:0 0 14px">${esc(clientName)} has reached out to our firm in connection with ${esc(matterNoun)}, and prefers to be contacted by ${preferredPhrase}.</p>
+      <p style="margin:0 0 14px">${esc(clientName)} has reached out to our firm${partner ? ` through the office of <strong>${esc(partner.name)}</strong>` : ""} in connection with ${esc(matterNoun)}, and prefers to be contacted by ${preferredPhrase}.</p>
+      ${isUrgent && !deadline && str("urgent") === "Yes" ? `<p style="margin:0 0 14px;color:#b00"><strong>Marked urgent</strong>${str("urgentReason") ? `: ${esc(str("urgentReason")!)}` : "."}</p>` : ""}
       ${isUrgent && deadline ? `<p style="margin:0 0 14px;color:#b00"><strong>Time-sensitive:</strong> deadline / date noted as ${esc(deadline)}.</p>` : ""}
       <table style="border-collapse:collapse;font-size:14px;margin:4px 0 16px">
         ${row("Name", clientName)}
@@ -318,6 +331,8 @@ export async function POST(req: Request) {
         ${row("Court", court)}
         ${row("County / City", county)}
         ${row("Other side", str("opposingParty"))}
+        ${row("Other side's attorney", str("opposingCounsel"))}
+        ${partner ? row("Came in through", partner.name) : ""}
         ${row("How they heard", referralSource === "Other" ? str("referralOther") || "Other" : referralSource)}
       </table>
       ${narrativeBlocks}
@@ -325,7 +340,7 @@ export async function POST(req: Request) {
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 
-  const subjectParts = ["New inquiry", clientName, location, matterSubject].filter(Boolean);
+  const subjectParts = [partner ? `New inquiry via ${partner.name}` : "New inquiry", clientName, location, matterSubject].filter(Boolean);
   const notSavedBanner = id == null
     ? `<div style="max-width:640px;margin:0 0 16px;padding:12px 16px;background:#fdecec;border:1px solid #e7b3af;border-left:6px solid #b3261e;color:#7d1d17;font-family:Arial,Helvetica,sans-serif;font-size:14px"><strong>⚠ NOT SAVED TO THE INTAKE TAB.</strong> This submission could not be written to the database${persistError ? ` (${esc(persistError)})` : ""} — it exists ONLY in this email. Handle it from here, and run Settings → Database updates, then check the error logs.</div>`
     : "";
@@ -351,7 +366,7 @@ export async function POST(req: Request) {
 
     const ackBody = `
       <p style="margin:0 0 14px">Dear ${greetingName},</p>
-      <p style="margin:0 0 14px">Thank you for your submission. We have received your request and will review it, then follow up using the contact method you chose.</p>
+      <p style="margin:0 0 14px">Thank you for your submission${partner ? ` through the office of ${esc(partner.name)}` : ""}. We have received your request and will review it, then follow up using the contact method you chose.</p>
       <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This has not created an attorney-client relationship.</strong> Our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
       <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
       <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">— The office of ${esc(firmName)}</p>`;

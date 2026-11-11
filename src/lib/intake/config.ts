@@ -1,3 +1,4 @@
+import { PARTNER_FIELD_LABELS } from "./partners";
 /**
  * Intake wizard configuration (build spec Section 12).
  *
@@ -1629,6 +1630,8 @@ export const INTAKE_FIELDS: { name: string; label: string; type: FieldType }[] =
 })();
 
 const FIELD_LABEL_MAP = new Map(INTAKE_FIELDS.map((f) => [f.name, f.label]));
+// The partner intake form (src/lib/intake/partners.ts) adds a few keys of its own.
+for (const [k, v] of Object.entries(PARTNER_FIELD_LABELS)) if (!FIELD_LABEL_MAP.has(k)) FIELD_LABEL_MAP.set(k, v);
 
 /** Human label for an answer key, falling back to a prettified key. */
 export function fieldLabel(name: string): string {
