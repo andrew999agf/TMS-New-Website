@@ -21,6 +21,20 @@ const fam = (name: string) => name.trim().replace(/\s+/g, "+");
  *  the text still copies fine. */
 const zw = (s: string) => s.replace(/\d(?=\d)/g, "$&​");
 
+/**
+ * An office address that mail clients leave alone.
+ *
+ * Gmail and Apple Mail hunt for street addresses in plain text and turn them
+ * into blue underlined map links. Breaking up the digits was not enough: Gmail
+ * linked the rest ("5 W. River Street, Meridian, Texas") and left a half-blue
+ * address. A client never adds a link inside one that is already there, so the
+ * address is made OUR link, to the same place (a map of the office), and
+ * styled to look exactly like the text around it: same color, no underline.
+ */
+const mapUrl = (address: string) => `https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(address)}`;
+const addressLink = (address: string, innerHtml: string, color: string, cls = "") =>
+  `<a href="${mapUrl(address)}"${cls ? ` class="${cls}"` : ""} style="color:${color};text-decoration:none;font-weight:inherit">${innerHtml}</a>`;
+
 /** Crisp, professional sans stack for message bodies — the serif stays for
  *  the wordmark only. */
 const PRO_SANS = `'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif`;
@@ -98,7 +112,7 @@ export function brandedEmailHtml({
       : "";
     return `<td class="tms-ftr-text" style="vertical-align:top;padding:0 14px 14px 0;font-family:${SANS};font-size:12px;line-height:1.55;color:${colors.inkMuted};width:33%">
       <div class="tms-ftr-strong" style="color:${colors.ink};font-weight:bold;font-family:${SANS};font-size:13px;margin-bottom:5px">${esc(o.name)}</div>
-      ${zw(esc(o.street))}<br/>${esc(o.city)}, ${esc(o.state)} ${zw(esc(o.zip))}<br/>${phone}
+      ${addressLink(`${o.street}, ${o.city}, ${o.state} ${o.zip}`, `${esc(o.street)}<br/>${esc(o.city)}, ${esc(o.state)} ${esc(o.zip)}`, colors.inkMuted, "tms-ftr-muted-link")}<br/>${phone}
     </td>`;
   }).join("");
 
@@ -122,6 +136,8 @@ export function brandedEmailHtml({
     <meta name="supported-color-schemes" content="light only" />
     ${fontLink}
     <style>
+      /* Apple Mail: anything it detects on its own (dates, addresses) keeps the text's look. */
+      a[x-apple-data-detectors] { color:inherit !important; text-decoration:none !important; font-size:inherit !important; font-family:inherit !important; font-weight:inherit !important; line-height:inherit !important; }
       /* Logo enlarges on wider (desktop) screens; stays smaller on phones. */
       @media only screen and (min-width:600px) {
         img.tms-logo { width:440px !important; max-width:440px !important; }
@@ -185,15 +201,16 @@ export function brandedEmailHtml({
  * change only on his instruction.
  */
 export function firmSignatureHtml(colors: { ink: string; inkMuted: string; accent: string; border: string }): string {
-  // Addresses are digit-broken (zw) so mail clients can't turn them into blue
-  // underlined map links; phone numbers are deliberate tel: anchors styled to
-  // match the surrounding text, which also stops the client restyling them.
+  // Each office's address block is one deliberate link to a map of that office,
+  // styled as plain text, so mail clients can't turn part of it into a blue
+  // underlined link of their own (see addressLink). Phone numbers are deliberate
+  // tel: anchors styled to match the surrounding text for the same reason.
   const phone = (p: string) =>
     `<a href="${tel(p)}" style="color:${colors.inkMuted};text-decoration:none">${zw(esc(p))}</a>`;
-  const line = (s: string) => `<div>${zw(esc(s))}</div>`;
+  // lines[0..1] are the street address; the rest (the mailing address) ride in the same link.
   const office = (title: string, lines: string[]) =>
     `<td valign="top" style="padding:0 14px 10px 0;font-family:${PRO_SANS};font-size:12px;line-height:1.5;color:${colors.inkMuted}">
-      <div style="font-weight:bold;color:${colors.ink}">${title}</div>${lines.map(line).join("")}
+      <div style="font-weight:bold;color:${colors.ink}">${title}</div>${addressLink(lines.slice(0, 2).join(", "), lines.map(esc).join("<br/>"), colors.inkMuted)}
     </td>`;
   return `
   <div style="margin-top:22px;padding-top:14px;border-top:1px solid ${colors.border};font-family:${PRO_SANS};font-size:13px;line-height:1.55;color:${colors.ink}">
