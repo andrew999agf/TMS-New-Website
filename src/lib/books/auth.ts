@@ -146,7 +146,7 @@ export async function sendAccessRequestEmail(companyId: number, requester: { ema
 }
 
 /** Where links in emails should point: the product's own hostname on the firm domain, else this host. */
-async function booksPublicBase(): Promise<string> {
+export async function booksPublicBase(): Promise<string> {
   const host = await requestHost();
   if (isBooksHost(host)) { const local = host.startsWith("localhost") || host.startsWith("127."); return `${local ? "http" : "https"}://${host}`; }
   const home = booksHomeUrl(host); // "https://startbookkeeping.<domain>/" or "/books"

@@ -36,6 +36,15 @@ export const BOOKS_DDL: string[] = [
     id serial PRIMARY KEY, company_id integer NOT NULL, email varchar(255) NOT NULL, name varchar(191) NOT NULL DEFAULT '', admin_role varchar(24) NOT NULL DEFAULT '',
     status varchar(16) NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, resolved_by varchar(255))`,
   `CREATE INDEX IF NOT EXISTS sb_access_requests_company_idx ON sb_access_requests (company_id, status)`,
+  // Outside services a company has linked (payroll first). Tokens are stored
+  // encrypted; the site only ever reads from these services.
+  `CREATE TABLE IF NOT EXISTS sb_integrations (
+    id serial PRIMARY KEY, company_id integer NOT NULL, provider varchar(32) NOT NULL, status varchar(16) NOT NULL DEFAULT 'connected',
+    environment varchar(16) NOT NULL DEFAULT 'production', external_id varchar(128) NOT NULL DEFAULT '', external_name varchar(255) NOT NULL DEFAULT '',
+    access_token_enc text NOT NULL DEFAULT '', refresh_token_enc text NOT NULL DEFAULT '', token_expires_at timestamptz, scope text NOT NULL DEFAULT '',
+    connected_by varchar(255) NOT NULL DEFAULT '', connected_at timestamptz NOT NULL DEFAULT now(), last_checked_at timestamptz, last_error text NOT NULL DEFAULT '',
+    updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sb_integrations_uq ON sb_integrations (company_id, provider)`,
   `CREATE TABLE IF NOT EXISTS sb_audit (
     id serial PRIMARY KEY, company_id integer, user_email varchar(255) NOT NULL DEFAULT '', action varchar(32) NOT NULL, entity varchar(48) NOT NULL DEFAULT '', entity_id varchar(64) NOT NULL DEFAULT '',
     detail text NOT NULL DEFAULT '', ip varchar(64) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`,

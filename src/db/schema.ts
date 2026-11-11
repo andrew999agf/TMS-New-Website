@@ -2327,6 +2327,34 @@ export const discoveryPageImages = pgTable(
 
 /** "Please give me a StartBookkeeping login" — raised from the admin panel,
  *  answered by the company's primary admin inside the product. */
+/** An outside service a company has linked to its books (payroll first).
+ *  Tokens are AES-GCM encrypted at rest; access is read-only by design. */
+export const sbIntegrations = pgTable(
+  "sb_integrations",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    /** gusto */
+    provider: varchar("provider", { length: 32 }).notNull(),
+    /** connected | error */
+    status: varchar("status", { length: 16 }).notNull().default("connected"),
+    /** demo | production */
+    environment: varchar("environment", { length: 16 }).notNull().default("production"),
+    externalId: varchar("external_id", { length: 128 }).notNull().default(""),
+    externalName: varchar("external_name", { length: 255 }).notNull().default(""),
+    accessTokenEnc: text("access_token_enc").notNull().default(""),
+    refreshTokenEnc: text("refresh_token_enc").notNull().default(""),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    scope: text("scope").notNull().default(""),
+    connectedBy: varchar("connected_by", { length: 255 }).notNull().default(""),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastError: text("last_error").notNull().default(""),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uq: uniqueIndex("sb_integrations_uq").on(t.companyId, t.provider) }),
+);
+
 export const sbAccessRequests = pgTable(
   "sb_access_requests",
   {
