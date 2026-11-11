@@ -19,7 +19,16 @@ import { seal, unseal } from "./secrets";
  * module reports (shown on the Settings card).
  */
 const PROVIDER = "gusto";
-const API_VERSION = process.env.GUSTO_API_VERSION || "2024-04-01";
+/**
+ * Which version of Gusto's API to ask for. By default: none. Gusto then
+ * applies the app's own "Default API version" (set on the app in Gusto's
+ * developer portal), which Gusto always accepts. Naming a version here is
+ * what broke the first real connection: Gusto retires old versions and
+ * answers 406 to a request that names one. GUSTO_API_VERSION can still pin a
+ * version; if Gusto has retired it, the request is repeated without it.
+ */
+const PINNED_VERSION = (process.env.GUSTO_API_VERSION || "").trim();
+let pinnedVersionRefused = false;
 
 export type GustoEnv = "demo" | "production";
 export function gustoEnv(): GustoEnv { return process.env.GUSTO_ENV === "production" ? "production" : "demo"; }
@@ -55,34 +64,52 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return json;
 }
 
+/** Gusto's own words for a refusal, when it gives any (never includes a token). */
+async function refusalReason(res: Response): Promise<string> {
+  try {
+    const j = (await res.json()) as { errors?: { message?: string }[]; error_description?: string; error?: string; message?: string };
+    const m = j.errors?.map((e) => e.message).filter(Boolean).join(" ") || j.error_description || j.message || j.error || "";
+    return String(m).replace(/\s+/g, " ").trim().slice(0, 180);
+  } catch { return ""; }
+}
+
 async function gustoGet<T>(path: string, accessToken: string): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, {
+  const call = (version: string) => fetch(`${apiBase()}${path}`, {
     method: "GET", // the only verb this module uses
-    headers: { authorization: `Bearer ${accessToken}`, accept: "application/json", "X-Gusto-API-Version": API_VERSION },
+    headers: { authorization: `Bearer ${accessToken}`, accept: "application/json", ...(version ? { "X-Gusto-API-Version": version } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
+  const pinned = pinnedVersionRefused ? "" : PINNED_VERSION;
+  let res = await call(pinned);
+  if (res.status === 406 && pinned) { pinnedVersionRefused = true; res = await call(""); } // retired version: let Gusto use the app's default
   if (!res.ok) {
-    const err = new Error(`Gusto answered HTTP ${res.status} for ${path.split("?")[0]}.`) as Error & { status?: number };
+    const why = await refusalReason(res);
+    const err = new Error(`Gusto answered HTTP ${res.status} for ${path.split("?")[0]}${why ? `: ${why}` : "."}`) as Error & { status?: number };
     err.status = res.status;
     throw err;
   }
   return (await res.json()) as T;
 }
 
-/** Which Gusto company the approval covers. Newer API versions answer
- *  /v1/token_info; older ones list companies under /v1/me. */
+/** Which Gusto company the approval covers. /v1/token_info says so directly;
+ *  /v1/me (companies the signed-in person administers) is the fallback. */
 async function identify(accessToken: string): Promise<{ id: string; name: string }> {
   let id = "";
+  let first: Error | null = null;
   try {
-    const info = await gustoGet<{ resource?: { type?: string; uuid?: string } }>("/v1/token_info", accessToken);
-    if (info.resource?.uuid) id = info.resource.uuid;
-  } catch { /* fall through to /v1/me */ }
+    const info = await gustoGet<{ resource?: { type?: string; uuid?: string }; resource_type?: string; resource_uuid?: string }>("/v1/token_info", accessToken);
+    const type = info.resource?.type ?? info.resource_type ?? "";
+    const uuid = info.resource?.uuid ?? info.resource_uuid ?? "";
+    if (uuid && (!type || /company/i.test(type))) id = uuid;
+  } catch (e) { first = e as Error; /* fall through to /v1/me */ }
   let name = "";
   if (!id) {
-    const me = await gustoGet<{ roles?: { payroll_admin?: { companies?: { uuid?: string; id?: string; name?: string; trade_name?: string }[] } } }>("/v1/me", accessToken);
-    const c = me.roles?.payroll_admin?.companies?.[0];
-    id = c?.uuid || c?.id || "";
-    name = c?.trade_name || c?.name || "";
+    try {
+      const me = await gustoGet<{ roles?: { payroll_admin?: { companies?: { uuid?: string; id?: string; name?: string; trade_name?: string }[] } } }>("/v1/me", accessToken);
+      const c = me.roles?.payroll_admin?.companies?.[0];
+      id = c?.uuid || c?.id || "";
+      name = c?.trade_name || c?.name || "";
+    } catch (e) { throw first ?? e; } // the first refusal is the informative one
   }
   if (!id) throw new Error("Gusto signed you in but didn't say which company the approval covers.");
   if (!name) {
