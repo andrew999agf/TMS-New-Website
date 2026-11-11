@@ -195,8 +195,9 @@ export async function checkGustoConnection(companyId: number): Promise<{ ok: tru
 
 export type GustoPayroll = { externalId: string; checkDate: string; periodStart: string; periodEnd: string; offCycle: boolean; totals: Record<string, string> };
 
-/** Every processed payroll in roughly the last year, with Gusto's own totals untouched. Read-only. */
-export async function listGustoPayrolls(companyId: number, days = 400): Promise<{ ok: true; environment: string; companyName: string; payrolls: GustoPayroll[] } | { ok: false; error: string }> {
+/** Every processed payroll in the last year, with Gusto's own totals untouched. Read-only.
+ *  Gusto refuses a date range longer than one year, and returns 25 rows unless asked for more. */
+export async function listGustoPayrolls(companyId: number, days = 360): Promise<{ ok: true; environment: string; companyName: string; payrolls: GustoPayroll[] } | { ok: false; error: string }> {
   if (!db) return { ok: false, error: "Database not configured." };
   try {
     const conn = await getGustoConnection(companyId);
@@ -204,7 +205,15 @@ export async function listGustoPayrolls(companyId: number, days = 400): Promise<
     const { token, externalId } = await accessTokenFor(companyId);
     const iso = (d: Date) => d.toISOString().slice(0, 10);
     type P = { payroll_uuid?: string; uuid?: string; id?: string | number; check_date?: string; off_cycle?: boolean; pay_period?: { start_date?: string; end_date?: string }; totals?: Record<string, unknown> };
-    const list = await gustoGet<P[]>(`/v1/companies/${externalId}/payrolls?processing_statuses=processed&include=totals&start_date=${iso(new Date(Date.now() - days * 86_400_000))}&end_date=${iso(new Date())}`, token);
+    const path = (d: number, extra: string) => `/v1/companies/${externalId}/payrolls?processing_statuses=processed&include=totals&start_date=${iso(new Date(Date.now() - d * 86_400_000))}&end_date=${iso(new Date())}${extra}`;
+    let list: P[];
+    try { list = await gustoGet<P[]>(path(Math.min(days, 360), "&page=1&per=100"), token); }
+    catch (e) {
+      // If Gusto objects to the wider request, fall back to the six-month request the connection check uses.
+      const status = (e as { status?: number }).status ?? 0;
+      if (status !== 400 && status !== 422) throw e;
+      list = await gustoGet<P[]>(path(180, ""), token);
+    }
     const payrolls = (Array.isArray(list) ? list : []).map((p) => ({
       externalId: String(p.payroll_uuid ?? p.uuid ?? p.id ?? ""), checkDate: p.check_date ?? "", periodStart: p.pay_period?.start_date ?? "", periodEnd: p.pay_period?.end_date ?? "", offCycle: !!p.off_cycle,
       totals: Object.fromEntries(Object.entries(p.totals ?? {}).filter(([, v]) => typeof v === "string" || typeof v === "number").map(([k, v]) => [k, String(v)])),
