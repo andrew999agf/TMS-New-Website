@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
+import { partnerCcAddresses } from "@/lib/intake/partner-contacts";
 import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, INTAKE_FIELDS, fieldLabel, formatAnswerValue } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
@@ -280,6 +281,10 @@ export async function POST(req: Request) {
   // falling back to the default address if none are configured.
   const managed = await recipientsForBranch(branch);
   const to = managed.length ? managed : [INTAKE_NOTIFY_TO];
+  // A partner office's own intake staff (added on that partner's tab in the
+  // admin) are copied on the notice for leads that came in through their link.
+  let partnerCc: string[] = [];
+  if (partner) { try { partnerCc = await partnerCcAddresses(partner.slug, to); } catch { /* the notice still goes to the firm's team */ } }
 
   // The intake team gets a SINGLE email: a clean, professional summary on top,
   // then the full submission details (and the CSV / draft docs) below.
@@ -347,6 +352,7 @@ export async function POST(req: Request) {
   const combinedHtml = `${notSavedBanner}${summaryHtml}<div style="max-width:640px;margin:26px 0 0;border-top:2px solid #e2ded7;padding-top:14px">${htmlWithDrafts}</div>`;
   const emailResult = await sendEmail({
     to,
+    cc: partnerCc.length ? partnerCc : undefined,
     fromName: `${FIRM.name} — Intake`,
     subject: `${id == null ? "[NOT IN INTAKE TAB] " : ""}${isUrgent ? "[URGENT] " : ""}${subjectParts.join(" — ")}`,
     html: combinedHtml,
