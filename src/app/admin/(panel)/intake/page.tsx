@@ -25,6 +25,8 @@ import { PartnerContacts } from "@/components/admin/PartnerContacts";
 import { getPartnerContacts } from "@/lib/intake/partner-contacts";
 import { PartnerProfile } from "@/components/admin/PartnerProfile";
 import { getPartnerProfile } from "@/lib/intake/partner-profile";
+import { PartnerConsults } from "@/components/admin/PartnerConsults";
+import { consultLocations, fmtRequested, listConsults } from "@/lib/intake/consults";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -177,6 +179,10 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   const activeTab = activePartner ? partnerTabs.find((t) => t.slug === activePartner.slug) ?? null : null;
   // The partner office's own intake staff: copied on that partner's lead emails.
   const partnerProfile = activePartner ? await getPartnerProfile(activePartner) : null;
+  // In-person consultation requests that came in through this partner's form.
+  const consults = activePartner ? await listConsults(activePartner.slug).catch(() => []) : [];
+  const focusConsult = typeof sp.consult === "string" ? Number(sp.consult) || null : null;
+  const central = (iso: string | null, opt: Intl.DateTimeFormatOptions, locale = "en-CA") => (iso ? new Intl.DateTimeFormat(locale, { timeZone: "America/Chicago", ...opt }).format(new Date(iso)) : "");
   const partnerContacts = activePartner ? (await getPartnerContacts(activePartner.slug)).map((c) => ({ id: c.id, name: c.name, email: c.email, linkSentAt: c.linkSentAt })) : [];
 
   return (
@@ -196,6 +202,12 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         {activeTab ? (
           <>
             <PartnerLinkCard partner={activeTab} />
+            <PartnerConsults partnerName={activeTab.name} partnerSlug={activeTab.slug} focusId={focusConsult} locations={consultLocations()} contacts={partnerContacts.map((c) => ({ id: c.id, name: c.name }))}
+              rows={consults.map((c) => ({
+                id: c.id, intakeId: c.intakeId, status: c.status, requested: c.requested.map(fmtRequested), contactId: c.contactId, clientName: c.clientName, clientPhone: c.clientPhone, hasEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.clientEmail), matter: c.matter,
+                sentToName: c.sentToName, whenText: c.whenText, startDate: central(c.startAt, { year: "numeric", month: "2-digit", day: "2-digit" }), startTime: central(c.startAt, { hour: "2-digit", minute: "2-digit", hour12: false }, "en-GB"),
+                durationMin: c.durationMin, location: c.location, note: c.note, proposedAt: c.proposedAt, confirmedAt: c.confirmedAt, declineNote: c.declineNote, reminderDay: !!c.reminderDayAt, reminderHours: !!c.reminderHoursAt,
+              }))} />
             {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />
             <IntakeTable key={activeTab.slug} rows={shownRows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />

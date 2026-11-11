@@ -6,6 +6,7 @@ import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
 import { getPartnerContacts } from "@/lib/intake/partner-contacts";
+import { cleanRequested, createConsultRequest, fmtRequested } from "@/lib/intake/consults";
 import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, INTAKE_FIELDS, fieldLabel, formatAnswerValue } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
@@ -37,6 +38,8 @@ const schema = z.object({
   partner: z.string().max(64).optional(),
   /** The partner-office contact picked on the form, by id (never an email address). */
   partnerContact: z.string().max(32).optional(),
+  /** Up to four dates the person asked for an in-person consultation (a request, not an appointment). */
+  consultDates: z.array(z.object({ date: z.string().max(10), part: z.string().max(16).optional() })).max(8).optional(),
   // Honeypot — must be empty.
   company: z.string().optional(),
 });
@@ -123,6 +126,12 @@ export async function POST(req: Request) {
       if (chosen) { a.helpedBy = chosen.name; partnerContactEmail = chosen.email.trim(); }
     } catch { /* the lead still goes to the firm's team */ }
   }
+  // An in-person consultation request (partner forms only): the dates are
+  // recorded with the lead in plain words, and tracked on the partner's tab.
+  const consultDates = partner ? cleanRequested(parsed.data.consultDates) : [];
+  delete a.consultDates;
+  if (consultDates.length) { a.consultRequested = "Yes"; a.consultDates = consultDates.map(fmtRequested); }
+  else if (a.consultRequested === "Yes") a.consultRequested = "No";
   const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : undefined);
 
   const deadline = str("deadline") || str("courtDate") || str("judgmentDate");
@@ -217,6 +226,13 @@ export async function POST(req: Request) {
     }
   } else {
     persistError = "database not configured";
+  }
+
+  // Track the in-person consultation request so the intake team can offer a time from the partner's tab.
+  let consultId: number | null = null;
+  if (partner && id != null && consultDates.length) {
+    try { consultId = await createConsultRequest(id, partner.slug, consultDates, partnerContactEmail ? parsed.data.partnerContact ?? "" : ""); }
+    catch (err) { console.error("[intake] consultation request not recorded:", err); }
   }
 
   // Email notification with CSV attachment (best-effort).
@@ -351,6 +367,11 @@ export async function POST(req: Request) {
         ${row("How they heard", referralSource === "Other" ? str("referralOther") || "Other" : referralSource)}
       </table>
       ${narrativeBlocks}
+      ${consultDates.length && partner ? `<div style="margin:0 0 18px;padding:14px 18px;border:1px solid #d9c9a8;background:#fbf6ea">
+        <p style="margin:0 0 6px"><strong>In-person consultation requested.</strong> Dates that work for them (a request &mdash; nothing is scheduled yet):</p>
+        <ul style="margin:0 0 10px;padding-left:20px">${consultDates.map((d) => `<li>${esc(fmtRequested(d))}</li>`).join("")}</ul>
+        <a href="${adminBase}/admin/intake?partner=${partner.slug}${consultId != null ? `&consult=${consultId}` : ""}#consults" style="display:inline-block;padding:10px 18px;background:#7a1f2b;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Check the calendar and offer a time &rarr;</a>
+      </div>` : ""}
       ${openLeadButton}
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
@@ -383,6 +404,7 @@ export async function POST(req: Request) {
     const ackBody = `
       <p style="margin:0 0 14px">Dear ${greetingName},</p>
       <p style="margin:0 0 14px">Thank you for your submission${partner ? ` through the office of ${esc(partner.name)}` : ""}. We have received your request and will review it, then follow up using the contact method you chose.</p>
+      ${consultDates.length ? `<p style="margin:0 0 14px">You asked to meet with us in person and gave us dates that work for you. Those dates are a request, not an appointment: we will check our calendar and send one date and time to confirm.</p>` : ""}
       <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>This has not created an attorney-client relationship.</strong> Our firm does not represent you until you have signed a representation agreement that has been issued by our firm and paid the applicable retainer fee.</p>
       <p style="margin:0 0 14px">If your matter is urgent, please call the office directly.</p>
       <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">— The office of ${esc(firmName)}</p>`;

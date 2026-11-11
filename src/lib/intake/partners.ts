@@ -85,4 +85,6 @@ export const PARTNER_FIELD_LABELS: Record<string, string> = {
   urgentReason: "Why it is urgent",
   helpedBy: "Contact at the referring office",
   formLanguage: "Form completed in",
+  consultRequested: "In-person consultation requested",
+  consultDates: "Dates requested (a request, not an appointment)",
 };

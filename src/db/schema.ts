@@ -2515,3 +2515,39 @@ export const sbBankRules = pgTable("sb_bank_rules", {
   createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ uq: uniqueIndex("sb_bank_rules_uq").on(t.companyId, t.pattern, t.direction) }));
+
+/* ----------------------------------------------------------------------------
+ * In-person consultation requests that come in through a partner office's
+ * intake form: the dates the person asked for, the date and time the firm
+ * offered, and the confirmation.
+ * ------------------------------------------------------------------------- */
+export const intakeConsults = pgTable("intake_consults", {
+  id: serial("id").primaryKey(),
+  intakeId: integer("intake_id").notNull(),
+  partnerSlug: varchar("partner_slug", { length: 64 }).notNull().default(""),
+  /** Unguessable key in the confirmation link. */
+  token: varchar("token", { length: 64 }).notNull(),
+  /** requested | proposed | confirmed | cancelled */
+  status: varchar("status", { length: 16 }).notNull().default("requested"),
+  /** What the person asked for: [{ date: "YYYY-MM-DD", part: "Morning" | "Afternoon" | "Either" }] */
+  requested: jsonb("requested").$type<{ date: string; part: string }[]>().notNull().default([]),
+  /** The partner-office contact picked on the form (id from the partner's contact list). */
+  contactId: varchar("contact_id", { length: 32 }).notNull().default(""),
+  /** Who the offered time was emailed to. */
+  sentToName: varchar("sent_to_name", { length: 191 }).notNull().default(""),
+  sentToEmail: varchar("sent_to_email", { length: 255 }).notNull().default(""),
+  /** "contact" (someone at the partner office) or "client" (the person themselves) */
+  sentToKind: varchar("sent_to_kind", { length: 16 }).notNull().default(""),
+  startAt: timestamp("start_at", { withTimezone: true }),
+  durationMin: integer("duration_min").notNull().default(60),
+  location: text("location").notNull().default(""),
+  note: text("note").notNull().default(""),
+  proposedBy: varchar("proposed_by", { length: 255 }),
+  proposedAt: timestamp("proposed_at", { withTimezone: true }),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  /** Why an offered time was turned down (the offer goes back to "requested"). */
+  declineNote: text("decline_note").notNull().default(""),
+  reminderDayAt: timestamp("reminder_day_at", { withTimezone: true }),
+  reminderHoursAt: timestamp("reminder_hours_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ tokenUq: uniqueIndex("intake_consults_token_uq").on(t.token), intakeIdx: index("intake_consults_intake_idx").on(t.intakeId) }));

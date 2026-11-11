@@ -27,11 +27,11 @@ type Form = {
   name: string; phone: string; email: string; street: string; city: string; state: string; zip: string;
   preferredContact: string; preferredLanguage: string;
   description: string; opposingParty: string; opposingCounsel: string; county: string;
-  caseFiled: string; caseInfo: string; urgent: string; deadline: string; urgentReason: string; helpedBy: string; contactId: string; consent: boolean;
+  caseFiled: string; caseInfo: string; urgent: string; deadline: string; urgentReason: string; helpedBy: string; contactId: string; consult: string; consent: boolean;
 };
 const EMPTY: Form = {
   name: "", phone: "", email: "", street: "", city: "", state: "TX", zip: "", preferredContact: "", preferredLanguage: "",
-  description: "", opposingParty: "", opposingCounsel: "", county: "", caseFiled: "", caseInfo: "", urgent: "", deadline: "", urgentReason: "", helpedBy: "", contactId: "", consent: false,
+  description: "", opposingParty: "", opposingCounsel: "", county: "", caseFiled: "", caseInfo: "", urgent: "", deadline: "", urgentReason: "", helpedBy: "", contactId: "", consult: "", consent: false,
 };
 
 /**
@@ -52,10 +52,14 @@ const T = {
     caseFiled: "Is there already a court case?", caseInfoPh: "Court and case number, if you have them",
     urgent: "Is this urgent?", urgentPh: "What makes it urgent? (served with papers, a hearing, a sale date…)",
     deadline: "Any deadline or court date?", helped: (partner: string) => `${partner} staff member helping with this form`,
+    consult: "Would you like to meet with us in person?", consultDates: "Dates that work for you", consultHelp: "Choose up to four.",
+    consultNotice: (firm: string) => `These dates are a request, not an appointment. ${firm} will check its calendar and send back one date and time to confirm. Nothing is scheduled until it is confirmed.`,
+    consultNeed: "Choose at least one date, or answer No.", parts: { Either: "Any time", Morning: "Morning", Afternoon: "Afternoon" } as Record<string, string>, dateN: (n: number) => `Date ${n}`,
+    consultDone: (firm: string) => `You asked to meet in person. The dates you chose are a request, not an appointment: ${firm} will check its calendar and send one date and time to confirm.`,
     contact: (partner: string) => `Your contact at ${partner}`, contactPick: "Choose a name…", contactHelp: "The person you choose will receive a copy of this request.",
     back: "Back", next: "Continue", submit: "Submit request", sending: "Sending…",
     opts: { Telephone: "Telephone", Email: "Email", English: "English", "Español": "Español", Other: "Other", Yes: "Yes", No: "No", "Not sure": "Not sure" } as Record<string, string>,
-    errs: { name: "Please enter your full name.", phone: "Please enter a phone number with area code.", email: "That email doesn't look right.", description: "Please tell us briefly what happened.", county: "Please enter the county.", urgent: "Please choose one.", consent: "Please check the box to continue." } as Record<string, string>,
+    errs: { name: "Please enter your full name.", phone: "Please enter a phone number with area code.", email: "That email doesn't look right.", description: "Please tell us briefly what happened.", county: "Please enter the county.", urgent: "Please choose one.", consent: "Please check the box to continue.", consult: "Choose at least one date, or answer No." } as Record<string, string>,
     failed: "That didn't go through. Please try again.", offline: "We couldn't reach the server. Check the connection and try again.",
     doneTitle: "Thank you. We have it.",
     doneBody: (firm: string, partner: string, how: string) => `${firm} will review what you sent and follow up${how ? ` by ${how}` : ""}. If this is urgent, tell the front desk at ${partner} before you leave.`,
@@ -75,10 +79,14 @@ const T = {
     caseFiled: "¿Ya existe un caso en un tribunal?", caseInfoPh: "Tribunal y número de caso, si los tiene",
     urgent: "¿Es urgente?", urgentPh: "¿Por qué es urgente? (le entregaron una demanda, hay una audiencia, una fecha de venta…)",
     deadline: "¿Alguna fecha límite o fecha de audiencia?", helped: (partner: string) => `Empleado(a) de ${partner} que ayuda con este formulario`,
+    consult: "¿Le gustaría reunirse con nosotros en persona?", consultDates: "Fechas que le convienen", consultHelp: "Elija hasta cuatro.",
+    consultNotice: (firm: string) => `Estas fechas son una solicitud, no una cita. ${firm} revisará su calendario y le enviará una fecha y hora para confirmar. Nada queda programado hasta que se confirme.`,
+    consultNeed: "Elija al menos una fecha, o responda No.", parts: { Either: "Cualquier hora", Morning: "Mañana", Afternoon: "Tarde" } as Record<string, string>, dateN: (n: number) => `Fecha ${n}`,
+    consultDone: (firm: string) => `Usted pidió una reunión en persona. Las fechas que eligió son una solicitud, no una cita: ${firm} revisará su calendario y le enviará una fecha y hora para confirmar.`,
     contact: (partner: string) => `Su contacto en ${partner}`, contactPick: "Elija un nombre…", contactHelp: "La persona que elija recibirá una copia de esta solicitud.",
     back: "Atrás", next: "Continuar", submit: "Enviar solicitud", sending: "Enviando…",
     opts: { Telephone: "Teléfono", Email: "Correo electrónico", English: "English", "Español": "Español", Other: "Otro", Yes: "Sí", No: "No", "Not sure": "No estoy seguro(a)" } as Record<string, string>,
-    errs: { name: "Escriba su nombre completo.", phone: "Escriba un número de teléfono con código de área.", email: "Ese correo electrónico no parece correcto.", description: "Cuéntenos brevemente qué pasó.", county: "Escriba el condado.", urgent: "Elija una opción.", consent: "Marque la casilla para continuar." } as Record<string, string>,
+    errs: { name: "Escriba su nombre completo.", phone: "Escriba un número de teléfono con código de área.", email: "Ese correo electrónico no parece correcto.", description: "Cuéntenos brevemente qué pasó.", county: "Escriba el condado.", urgent: "Elija una opción.", consent: "Marque la casilla para continuar.", consult: "Elija al menos una fecha, o responda No." } as Record<string, string>,
     failed: "No se pudo enviar. Inténtelo de nuevo.", offline: "No pudimos conectar con el servidor. Revise la conexión e inténtelo de nuevo.",
     doneTitle: "Gracias. Lo recibimos.",
     doneBody: (firm: string, partner: string, how: string) => `${firm} revisará lo que envió y se comunicará con usted${how ? ` por ${how}` : ""}. Si es urgente, avise en la recepción de ${partner} antes de irse.`,
@@ -132,6 +140,9 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
   const [token, setToken] = useState<string | null>(null);
   const [gen, setGen] = useState(0);
   const [honeypot, setHoneypot] = useState("");
+  const [dates, setDates] = useState<{ date: string; part: string }[]>(() => [0, 1, 2, 3].map(() => ({ date: "", part: "Either" })));
+  const [tomorrow] = useState(() => { const d = new Date(Date.now() + 86_400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  const pickedDates = dates.filter((d) => d.date);
   const top = useRef<HTMLDivElement>(null);
   const t = T[lang];
 
@@ -166,6 +177,7 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
     if (f.description.trim().length < 10) e.description = true;
     if (!f.county.trim()) e.county = true;
     if (!f.urgent) e.urgent = true;
+    if (f.consult === "Yes" && pickedDates.length === 0) e.consult = true;
     if (!f.consent) e.consent = true;
     setErrors(e); return Object.keys(e).length === 0;
   };
@@ -183,13 +195,13 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
       opposingParty: f.opposingParty.trim(), opposingCounsel: f.opposingCounsel.trim(),
       caseFiled: f.caseFiled, caseInfo: f.caseFiled === "Yes" ? f.caseInfo.trim() : "",
       urgent: f.urgent, deadline: f.deadline, urgentReason: f.urgent === "Yes" ? f.urgentReason.trim() : "",
-      helpedBy: contacts.length ? "" : f.helpedBy.trim(), formLanguage: lang === "es" ? "Spanish" : "English", consent: "Agreed",
+      consultRequested: f.consult, helpedBy: contacts.length ? "" : f.helpedBy.trim(), formLanguage: lang === "es" ? "Spanish" : "English", consent: "Agreed",
     };
     for (const k of Object.keys(answers)) if (answers[k] === "") delete answers[k];
     try {
       const res = await fetch("/api/intake", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ branch: area.branch, practiceSlug: area.practiceSlug, answers, partner: partner.slug, partnerContact: contacts.length && f.contactId ? f.contactId : undefined, referrer: typeof document !== "undefined" ? document.referrer : "", turnstileToken: token ?? undefined, company: honeypot }),
+        body: JSON.stringify({ branch: area.branch, practiceSlug: area.practiceSlug, answers, partner: partner.slug, partnerContact: contacts.length && f.contactId ? f.contactId : undefined, consultDates: f.consult === "Yes" ? pickedDates : undefined, referrer: typeof document !== "undefined" ? document.referrer : "", turnstileToken: token ?? undefined, company: honeypot }),
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) { setFailed("failed"); setToken(null); setGen((g) => g + 1); }
@@ -198,7 +210,7 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
     setSubmitting(false);
   }
 
-  const restart = () => { setArea(null); setStep(0); setF({ ...EMPTY, preferredLanguage: lang === "es" ? "Español" : "" }); setErrors({}); setDone(false); setFailed(null); setToken(null); setGen((g) => g + 1); scrollTop(); };
+  const restart = () => { setDates([0, 1, 2, 3].map(() => ({ date: "", part: "Either" }))); setArea(null); setStep(0); setF({ ...EMPTY, preferredLanguage: lang === "es" ? "Español" : "" }); setErrors({}); setDone(false); setFailed(null); setToken(null); setGen((g) => g + 1); scrollTop(); };
   const err = (k: string) => errors[k] ? <p className="mt-1 text-sm text-[var(--c-error,#b3261e)]" data-testid={`err-${k}`}>{t.errs[k]}</p> : null;
   /** Buttons show the current language; the value kept is always the English one. */
   const radios = (k: keyof Form, opts: string[]) => (
@@ -218,6 +230,7 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
       <div className="max-w-2xl" data-testid="partner-done">
         <h2 className="display-3 font-[family-name:var(--font-display)]">{t.doneTitle}</h2>
         <p className="mt-4 text-lg leading-relaxed text-[var(--c-ink-muted)]">{t.doneBody(firmName, partner.name, t.how[f.preferredContact] ?? "")}</p>
+        {f.consult === "Yes" && pickedDates.length > 0 && <p className="mt-4 rounded-md border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 px-4 py-3 text-sm leading-relaxed" data-testid="partner-done-consult">{t.consultDone(firmName)}</p>}
         <p className="mt-4 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3 text-sm leading-relaxed text-[var(--c-ink-muted)]">{t.doneNote(firmName)}</p>
         <button onClick={restart} className="btn btn-outline mt-8 inline-flex items-center gap-2" data-testid="partner-again">{t.again} <ArrowRight size={16} /></button>
       </div>
@@ -278,6 +291,24 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [],
               <div><span className={labelCls}>{t.urgent} *</span>{radios("urgent", ["Yes", "No"])}{err("urgent")}
                 {f.urgent === "Yes" && <input className={`${input} mt-2`} value={f.urgentReason} onChange={(e) => set("urgentReason", e.target.value)} placeholder={t.urgentPh} aria-label={t.urgentPh} data-testid="pi-urgentReason" />}</div>
               <div><label className={labelCls} htmlFor="pi-deadline">{t.deadline} {soft(t.ifKnown)}</label><input id="pi-deadline" type="date" className={`${input} max-w-xs`} value={f.deadline} onChange={(e) => set("deadline", e.target.value)} data-testid="pi-deadline" /></div>
+              <div data-testid="pi-consult">
+                <span className={labelCls}>{t.consult} {soft(t.optional)}</span>{radios("consult", ["Yes", "No"])}
+                {f.consult === "Yes" && (
+                  <div className="mt-3 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+                    <p className="rounded-md border border-[var(--c-accent)]/40 bg-[var(--c-accent)]/5 px-3 py-2 text-sm leading-relaxed" data-testid="pi-consult-notice">{t.consultNotice(firmName)}</p>
+                    <p className="mt-3 text-sm font-semibold">{t.consultDates} <span className="font-normal text-[var(--c-ink-muted)]">— {t.consultHelp}</span></p>
+                    <div className="mt-2 space-y-2">
+                      {dates.map((d, i) => (
+                        <div key={i} className="grid grid-cols-[1fr_9.5rem] gap-2">
+                          <input type="date" min={tomorrow} className={input} value={d.date} onChange={(e) => { const v = e.target.value; setDates((ds) => ds.map((x, j) => (j === i ? { ...x, date: v } : x))); setErrors((er) => { if (!er.consult) return er; const n = { ...er }; delete n.consult; return n; }); }} aria-label={t.dateN(i + 1)} data-testid={`pi-consult-date-${i}`} />
+                          <select className={input} value={d.part} onChange={(e) => { const v = e.target.value; setDates((ds) => ds.map((x, j) => (j === i ? { ...x, part: v } : x))); }} aria-label={`${t.dateN(i + 1)}: ${t.parts.Either}`} data-testid={`pi-consult-part-${i}`}>{["Either", "Morning", "Afternoon"].map((p) => <option key={p} value={p}>{t.parts[p]}</option>)}</select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {err("consult")}
+              </div>
               {contacts.length > 0 ? (
                 <div>
                   <label className={labelCls} htmlFor="pi-contact">{t.contact(partner.name)} {soft(t.optional)}</label>
