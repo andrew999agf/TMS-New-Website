@@ -18,8 +18,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 
-/** Add someone at the partner office. From then on they are copied on the
- *  intake team's email for each lead that comes in through the partner's link. */
+/** Add someone at the partner office. Their name then appears in the dropdown
+ *  on the partner's form; they are copied on a lead only when picked there. */
 export async function addPartnerContact(input: { partner: string; name: string; email: string }): Promise<Result> {
   const session = await requireAdmin();
   const partner = getIntakePartner(input.partner);
@@ -97,7 +97,7 @@ export async function sendPartnerLink(input: { partner: string; id?: string }): 
       ${li("<strong>Keep it handy.</strong> Bookmark the form on the front-desk computer or tablet.")}
     </table>
     <p style="margin:0 0 16px">The form takes about three minutes and has an <strong>English / Espa&ntilde;ol</strong> switch at the top.</p>
-    <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>What happens next.</strong> Each submission goes straight to our intake team, and you are copied on the notice so you know it arrived. We follow up with the person directly.</p>
+    <p style="margin:0 0 14px;padding:12px 16px;background:${colors.surface2};border-left:3px solid ${colors.accent}"><strong>What happens next.</strong> Each submission goes straight to our intake team, and we follow up with the person directly. To get a copy of a submission, choose your name under &ldquo;Your contact at ${esc(partner.name)}&rdquo; on the form.</p>
     <p style="margin:18px 0 0;color:${colors.inkMuted};font-size:13px">&mdash; The office of ${esc(firmName)}</p>
     <p style="margin:18px 0 0;padding-top:12px;border-top:1px solid ${colors.border};color:${colors.inkMuted};font-size:12px;line-height:1.6">${esc(firmName)} and ${esc(partner.name)} are separate, independent law firms and are not a partnership.</p>`;
 

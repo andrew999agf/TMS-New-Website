@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { answersToCsv } from "@/lib/intake/csv";
 import { sendEmail, INTAKE_NOTIFY_TO } from "@/lib/email";
-import { partnerCcAddresses } from "@/lib/intake/partner-contacts";
+import { getPartnerContacts } from "@/lib/intake/partner-contacts";
 import { getBranch, ESTATE_DEPTH, NARRATIVE_FIELDS, INTAKE_FIELDS, fieldLabel, formatAnswerValue } from "@/lib/intake/config";
 import { recipientsForBranch, getActiveTheme, getBlocks } from "@/lib/content";
 import { getColorPalette, getFontPalette } from "@/lib/theme/palettes";
@@ -35,6 +35,8 @@ const schema = z.object({
   resumeToken: z.string().min(16).max(64).regex(/^[\w-]+$/).optional(),
   /** A partner office's intake link (see src/lib/intake/partners.ts). */
   partner: z.string().max(64).optional(),
+  /** The partner-office contact picked on the form, by id (never an email address). */
+  partnerContact: z.string().max(32).optional(),
   // Honeypot — must be empty.
   company: z.string().optional(),
 });
@@ -111,6 +113,16 @@ export async function POST(req: Request) {
   const a = answers as Record<string, unknown>;
   delete a.partnerSlug; delete a.partnerName;
   if (partner) { a.partnerSlug = partner.slug; a.partnerName = partner.name; }
+  // The partner-office contact the person picked on the form. The form only
+  // ever has names and ids; the email address is looked up here. Nobody is
+  // copied unless they were picked.
+  let partnerContactEmail = "";
+  if (partner && parsed.data.partnerContact) {
+    try {
+      const chosen = (await getPartnerContacts(partner.slug)).find((c) => c.id === parsed.data.partnerContact);
+      if (chosen) { a.helpedBy = chosen.name; partnerContactEmail = chosen.email.trim(); }
+    } catch { /* the lead still goes to the firm's team */ }
+  }
   const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : undefined);
 
   const deadline = str("deadline") || str("courtDate") || str("judgmentDate");
@@ -281,10 +293,8 @@ export async function POST(req: Request) {
   // falling back to the default address if none are configured.
   const managed = await recipientsForBranch(branch);
   const to = managed.length ? managed : [INTAKE_NOTIFY_TO];
-  // A partner office's own intake staff (added on that partner's tab in the
-  // admin) are copied on the notice for leads that came in through their link.
-  let partnerCc: string[] = [];
-  if (partner) { try { partnerCc = await partnerCcAddresses(partner.slug, to); } catch { /* the notice still goes to the firm's team */ } }
+  // Only the partner-office contact picked on the form is copied on the notice.
+  const partnerCc = partnerContactEmail && !to.some((t) => t.trim().toLowerCase() === partnerContactEmail.toLowerCase()) ? [partnerContactEmail] : [];
 
   // The intake team gets a SINGLE email: a clean, professional summary on top,
   // then the full submission details (and the CSV / draft docs) below.

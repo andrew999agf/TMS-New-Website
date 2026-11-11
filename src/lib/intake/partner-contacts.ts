@@ -4,10 +4,11 @@ import { db } from "@/db";
 import { settings } from "@/db/schema";
 
 /**
- * The people at a partner office (their intake staff). Two things follow from
- * being on this list: they are copied on the intake team's email for every
- * lead that comes in through that partner's link, and the link can be emailed
- * to them from the partner's tab.
+ * The people at a partner office (their intake staff), added on the partner's
+ * tab in the admin. Their NAMES appear in a dropdown on that partner's intake
+ * form; whoever is picked there is copied on the intake team's email for that
+ * one lead. Nobody is copied automatically, and an email address is never
+ * sent to the form. The link can also be emailed to them from the tab.
  *
  * Kept in the settings table, one entry per partner — no schema change.
  */
@@ -34,17 +35,4 @@ export async function savePartnerContacts(slug: string, contacts: PartnerContact
   if (!db) throw new Error("Database not configured.");
   const value = { contacts };
   await db.insert(settings).values({ key: keyFor(slug), value }).onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
-}
-
-/** Addresses to copy on the intake team's email for this partner's leads. */
-export async function partnerCcAddresses(slug: string, alreadyTo: string[]): Promise<string[]> {
-  const have = new Set(alreadyTo.map((a) => a.trim().toLowerCase()));
-  const out: string[] = [];
-  for (const c of await getPartnerContacts(slug)) {
-    const e = c.email.trim();
-    if (!e || have.has(e.toLowerCase())) continue;
-    have.add(e.toLowerCase());
-    out.push(e);
-  }
-  return out;
 }

@@ -83,6 +83,6 @@ export const PARTNER_FIELD_LABELS: Record<string, string> = {
   caseInfo: "Court and case number",
   urgent: "Is this urgent?",
   urgentReason: "Why it is urgent",
-  helpedBy: "Staff member who helped with this form",
+  helpedBy: "Contact at the referring office",
   formLanguage: "Form completed in",
 };

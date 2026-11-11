@@ -10,6 +10,9 @@ type Props = {
   areas: PartnerArea[];
   /** The partner office's logo ("" = none: its name is shown as text). */
   logoUrl?: string;
+  /** People at the partner office the form can name, by NAME ONLY. Their email
+   *  addresses never reach this page; the server looks the address up by id. */
+  contacts?: { id: string; name: string }[];
   /** The partner office's contact details: one office per block, blank line between. */
   contact?: string;
   firmName: string;
@@ -24,11 +27,11 @@ type Form = {
   name: string; phone: string; email: string; street: string; city: string; state: string; zip: string;
   preferredContact: string; preferredLanguage: string;
   description: string; opposingParty: string; opposingCounsel: string; county: string;
-  caseFiled: string; caseInfo: string; urgent: string; deadline: string; urgentReason: string; helpedBy: string; consent: boolean;
+  caseFiled: string; caseInfo: string; urgent: string; deadline: string; urgentReason: string; helpedBy: string; contactId: string; consent: boolean;
 };
 const EMPTY: Form = {
   name: "", phone: "", email: "", street: "", city: "", state: "TX", zip: "", preferredContact: "", preferredLanguage: "",
-  description: "", opposingParty: "", opposingCounsel: "", county: "", caseFiled: "", caseInfo: "", urgent: "", deadline: "", urgentReason: "", helpedBy: "", consent: false,
+  description: "", opposingParty: "", opposingCounsel: "", county: "", caseFiled: "", caseInfo: "", urgent: "", deadline: "", urgentReason: "", helpedBy: "", contactId: "", consent: false,
 };
 
 /**
@@ -49,6 +52,7 @@ const T = {
     caseFiled: "Is there already a court case?", caseInfoPh: "Court and case number, if you have them",
     urgent: "Is this urgent?", urgentPh: "What makes it urgent? (served with papers, a hearing, a sale date…)",
     deadline: "Any deadline or court date?", helped: (partner: string) => `${partner} staff member helping with this form`,
+    contact: (partner: string) => `Your contact at ${partner}`, contactPick: "Choose a name…", contactHelp: "The person you choose will receive a copy of this request.",
     back: "Back", next: "Continue", submit: "Submit request", sending: "Sending…",
     opts: { Telephone: "Telephone", Text: "Text", Email: "Email", English: "English", "Español": "Español", Other: "Other", Yes: "Yes", No: "No", "Not sure": "Not sure" } as Record<string, string>,
     errs: { name: "Please enter your full name.", phone: "Please enter a phone number with area code.", email: "That email doesn't look right.", description: "Please tell us briefly what happened.", county: "Please enter the county.", urgent: "Please choose one.", consent: "Please check the box to continue." } as Record<string, string>,
@@ -71,6 +75,7 @@ const T = {
     caseFiled: "¿Ya existe un caso en un tribunal?", caseInfoPh: "Tribunal y número de caso, si los tiene",
     urgent: "¿Es urgente?", urgentPh: "¿Por qué es urgente? (le entregaron una demanda, hay una audiencia, una fecha de venta…)",
     deadline: "¿Alguna fecha límite o fecha de audiencia?", helped: (partner: string) => `Empleado(a) de ${partner} que ayuda con este formulario`,
+    contact: (partner: string) => `Su contacto en ${partner}`, contactPick: "Elija un nombre…", contactHelp: "La persona que elija recibirá una copia de esta solicitud.",
     back: "Atrás", next: "Continuar", submit: "Enviar solicitud", sending: "Enviando…",
     opts: { Telephone: "Teléfono", Text: "Mensaje de texto", Email: "Correo electrónico", English: "English", "Español": "Español", Other: "Otro", Yes: "Sí", No: "No", "Not sure": "No estoy seguro(a)" } as Record<string, string>,
     errs: { name: "Escriba su nombre completo.", phone: "Escriba un número de teléfono con código de área.", email: "Ese correo electrónico no parece correcto.", description: "Cuéntenos brevemente qué pasó.", county: "Escriba el condado.", urgent: "Elija una opción.", consent: "Marque la casilla para continuar." } as Record<string, string>,
@@ -115,7 +120,7 @@ function linkify(line: string): React.ReactNode[] {
   return out;
 }
 
-export function PartnerIntake({ partner, areas, logoUrl, contact, firmName, consentText, turnstileSiteKey }: Props) {
+export function PartnerIntake({ partner, areas, logoUrl, contact, contacts = [], firmName, consentText, turnstileSiteKey }: Props) {
   const [lang, setLangState] = useState<Lang>("en");
   const [area, setArea] = useState<PartnerArea | null>(null);
   const [step, setStep] = useState(0); // 0 pick · 1 you · 2 the matter
@@ -178,13 +183,13 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, firmName, cons
       opposingParty: f.opposingParty.trim(), opposingCounsel: f.opposingCounsel.trim(),
       caseFiled: f.caseFiled, caseInfo: f.caseFiled === "Yes" ? f.caseInfo.trim() : "",
       urgent: f.urgent, deadline: f.deadline, urgentReason: f.urgent === "Yes" ? f.urgentReason.trim() : "",
-      helpedBy: f.helpedBy.trim(), formLanguage: lang === "es" ? "Spanish" : "English", consent: "Agreed",
+      helpedBy: contacts.length ? "" : f.helpedBy.trim(), formLanguage: lang === "es" ? "Spanish" : "English", consent: "Agreed",
     };
     for (const k of Object.keys(answers)) if (answers[k] === "") delete answers[k];
     try {
       const res = await fetch("/api/intake", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ branch: area.branch, practiceSlug: area.practiceSlug, answers, partner: partner.slug, referrer: typeof document !== "undefined" ? document.referrer : "", turnstileToken: token ?? undefined, company: honeypot }),
+        body: JSON.stringify({ branch: area.branch, practiceSlug: area.practiceSlug, answers, partner: partner.slug, partnerContact: contacts.length && f.contactId ? f.contactId : undefined, referrer: typeof document !== "undefined" ? document.referrer : "", turnstileToken: token ?? undefined, company: honeypot }),
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) { setFailed("failed"); setToken(null); setGen((g) => g + 1); }
@@ -273,7 +278,18 @@ export function PartnerIntake({ partner, areas, logoUrl, contact, firmName, cons
               <div><span className={labelCls}>{t.urgent} *</span>{radios("urgent", ["Yes", "No"])}{err("urgent")}
                 {f.urgent === "Yes" && <input className={`${input} mt-2`} value={f.urgentReason} onChange={(e) => set("urgentReason", e.target.value)} placeholder={t.urgentPh} aria-label={t.urgentPh} data-testid="pi-urgentReason" />}</div>
               <div><label className={labelCls} htmlFor="pi-deadline">{t.deadline} {soft(t.ifKnown)}</label><input id="pi-deadline" type="date" className={`${input} max-w-xs`} value={f.deadline} onChange={(e) => set("deadline", e.target.value)} data-testid="pi-deadline" /></div>
-              <div><label className={labelCls} htmlFor="pi-helped">{t.helped(partner.name)} {soft(t.optional)}</label><input id="pi-helped" className={input} value={f.helpedBy} onChange={(e) => set("helpedBy", e.target.value)} data-testid="pi-helpedBy" /></div>
+              {contacts.length > 0 ? (
+                <div>
+                  <label className={labelCls} htmlFor="pi-contact">{t.contact(partner.name)} {soft(t.optional)}</label>
+                  <select id="pi-contact" className={input} value={f.contactId} onChange={(e) => set("contactId", e.target.value)} data-testid="pi-contact">
+                    <option value="">{t.contactPick}</option>
+                    {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-[var(--c-ink-muted)]">{t.contactHelp}</p>
+                </div>
+              ) : (
+                <div><label className={labelCls} htmlFor="pi-helped">{t.helped(partner.name)} {soft(t.optional)}</label><input id="pi-helped" className={input} value={f.helpedBy} onChange={(e) => set("helpedBy", e.target.value)} data-testid="pi-helpedBy" /></div>
+              )}
               <div>
                 <label className="flex cursor-pointer items-start gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-4 text-sm leading-relaxed">
                   <input type="checkbox" checked={f.consent} onChange={(e) => set("consent", e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--c-accent)]" data-testid="pi-consent" />

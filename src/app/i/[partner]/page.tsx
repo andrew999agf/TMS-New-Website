@@ -5,6 +5,7 @@ import { FIRM } from "@/lib/firm";
 import { getIntakePartner } from "@/lib/intake/partners";
 import { PartnerIntake } from "@/components/intake/PartnerIntake";
 import { getPartnerProfile } from "@/lib/intake/partner-profile";
+import { getPartnerContacts } from "@/lib/intake/partner-contacts";
 import { media } from "@/lib/media";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +26,14 @@ export async function generateMetadata({ params }: { params: Promise<{ partner: 
 export default async function PartnerIntakePage({ params }: { params: Promise<{ partner: string }> }) {
   const partner = getIntakePartner((await params).partner);
   if (!partner) notFound();
-  const [consult, globals, profile] = await Promise.all([getBlocks("consultation"), getBlocks("global"), getPartnerProfile(partner)]);
+  const [consult, globals, profile, team] = await Promise.all([getBlocks("consultation"), getBlocks("global"), getPartnerProfile(partner), getPartnerContacts(partner.slug)]);
+  // Names only. An email address is never sent to this page.
+  const contacts = team.filter((c) => c.name.trim()).map((c) => ({ id: c.id, name: c.name }));
   const firmName = globals["global.firmName"] || FIRM.name;
   const consent = consult["intake.consent"] || `I understand that sending this form does not create an attorney-client relationship, and that ${firmName} does not represent me until I have signed a representation agreement issued by the firm.`;
   return (
     <main className="min-h-screen bg-[var(--c-bg)] text-[var(--c-ink)]">
-      <PartnerIntake partner={{ slug: partner.slug, name: partner.name }} areas={partner.areas} logoUrl={media(profile.logoUrl) ?? ""} contact={profile.contact} firmName={firmName} consentText={consent} turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} />
+      <PartnerIntake partner={{ slug: partner.slug, name: partner.name }} areas={partner.areas} logoUrl={media(profile.logoUrl) ?? ""} contact={profile.contact} contacts={contacts} firmName={firmName} consentText={consent} turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} />
     </main>
   );
 }

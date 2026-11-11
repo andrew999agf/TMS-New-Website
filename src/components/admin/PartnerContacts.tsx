@@ -8,8 +8,9 @@ import { addPartnerContact, removePartnerContact, sendPartnerLink } from "@/app/
 export type PartnerContactRow = { id: string; name: string; email: string; linkSentAt?: string };
 
 /** The partner office's intake team, on the partner's tab: add or remove
- *  people, and email them the intake link. Everyone listed is copied on the
- *  intake team's email for each lead that comes in through this partner. */
+ *  people, and email them the intake link. Their names (never their email
+ *  addresses) are offered in a dropdown on the form; the one picked is copied
+ *  on the intake team's email for that lead. */
 export function PartnerContacts({ partner, contacts, emailReady }: { partner: { slug: string; name: string }; contacts: PartnerContactRow[]; emailReady: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -39,7 +40,7 @@ export function PartnerContacts({ partner, contacts, emailReady }: { partner: { 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">{partner.name} — their intake team</p>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[var(--c-ink-muted)]">Everyone listed here is copied on the email your intake team gets for each lead that comes in through this link. You can also email them the link.</p>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[var(--c-ink-muted)]">These names appear in a dropdown on their intake form (names only, never an email address). Whoever is chosen on a form is copied on the email your intake team gets for that lead. No one is copied unless they are chosen. You can also email them the link.</p>
         </div>
         {contacts.length > 1 && (
           <button type="button" disabled={!emailReady || busy !== null} onClick={() => run("all", () => sendPartnerLink({ partner: partner.slug }))}
@@ -57,12 +58,12 @@ export function PartnerContacts({ partner, contacts, emailReady }: { partner: { 
               </div>
               <div className="flex items-center gap-2">
                 <button type="button" disabled={!emailReady || busy !== null} onClick={() => run(c.id, () => sendPartnerLink({ partner: partner.slug, id: c.id }))} className={small} data-testid={`contact-send-${c.email}`}><Mail size={13} /> {busy === c.id ? "Sending…" : c.linkSentAt ? "Email the link again" : "Email the link"}</button>
-                <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm(`Remove ${c.name || c.email}? They will stop being copied on new leads.`)) run(`rm-${c.id}`, () => removePartnerContact({ partner: partner.slug, id: c.id })); }} className={small} aria-label={`Remove ${c.name || c.email}`} title="Remove" data-testid={`contact-remove-${c.email}`}><Trash2 size={13} /></button>
+                <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm(`Remove ${c.name || c.email}? Their name will come off the form's dropdown.`)) run(`rm-${c.id}`, () => removePartnerContact({ partner: partner.slug, id: c.id })); }} className={small} aria-label={`Remove ${c.name || c.email}`} title="Remove" data-testid={`contact-remove-${c.email}`}><Trash2 size={13} /></button>
               </div>
             </li>
           ))}
         </ul>
-      ) : <p className="mt-4 rounded-md border border-dashed border-[var(--c-border)] px-4 py-3 text-xs text-[var(--c-ink-muted)]" data-testid="contact-empty">No one added yet. Until someone is listed, only your intake team gets the emails.</p>}
+      ) : <p className="mt-4 rounded-md border border-dashed border-[var(--c-border)] px-4 py-3 text-xs text-[var(--c-ink-muted)]" data-testid="contact-empty">No one added yet. Until someone is listed, the form has no dropdown and only your intake team gets the emails.</p>}
 
       <form className="mt-4 grid gap-2 sm:grid-cols-[1fr_1.3fr_auto]" onSubmit={(e) => { e.preventDefault(); run("add", () => addPartnerContact({ partner: partner.slug, name, email }), () => { setName(""); setEmail(""); }); }}>
         <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Name" autoComplete="off" data-testid="contact-name" />
