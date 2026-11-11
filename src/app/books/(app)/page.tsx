@@ -5,6 +5,10 @@ import { db } from "@/db";
 import { sbAccounts, sbAudit, sbMemberships, sbTaxRules } from "@/db/schema";
 import { requireBooks, booksCompany, requestHost } from "@/lib/books/auth";
 import { booksBase } from "@/lib/books/host";
+import { balances, clientTrustBalances, listAccounts, natural, profitAndLoss } from "@/lib/books/ledger";
+import { txnCounts } from "@/lib/books/banking";
+import { upcomingDeadlines } from "@/lib/books/payroll";
+import { fmtCents, todayIso } from "@/lib/books/money";
 
 export default async function BooksDashboard() {
   const session = await requireBooks();
@@ -17,6 +21,19 @@ export default async function BooksDashboard() {
     db.select({ verified: sbTaxRules.verified }).from(sbTaxRules).where(eq(sbTaxRules.year, new Date().getFullYear())),
     db.select().from(sbAudit).where(eq(sbAudit.companyId, company.id)).orderBy(desc(sbAudit.id)).limit(8),
   ]);
+  const today = todayIso();
+  const [chart, bal, counts, trustClients, ytd, deadlines] = await Promise.all([listAccounts(company.id), balances(company.id), txnCounts(company.id), clientTrustBalances(company.id), profitAndLoss(company.id, `${today.slice(0, 4)}-01-01`, today), upcomingDeadlines(4)]);
+  const sumOf = (pred: (a: (typeof chart)[number]) => boolean) => chart.filter(pred).reduce((t, a) => t + natural(a, bal.get(a.id)), 0);
+  const cash = sumOf((a) => a.subtype === "bank" && !a.isTrust), cards = sumOf((a) => a.subtype === "credit_card"), trustBank = sumOf((a) => a.subtype === "trust_bank");
+  const trustHeld = trustClients.reduce((t, c) => t + c.balance, 0);
+  const toReview = [...counts.values()].reduce((t, c) => t + c.new, 0);
+  const tiles: { label: string; value: string; href: string; warn?: string; id: string }[] = [
+    { id: "cash", label: "Operating cash", value: fmtCents(cash, { paren: true, dollar: true }), href: `${base}/banking` },
+    { id: "cards", label: "Credit cards owed", value: fmtCents(cards, { paren: true, dollar: true }), href: `${base}/banking` },
+    { id: "trust", label: "Held in trust for clients", value: fmtCents(trustHeld, { paren: true, dollar: true }), href: `${base}/trust`, warn: trustBank !== trustHeld || trustClients.some((c) => c.balance < 0) ? "Does not agree with the IOLTA account" : undefined },
+    { id: "review", label: "Statement rows to review", value: String(toReview), href: `${base}/banking` },
+    { id: "net", label: `Net income, ${today.slice(0, 4)} to date`, value: fmtCents(ytd.net, { paren: true, dollar: true }), href: `${base}/reports?r=pl` },
+  ];
   const steps = [
     { done: !!company.ein, label: "Company profile: EIN, entity type, tax election", href: `${base}/settings` },
     { done: !!company.operatingBankName && !!company.ioltaBankName, label: "Name the operating and IOLTA bank accounts", href: `${base}/settings` },
@@ -28,6 +45,24 @@ export default async function BooksDashboard() {
     <div>
       <h1 className="font-[family-name:var(--font-display)] text-2xl">{company.name}</h1>
       <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{company.legalName}{company.ein ? ` · EIN ${company.ein}` : ""} · {company.state} · {company.entityType.toUpperCase()} taxed as {company.taxElection.replace("_", " ")} · fiscal year starts month {company.fiscalYearStartMonth}</p>
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="dash-tiles">
+        {tiles.map((t) => (
+          <Link key={t.id} href={t.href} className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4 hover:border-[var(--c-accent)]" data-testid={`dash-${t.id}`}>
+            <p className="text-[11px] uppercase tracking-wide text-[var(--c-ink-muted)]">{t.label}</p>
+            <p className="mt-1 font-mono text-lg font-semibold">{t.value}</p>
+            {t.warn && <p className="mt-1 text-[11px] font-semibold text-red-700">{t.warn}</p>}
+          </Link>
+        ))}
+      </section>
+      {deadlines.length > 0 && (
+        <section className="mt-4 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5" data-testid="dash-deadlines">
+          <h2 className="text-sm font-semibold">Coming up</h2>
+          <ul className="mt-2 space-y-1 text-sm">
+            {deadlines.slice(0, 4).map((d, i) => <li key={i}><span className="font-mono text-xs">{d.date}</span> · {d.label}</li>)}
+          </ul>
+          <Link href={`${base}/payroll`} className="mt-2 inline-block text-xs text-[var(--c-accent)] hover:underline">All filing dates</Link>
+        </section>
+      )}
       <section className="mt-6 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
         <h2 className="text-sm font-semibold">Set-up</h2>
         <ul className="mt-3 space-y-2">

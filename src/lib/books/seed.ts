@@ -46,7 +46,7 @@ export const DEFAULT_COMPANY = {
   operatingLast4: "",
   ioltaBankName: "",
   ioltaLast4: "",
-  settings: { payrollProvider: "quickbooks", cpaEmail: "", timeTrackerReadOnly: true },
+  settings: { payrollProvider: "gusto", cpaEmail: "", timeTrackerReadOnly: true },
 };
 
 export type SeedAccount = { number: string; name: string; type: "asset" | "liability" | "equity" | "income" | "expense"; subtype: string; parent?: string; trust?: boolean; key?: string };
@@ -125,6 +125,6 @@ export const DEFAULT_RULES: SeedRule[] = [
   { year: 2026, jurisdiction: "TX", key: "franchise_due", label: "Franchise tax report due", value: "05-15", unit: "date", source: "https://comptroller.texas.gov/taxes/franchise/", verified: true },
   { year: 2026, jurisdiction: "TX", key: "franchise_no_tax_due_threshold", label: "Franchise no-tax-due threshold (total revenue)", value: 2470000, unit: "usd", source: "https://comptroller.texas.gov/taxes/franchise/", verified: false, note: "Indexed every two years — confirm for the 2026 report." },
   { year: 2026, jurisdiction: "TX", key: "franchise_rate", label: "Franchise tax rate (services)", value: 0.0075, unit: "rate", source: "https://comptroller.texas.gov/taxes/franchise/", verified: true },
-  { year: 2026, jurisdiction: "TX", key: "trust_record_retention_years", label: "Trust account records retention (Texas Rule 1.14)", value: 5, unit: "years", source: "https://www.texasbar.com/", verified: true },
+  { year: 2026, jurisdiction: "TX", key: "trust_record_retention_years", label: "Trust account records retention (Texas Rule 1.15)", value: 5, unit: "years", source: "https://www.texasbar.com/", verified: true },
   { year: 2026, jurisdiction: "TX", key: "sales_tax_on_legal_services", label: "Sales tax on legal services", value: false, unit: "bool", source: "https://comptroller.texas.gov/", verified: true, note: "Not taxable." },
 ];

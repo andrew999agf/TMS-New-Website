@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Landmark, Scale, Users, ListTree, BarChart3, Settings, ArrowLeft, LogOut } from "lucide-react";
+import { LayoutDashboard, Landmark, Scale, Users, ListTree, BarChart3, Settings, ArrowLeft, LogOut, BookOpen } from "lucide-react";
 import { BOOKS_NAME } from "@/lib/books/host";
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/trust", label: "Trust (IOLTA)", icon: Scale },
   { href: "/payroll", label: "Payroll", icon: Users },
   { href: "/accounts", label: "Chart of accounts", icon: ListTree },
+  { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

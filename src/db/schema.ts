@@ -21,6 +21,7 @@ import {
   uniqueIndex,
   real,
   bigint,
+  date,
 } from "drizzle-orm/pg-core";
 import type { ProductionPart } from "@/lib/production/parts";
 
@@ -2388,3 +2389,117 @@ export const sbAudit = pgTable(
   },
   (t) => ({ companyIdx: index("sb_audit_company_idx").on(t.companyId, t.createdAt) }),
 );
+
+/* ----------------------------------------------------------------------------
+ * StartBookkeeping — the ledger. Money is whole cents. Entries are never
+ * edited or deleted: a mistake is voided (with a reason) and re-entered, so
+ * every record keeps its history.
+ * ------------------------------------------------------------------------- */
+
+/** People and matters money is tracked for: trust ledgers and cost advances. */
+export const sbClients = pgTable("sb_clients", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  name: varchar("name", { length: 191 }).notNull(),
+  matter: varchar("matter", { length: 255 }).notNull().default(""),
+  reference: varchar("reference", { length: 64 }).notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ companyIdx: index("sb_clients_company_idx").on(t.companyId) }));
+
+export const sbEntries = pgTable("sb_entries", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  entryDate: date("entry_date").notNull(),
+  memo: text("memo").notNull().default(""),
+  /** manual | bank | trust | payroll */
+  source: varchar("source", { length: 16 }).notNull().default("manual"),
+  sourceRef: varchar("source_ref", { length: 128 }).notNull().default(""),
+  /** For trust entries: deposit | disbursement | fee_transfer */
+  kind: varchar("kind", { length: 24 }).notNull().default(""),
+  /** posted | void */
+  status: varchar("status", { length: 8 }).notNull().default("posted"),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  voidedBy: varchar("voided_by", { length: 255 }),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  voidReason: text("void_reason").notNull().default(""),
+}, (t) => ({ companyIdx: index("sb_entries_company_idx").on(t.companyId, t.entryDate) }));
+
+export const sbLines = pgTable("sb_lines", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id").notNull(),
+  companyId: integer("company_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  debit: bigint("debit", { mode: "number" }).notNull().default(0),
+  credit: bigint("credit", { mode: "number" }).notNull().default(0),
+  memo: varchar("memo", { length: 255 }).notNull().default(""),
+  clientId: integer("client_id"),
+  payee: varchar("payee", { length: 191 }).notNull().default(""),
+  ref: varchar("ref", { length: 64 }).notNull().default(""),
+  /** Bank-account lines: the reconciliation this line was cleared on. */
+  reconcileId: integer("reconcile_id"),
+}, (t) => ({ entryIdx: index("sb_lines_entry_idx").on(t.entryId), acctIdx: index("sb_lines_account_idx").on(t.companyId, t.accountId) }));
+
+/** A row from a bank or card statement file. Signed cents: + in, − out. */
+export const sbBankTxns = pgTable("sb_bank_txns", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  txnDate: date("txn_date").notNull(),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  description: text("description").notNull().default(""),
+  ref: varchar("ref", { length: 64 }).notNull().default(""),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull(),
+  importId: integer("import_id"),
+  /** new | posted | excluded */
+  status: varchar("status", { length: 12 }).notNull().default("new"),
+  entryId: integer("entry_id"),
+  lineId: integer("line_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: uniqueIndex("sb_bank_txns_uq").on(t.companyId, t.accountId, t.fingerprint), acctIdx: index("sb_bank_txns_account_idx").on(t.companyId, t.accountId, t.status) }));
+
+export const sbImports = pgTable("sb_imports", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  filename: varchar("filename", { length: 255 }).notNull().default(""),
+  rowCount: integer("row_count").notNull().default(0),
+  added: integer("added").notNull().default(0),
+  duplicates: integer("duplicates").notNull().default(0),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sbReconciliations = pgTable("sb_reconciliations", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  statementDate: date("statement_date").notNull(),
+  statementBalance: bigint("statement_balance", { mode: "number" }).notNull(),
+  /** open | final */
+  status: varchar("status", { length: 8 }).notNull().default("open"),
+  /** What the numbers were when it was finalized. */
+  snapshot: jsonb("snapshot").notNull().default({}),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  finalizedBy: varchar("finalized_by", { length: 255 }),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+}, (t) => ({ acctIdx: index("sb_reconciliations_account_idx").on(t.companyId, t.accountId) }));
+
+/** A payroll read from the payroll service, and the entry it was posted as. */
+export const sbPayrollRuns = pgTable("sb_payroll_runs", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  externalId: varchar("external_id", { length: 128 }).notNull(),
+  environment: varchar("environment", { length: 16 }).notNull().default("production"),
+  checkDate: date("check_date").notNull(),
+  periodStart: date("period_start"),
+  periodEnd: date("period_end"),
+  totals: jsonb("totals").notNull().default({}),
+  entryId: integer("entry_id"),
+  postedBy: varchar("posted_by", { length: 255 }),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: uniqueIndex("sb_payroll_runs_uq").on(t.companyId, t.provider, t.externalId) }));

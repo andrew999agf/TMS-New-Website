@@ -193,6 +193,28 @@ export async function checkGustoConnection(companyId: number): Promise<{ ok: tru
   }
 }
 
+export type GustoPayroll = { externalId: string; checkDate: string; periodStart: string; periodEnd: string; offCycle: boolean; totals: Record<string, string> };
+
+/** Every processed payroll in roughly the last year, with Gusto's own totals untouched. Read-only. */
+export async function listGustoPayrolls(companyId: number, days = 400): Promise<{ ok: true; environment: string; companyName: string; payrolls: GustoPayroll[] } | { ok: false; error: string }> {
+  if (!db) return { ok: false, error: "Database not configured." };
+  try {
+    const conn = await getGustoConnection(companyId);
+    if (!conn) return { ok: false, error: "Gusto isn't connected." };
+    const { token, externalId } = await accessTokenFor(companyId);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    type P = { payroll_uuid?: string; uuid?: string; id?: string | number; check_date?: string; off_cycle?: boolean; pay_period?: { start_date?: string; end_date?: string }; totals?: Record<string, unknown> };
+    const list = await gustoGet<P[]>(`/v1/companies/${externalId}/payrolls?processing_statuses=processed&include=totals&start_date=${iso(new Date(Date.now() - days * 86_400_000))}&end_date=${iso(new Date())}`, token);
+    const payrolls = (Array.isArray(list) ? list : []).map((p) => ({
+      externalId: String(p.payroll_uuid ?? p.uuid ?? p.id ?? ""), checkDate: p.check_date ?? "", periodStart: p.pay_period?.start_date ?? "", periodEnd: p.pay_period?.end_date ?? "", offCycle: !!p.off_cycle,
+      totals: Object.fromEntries(Object.entries(p.totals ?? {}).filter(([, v]) => typeof v === "string" || typeof v === "number").map(([k, v]) => [k, String(v)])),
+    })).filter((p) => p.externalId && p.checkDate).sort((a, b) => b.checkDate.localeCompare(a.checkDate));
+    return { ok: true, environment: conn.environment, companyName: conn.companyName, payrolls };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message ?? e).slice(0, 300) };
+  }
+}
+
 /** Forget the tokens. (Access can also be revoked from Gusto's own App Directory.) */
 export async function disconnectGusto(companyId: number): Promise<void> {
   if (!db) return;

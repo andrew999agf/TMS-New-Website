@@ -49,6 +49,35 @@ export const BOOKS_DDL: string[] = [
     id serial PRIMARY KEY, company_id integer, user_email varchar(255) NOT NULL DEFAULT '', action varchar(32) NOT NULL, entity varchar(48) NOT NULL DEFAULT '', entity_id varchar(64) NOT NULL DEFAULT '',
     detail text NOT NULL DEFAULT '', ip varchar(64) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS sb_audit_company_idx ON sb_audit (company_id, created_at)`,
+  // The ledger. Whole cents; entries are voided, never edited or deleted.
+  `CREATE TABLE IF NOT EXISTS sb_clients (id serial PRIMARY KEY, company_id integer NOT NULL, name varchar(191) NOT NULL, matter varchar(255) NOT NULL DEFAULT '', reference varchar(64) NOT NULL DEFAULT '', active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS sb_clients_company_idx ON sb_clients (company_id)`,
+  `CREATE TABLE IF NOT EXISTS sb_entries (
+    id serial PRIMARY KEY, company_id integer NOT NULL, entry_date date NOT NULL, memo text NOT NULL DEFAULT '', source varchar(16) NOT NULL DEFAULT 'manual', source_ref varchar(128) NOT NULL DEFAULT '',
+    kind varchar(24) NOT NULL DEFAULT '', status varchar(8) NOT NULL DEFAULT 'posted', created_by varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(),
+    voided_by varchar(255), voided_at timestamptz, void_reason text NOT NULL DEFAULT '')`,
+  `CREATE INDEX IF NOT EXISTS sb_entries_company_idx ON sb_entries (company_id, entry_date)`,
+  `CREATE TABLE IF NOT EXISTS sb_lines (
+    id serial PRIMARY KEY, entry_id integer NOT NULL, company_id integer NOT NULL, account_id integer NOT NULL, debit bigint NOT NULL DEFAULT 0, credit bigint NOT NULL DEFAULT 0,
+    memo varchar(255) NOT NULL DEFAULT '', client_id integer, payee varchar(191) NOT NULL DEFAULT '', ref varchar(64) NOT NULL DEFAULT '', reconcile_id integer)`,
+  `CREATE INDEX IF NOT EXISTS sb_lines_entry_idx ON sb_lines (entry_id)`,
+  `CREATE INDEX IF NOT EXISTS sb_lines_account_idx ON sb_lines (company_id, account_id)`,
+  `CREATE TABLE IF NOT EXISTS sb_bank_txns (
+    id serial PRIMARY KEY, company_id integer NOT NULL, account_id integer NOT NULL, txn_date date NOT NULL, amount bigint NOT NULL, description text NOT NULL DEFAULT '', ref varchar(64) NOT NULL DEFAULT '',
+    fingerprint varchar(64) NOT NULL, import_id integer, status varchar(12) NOT NULL DEFAULT 'new', entry_id integer, line_id integer, created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sb_bank_txns_uq ON sb_bank_txns (company_id, account_id, fingerprint)`,
+  `CREATE INDEX IF NOT EXISTS sb_bank_txns_account_idx ON sb_bank_txns (company_id, account_id, status)`,
+  `CREATE TABLE IF NOT EXISTS sb_imports (id serial PRIMARY KEY, company_id integer NOT NULL, account_id integer NOT NULL, filename varchar(255) NOT NULL DEFAULT '', row_count integer NOT NULL DEFAULT 0, added integer NOT NULL DEFAULT 0, duplicates integer NOT NULL DEFAULT 0, created_by varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS sb_reconciliations (
+    id serial PRIMARY KEY, company_id integer NOT NULL, account_id integer NOT NULL, statement_date date NOT NULL, statement_balance bigint NOT NULL, status varchar(8) NOT NULL DEFAULT 'open',
+    snapshot jsonb NOT NULL DEFAULT '{}'::jsonb, created_by varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), finalized_by varchar(255), finalized_at timestamptz)`,
+  `CREATE INDEX IF NOT EXISTS sb_reconciliations_account_idx ON sb_reconciliations (company_id, account_id)`,
+  `CREATE TABLE IF NOT EXISTS sb_payroll_runs (
+    id serial PRIMARY KEY, company_id integer NOT NULL, provider varchar(32) NOT NULL, external_id varchar(128) NOT NULL, environment varchar(16) NOT NULL DEFAULT 'production',
+    check_date date NOT NULL, period_start date, period_end date, totals jsonb NOT NULL DEFAULT '{}'::jsonb, entry_id integer, posted_by varchar(255), posted_at timestamptz, created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sb_payroll_runs_uq ON sb_payroll_runs (company_id, provider, external_id)`,
+  // The safekeeping rule was renumbered from 1.14 to 1.15 effective October 1, 2024.
+  `UPDATE sb_tax_rules SET label = 'Trust account records retention (Texas Rule 1.15)' WHERE key = 'trust_record_retention_years' AND label = 'Trust account records retention (Texas Rule 1.14)'`,
 ];
 
 let ensured: Promise<void> | null = null;
