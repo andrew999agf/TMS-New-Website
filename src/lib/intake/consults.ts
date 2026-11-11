@@ -111,6 +111,26 @@ export async function listConsults(partnerSlug: string): Promise<ConsultView[]> 
   }));
 }
 
+/**
+ * The partner office's own addresses, read from the contact details kept on
+ * its tab (one office per block). The address is every line before the first
+ * phone or email line.
+ */
+export function partnerLocations(partnerName: string, contactText: string): string[] {
+  const out: string[] = [];
+  for (const block of String(contactText ?? "").split(/\n\s*\n/)) {
+    const lines: string[] = [];
+    for (const raw of block.split("\n")) {
+      const line = raw.trim().replace(/,+$/, "");
+      if (!line) continue;
+      if (/@|\bphone\b|\bemail\b|\btel\b|\bfax\b|\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}/i.test(line)) break;
+      lines.push(line);
+    }
+    if (lines.length) out.push(`${partnerName}, ${lines.join(", ")}`.slice(0, 300));
+  }
+  return [...new Set(out)];
+}
+
 /** Places the consultation can be held: the firm's own offices. */
 export const consultLocations = () => OFFICES.map((o) => `${FIRM.name}, ${o.street}, ${o.city}, ${o.state} ${o.zip}`);
 

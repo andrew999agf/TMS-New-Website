@@ -11,6 +11,8 @@ export type ConsultRow = {
   reminderDay: boolean; reminderHours: boolean;
 };
 type Contact = { id: string; name: string };
+/** Places to hold it, grouped: the partner office's own addresses first, then the firm's. */
+export type LocationGroup = { label: string; options: string[] };
 
 const input = "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--c-accent)]";
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -19,10 +21,11 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { timeZone: "America/Chicago" }) : "");
 
-function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: ConsultRow; contacts: Contact[]; locations: string[]; partnerName: string; partnerSlug: string; focus: boolean }) {
+function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: ConsultRow; contacts: Contact[]; locations: LocationGroup[]; partnerName: string; partnerSlug: string; focus: boolean }) {
   const router = useRouter();
+  const all = locations.flatMap((g) => g.options);
   const [open, setOpen] = useState(c.status === "requested" || focus);
-  const [f, setF] = useState({ date: c.startDate, time: c.startTime || "10:00", durationMin: c.durationMin || 60, location: c.location || locations[1] || locations[0] || "", other: "", note: c.note, sendTo: contacts.some((x) => x.id === c.contactId) ? c.contactId : contacts[0]?.id ?? (c.hasEmail ? "client" : "") });
+  const [f, setF] = useState({ date: c.startDate, time: c.startTime || "10:00", durationMin: c.durationMin || 60, location: all.includes(c.location) ? c.location : c.location ? "__other" : all[0] ?? "", other: all.includes(c.location) ? "" : c.location, note: c.note, sendTo: contacts.some((x) => x.id === c.contactId) ? c.contactId : contacts[0]?.id ?? (c.hasEmail ? "client" : "") });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const st = STATUS[c.status] ?? STATUS.requested;
@@ -52,7 +55,7 @@ function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: C
             <label className="text-xs">Date<input type="date" className={`${input} mt-1 block`} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} data-testid={`consult-date-${c.id}`} /></label>
             <label className="text-xs">Time (Central)<input type="time" step={900} className={`${input} mt-1 block`} value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} data-testid={`consult-time-${c.id}`} /></label>
             <label className="text-xs">Length<select className={`${input} mt-1 block`} value={f.durationMin} onChange={(e) => setF({ ...f, durationMin: Number(e.target.value) })}>{[30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select></label>
-            <label className="min-w-[16rem] flex-1 text-xs">Where<select className={`${input} mt-1 block w-full`} value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} data-testid={`consult-where-${c.id}`}>{locations.map((l) => <option key={l} value={l}>{l}</option>)}<option value="__other">Somewhere else…</option></select></label>
+            <label className="min-w-[16rem] flex-1 text-xs">Where<select className={`${input} mt-1 block w-full`} value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} data-testid={`consult-where-${c.id}`}>{locations.filter((g) => g.options.length).map((g) => <optgroup key={g.label} label={g.label}>{g.options.map((l) => <option key={l} value={l}>{l}</option>)}</optgroup>)}<option value="__other">Somewhere else…</option></select></label>
           </div>
           {f.location === "__other" && <input className={`${input} mt-2 block w-full`} value={f.other} onChange={(e) => setF({ ...f, other: e.target.value })} placeholder="Name and address of the place" aria-label="Place" data-testid={`consult-other-${c.id}`} />}
           <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -73,7 +76,7 @@ function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: C
 }
 
 /** On the partner's tab: in-person consultation requests, and the step that offers a real date and time. */
-export function PartnerConsults({ rows, contacts, locations, partnerName, partnerSlug, focusId }: { rows: ConsultRow[]; contacts: Contact[]; locations: string[]; partnerName: string; partnerSlug: string; focusId: number | null }) {
+export function PartnerConsults({ rows, contacts, locations, partnerName, partnerSlug, focusId }: { rows: ConsultRow[]; contacts: Contact[]; locations: LocationGroup[]; partnerName: string; partnerSlug: string; focusId: number | null }) {
   const [showAll, setShowAll] = useState(false);
   const live = rows.filter((r) => r.status !== "cancelled");
   const shown = showAll ? rows : live;
