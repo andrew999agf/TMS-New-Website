@@ -5,7 +5,7 @@ import { sbClients } from "@/db/schema";
 import { requireBooks, requestHost } from "@/lib/books/auth";
 import { booksBase } from "@/lib/books/host";
 import { canWrite, listAccounts } from "@/lib/books/ledger";
-import { bankAccounts, listTxns, txnCounts } from "@/lib/books/banking";
+import { bankAccounts, listRules, listTxns, txnCounts } from "@/lib/books/banking";
 import { bookBalance, listReconciliations, reconciliationView } from "@/lib/books/reconcile";
 import { fmtCents, todayIso } from "@/lib/books/money";
 import { BankImport, TxnHandled, TxnReview } from "@/components/books/Banking";
@@ -30,14 +30,16 @@ export default async function BankingPage({ searchParams }: { searchParams: Prom
 
   let body: React.ReactNode;
   if (view === "review") {
-    const [rows, clients] = await Promise.all([listTxns(cid, account.id, "new"), db ? db.select().from(sbClients).where(eq(sbClients.companyId, cid)).orderBy(asc(sbClients.name)) : []]);
+    const [rows, clients, rules] = await Promise.all([listTxns(cid, account.id, "new"), db ? db.select().from(sbClients).where(eq(sbClients.companyId, cid)).orderBy(asc(sbClients.name)) : [], listRules(cid)]);
+    const nameOf = (id: number) => { const a = all.find((x) => x.id === id); return a ? `${a.number} ${a.name}` : "(account removed)"; };
     const key = (r: { description: string; amount: number }) => `${r.description.toLowerCase()}|${Math.sign(r.amount)}`;
     const tally = new Map<string, number>(); for (const r of rows) tally.set(key(r), (tally.get(key(r)) ?? 0) + 1);
     const categories = all.filter((a) => a.active && !a.isTrust && a.id !== account.id).map((a) => ({ id: a.id, number: a.number, name: a.name, type: a.type, needsClient: a.systemKey === "client_advances" }));
     body = (
       <>
         {edit && <BankImport accountId={account.id} isCard={isCard} />}
-        <TxnReview rows={rows.map((r) => ({ id: r.id, date: r.date, amount: r.amount, description: r.description, ref: r.ref, suggestId: r.suggestId, matches: r.matches, sameCount: (tally.get(key(r)) ?? 1) - 1 }))} categories={categories} clients={clients.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, matter: x.matter }))} canEdit={edit} />
+        <TxnReview key={account.id} total={c.new} accountId={account.id} rules={rules.map((r) => ({ id: r.id, pattern: r.pattern, direction: r.direction, account: nameOf(r.accountId) }))}
+          rows={rows.map((r) => ({ id: r.id, date: r.date, amount: r.amount, description: r.description, ref: r.ref, suggestId: categories.some((x) => x.id === r.suggestId) ? r.suggestId : null, suggestFrom: r.suggestFrom, matches: r.matches, sameCount: (tally.get(key(r)) ?? 1) - 1 }))} categories={categories} clients={clients.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, matter: x.matter }))} canEdit={edit} />
       </>
     );
   } else if (view === "posted" || view === "aside") {

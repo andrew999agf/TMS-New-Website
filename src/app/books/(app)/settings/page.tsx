@@ -6,6 +6,8 @@ import { booksBase } from "@/lib/books/host";
 import { getGustoConnection, gustoConfigured, gustoEnv, gustoRedirectUri } from "@/lib/books/gusto";
 import { GustoConnection, type GustoCard } from "@/components/books/GustoConnection";
 import { CompanySettings, type RuleRow, type UserRow, type RequestRow } from "@/components/books/CompanySettings";
+import { BooksClose } from "@/components/books/BooksClose";
+import { closedThrough } from "@/lib/books/ledger";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ gusto?: string; why?: string }> }) {
   const session = await requireBooks();
@@ -22,7 +24,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const requestRows: RequestRow[] = requests.map((r) => ({ id: r.id, email: r.email, name: r.name, adminRole: r.adminRole, createdAt: r.createdAt.toISOString() }));
   const ruleRows: RuleRow[] = rules.map((r) => ({ id: r.id, jurisdiction: r.jurisdiction, key: r.key, label: r.label, value: r.value, unit: r.unit, source: r.source, note: r.note, verified: r.verified, verifiedBy: r.verifiedBy }));
   const { id: _id, createdAt: _c, updatedAt: _u, settings: _s, primaryUserId: _p, ...form } = company; void _id; void _c; void _u; void _s; void _p;
-  const [publicBase, host, conn] = await Promise.all([booksPublicBase(), requestHost(), getGustoConnection(company.id)]);
+  const [publicBase, host, conn, closed] = await Promise.all([booksPublicBase(), requestHost(), getGustoConnection(company.id), closedThrough(company.id)]);
   const gusto: GustoCard = {
     configured: gustoConfigured(), environment: gustoEnv(), redirectUri: gustoRedirectUri(publicBase),
     startUrl: `${booksBase(host)}/integrations/gusto/start`,
@@ -33,6 +35,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <div>
       <h1 className="font-[family-name:var(--font-display)] text-2xl">Settings</h1>
       <div className="mt-4"><GustoConnection data={gusto} owner={session.role === "owner"} /></div>
+      <div className="mt-6"><BooksClose key={closed} closedThrough={closed} owner={session.role === "owner"} /></div>
       <div className="mt-6"><CompanySettings company={form} users={users} rules={ruleRows} requests={requestRows} owner={session.role === "owner"} /></div>
     </div>
   );

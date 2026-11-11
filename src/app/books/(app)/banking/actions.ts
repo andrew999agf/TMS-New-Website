@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { sbAccounts } from "@/db/schema";
 import { requireBooks, sbAudit_ } from "@/lib/books/auth";
 import { canWrite, LedgerError } from "@/lib/books/ledger";
-import { BANK_SUBTYPES, categorize, importRows, matchTxn, setExcluded, undoTxn } from "@/lib/books/banking";
+import { BANK_SUBTYPES, categorize, categorizeMany, deleteRule, importRows, matchTxn, postSuggested, setExcluded, undoTxn } from "@/lib/books/banking";
 import { readBankCsv } from "@/lib/books/bank-csv";
 
 type R = { ok: true; message?: string } | { ok: false; error: string };
@@ -35,11 +35,11 @@ export async function importStatement(input: { accountId: number; filename: stri
   });
 }
 
-export async function categorizeRow(input: { txnId: number; categoryId: number; memo?: string; clientId?: number | null; applyToSame?: boolean }): Promise<R> {
+export async function categorizeRow(input: { txnId: number; categoryId: number; memo?: string; clientId?: number | null; applyToSame?: boolean; remember?: string }): Promise<R> {
   return wrap(async () => {
     const s = await writer();
     if (!input.categoryId) return { ok: false, error: "Choose an account for this row." };
-    const r = await categorize(s.companyId, Number(input.txnId), { categoryId: Number(input.categoryId), memo: input.memo, clientId: input.clientId ? Number(input.clientId) : null, applyToSame: !!input.applyToSame }, s.email);
+    const r = await categorize(s.companyId, Number(input.txnId), { categoryId: Number(input.categoryId), memo: input.memo, clientId: input.clientId ? Number(input.clientId) : null, applyToSame: !!input.applyToSame, remember: typeof input.remember === "string" ? input.remember : undefined }, s.email);
     await sbAudit_(s.companyId, s.email, "create", "bank", String(input.txnId), `Categorized ${r.posted} statement row${r.posted === 1 ? "" : "s"}`);
     reval();
     return { ok: true, message: r.posted > 1 ? `Posted ${r.posted} rows.` : undefined };
@@ -56,4 +56,35 @@ export async function excludeRow(input: { txnId: number; excluded: boolean }): P
 
 export async function undoRow(input: { txnId: number }): Promise<R> {
   return wrap(async () => { const s = await writer(); await undoTxn(s.companyId, Number(input.txnId), s.email); await sbAudit_(s.companyId, s.email, "update", "bank", String(input.txnId), "Sent a posted statement row back to review"); reval(); return { ok: true }; });
+}
+
+const tally = (r: { posted: number; skipped: number; firstError: string }): R => r.posted === 0 && r.skipped > 0 ? { ok: false, error: r.firstError || "Nothing could be posted." }
+  : { ok: true, message: `Posted ${r.posted} row${r.posted === 1 ? "" : "s"}.${r.skipped ? ` ${r.skipped} could not be posted: ${r.firstError}` : ""}` };
+
+/** Post the checked rows to one account. */
+export async function categorizeSelected(input: { txnIds: number[]; categoryId: number }): Promise<R> {
+  return wrap(async () => {
+    const s = await writer();
+    if (!input.categoryId) return { ok: false, error: "Choose an account for the selected rows." };
+    if (!Array.isArray(input.txnIds) || input.txnIds.length === 0) return { ok: false, error: "Check the rows to post first." };
+    const r = await categorizeMany(s.companyId, input.txnIds, Number(input.categoryId), s.email);
+    await sbAudit_(s.companyId, s.email, "create", "bank", "", `Categorized ${r.posted} statement rows at once`);
+    reval();
+    return tally(r);
+  });
+}
+
+/** Post every waiting row in the account that already has a suggested account. */
+export async function postAllSuggested(input: { accountId: number }): Promise<R> {
+  return wrap(async () => {
+    const s = await writer();
+    const r = await postSuggested(s.companyId, Number(input.accountId), s.email);
+    await sbAudit_(s.companyId, s.email, "create", "bank", String(input.accountId), `Posted ${r.posted} suggested statement rows`);
+    reval();
+    return tally(r);
+  });
+}
+
+export async function forgetRule(input: { id: number }): Promise<R> {
+  return wrap(async () => { const s = await writer(); await deleteRule(s.companyId, Number(input.id)); await sbAudit_(s.companyId, s.email, "delete", "bank", String(input.id), "Removed a remembered banking rule"); reval(); return { ok: true }; });
 }

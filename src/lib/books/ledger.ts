@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { sbAccounts, sbBankTxns, sbClients, sbEntries, sbLines, sbReconciliations } from "@/db/schema";
+import { sbAccounts, sbBankTxns, sbClients, sbCompanies, sbEntries, sbLines, sbReconciliations } from "@/db/schema";
 import { isDebitNormal, isIsoDate } from "./money";
 
 /**
@@ -38,6 +38,16 @@ export async function accountByKey(companyId: number, key: string): Promise<Acco
   return a ?? null;
 }
 
+/** The date the books are closed through ("" = not closed). Entries on or before it can't be added or voided. */
+export async function closedThrough(companyId: number, runner?: Runner): Promise<string> {
+  const run = runner ?? db;
+  if (!run) return "";
+  const [c] = await run.select({ settings: sbCompanies.settings }).from(sbCompanies).where(eq(sbCompanies.id, companyId)).limit(1);
+  const d = (c?.settings as { closedThrough?: unknown } | null)?.closedThrough;
+  return isIsoDate(d) ? d : "";
+}
+const closedMessage = (d: string) => `The books are closed through ${d}. An owner can change the closing date under Settings.`;
+
 /** Post one balanced entry. Returns its id and the ids of its lines, in order. */
 export async function postEntry(companyId: number, input: EntryInput, by: string, runner?: Runner): Promise<{ id: number; lineIds: number[] }> {
   if (!db) throw new LedgerError("Database not configured.");
@@ -55,6 +65,8 @@ export async function postEntry(companyId: number, input: EntryInput, by: string
   if (debits === 0) throw new LedgerError("The entry has no amount.");
 
   const run = runner ?? db;
+  const closed = await closedThrough(companyId, run);
+  if (closed && input.date <= closed) throw new LedgerError(closedMessage(closed));
   const ids = [...new Set(lines.map((l) => l.accountId))];
   const accts = await run.select().from(sbAccounts).where(and(eq(sbAccounts.companyId, companyId), inArray(sbAccounts.id, ids)));
   if (accts.length !== ids.length) throw new LedgerError("Pick an account for every line.");
@@ -94,6 +106,8 @@ export async function voidEntry(companyId: number, entryId: number, reason: stri
     const [e] = await tx.select().from(sbEntries).where(and(eq(sbEntries.companyId, companyId), eq(sbEntries.id, entryId))).limit(1);
     if (!e) throw new LedgerError("That entry no longer exists.");
     if (e.status === "void") throw new LedgerError("That entry is already void.");
+    const closed = await closedThrough(companyId, tx);
+    if (closed && e.entryDate <= closed) throw new LedgerError(closedMessage(closed));
     const lines = await tx.select({ id: sbLines.id, reconcileId: sbLines.reconcileId }).from(sbLines).where(eq(sbLines.entryId, entryId));
     const recIds = [...new Set(lines.map((l) => l.reconcileId).filter((x): x is number => !!x))];
     if (recIds.length) {
@@ -248,6 +262,24 @@ export async function listEntries(companyId: number, opts: { from?: string; to?:
   const by = new Map<number, EntryView["lines"]>();
   for (const l of lines) (by.get(Number(l.entryId)) ?? by.set(Number(l.entryId), []).get(Number(l.entryId))!).push({ accountId: Number(l.accountId), number: l.number, name: l.name, debit: Number(l.debit), credit: Number(l.credit), memo: l.memo, clientName: l.clientName, payee: l.payee, ref: l.ref });
   return head.map((h) => ({ ...h, id: Number(h.id), lines: by.get(Number(h.id)) ?? [] }));
+}
+
+/** Net debit − credit per account per month (YYYY-MM), for a month-by-month profit and loss. */
+export async function monthlyNets(companyId: number, from: string, to: string): Promise<{ accountId: number; month: string; net: number }[]> {
+  if (!db) return [];
+  const rows = await db.execute(sql`
+    select l.account_id as "accountId", to_char(e.entry_date, 'YYYY-MM') as month, (coalesce(sum(l.debit), 0) - coalesce(sum(l.credit), 0))::text as net
+    from sb_lines l join sb_entries e on e.id = l.entry_id
+    where l.company_id = ${companyId} and e.status = 'posted' and e.entry_date >= ${from} and e.entry_date <= ${to}
+    group by 1, 2`) as unknown as { accountId: number; month: string; net: string }[];
+  return rows.map((r) => ({ accountId: Number(r.accountId), month: r.month, net: Number(r.net) }));
+}
+
+/** How much is in the books: number of posted entries and the dates they span. */
+export async function ledgerSpan(companyId: number): Promise<{ entries: number; first: string; last: string }> {
+  if (!db) return { entries: 0, first: "", last: "" };
+  const [r] = await db.execute(sql`select count(*)::int as n, coalesce(min(entry_date)::text, '') as first, coalesce(max(entry_date)::text, '') as last from sb_entries where company_id = ${companyId} and status = 'posted'`) as unknown as { n: number; first: string; last: string }[];
+  return { entries: Number(r?.n ?? 0), first: r?.first ?? "", last: r?.last ?? "" };
 }
 
 /** Minimal CSV: quotes every field, doubles embedded quotes, BOM for Excel. */

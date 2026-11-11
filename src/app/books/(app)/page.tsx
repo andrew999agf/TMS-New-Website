@@ -5,7 +5,8 @@ import { db } from "@/db";
 import { sbAccounts, sbAudit, sbMemberships, sbTaxRules } from "@/db/schema";
 import { requireBooks, booksCompany, requestHost } from "@/lib/books/auth";
 import { booksBase } from "@/lib/books/host";
-import { balances, clientTrustBalances, listAccounts, natural, profitAndLoss } from "@/lib/books/ledger";
+import { balances, clientTrustBalances, closedThrough, ledgerSpan, listAccounts, natural, profitAndLoss } from "@/lib/books/ledger";
+import { sbReconciliations } from "@/db/schema";
 import { txnCounts } from "@/lib/books/banking";
 import { upcomingDeadlines } from "@/lib/books/payroll";
 import { fmtCents, todayIso } from "@/lib/books/money";
@@ -29,11 +30,13 @@ export default async function BooksDashboard() {
   const trustIds = new Set(chart.filter((a) => a.subtype === "trust_bank").map((a) => a.id));
   const toReview = [...counts.entries()].filter(([id]) => !trustIds.has(id)).reduce((t, [, c]) => t + c.new, 0);
   const trustToAssign = [...counts.entries()].filter(([id]) => trustIds.has(id)).reduce((t, [, c]) => t + c.new, 0);
+  const [span, closed, recs] = await Promise.all([ledgerSpan(company.id), closedThrough(company.id), db.select({ id: sbReconciliations.id }).from(sbReconciliations).where(eq(sbReconciliations.companyId, company.id)).limit(1)]);
+  const imported = [...counts.values()].reduce((t, c) => t + c.new + c.posted + c.excluded, 0);
   const tiles: { label: string; value: string; href: string; warn?: string; id: string }[] = [
     { id: "cash", label: "Operating cash", value: fmtCents(cash, { paren: true, dollar: true }), href: `${base}/banking` },
     { id: "cards", label: "Credit cards owed", value: fmtCents(cards, { paren: true, dollar: true }), href: `${base}/banking` },
     { id: "trust", label: "Held in trust for clients", value: fmtCents(trustHeld, { paren: true, dollar: true }), href: `${base}/trust`, warn: trustBank !== trustHeld || trustClients.some((c) => c.balance < 0) ? "Does not agree with the IOLTA account" : trustToAssign ? `${trustToAssign} statement row${trustToAssign === 1 ? "" : "s"} to assign` : undefined },
-    { id: "review", label: "Statement rows to review", value: String(toReview), href: `${base}/banking` },
+    { id: "review", label: "Statement rows to review", value: String(toReview), href: `${base}/banking`, warn: toReview ? "Not in the books or reports until posted" : undefined },
     { id: "net", label: `Net income, ${today.slice(0, 4)} to date`, value: fmtCents(ytd.net, { paren: true, dollar: true }), href: `${base}/reports?r=pl` },
   ];
   const steps = [
@@ -42,10 +45,15 @@ export default async function BooksDashboard() {
     { done: accounts.length > 0, label: `Chart of accounts (${accounts.length} accounts)`, href: `${base}/accounts` },
     { done: rules.length > 0 && rules.every((r) => r.verified), label: `Tax rules for ${new Date().getFullYear()} reviewed (${rules.filter((r) => r.verified).length} of ${rules.length} confirmed)`, href: `${base}/settings#tax-rules` },
     { done: members.length > 1, label: "A second login for the bookkeeper", href: `${base}/settings#users` },
+    { done: span.entries > 0, label: "Opening balances entered (Journal), and each client's trust balance (Trust)", href: `${base}/journal` },
+    { done: imported > 0, label: "First bank statement file brought in", href: `${base}/banking` },
+    { done: imported > 0 && toReview === 0 && trustToAssign === 0, label: toReview + trustToAssign > 0 ? `Statement rows posted (${toReview + trustToAssign} still waiting)` : "Statement rows posted", href: `${base}/banking` },
+    { done: recs.length > 0, label: "First reconciliation to a statement", href: `${base}/banking?view=reconcile` },
   ];
   return (
     <div>
       <h1 className="font-[family-name:var(--font-display)] text-2xl">{company.name}</h1>
+      {closed && <p className="mt-1 text-xs text-[var(--c-ink-muted)]" data-testid="dash-closed">Books closed through <span className="font-mono">{closed}</span>.</p>}
       <p className="mt-1 text-sm text-[var(--c-ink-muted)]">{company.legalName}{company.ein ? ` · EIN ${company.ein}` : ""} · {company.state} · {company.entityType.toUpperCase()} taxed as {company.taxElection.replace("_", " ")} · fiscal year starts month {company.fiscalYearStartMonth}</p>
       <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="dash-tiles">
         {tiles.map((t) => (

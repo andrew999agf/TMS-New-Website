@@ -76,6 +76,8 @@ export const BOOKS_DDL: string[] = [
     id serial PRIMARY KEY, company_id integer NOT NULL, provider varchar(32) NOT NULL, external_id varchar(128) NOT NULL, environment varchar(16) NOT NULL DEFAULT 'production',
     check_date date NOT NULL, period_start date, period_end date, totals jsonb NOT NULL DEFAULT '{}'::jsonb, entry_id integer, posted_by varchar(255), posted_at timestamptz, created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sb_payroll_runs_uq ON sb_payroll_runs (company_id, provider, external_id)`,
+  `CREATE TABLE IF NOT EXISTS sb_bank_rules (id serial PRIMARY KEY, company_id integer NOT NULL, pattern varchar(191) NOT NULL, direction integer NOT NULL, account_id integer NOT NULL, created_by varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sb_bank_rules_uq ON sb_bank_rules (company_id, pattern, direction)`,
   // The safekeeping rule was renumbered from 1.14 to 1.15 effective October 1, 2024.
   `UPDATE sb_tax_rules SET label = 'Trust account records retention (Texas Rule 1.15)' WHERE key = 'trust_record_retention_years' AND label = 'Trust account records retention (Texas Rule 1.14)'`,
 ];

@@ -1,11 +1,14 @@
 import "server-only";
-import { accountLedger, balanceSheet, clientTrustBalances, listAccounts, listEntries, profitAndLoss, trialBalance } from "./ledger";
+import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { db } from "@/db";
+import { sbAudit } from "@/db/schema";
+import { accountLedger, balanceSheet, clientTrustBalances, listAccounts, listEntries, monthlyNets, profitAndLoss, trialBalance } from "./ledger";
 import { fmtCents, TYPE_LABEL } from "./money";
 
 /** One report as a table: used by the Reports screen and by the spreadsheet export, so the two always agree. */
 export type ReportTable = { title: string; subtitle: string; columns: { label: string; num?: boolean }[]; rows: { cells: (string | number)[]; kind?: "head" | "total" | "grand" | "note" }[]; ok?: { good: boolean; text: string } };
 export const REPORTS = [
-  ["pl", "Profit and loss"], ["bs", "Balance sheet"], ["tb", "Trial balance"], ["gl", "Account detail"], ["trust", "Trust balances by client"], ["journal", "Journal (all entries)"],
+  ["pl", "Profit and loss"], ["plm", "Profit and loss by month"], ["bs", "Balance sheet"], ["tb", "Trial balance"], ["gl", "Account detail"], ["trust", "Trust balances by client"], ["journal", "Journal (all entries)"], ["audit", "Activity log"],
 ] as const;
 export type ReportId = (typeof REPORTS)[number][0];
 
@@ -21,6 +24,41 @@ export async function buildReport(companyId: number, id: ReportId, p: { from: st
         { cells: ["Expenses", ""], kind: "head" }, ...r.expense.map((x) => ({ cells: [`${x.number} ${x.name}`, money(x.amount)] })), { cells: ["Total expenses", money(r.totalExpense)], kind: "total" as const },
         { cells: ["Net income", money(r.net)], kind: "grand" },
       ],
+    };
+  }
+  if (id === "plm") {
+    const [accts, nets] = await Promise.all([listAccounts(companyId), monthlyNets(companyId, p.from, p.to)]);
+    const months: string[] = [];
+    for (let y = Number(p.from.slice(0, 4)), m = Number(p.from.slice(5, 7)); `${y}-${String(m).padStart(2, "0")}` <= p.to.slice(0, 7) && months.length < 24; m === 12 ? (y++, m = 1) : m++) months.push(`${y}-${String(m).padStart(2, "0")}`);
+    const cell = new Map(nets.map((n) => [`${n.accountId}|${n.month}`, n.net]));
+    const label = (ym: string) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+    const block = (type: "income" | "expense") => {
+      const sign = type === "income" ? -1 : 1; // income is a credit balance
+      const lines = accts.filter((a) => a.type === type).map((a) => ({ a, v: months.map((mo) => sign * (cell.get(`${a.id}|${mo}`) ?? 0)) })).filter((x) => x.v.some((n) => n !== 0));
+      return { lines, totals: months.map((_, i) => lines.reduce((t, x) => t + x.v[i], 0)) };
+    };
+    const inc = block("income"), exp = block("expense");
+    const sum = (v: number[]) => v.reduce((t, n) => t + n, 0);
+    const row = (name: string, v: number[], kind?: "total" | "grand") => ({ cells: [name, ...v.map((n) => (n === 0 && !kind ? "" : money(n))), money(sum(v))], kind });
+    return {
+      title: "Profit and loss by month", subtitle: `${p.companyName} · ${p.from} through ${p.to}`,
+      columns: [{ label: "Account" }, ...months.map((mo) => ({ label: label(mo), num: true })), { label: "Total", num: true }],
+      rows: [
+        { cells: ["Income", ...months.map(() => ""), ""], kind: "head" }, ...inc.lines.map((x) => row(`${x.a.number} ${x.a.name}`, x.v)), row("Total income", inc.totals, "total"),
+        { cells: ["Expenses", ...months.map(() => ""), ""], kind: "head" }, ...exp.lines.map((x) => row(`${x.a.number} ${x.a.name}`, x.v)), row("Total expenses", exp.totals, "total"),
+        row("Net income", months.map((_, i) => inc.totals[i] - exp.totals[i]), "grand"),
+      ],
+    };
+  }
+  if (id === "audit") {
+    const end = new Date(`${p.to}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 2); // through the end of the day, Central time
+    const rows = db ? await db.select().from(sbAudit).where(and(eq(sbAudit.companyId, companyId), gte(sbAudit.createdAt, new Date(`${p.from}T00:00:00Z`)), lt(sbAudit.createdAt, end))).orderBy(asc(sbAudit.id)).limit(5000) : [];
+    const when = (d: Date) => d.toLocaleString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit" });
+    const day = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(d);
+    return {
+      title: "Activity log", subtitle: `${p.companyName} · ${p.from} through ${p.to} · who did what, oldest first`,
+      columns: [{ label: "When (Central)" }, { label: "Who" }, { label: "Action" }, { label: "What" }],
+      rows: rows.filter((r) => day(r.createdAt) >= p.from && day(r.createdAt) <= p.to).map((r) => ({ cells: [when(r.createdAt), r.userEmail, `${r.action} ${r.entity}`.trim(), r.detail] })),
     };
   }
   if (id === "bs") {

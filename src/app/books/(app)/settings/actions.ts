@@ -168,3 +168,20 @@ export async function sendSetupLink(userId: number) {
     return r;
   } catch (err) { return { ok: false as const, error: (err as Error).message }; }
 }
+
+/** Close the books through a date ("" reopens them). Owner only. */
+export async function setClosedThrough(input: { date: string }) {
+  const s = await requireBooks();
+  if (s.role !== "owner") return { ok: false as const, error: "Only an owner can close or reopen the books." };
+  if (!db) return { ok: false as const, error: "Database not configured." };
+  const date = String(input.date ?? "").trim();
+  if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)))) return { ok: false as const, error: "Enter a valid date." };
+  if (date && date > new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)) return { ok: false as const, error: "The closing date can't be in the future." };
+  const [c] = await db.select({ settings: sbCompanies.settings }).from(sbCompanies).where(eq(sbCompanies.id, s.companyId)).limit(1);
+  const next = { ...((c?.settings as Record<string, unknown>) ?? {}) };
+  if (date) next.closedThrough = date; else delete next.closedThrough;
+  await db.update(sbCompanies).set({ settings: next, updatedAt: new Date() }).where(eq(sbCompanies.id, s.companyId));
+  await sbAudit_(s.companyId, s.email, "update", "company", String(s.companyId), date ? `Closed the books through ${date}` : "Removed the closing date (books reopened)");
+  revalidatePath("/books"); revalidatePath("/books/settings");
+  return { ok: true as const };
+}

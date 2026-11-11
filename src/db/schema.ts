@@ -2503,3 +2503,15 @@ export const sbPayrollRuns = pgTable("sb_payroll_runs", {
   postedAt: timestamp("posted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ uq: uniqueIndex("sb_payroll_runs_uq").on(t.companyId, t.provider, t.externalId) }));
+
+/** "Rows whose description contains X go to account Y" — remembered from Banking. */
+export const sbBankRules = pgTable("sb_bank_rules", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  pattern: varchar("pattern", { length: 191 }).notNull(),
+  /** 1 = money in, -1 = money out */
+  direction: integer("direction").notNull(),
+  accountId: integer("account_id").notNull(),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: uniqueIndex("sb_bank_rules_uq").on(t.companyId, t.pattern, t.direction) }));

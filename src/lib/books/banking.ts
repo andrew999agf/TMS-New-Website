@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { sbAccounts, sbBankTxns, sbEntries, sbImports, sbLines } from "@/db/schema";
+import { sbAccounts, sbBankRules, sbBankTxns, sbEntries, sbImports, sbLines } from "@/db/schema";
 import { LedgerError, postEntry, voidEntry, type Account } from "./ledger";
 import type { BankCsvRow } from "./bank-csv";
 
@@ -42,7 +42,7 @@ export async function importRows(companyId: number, account: Account, filename: 
   });
 }
 
-export type TxnRow = { id: number; date: string; amount: number; description: string; ref: string; status: string; entryId: number | null; suggestId: number | null; matches: { lineId: number; entryId: number; date: string; memo: string }[]; category: string };
+export type TxnRow = { id: number; date: string; amount: number; description: string; ref: string; status: string; entryId: number | null; suggestId: number | null; suggestFrom?: "rule" | "history"; matches: { lineId: number; entryId: number; date: string; memo: string }[]; category: string };
 
 /** Statement rows for one account. "new" rows carry a suggested category (the one last used for the same description) and any ledger lines they could be matched to. */
 export async function listTxns(companyId: number, accountId: number, status: "new" | "posted" | "excluded", limit = 400): Promise<TxnRow[]> {
@@ -57,6 +57,13 @@ export async function listTxns(companyId: number, accountId: number, status: "ne
     order by t.txn_date ${status === "new" ? sql`asc` : sql`desc`}, t.id limit ${limit}`) as unknown as (Omit<TxnRow, "amount" | "matches"> & { amount: string })[];
   const out: TxnRow[] = rows.map((r) => ({ ...r, id: Number(r.id), amount: Number(r.amount), entryId: r.entryId == null ? null : Number(r.entryId), suggestId: r.suggestId == null ? null : Number(r.suggestId), matches: [] }));
   if (status === "new" && out.length) {
+    // A remembered rule beats history: the longest matching text wins.
+    const rules = (await listRules(companyId)).slice().sort((a, b) => b.pattern.length - a.pattern.length);
+    for (const t of out) {
+      const d = t.description.toLowerCase(), dir = t.amount > 0 ? 1 : -1;
+      const r = rules.find((x) => x.direction === dir && d.includes(x.pattern.toLowerCase()));
+      if (r) { t.suggestId = r.accountId; t.suggestFrom = "rule"; } else if (t.suggestId) t.suggestFrom = "history";
+    }
     // Ledger lines on this account that no statement row is tied to yet.
     const open = await db.execute(sql`
       select l.id as "lineId", e.id as "entryId", e.entry_date::text as date, e.memo, (l.debit - l.credit)::text as net
@@ -79,13 +86,72 @@ export async function txnCounts(companyId: number): Promise<Map<number, { new: n
   return m;
 }
 
+export type BankRule = { id: number; pattern: string; direction: number; accountId: number };
+
+export async function listRules(companyId: number): Promise<BankRule[]> {
+  if (!db) return [];
+  const rows = await db.select().from(sbBankRules).where(eq(sbBankRules.companyId, companyId)).orderBy(sbBankRules.pattern);
+  return rows.map((r) => ({ id: r.id, pattern: r.pattern, direction: r.direction, accountId: r.accountId }));
+}
+
+/** Remember: rows going this direction whose description contains `pattern` belong in `accountId`. */
+export async function saveRule(companyId: number, patternIn: string, direction: number, accountId: number, by: string): Promise<void> {
+  if (!db) throw new LedgerError("Database not configured.");
+  const pattern = patternIn.replace(/\s+/g, " ").trim().slice(0, 191);
+  if (pattern.length < 3) throw new LedgerError("The text to remember needs at least three characters.");
+  const [a] = await db.select().from(sbAccounts).where(and(eq(sbAccounts.companyId, companyId), eq(sbAccounts.id, accountId))).limit(1);
+  if (!a || a.isTrust || !a.active) throw new LedgerError("Choose an active account that isn't a trust account.");
+  const dir = direction > 0 ? 1 : -1;
+  await db.insert(sbBankRules).values({ companyId, pattern, direction: dir, accountId, createdBy: by }).onConflictDoUpdate({ target: [sbBankRules.companyId, sbBankRules.pattern, sbBankRules.direction], set: { accountId, createdBy: by } });
+}
+
+export async function deleteRule(companyId: number, id: number): Promise<void> {
+  if (!db) return;
+  await db.delete(sbBankRules).where(and(eq(sbBankRules.companyId, companyId), eq(sbBankRules.id, id)));
+}
+
+/** Post several rows to one account. Rows that fail (already handled, closed period) are counted, not fatal. */
+export async function categorizeMany(companyId: number, txnIds: number[], categoryId: number, by: string): Promise<{ posted: number; skipped: number; firstError: string }> {
+  let posted = 0, skipped = 0, firstError = "";
+  for (const id of [...new Set(txnIds.map(Number))].slice(0, 500)) {
+    try { posted += (await categorize(companyId, id, { categoryId }, by)).posted; }
+    catch (e) { if (!(e instanceof LedgerError)) throw e; skipped++; firstError ||= e.message; }
+  }
+  return { posted, skipped, firstError };
+}
+
+/** Post every waiting row in an account that has a suggested account (a remembered rule, or the last account used for the same description). */
+export async function postSuggested(companyId: number, accountId: number, by: string): Promise<{ posted: number; skipped: number; firstError: string }> {
+  const rows = (await listTxns(companyId, accountId, "new", 2000)).filter((r) => r.suggestId);
+  const advances = db ? await db.select({ id: sbAccounts.id }).from(sbAccounts).where(and(eq(sbAccounts.companyId, companyId), eq(sbAccounts.systemKey, "client_advances"))) : [];
+  const needsClient = new Set(advances.map((a) => a.id));
+  let posted = 0, skipped = 0, firstError = "";
+  for (const r of rows.slice(0, 500)) {
+    if (needsClient.has(r.suggestId!)) { skipped++; firstError ||= "Rows for client cost advances need a client, so they are posted one at a time."; continue; }
+    try { posted += (await categorize(companyId, r.id, { categoryId: r.suggestId! }, by)).posted; }
+    catch (e) { if (!(e instanceof LedgerError)) throw e; skipped++; firstError ||= e.message; }
+  }
+  return { posted, skipped, firstError };
+}
+
+/** Statement rows that are imported but not in the books yet — the reason a report can look empty after an upload. */
+export async function waitingSummary(companyId: number, range?: { from: string; to: string }): Promise<{ rows: number; moneyIn: number; moneyOut: number; inRange: number; first: string; last: string }> {
+  if (!db) return { rows: 0, moneyIn: 0, moneyOut: 0, inRange: 0, first: "", last: "" };
+  const [r] = await db.execute(sql`
+    select count(*)::int as rows, coalesce(sum(case when amount > 0 then amount else 0 end), 0)::text as "moneyIn", coalesce(sum(case when amount < 0 then -amount else 0 end), 0)::text as "moneyOut",
+      ${range ? sql`count(*) filter (where txn_date >= ${range.from} and txn_date <= ${range.to})::int` : sql`count(*)::int`} as "inRange",
+      coalesce(min(txn_date)::text, '') as first, coalesce(max(txn_date)::text, '') as last
+    from sb_bank_txns where company_id = ${companyId} and status = 'new'`) as unknown as { rows: number; moneyIn: string; moneyOut: string; inRange: number; first: string; last: string }[];
+  return { rows: Number(r?.rows ?? 0), moneyIn: Number(r?.moneyIn ?? 0), moneyOut: Number(r?.moneyOut ?? 0), inRange: Number(r?.inRange ?? 0), first: r?.first ?? "", last: r?.last ?? "" };
+}
+
 /**
  * Categorize statement rows: writes one entry each. Money out credits the
  * bank (or card) and debits the category; money in is the reverse. With
  * `applyToSame`, every other unreviewed row in the account with the same
  * description and direction gets the same treatment.
  */
-export async function categorize(companyId: number, txnId: number, input: { categoryId: number; memo?: string; clientId?: number | null; applyToSame?: boolean }, by: string): Promise<{ posted: number }> {
+export async function categorize(companyId: number, txnId: number, input: { categoryId: number; memo?: string; clientId?: number | null; applyToSame?: boolean; remember?: string }, by: string): Promise<{ posted: number }> {
   if (!db) throw new LedgerError("Database not configured.");
   const [first] = await db.select().from(sbBankTxns).where(and(eq(sbBankTxns.companyId, companyId), eq(sbBankTxns.id, txnId))).limit(1);
   if (!first) throw new LedgerError("That row no longer exists.");
@@ -107,6 +173,7 @@ export async function categorize(companyId: number, txnId: number, input: { cate
     });
     posted++;
   }
+  if (input.remember?.trim()) await saveRule(companyId, input.remember, first.amount > 0 ? 1 : -1, input.categoryId, by);
   return { posted };
 }
 
