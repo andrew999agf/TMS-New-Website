@@ -4,14 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CalendarCheck, Send } from "lucide-react";
 import { cancelConsultRequest, offerConsultTime } from "@/app/admin/(panel)/intake/consult-actions";
-import { LeadOutcome, isNoOutcome, isOutcome, outcomeLabel, type Referral } from "./LeadOutcome";
+import { LeadOutcome, isNoOutcome, isOutcome, outcomeLabel, type CaseLink, type Referral } from "./LeadOutcome";
 
 export type ConsultRow = {
   id: number; intakeId: number; status: string; requested: string[]; contactId: string; clientName: string; clientPhone: string; hasEmail: boolean; matter: string;
   sentToName: string; whenText: string; startDate: string; startTime: string; durationMin: number; location: string; note: string; proposedAt: string | null; confirmedAt: string | null; declineNote: string;
   reminderDay: boolean; reminderHours: boolean;
   /** The lead behind the request: its status (the outcome), whether it is archived, and where the meeting stands in time. */
-  leadStatus: string; leadArchived: boolean; upcoming: boolean; past: boolean; referral?: Referral;
+  leadStatus: string; leadArchived: boolean; upcoming: boolean; past: boolean; referral?: Referral; caseLink?: CaseLink;
 };
 type Contact = { id: string; name: string };
 /** Places to hold it, grouped: the partner office's own addresses first, then the firm's. */
@@ -57,7 +57,7 @@ function Row({ c, contacts, locations, partnerName, partnerSlug, focus, attorney
       {lapsed && !isOutcome(c.leadStatus) && !c.leadArchived && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`consult-lapsed-${c.id}`}>The time offered went by without a confirmation. Offer a different time, or record how it turned out below.</p>}
       {stillOn && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`consult-stillon-${c.id}`}>This lead is marked {outcomeLabel(c.leadStatus)}, but this {c.status === "confirmed" ? "consultation is still on and its reminders will go out" : "offer is still open"}. Cancel it below if it should not happen.</p>}
       {needsOutcome && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`consult-ask-${c.id}`}>This meeting has come and gone. Record how it turned out below; the lead is archived on its own once it has an outcome.</p>}
-      <p className="mt-2 flex flex-wrap items-center gap-2"><LeadOutcome leadId={c.intakeId} status={c.leadStatus} archived={c.leadArchived} where={`consult-${c.id}`} prompt={needsOutcome} attorneys={attorneys} referral={c.referral} /></p>
+      <p className="mt-2 flex flex-wrap items-center gap-2"><LeadOutcome leadId={c.intakeId} status={c.leadStatus} archived={c.leadArchived} where={`consult-${c.id}`} prompt={needsOutcome} attorneys={attorneys} referral={c.referral} caseLink={c.caseLink} /></p>
       {c.status !== "cancelled" && (
         <p className="mt-2 flex flex-wrap gap-3 text-xs">
           <button type="button" onClick={() => setOpen(!open)} className="text-[var(--c-accent)] hover:underline" data-testid={`consult-toggle-${c.id}`}>{open ? "Hide" : c.status === "requested" ? "Offer a time" : "Offer a different time"}</button>

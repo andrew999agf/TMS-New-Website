@@ -21,7 +21,7 @@ import { canAccessPath } from "@/lib/admin-sections";
 import { sendEmail } from "@/lib/email";
 import { getSetting } from "@/lib/content";
 import { FIRM } from "@/lib/firm";
-import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, normalizeMeta, shareCan, type ShareWarning, type ShareFolderMeta, fileLinksDefault } from "@/lib/share/types";
+import { shareType, recipientWarnings, expiryDaysForType, permissionLabel, rolePhrase, inviteNote, normalizeMeta, shareCan, type ShareWarning, type ShareFolderMeta, fileLinksDefault } from "@/lib/share/types";
 import { cleanDirPath } from "@/lib/share/access";
 import { SHARE_CC_KEY, SHARE_CC_DEFAULT } from "@/lib/share/settings";
 
@@ -538,13 +538,14 @@ export async function revokeDirLink(folderId: number, dir: string) {
 
 /* -------------------------------- recipients ------------------------------- */
 
-async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[], secure: boolean) {
+async function sendInvite(folderName: string, caseNumber: string, typeKey: string, email: string, name: string, token: string, expiresAt: Date, cc: string[], secure: boolean, permission = "download") {
   const link = `${await baseUrl()}/share/${token}`;
   const who = name.trim() ? esc(name.trim()) : "there";
   const caseLine = caseNumber ? `<p style="margin:0 0 14px;color:#555;font-size:13px">Case: ${esc(caseNumber)}</p>` : "";
   // Days until expiry, derived from the actual date (which the admin may have set).
   const days = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 86_400_000));
   const role = rolePhrase(typeKey);
+  const twoWay = inviteNote(typeKey, permission, FIRM.name);
   const openLabel = secure ? "Sign in to open the folder" : "Open the folder";
   // Plain links carry no extra note; only sign-in-required invites explain the access model.
   const accessNote = secure
@@ -557,6 +558,7 @@ async function sendInvite(folderName: string, caseNumber: string, typeKey: strin
       <p style="margin:0 0 6px">${esc(FIRM.name)} has shared documents with you as <strong>${role}</strong> in this matter:</p>
       <p style="margin:0 0 4px;font-size:16px;font-weight:bold">${esc(folderName)}</p>
       ${caseLine}
+      ${twoWay ? `<p style="margin:0 0 14px">${esc(twoWay)}</p>` : ""}
       <p style="margin:0 0 18px"><a href="${link}" style="background:#7a1f2b;color:#fff;padding:11px 18px;border-radius:6px;text-decoration:none;display:inline-block">${openLabel}</a></p>
       <p style="margin:0 0 8px;font-size:13px;color:#777">Or paste this link into your browser:</p>
       <p style="margin:0 0 16px;font-size:12px;color:#777;word-break:break-all">${link}</p>
@@ -614,7 +616,7 @@ export async function addRecipient(folderId: number, email: string, name: string
     // along some other way (the "Resend invite" button sends it later).
     let emailNote: string | undefined;
     if (opts?.sendEmail) {
-      const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc(), folder.requireAuth);
+      const res = await sendInvite(folder.name, folder.caseNumber, folder.type, cleanEmail, name, token, expiresAt, await shareCc(), folder.requireAuth, perm);
       if (!res.sent) emailNote = "Added, but the invite email didn't send (check email settings).";
     }
     await audit(session.email, "create", "share-recipient", String(folderId), `Shared with ${cleanEmail}${opts?.sendEmail ? " (invite emailed)" : " (no email sent)"}`);
@@ -666,7 +668,7 @@ export async function sendInviteNow(recipientId: number) {
     const [folder] = await db.select().from(shareFolders).where(eq(shareFolders.id, r.folderId));
     if (!folder) return { ok: false as const, error: "Folder not found." };
     const expiresAt = r.expiresAt ?? new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth);
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth, r.permission);
     await audit(session.email, "update", "share-recipient", String(r.id), `Invite emailed to ${r.email}`);
     return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
   } catch (err) {
@@ -686,7 +688,7 @@ export async function resendInvite(recipientId: number) {
     // Re-issuing resets the clock and clears any prior expiry/revocation.
     const expiresAt = new Date(Date.now() + expiryDaysForType(folder.type) * 86_400_000);
     await db.update(shareRecipients).set({ expiresAt, revoked: false }).where(eq(shareRecipients.id, r.id));
-    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth);
+    const res = await sendInvite(folder.name, folder.caseNumber, folder.type, r.email, r.name, r.token, expiresAt, await shareCc(), folder.requireAuth, r.permission);
     revalidatePath(`/admin/share-folders/${r.folderId}`);
     return res.sent ? { ok: true as const } : { ok: false as const, error: "Email didn't send (check email settings)." };
   } catch (err) {

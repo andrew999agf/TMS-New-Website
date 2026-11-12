@@ -28,7 +28,10 @@ const chip = "rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p
  * Archiving a lead that has no outcome yet asks for one first, and "Referred
  * Out" asks who it went to, exactly as the main lead table does.
  */
-export function LeadOutcome({ leadId, status, archived, where, prompt, attorneys = [], referral }: { leadId: number; status: string; archived: boolean; where: string; prompt?: boolean; attorneys?: string[]; referral?: Referral }) {
+/** Where a converted lead stands with Matters / Cases: a link to send it there, or to the case once it is there. */
+export type CaseLink = { href: string; label: string };
+
+export function LeadOutcome({ leadId, status, archived, where, prompt, attorneys = [], referral, caseLink }: { leadId: number; status: string; archived: boolean; where: string; prompt?: boolean; attorneys?: string[]; referral?: Referral; caseLink?: CaseLink }) {
   const router = useRouter();
   const listId = useId();
   const [pending, start] = useTransition();
@@ -56,6 +59,7 @@ export function LeadOutcome({ leadId, status, archived, where, prompt, attorneys
         </select>
       </label>
       {status === "referred-out" && mode === null && <button type="button" onClick={() => openRefer("refer")} className="text-xs text-[var(--c-ink-muted)] underline-offset-2 hover:text-[var(--c-accent)] hover:underline" title="Change who it was referred to" data-testid={`referred-${id}`}>{referral?.to ? `to ${referral.to}` : "add who it went to"}</button>}
+      {status === "converted" && caseLink && <a href={caseLink.href} className="text-xs font-semibold text-[var(--c-accent)] underline-offset-2 hover:underline" data-testid={`caselink-${id}`}>{caseLink.label}</a>}
       <button type="button" disabled={pending} onClick={() => { if (archived) run(() => setIntakeArchived(leadId, false)); else if (isOutcome(status)) run(() => setIntakeArchived(leadId, true)); else { setErr(""); setMode(mode === "ask" ? null : "ask"); } }}
         className="inline-flex items-center gap-1 rounded-md border border-[var(--c-border)] px-2 py-1 text-xs text-[var(--c-ink-muted)] hover:border-[var(--c-accent)] hover:text-[var(--c-accent)] disabled:opacity-50" data-testid={`archive-${id}`}>
         {archived ? <><ArchiveRestore size={12} /> Restore</> : <><Archive size={12} /> Archive</>}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, FileSearch, FileStack, FolderLock, Clock } from "lucide-react";
+import { ArrowLeft, CalendarClock, FileSearch, FileStack, FolderLock, Clock, Inbox } from "lucide-react";
+import { intakeForCase, type CaseIntakeView } from "@/lib/intake/lead-cases";
 import { CaseDetail } from "@/components/admin/CaseDetail";
 import { requireAdmin } from "@/lib/auth";
 import { canAccessPath } from "@/lib/admin-sections";
@@ -49,6 +50,9 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   if (!c) notFound();
 
   const links = await resolveToolLinks(c.matter);
+  // Where this case came from, when it was sent here from an intake lead, and any folder shared with the referring office.
+  const fromIntake: CaseIntakeView[] = await intakeForCase(c.id).catch(() => []);
+  const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { timeZone: "America/Chicago" }) : "");
 
   // The pleadings bucket: AI.fred's understanding of what this lawsuit is about.
   let pleadings: PleadingRow[] = [];
@@ -104,6 +108,31 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300">in progress</span>
         </span>
       </div>
+
+      {fromIntake.map((x) => (
+        <div key={x.intakeId} className="mt-4 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4" data-testid={`case-intake-${x.intakeId}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm"><Inbox size={14} className="mr-1.5 inline align-[-2px]" /><span className="font-semibold">From intake:</span> {x.client || "the client"}{x.partnerName ? <> came in through {x.partnerName}</> : null} on {x.received}.</p>
+            <Link href={x.partnerSlug ? `/admin/intake?partner=${x.partnerSlug}&lead=${x.intakeId}` : `/admin/intake?lead=${x.intakeId}`} className="text-xs text-[var(--c-ink-muted)] underline-offset-2 hover:text-[var(--c-accent)] hover:underline">Open the lead</Link>
+          </div>
+          {x.partnerName && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-[var(--c-bg)] px-3 py-2 text-sm">
+              {x.folder ? (
+                <>
+                  <p><FolderLock size={14} className="mr-1.5 inline align-[-2px]" /><span className="font-semibold">Documents shared with {x.partnerName}:</span> {x.folder.files} document{x.folder.files === 1 ? "" : "s"}{x.folder.lastFileAt ? `, newest ${day(x.folder.lastFileAt)}` : ""}
+                    <span className="text-[var(--c-ink-muted)]"> · {x.folder.people.filter((p) => !p.off).map((p) => `${p.name} (${p.openedAt ? `opened ${day(p.openedAt)}` : "not opened yet"})`).join(", ") || "no one there has a working link"}</span></p>
+                  <Link href={`/admin/share-folders/${x.folder.id}`} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white" data-testid={`case-intake-folder-${x.intakeId}`}><FolderLock size={13} /> Open the shared folder</Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-[var(--c-ink-muted)]"><FolderLock size={14} className="mr-1.5 inline align-[-2px]" />No documents are shared with {x.partnerName} on this case yet.</p>
+                  <Link href={`/admin/intake?partner=${x.partnerSlug}&convert=${x.intakeId}#cases`} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white" data-testid={`case-intake-share-${x.intakeId}`}><FolderLock size={13} /> Share documents with {x.partnerName}</Link>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
 
       <PleadingsBucket caseId={c.id} matter={c.matter} initial={pleadings} />
 

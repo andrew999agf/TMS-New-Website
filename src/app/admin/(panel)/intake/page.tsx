@@ -12,7 +12,7 @@ import { SendIntakeRequest } from "@/components/admin/SendIntakeRequest";
 import { AddLeadManually } from "@/components/admin/AddLeadManually";
 import { QuestionnairesPanel } from "@/components/admin/QuestionnairesPanel";
 import { db, hasDb } from "@/db";
-import { intakeSubmissions, referralAttorneys, engagementLetters } from "@/db/schema";
+import { intakeSubmissions, referralAttorneys, engagementLetters, timeMatters } from "@/db/schema";
 import { desc, asc } from "drizzle-orm";
 import { getIntakeRecipients, getBlocks } from "@/lib/content";
 import { EngagementDefaults } from "@/components/admin/EngagementDefaults";
@@ -29,6 +29,9 @@ import { PartnerConsults } from "@/components/admin/PartnerConsults";
 import { PartnerLetters } from "@/components/admin/PartnerLetters";
 import { contractProgress } from "@/lib/intake/contracts";
 import { AutoArchiveRules } from "@/components/admin/LeadOutcome";
+import { PartnerCases, type CaseLeadRow } from "@/components/admin/PartnerCases";
+import { casePrefills, leadCaseViews, type LeadCaseView } from "@/lib/intake/lead-cases";
+import type { MatterOption } from "@/components/admin/MatterCombobox";
 import { autoArchivePartnerLeads, getAutoArchiveRules } from "@/lib/intake/lead-archive";
 import { consultLocations, fmtRequested, listConsults, partnerLocations } from "@/lib/intake/consults";
 
@@ -197,9 +200,31 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   // Who a referred-out lead went to, for the outcome box on both lists.
   const leadById = new Map(shownRows.map((r) => [r.id, r]));
   const referralOf = (id: number) => { const r = leadById.get(id); return r && r.status === "referred-out" ? { to: r.referredTo ?? "", fee: r.feeExpected, amount: r.feeAmount ?? "" } : undefined; };
+  const partnerContacts = activePartner ? (await getPartnerContacts(activePartner.slug)).map((c) => ({ id: c.id, name: c.name, email: c.email, linkSentAt: c.linkSentAt })) : [];
+  // Converted leads and the case records they were sent to (with any folder shared with the partner office).
+  const caseViews = activePartner ? await leadCaseViews(shownRows.map((r) => r.id)).catch(() => new Map<number, LeadCaseView>()) : new Map<number, LeadCaseView>();
+  const caseLeads = activePartner ? shownRows.filter((r) => r.status === "converted" || caseViews.get(r.id)?.caseId != null) : [];
+  const casePrefill = await casePrefills(caseLeads.filter((r) => caseViews.get(r.id)?.caseId == null));
+  // The Time Tracker's matter list, read only, for the matter-number box.
+  let matterOptions: MatterOption[] = [];
+  if (activePartner && db && caseLeads.length) { try { matterOptions = (await db.select().from(timeMatters).orderBy(asc(timeMatters.sort))).map((m) => ({ displayNumber: m.displayNumber, description: m.description })); } catch { /* the list is optional: a number can be typed */ } }
+  const contactName = (email: string) => partnerContacts.find((c) => c.email.trim().toLowerCase() === email.trim().toLowerCase())?.name ?? "";
+  const shortDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { timeZone: "America/Chicago" }) : "");
+  const caseRows = caseLeads.map((r): CaseLeadRow => {
+    const v = caseViews.get(r.id);
+    return {
+      leadId: r.id, name: r.name ?? "", area: String(r.answers.practiceArea ?? ""), received: shortDate(r.createdAt),
+      state: v?.caseId != null ? "case" : v?.skipped ? "skipped" : "todo",
+      prefill: casePrefill.get(r.id) ?? { name: r.name ?? "", county: r.county ?? "", court: "", role: "Other" },
+      contactId: partnerContacts.find((c) => c.name === String(r.answers.helpedBy ?? ""))?.id ?? "",
+      caseId: v?.caseId ?? null, caseMatter: v?.matter ?? "", caseName: v?.caseName ?? "", caseClosed: !!v?.caseClosed,
+      folder: v?.folder ? { id: v.folder.id, files: v.folder.files, lastFile: shortDate(v.folder.lastFileAt), lastFileBy: v.folder.lastFileBy ? contactName(v.folder.lastFileBy) || "this firm" : "", people: v.folder.people.map((p) => ({ name: p.name, opened: shortDate(p.openedAt), off: p.off })) } : null,
+    };
+  }).sort((a, b) => Number(a.state !== "todo") - Number(b.state !== "todo"));
+  const caseLinkOf = (id: number) => { const v = caseViews.get(id); return v?.caseId != null ? { href: `/admin/cases/${v.caseId}`, label: "Open the case" } : activePartner ? { href: `?partner=${activePartner.slug}&convert=${id}#cases`, label: "Send to Cases" } : undefined; };
+  const focusCase = typeof sp.convert === "string" ? Number(sp.convert) || null : null;
   const focusConsult = typeof sp.consult === "string" ? Number(sp.consult) || null : null;
   const central = (iso: string | null, opt: Intl.DateTimeFormatOptions, locale = "en-CA") => (iso ? new Intl.DateTimeFormat(locale, { timeZone: "America/Chicago", ...opt }).format(new Date(iso)) : "");
-  const partnerContacts = activePartner ? (await getPartnerContacts(activePartner.slug)).map((c) => ({ id: c.id, name: c.name, email: c.email, linkSentAt: c.linkSentAt })) : [];
 
   return (
     <>
@@ -223,10 +248,11 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
                 id: c.id, intakeId: c.intakeId, status: c.status, requested: c.requested.map(fmtRequested), contactId: c.contactId, clientName: c.clientName, clientPhone: c.clientPhone, hasEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.clientEmail), matter: c.matter,
                 sentToName: c.sentToName, whenText: c.whenText, startDate: central(c.startAt, { year: "numeric", month: "2-digit", day: "2-digit" }), startTime: central(c.startAt, { hour: "2-digit", minute: "2-digit", hour12: false }, "en-GB"),
                 durationMin: c.durationMin, location: c.location, note: c.note, proposedAt: c.proposedAt, confirmedAt: c.confirmedAt, declineNote: c.declineNote, reminderDay: !!c.reminderDayAt, reminderHours: !!c.reminderHoursAt,
-                leadStatus: c.leadStatus, leadArchived: c.leadArchived, referral: referralOf(c.intakeId),
+                leadStatus: c.leadStatus, leadArchived: c.leadArchived, referral: referralOf(c.intakeId), caseLink: caseLinkOf(c.intakeId),
                 upcoming: c.upcoming, past: c.past,
               }))} />
-            <PartnerLetters attorneys={attorneys} partnerName={activeTab.name} moreActive={Math.max(0, openLeads.length - 100)} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null, status: r.status, archived: r.archived, referral: referralOf(r.id) }))} />
+            <PartnerLetters attorneys={attorneys} partnerName={activeTab.name} moreActive={Math.max(0, openLeads.length - 100)} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null, status: r.status, archived: r.archived, referral: referralOf(r.id), caseLink: caseLinkOf(r.id) }))} />
+            <PartnerCases rows={caseRows} matters={matterOptions} contacts={partnerContacts.map((c) => ({ id: c.id, name: c.name }))} partnerName={activeTab.name} focusId={focusCase} />
             {archiveRules && <AutoArchiveRules afterOutcomeDays={archiveRules.afterOutcomeDays} idleDays={archiveRules.idleDays} />}
             {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />

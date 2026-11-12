@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { FileSignature } from "lucide-react";
-import { LeadOutcome, isOutcome, type Referral } from "./LeadOutcome";
+import { LeadOutcome, isOutcome, type CaseLink, type Referral } from "./LeadOutcome";
 
-export type LetterRow = { leadId: number; name: string; matter: string; received: string; blanks: number | null; status: string; archived: boolean; referral?: Referral };
+export type LetterRow = { leadId: number; name: string; matter: string; received: string; blanks: number | null; status: string; archived: boolean; referral?: Referral; caseLink?: CaseLink };
 
 /** On the partner's tab: each lead's engagement letter and how far along it is. Archived leads are tucked away. */
 export function PartnerLetters({ rows, partnerName, moreActive = 0, attorneys = [] }: { rows: LetterRow[]; partnerName: string; moreActive?: number; attorneys?: string[] }) {
@@ -28,7 +28,7 @@ export function PartnerLetters({ rows, partnerName, moreActive = 0, attorneys = 
             <li key={r.leadId} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 py-2.5 ${r.archived ? "bg-[var(--c-bg)]" : ""}`} data-testid={`letter-${r.leadId}`}>
               <p className={`text-sm ${r.archived ? "text-[var(--c-ink-muted)]" : ""}`}><span className="font-medium">{r.name || "(no name)"}</span>{r.matter ? <span className="text-[var(--c-ink-muted)]"> · {r.matter}</span> : null}<span className="text-[var(--c-ink-muted)]"> · {r.received}</span>{r.archived && <span className="ml-2 rounded-full border border-[var(--c-border)] px-2 py-0.5 text-[11px] font-semibold text-[var(--c-ink-muted)]">Archived</span>}{r.archived && !isOutcome(r.status) && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900" data-testid={`letter-unknown-${r.leadId}`}>No outcome recorded</span>}</p>
               <span className="flex flex-wrap items-center justify-end gap-3">
-                <LeadOutcome leadId={r.leadId} status={r.status} archived={r.archived} where="letter" attorneys={attorneys} referral={r.referral} />
+                <LeadOutcome leadId={r.leadId} status={r.status} archived={r.archived} where="letter" attorneys={attorneys} referral={r.referral} caseLink={r.caseLink} />
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.blanks === null ? "bg-[var(--c-bg)] text-[var(--c-ink-muted)]" : r.blanks === 0 ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`} data-testid={`letter-status-${r.leadId}`}>{r.blanks === null ? "Not started" : r.blanks === 0 ? "Ready" : `${r.blanks} field${r.blanks === 1 ? "" : "s"} still empty`}</span>
                 <Link href={`/admin/intake/contract/${r.leadId}`} className="rounded-md border border-[var(--c-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white" data-testid={`letter-open-${r.leadId}`}>{r.blanks === null ? "Start the letter" : "Open the letter"}</Link>
               </span>

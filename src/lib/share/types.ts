@@ -83,6 +83,14 @@ export const SHARE_TYPES: ShareTypeDef[] = [
     banner: "PROSPECTIVE CLIENT. Confidential — keep off the other side.",
   },
   {
+    key: "referring",
+    label: "Referring Office (documents to and from the office that referred the client)",
+    short: "REFERRING",
+    audience: "ally",
+    blurb: "A two-way folder with the separate law office that sent the client to you. Only the people you invite there and your firm can open it.",
+    banner: "Shared with the REFERRING OFFICE, a separate law firm. Everything placed here can be opened by the people invited from that office. Not for the other side.",
+  },
+  {
     key: "witness",
     label: "Witness (documents to and from a witness)",
     short: "WITNESS",
@@ -98,7 +106,8 @@ const BY_KEY = new Map(SHARE_TYPES.map((t) => [t.key, t]));
  *  shared with the other side (discovery production, opposing counsel) —
  *  those two keep the switch, off by default. */
 export function fileLinksDefault(type: string): boolean {
-  return BY_KEY.get(type)?.audience !== "adversary";
+  // A referring-office folder is for that office and this firm only, so nothing in it gets a no-sign-in link unless someone turns that on.
+  return BY_KEY.get(type)?.audience !== "adversary" && type !== "referring";
 }
 // Retired keys map onto their replacements so existing folders still render.
 const TYPE_ALIAS: Record<string, string> = { "client-drop": "client" };
@@ -132,6 +141,7 @@ export function expiryDaysForType(typeKey: string): number {
     case "co-counsel":
     case "expert":
     case "consultant":
+    case "referring":
       return 120;
     case "prospective":
       return 30;
@@ -153,6 +163,7 @@ export const RECIPIENT_KINDS: { key: string; label: string }[] = [
   { key: "witness", label: "Witness" },
   { key: "prose", label: "Pro se party" },
   { key: "consultant", label: "Consultant" },
+  { key: "referring", label: "Referring office" },
   { key: "other", label: "Other" },
 ];
 const KIND_LABEL = new Map(RECIPIENT_KINDS.map((k) => [k.key, k.label]));
@@ -173,6 +184,7 @@ export function securityForKind(kind: string): "required" | "ask" {
     case "co-counsel":
     case "expert":
     case "consultant":
+    case "referring":
       return "required";
     default:
       return "ask"; // opposing, witness, prose, other
@@ -203,6 +215,8 @@ export function defaultKindForType(typeKey: string): string {
       return "consultant";
     case "witness":
       return "witness";
+    case "referring":
+      return "referring";
     default:
       return "other";
   }
@@ -227,9 +241,21 @@ export function rolePhrase(typeKey: string): string {
       return "a consultant";
     case "witness":
       return "a witness";
+    case "referring":
+      return "the referring office";
     default:
       return "an authorized recipient";
   }
+}
+
+/**
+ * One extra sentence for the invite email, for folders that work in both
+ * directions. Only the referring-office folder has one: its whole point is
+ * that the other office adds documents too.
+ */
+export function inviteNote(typeKey: string, permission: string, firmName: string): string {
+  if (typeKey !== "referring" || !shareCan(permission, "upload")) return "";
+  return `You can add documents to this folder as well as open the ones we place there. Only the people invited from your office and ${firmName} can see what is in it.`;
 }
 
 /** Tailwind class bundle per audience — the visual "this is what kind of folder". */
@@ -306,7 +332,8 @@ export function recipientWarnings(typeKey: string, email: string, firmDomain: st
   const notAdversary = t.audience !== "adversary";
 
   // Sharing privileged/client material with something that looks like a law firm.
-  if (notAdversary && sig.firmLike) {
+  // A referring-office folder is meant for another law firm, so a law-firm address there is expected, not a red flag.
+  if (notAdversary && sig.firmLike && t.key !== "referring") {
     out.push({
       level: "danger",
       message: `"${sig.domain}" looks like a law firm or attorney. This is a ${t.short} folder — the other side should NOT have access. Are you sure this isn't opposing counsel?`,

@@ -2553,6 +2553,23 @@ export const intakeConsults = pgTable("intake_consults", {
 }, (t) => ({ tokenUq: uniqueIndex("intake_consults_token_uq").on(t.token), intakeIdx: index("intake_consults_intake_idx").on(t.intakeId) }));
 
 /** The fill-in data for a partner-office engagement letter, one per lead. */
+/**
+ * A converted intake lead and the case record it was sent to. One row per
+ * lead. case_id is empty when the firm said this lead needs no case record
+ * (skipped). share_folder_id is the two-way document folder shared with the
+ * office that referred the client, when there is one.
+ */
+export const intakeCases = pgTable("intake_cases", {
+  intakeId: integer("intake_id").primaryKey(),
+  caseId: integer("case_id"),
+  matter: text("matter").notNull().default(""),
+  shareFolderId: integer("share_folder_id"),
+  skipped: boolean("skipped").notNull().default(false),
+  createdBy: varchar("created_by", { length: 255 }).notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ caseIdx: index("intake_cases_case_idx").on(t.caseId) }));
+
 export const intakeContracts = pgTable("intake_contracts", {
   id: serial("id").primaryKey(),
   intakeId: integer("intake_id").notNull(),
