@@ -68,32 +68,42 @@ export const longDateEs = (d: string) => (d ? day(d).toLocaleDateString("es-MX",
 export const weekdayEn = (d: string) => (d ? day(d).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long" }) : "");
 export const weekdayEs = (d: string) => (d ? day(d).toLocaleDateString("es-MX", { timeZone: "UTC", weekday: "long" }) : "");
 
-/** What is still blank, in the words used on the fill-in screen. Optional blanks are not listed. */
-export function missingBlanks(d: ContractData): { key: string; label: string }[] {
-  const out: { key: string; label: string }[] = [];
-  const need = (ok: unknown, key: string, label: string) => { if (!ok) out.push({ key, label }); };
+/** With no choice made, representation begins on the first scheduled payment when there is a payment plan, and when the retainer is paid in full when there is not. */
+export const resolvedStartWhen = (d: Pick<ContractData, "startWhen" | "schedule">): "full" | "first" => d.startWhen || (d.schedule.length > 0 ? "first" : "full");
+
+export type LetterNote = { key: string; label: string };
+/**
+ * What a download will look like for the fields not filled in. A downloaded
+ * letter is always finished: it never shows a placeholder or a highlight.
+ *   blank    prints as an empty space — these are the ones worth filling in
+ *   omitted  optional parts that are simply left out, and the letter still reads
+ */
+export function letterNotes(d: ContractData): { blank: LetterNote[]; omitted: LetterNote[] } {
+  const blank: LetterNote[] = [], omitted: LetterNote[] = [];
+  const need = (ok: unknown, key: string, label: string) => { if (!ok) blank.push({ key, label }); };
+  const tEn = taskLines(d.tasksEn).length, tEs = taskLines(d.tasksEs).length;
   need(d.date, "date", "Letter date");
   need(d.clientName, "clientName", "Client name");
-  need(d.clientEmail, "clientEmail", "Client email");
-  need(d.street, "street", "Street address");
-  need(d.city && d.state && d.zip, "city", "City, state and ZIP");
-  need(d.title ? d.lastName : d.clientName, "lastName", "Greeting (Mr./Ms. and last name)");
+  if (d.title && !d.lastName) blank.push({ key: "lastName", label: "Last name for the greeting" });
   need(d.caseStyle, "caseStyle", "Case style or matter (RE line)");
-  need(d.noCourt || d.court, "court", "Court (or mark that nothing is filed)");
-  need(d.county, "county", "County");
+  need(d.county, "county", "County (RE line)");
   need(d.matterEn, "matterEn", "What the matter is — English");
   need(d.matterEs, "matterEs", "What the matter is — Spanish");
-  need(d.matterTypeEn, "matterTypeEn", "Matter type heading — English");
-  need(d.matterTypeEs, "matterTypeEs", "Matter type heading — Spanish");
-  need(taskLines(d.tasksEn).length, "tasksEn", "Specific task(s) — English");
-  need(taskLines(d.tasksEs).length, "tasksEs", "Specific task(s) — Spanish");
-  if (d.exclusionsEn && !d.exclusionsEs) out.push({ key: "exclusionsEs", label: "Other exclusions — Spanish (English is filled in)" });
-  if (d.exclusionsEs && !d.exclusionsEn) out.push({ key: "exclusionsEn", label: "Other exclusions — English (Spanish is filled in)" });
   need(d.retainer, "retainer", "Retainer amount");
-  need(d.minBalance, "minBalance", "Minimum trust balance");
-  need(d.schedule.length > 0 && d.schedule.every((r) => r.date && r.amount), "schedule", "Payment schedule (each row needs a date and an amount)");
-  need(d.startWhen, "startWhen", "When representation begins (paid in full, or first payment)");
   need(d.openUntil, "openUntil", "Offer open until");
-  need(d.trialRetainer, "trialRetainer", "Trial retainer amount");
-  return out;
+  if (d.schedule.some((r) => !r.date || !r.amount)) blank.push({ key: "schedule", label: "A payment row is missing its date or amount" });
+  // Filled in for one language only: the other half would silently differ.
+  if (!!d.matterTypeEn !== !!d.matterTypeEs) blank.push({ key: d.matterTypeEn ? "matterTypeEs" : "matterTypeEn", label: `Matter type heading — ${d.matterTypeEn ? "Spanish" : "English"} (the other language has one)` });
+  if (!!tEn !== !!tEs) blank.push({ key: tEn ? "tasksEs" : "tasksEn", label: `Specific task — ${tEn ? "Spanish" : "English"} (the other language has one)` });
+  if (!!d.exclusionsEn !== !!d.exclusionsEs) blank.push({ key: d.exclusionsEn ? "exclusionsEs" : "exclusionsEn", label: `Other exclusions — ${d.exclusionsEn ? "Spanish" : "English"} (the other language has them)` });
+
+  if (!d.clientEmail) omitted.push({ key: "clientEmail", label: "No client email: the “Via Email” line is left out" });
+  if (!d.street || !(d.city || d.zip)) omitted.push({ key: "street", label: "Address not complete: empty address lines are left out" });
+  if (d.noCourt || !d.court) omitted.push({ key: "court", label: "No court: the RE line shows the matter and county only" });
+  if (!d.matterTypeEn && !d.matterTypeEs) omitted.push({ key: "matterTypeEn", label: "No matter type: that heading is left out" });
+  if (!tEn && !tEs) omitted.push({ key: "tasksEn", label: "No specific task: the list is the three standard items" });
+  if (!d.minBalance) omitted.push({ key: "minBalance", label: "No minimum trust balance: that clause is left out" });
+  if (d.schedule.length === 0) omitted.push({ key: "schedule", label: "No payment plan: the schedule is left out" });
+  if (!d.trialRetainer) omitted.push({ key: "trialRetainer", label: "No trial retainer: that paragraph and its initials line are left out" });
+  return { blank, omitted };
 }

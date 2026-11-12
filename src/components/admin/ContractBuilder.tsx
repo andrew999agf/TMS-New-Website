@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, CircleAlert, Eye, FileDown, FileText, Plus, Save, Trash2 } from "lucide-react";
 import { saveContract } from "@/app/admin/(panel)/intake/contract/actions";
-import { missingBlanks, money, type ContractData } from "@/lib/engagement/tml-fields";
+import { letterNotes, money, resolvedStartWhen, type ContractData } from "@/lib/engagement/tml-fields";
 
 type Props = {
   leadId: number; backHref: string; partnerName: string; initial: ContractData; saved: boolean; updatedNote: string;
@@ -22,7 +22,8 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const set = <K extends keyof ContractData>(k: K, v: ContractData[K]) => { setD((p) => ({ ...p, [k]: v })); setDirty(true); setMsg(null); };
-  const missing = useMemo(() => missingBlanks(d), [d]);
+  const notes = useMemo(() => letterNotes(d), [d]);
+  const missing = notes.blank;
   const miss = (k: string) => missing.some((m) => m.key === k);
   const cls = (k: string) => `${input} ${miss(k) ? "border-amber-400 bg-amber-50/40" : ""}`;
   const file = (format: "docx" | "pdf", inline = false) => `/admin/intake/contract/${leadId}/file?format=${format}${inline ? "&inline=1" : ""}`;
@@ -35,7 +36,7 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
         const r = await saveContract({ leadId, data: d });
         if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
         setDirty(false);
-        setMsg({ ok: true, text: r.blanks === 0 ? "Saved. Every blank is filled." : `Saved. ${r.blanks} blank${r.blanks === 1 ? "" : "s"} still open.` });
+        setMsg({ ok: true, text: r.blanks === 0 ? "Saved." : `Saved. ${r.blanks} field${r.blanks === 1 ? "" : "s"} will print blank.` });
       }
       then?.();
     });
@@ -68,7 +69,7 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-2xl">Engagement letter — {d.clientName || "new client"}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--c-ink-muted)]">Your Word letter for {partnerName} cases, English and Spanish. What the person entered on the intake form is already filled in; complete the rest. A blank left empty stays yellow and bracketed in the letter, so an unfinished letter shows what is missing.</p>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--c-ink-muted)]">Your Word letter for {partnerName} cases, English and Spanish. What the person entered on the intake form is already filled in; complete the rest. Whatever you download is a finished letter: no yellow and no placeholders. Optional parts you leave empty are left out, and any other empty field prints blank.</p>
           {updatedNote && <p className="mt-1 text-xs text-[var(--c-ink-muted)]" data-testid="ct-updated">{updatedNote}</p>}
         </div>
       </div>
@@ -79,7 +80,7 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
             <div className="grid gap-3 md:grid-cols-[10rem_1fr_1fr]">
               <label><span className={lab}>Letter date</span><input type="date" className={cls("date")} value={d.date} onChange={(e) => set("date", e.target.value)} data-testid="ct-date" /></label>
               <label><span className={lab}>Client name</span><input className={cls("clientName")} value={d.clientName} onChange={(e) => set("clientName", e.target.value)} data-testid="ct-clientName" /></label>
-              <label><span className={lab}>Client email</span><input type="email" className={cls("clientEmail")} value={d.clientEmail} onChange={(e) => set("clientEmail", e.target.value)} data-testid="ct-clientEmail" /></label>
+              <label><span className={lab}>Client email <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span></span><input type="email" className={cls("clientEmail")} value={d.clientEmail} onChange={(e) => set("clientEmail", e.target.value)} data-testid="ct-clientEmail" /></label>
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_12rem_5rem_7rem]">
               <label><span className={lab}>Street address</span><input className={cls("street")} value={d.street} onChange={(e) => set("street", e.target.value)} data-testid="ct-street" /></label>
@@ -96,7 +97,7 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
           {section("The matter (the RE line)", <>
             <label className="block"><span className={lab}>Case style or matter</span><input className={cls("caseStyle")} value={d.caseStyle} onChange={(e) => set("caseStyle", e.target.value)} placeholder="Ridgeline Properties LLC v. Maria Lopez; or Estate of Juan Lopez" data-testid="ct-caseStyle" /></label>
             <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
-              <label><span className={lab}>Court</span><input className={cls("court")} value={d.court} onChange={(e) => set("court", e.target.value)} disabled={d.noCourt} placeholder="County Court at Law No. 1; Cause No. …" data-testid="ct-court" /></label>
+              <label><span className={lab}>Court <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span></span><input className={cls("court")} value={d.court} onChange={(e) => set("court", e.target.value)} disabled={d.noCourt} placeholder="County Court at Law No. 1; Cause No. …" data-testid="ct-court" /></label>
               <label><span className={lab}>County</span><input className={cls("county")} value={d.county} onChange={(e) => set("county", e.target.value)} placeholder="Tarrant" data-testid="ct-county" /></label>
             </div>
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={d.noCourt} onChange={(e) => set("noCourt", e.target.checked)} data-testid="ct-noCourt" /> Nothing is filed yet — leave the court out of the RE line</label>
@@ -104,19 +105,19 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
 
           {section("Scope of representation", <>
             {pair("matterEn", "matterEs", "“My office will represent you in …”", { phEn: "defending the lawsuit filed against you by Ridgeline Properties LLC", phEs: "la defensa de la demanda presentada en su contra por Ridgeline Properties LLC" })}
-            {pair("matterTypeEn", "matterTypeEs", "Matter type (the heading above the task list)", { phEn: "Civil Defense", phEs: "Defensa civil" })}
-            {pair("tasksEn", "tasksEs", "Specific task or tasks, one per line (item 1 of the list; the three standard items follow)", { rows: 3, phEn: "Draft and file an original answer", phEs: "Redactar y presentar una contestación original" })}
+            {pair("matterTypeEn", "matterTypeEs", "Matter type (the heading above the task list)", { optional: true, phEn: "Civil Defense", phEs: "Defensa civil" })}
+            {pair("tasksEn", "tasksEs", "Specific task or tasks, one per line (they go ahead of the three standard items; with none, the list is just the standard items)", { optional: true, rows: 3, phEn: "Draft and file an original answer", phEs: "Redactar y presentar una contestación original" })}
             {pair("exclusionsEn", "exclusionsEs", "Other exclusions", { optional: true, phEn: "any counterclaim against third parties", phEs: "cualquier reconvención contra terceros" })}
           </>, "The Spanish half of the letter needs its own wording for these.")}
 
           {section("Fees", <>
             <div className="grid gap-3 md:grid-cols-3">
               <label><span className={lab}>Retainer ($)</span><input className={cls("retainer")} value={d.retainer} onChange={(e) => set("retainer", e.target.value)} inputMode="decimal" placeholder="5,000" data-testid="ct-retainer" /></label>
-              <label><span className={lab}>Minimum trust balance ($)</span><input className={cls("minBalance")} value={d.minBalance} onChange={(e) => set("minBalance", e.target.value)} inputMode="decimal" placeholder="1,500" data-testid="ct-minBalance" /></label>
-              <label><span className={lab}>Trial retainer ($)</span><input className={cls("trialRetainer")} value={d.trialRetainer} onChange={(e) => set("trialRetainer", e.target.value)} inputMode="decimal" placeholder="7,500" data-testid="ct-trialRetainer" /></label>
+              <label><span className={lab}>Minimum trust balance ($) <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span></span><input className={cls("minBalance")} value={d.minBalance} onChange={(e) => set("minBalance", e.target.value)} inputMode="decimal" placeholder="1,500" data-testid="ct-minBalance" /></label>
+              <label><span className={lab}>Trial retainer ($) <span className="font-normal text-[var(--c-ink-muted)]">(optional)</span></span><input className={cls("trialRetainer")} value={d.trialRetainer} onChange={(e) => set("trialRetainer", e.target.value)} inputMode="decimal" placeholder="7,500" data-testid="ct-trialRetainer" /></label>
             </div>
             <div>
-              <p className={lab}>Payment schedule</p>
+              <p className={lab}>Payment plan <span className="font-normal text-[var(--c-ink-muted)]">(optional — with no rows, the schedule is left out of the letter)</span></p>
               <div className={`space-y-2 rounded-md p-2 ${miss("schedule") ? "border border-amber-400 bg-amber-50/40" : "border border-[var(--c-border)]"}`} data-testid="ct-schedule">
                 {d.schedule.map((r, i) => (
                   <div key={i} className="flex flex-wrap items-center gap-2">
@@ -138,7 +139,7 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
             </div>
             <p className="text-xs text-[var(--c-ink-muted)]">Standard rates are ${money(d.standardAttorneyRate)} (attorney) and ${money(d.standardAssociateRate)} (contract / associate). A rate below the standard shows the standard struck through beside it, as in your letter; at or above it, only the rate shows.</p>
             <div className="grid gap-3 md:grid-cols-2">
-              <label><span className={lab}>Representation begins when</span><select className={cls("startWhen")} value={d.startWhen} onChange={(e) => set("startWhen", e.target.value as ContractData["startWhen"])} data-testid="ct-startWhen"><option value="">Choose…</option><option value="full">the retainer has been paid in full</option><option value="first">the first scheduled payment has been received</option></select></label>
+              <label><span className={lab}>Representation begins when</span><select className={cls("startWhen")} value={d.startWhen} onChange={(e) => set("startWhen", e.target.value as ContractData["startWhen"])} data-testid="ct-startWhen"><option value="">Automatic: {resolvedStartWhen({ startWhen: "", schedule: d.schedule }) === "first" ? "the first scheduled payment has been received" : "the retainer has been paid in full"}</option><option value="full">the retainer has been paid in full</option><option value="first">the first scheduled payment has been received</option></select></label>
               <label><span className={lab}>Offer open until (5:00 p.m.)</span><input type="date" className={cls("openUntil")} value={d.openUntil} onChange={(e) => set("openUntil", e.target.value)} data-testid="ct-openUntil" /></label>
             </div>
           </>)}
@@ -151,9 +152,17 @@ export function ContractBuilder({ leadId, backHref, partnerName, initial, saved,
 
         <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <div className={`rounded-lg border p-4 ${missing.length === 0 ? "border-emerald-300 bg-emerald-50 text-[#1c1917]" : "border-amber-300 bg-amber-50 text-[#1c1917]"}`} data-testid="ct-status">
-            <p className="inline-flex items-center gap-2 text-sm font-semibold">{missing.length === 0 ? <><CheckCircle2 size={16} className="text-emerald-700" /> Every blank is filled</> : <><CircleAlert size={16} className="text-amber-700" /> {missing.length} blank{missing.length === 1 ? "" : "s"} left</>}</p>
+            <p className="inline-flex items-center gap-2 text-sm font-semibold">{missing.length === 0 ? <><CheckCircle2 size={16} className="text-emerald-700" /> Ready to download</> : <><CircleAlert size={16} className="text-amber-700" /> {missing.length} field{missing.length === 1 ? "" : "s"} will print blank</>}</p>
             {missing.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs" data-testid="ct-missing">{missing.map((m) => <li key={m.key}>{m.label}</li>)}</ul>}
+            {missing.length > 0 && <p className="mt-2 text-[11px] leading-relaxed">You can still download: these print as an empty space, with no placeholder and no highlight.</p>}
           </div>
+          {notes.omitted.length > 0 && (
+            <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4" data-testid="ct-omitted">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--c-ink-muted)]">Left out of this letter</p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">{notes.omitted.map((m) => <li key={m.key}>{m.label}</li>)}</ul>
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--c-ink-muted)]">Fill a field in to put its part back.</p>
+            </div>
+          )}
           <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
             <div className="flex flex-col gap-2">
               <button type="button" disabled={pending || !dirty} onClick={() => withSave()} className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--c-accent)] px-4 py-2 text-sm font-semibold text-[var(--c-accent)] hover:bg-[var(--c-accent)] hover:text-white disabled:opacity-50" data-testid="ct-save"><Save size={15} /> {pending ? "Saving…" : dirty ? "Save" : "Saved"}</button>

@@ -2,7 +2,7 @@ import "server-only";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { intakeContracts, intakeSubmissions } from "@/db/schema";
-import { cleanContract, emptyContract, missingBlanks, type ContractData } from "@/lib/engagement/tml-fields";
+import { cleanContract, emptyContract, letterNotes, type ContractData } from "@/lib/engagement/tml-fields";
 import { engagementDefaultRates } from "@/lib/engagement/rates";
 import { PARTNER_AREAS, partnerOfAnswers } from "./partners";
 
@@ -77,6 +77,6 @@ export async function contractProgress(leadIds: number[]): Promise<Map<number, {
   if (!db || leadIds.length === 0) return out;
   await ensureContracts();
   const rows = await db.select().from(intakeContracts).where(inArray(intakeContracts.intakeId, leadIds));
-  for (const r of rows) out.set(r.intakeId, { blanks: missingBlanks(cleanContract(r.data)).length, updatedAt: r.updatedAt.toISOString() });
+  for (const r of rows) out.set(r.intakeId, { blanks: letterNotes(cleanContract(r.data)).blank.length, updatedAt: r.updatedAt.toISOString() });
   return out;
 }
