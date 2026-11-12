@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { intakeSubmissions } from "@/db/schema";
 import { requireAdmin, audit } from "@/lib/auth";
 import { BRANCHES } from "@/lib/intake/config";
+import { noteLeadActivity } from "@/lib/intake/lead-archive";
 
 export type ManualLeadInput = {
   branch: string;
@@ -100,6 +101,7 @@ export async function updateIntakeStatus(
   // Moving away from referred-out clears the referral details.
   const extra = status === "referred-out" ? {} : { referredTo: null, feeExpected: false, feeAmount: null };
   await db.update(intakeSubmissions).set({ status, ...extra }).where(eq(intakeSubmissions.id, id));
+  await noteLeadActivity(id);
   await audit(session.email, "update", "intake", String(id), `Status → ${status}`);
   await notifyIntakeChange(id, `Status → ${STATUS_LABEL[status] ?? status}`, session.email);
   revalidatePath("/admin/intake");
@@ -130,6 +132,7 @@ export async function setIntakeReferral(
   // which then showed up as a bogus extra attorney with no contact info. The
   // attorney list is managed on its own; referring out only records the name(s)
   // on the lead (which powers the outbound-referrals report).
+  await noteLeadActivity(id);
   await audit(session.email, "update", "intake", String(id), `Referred out → ${referredTo}`);
   const feeNote = data.feeExpected ? ` (fee ${(data.feeAmount || "").trim() || "expected"})` : " (no fee)";
   await notifyIntakeChange(id, `Referred out → ${referredTo}${feeNote}`, session.email);
@@ -141,6 +144,7 @@ export async function setIntakeArchived(id: number, archived: boolean) {
   const session = await requireAdmin();
   if (!db) return { ok: false };
   await db.update(intakeSubmissions).set({ archived }).where(eq(intakeSubmissions.id, id));
+  if (!archived) await noteLeadActivity(id); // a restored lead is not swept straight back into the archive
   await audit(session.email, "update", "intake", String(id), archived ? "Archived" : "Restored");
   await notifyIntakeChange(id, archived ? "Archived" : "Restored", session.email);
   revalidatePath("/admin/intake");

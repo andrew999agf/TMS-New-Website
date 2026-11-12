@@ -1,3 +1,4 @@
+import { META_DDL } from "@/lib/intake/lead-archive";
 import { BOOKS_DDL } from "@/lib/books/ensure";
 import { CONSULT_DDL } from "@/lib/intake/consults";
 import { CONTRACT_DDL } from "@/lib/intake/contracts";
@@ -834,7 +835,7 @@ export async function POST() {
   // 1) Ensure tables/columns exist. Run each statement independently so one
   //    problematic statement (e.g. an enum change) can't abort the rest or the
   //    seeding below. All statements are idempotent (IF NOT EXISTS).
-  for (const stmt of [...DDL, ...BOOKS_DDL, ...CONSULT_DDL, ...CONTRACT_DDL]) {
+  for (const stmt of [...DDL, ...BOOKS_DDL, ...CONSULT_DDL, ...CONTRACT_DDL, ...META_DDL]) {
     try {
       await db.execute(sql.raw(stmt));
     } catch (err) {

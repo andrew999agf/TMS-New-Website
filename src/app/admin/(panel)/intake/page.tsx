@@ -28,6 +28,8 @@ import { getPartnerProfile } from "@/lib/intake/partner-profile";
 import { PartnerConsults } from "@/components/admin/PartnerConsults";
 import { PartnerLetters } from "@/components/admin/PartnerLetters";
 import { contractProgress } from "@/lib/intake/contracts";
+import { AutoArchiveRules } from "@/components/admin/LeadOutcome";
+import { autoArchivePartnerLeads, getAutoArchiveRules } from "@/lib/intake/lead-archive";
 import { consultLocations, fmtRequested, listConsults, partnerLocations } from "@/lib/intake/consults";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,9 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   const initialLeadId = typeof sp.lead === "string" ? Number(sp.lead) : null;
   // A partner office's sub-tab: the same leads, filtered to that partner.
   const activePartner = getIntakePartner(typeof sp.partner === "string" ? sp.partner : null);
+  // On a partner tab, first archive whatever is due, so the lists below are already short.
+  if (activePartner) await autoArchivePartnerLeads().catch(() => null);
+  const archiveRules = activePartner ? await getAutoArchiveRules() : null;
   const recipients = await getIntakeRecipients(false);
   const branches = BRANCHES.map((b) => ({ id: b.id, label: b.label }));
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
@@ -182,7 +187,9 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   // The partner office's own intake staff: copied on that partner's lead emails.
   const partnerProfile = activePartner ? await getPartnerProfile(activePartner) : null;
   // Engagement letters for this partner's leads: which are started, and how many blanks are left.
-  const letterLeads = activePartner ? shownRows.filter((r) => !r.archived).slice(0, 60) : [];
+  // Open leads first (the newest 100), then the archived ones, which stay hidden until asked for.
+  const openLeads = activePartner ? shownRows.filter((r) => !r.archived) : [];
+  const letterLeads = [...openLeads.slice(0, 100), ...(activePartner ? shownRows.filter((r) => r.archived).slice(0, 100) : [])];
   const letterProgress = activePartner ? await contractProgress(letterLeads.map((r) => r.id)).catch(() => new Map<number, { blanks: number; updatedAt: string }>()) : new Map<number, { blanks: number; updatedAt: string }>();
   // In-person consultation requests that came in through this partner's form.
   const consults = activePartner ? await listConsults(activePartner.slug).catch(() => []) : [];
@@ -213,8 +220,11 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
                 id: c.id, intakeId: c.intakeId, status: c.status, requested: c.requested.map(fmtRequested), contactId: c.contactId, clientName: c.clientName, clientPhone: c.clientPhone, hasEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.clientEmail), matter: c.matter,
                 sentToName: c.sentToName, whenText: c.whenText, startDate: central(c.startAt, { year: "numeric", month: "2-digit", day: "2-digit" }), startTime: central(c.startAt, { hour: "2-digit", minute: "2-digit", hour12: false }, "en-GB"),
                 durationMin: c.durationMin, location: c.location, note: c.note, proposedAt: c.proposedAt, confirmedAt: c.confirmedAt, declineNote: c.declineNote, reminderDay: !!c.reminderDayAt, reminderHours: !!c.reminderHoursAt,
+                leadStatus: c.leadStatus, leadArchived: c.leadArchived,
+                upcoming: c.upcoming, past: c.past,
               }))} />
-            <PartnerLetters partnerName={activeTab.name} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null }))} />
+            <PartnerLetters partnerName={activeTab.name} moreActive={Math.max(0, openLeads.length - 100)} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null, status: r.status, archived: r.archived }))} />
+            {archiveRules && <AutoArchiveRules afterOutcomeDays={archiveRules.afterOutcomeDays} idleDays={archiveRules.idleDays} />}
             {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />
             <IntakeTable key={activeTab.slug} rows={shownRows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />

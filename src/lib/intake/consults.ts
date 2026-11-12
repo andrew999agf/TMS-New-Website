@@ -96,14 +96,22 @@ export type ConsultView = {
   id: number; intakeId: number; status: string; requested: RequestedDate[]; contactId: string; clientName: string; clientPhone: string; clientEmail: string; matter: string;
   sentToName: string; sentToKind: string; startAt: string | null; whenText: string; durationMin: number; location: string; note: string; proposedAt: string | null; proposedBy: string | null;
   confirmedAt: string | null; declineNote: string; reminderDayAt: string | null; reminderHoursAt: string | null; createdAt: string;
+  /** The lead this request belongs to: its status (the outcome) and whether it has been archived. */
+  leadStatus: string; leadArchived: boolean;
+  /** Where the meeting stands in time: offered or confirmed and still ahead; or already over. */
+  upcoming: boolean; past: boolean;
 };
 
 export async function listConsults(partnerSlug: string): Promise<ConsultView[]> {
   if (!db) return [];
   await ensureConsults();
-  const rows = await db.select({ c: intakeConsults, name: intakeSubmissions.name, phone: intakeSubmissions.phone, email: intakeSubmissions.email, answers: intakeSubmissions.answers })
-    .from(intakeConsults).innerJoin(intakeSubmissions, eq(intakeSubmissions.id, intakeConsults.intakeId)).where(eq(intakeConsults.partnerSlug, partnerSlug)).orderBy(desc(intakeConsults.id)).limit(200);
-  return rows.map(({ c, name, phone, email, answers }) => ({
+  const rows = await db.select({ c: intakeConsults, name: intakeSubmissions.name, phone: intakeSubmissions.phone, email: intakeSubmissions.email, answers: intakeSubmissions.answers, leadStatus: intakeSubmissions.status, leadArchived: intakeSubmissions.archived })
+    .from(intakeConsults).innerJoin(intakeSubmissions, eq(intakeSubmissions.id, intakeConsults.intakeId)).where(eq(intakeConsults.partnerSlug, partnerSlug)).orderBy(desc(intakeConsults.id)).limit(400);
+  const now = Date.now();
+  return rows.map(({ c, name, phone, email, answers, leadStatus, leadArchived }) => ({
+    leadStatus: String(leadStatus), leadArchived: !!leadArchived,
+    upcoming: (c.status === "proposed" || c.status === "confirmed") && !!c.startAt && c.startAt.getTime() > now,
+    past: !!c.startAt && c.startAt.getTime() + c.durationMin * 60_000 < now,
     id: c.id, intakeId: c.intakeId, status: c.status, requested: c.requested ?? [], contactId: c.contactId, clientName: name ?? "", clientPhone: phone ?? "", clientEmail: email ?? "", matter: String((answers as Record<string, unknown>)?.practiceArea ?? ""),
     sentToName: c.sentToName, sentToKind: c.sentToKind, startAt: c.startAt?.toISOString() ?? null, whenText: c.startAt ? fmtWhen(c.startAt) : "", durationMin: c.durationMin, location: c.location, note: c.note,
     proposedAt: c.proposedAt?.toISOString() ?? null, proposedBy: c.proposedBy, confirmedAt: c.confirmedAt?.toISOString() ?? null, declineNote: c.declineNote,

@@ -4,11 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CalendarCheck, Send } from "lucide-react";
 import { cancelConsultRequest, offerConsultTime } from "@/app/admin/(panel)/intake/consult-actions";
+import { LeadOutcome, isOutcome, outcomeLabel } from "./LeadOutcome";
 
 export type ConsultRow = {
   id: number; intakeId: number; status: string; requested: string[]; contactId: string; clientName: string; clientPhone: string; hasEmail: boolean; matter: string;
   sentToName: string; whenText: string; startDate: string; startTime: string; durationMin: number; location: string; note: string; proposedAt: string | null; confirmedAt: string | null; declineNote: string;
   reminderDay: boolean; reminderHours: boolean;
+  /** The lead behind the request: its status (the outcome), whether it is archived, and where the meeting stands in time. */
+  leadStatus: string; leadArchived: boolean; upcoming: boolean; past: boolean;
 };
 type Contact = { id: string; name: string };
 /** Places to hold it, grouped: the partner office's own addresses first, then the firm's. */
@@ -24,23 +27,30 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-
 function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: ConsultRow; contacts: Contact[]; locations: LocationGroup[]; partnerName: string; partnerSlug: string; focus: boolean }) {
   const router = useRouter();
   const all = locations.flatMap((g) => g.options);
-  const [open, setOpen] = useState(c.status === "requested" || focus);
+  const [open, setOpen] = useState((c.status === "requested" && !c.leadArchived) || focus);
   const [f, setF] = useState({ date: c.startDate, time: c.startTime || "10:00", durationMin: c.durationMin || 60, location: all.includes(c.location) ? c.location : c.location ? "__other" : all[0] ?? "", other: all.includes(c.location) ? "" : c.location, note: c.note, sendTo: contacts.some((x) => x.id === c.contactId) ? c.contactId : contacts[0]?.id ?? (c.hasEmail ? "client" : "") });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const st = STATUS[c.status] ?? STATUS.requested;
   const run = (fn: () => Promise<{ ok: true; message: string } | { ok: false; error: string }>) => { setMsg(null); start(async () => { const r = await fn(); setMsg(r.ok ? { ok: true, text: r.message } : { ok: false, text: r.error }); if (r.ok) setOpen(false); router.refresh(); }); };
   const loc = f.location === "__other" ? f.other : f.location;
+  const needsOutcome = c.status === "confirmed" && c.past && !isOutcome(c.leadStatus) && !c.leadArchived;
   return (
-    <li className={`px-4 py-3 ${focus ? "bg-[var(--c-accent)]/5" : ""}`} data-testid={`consult-${c.id}`}>
+    <li className={`px-4 py-3 ${focus ? "bg-[var(--c-accent)]/5" : c.leadArchived ? "bg-[var(--c-bg)]" : ""}`} data-testid={`consult-${c.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm"><span className="font-semibold">{c.clientName || "(no name)"}</span>{c.matter ? <span className="text-[var(--c-ink-muted)]"> · {c.matter}</span> : null}{c.clientPhone ? <span className="text-[var(--c-ink-muted)]"> · {c.clientPhone}</span> : null}</p>
-        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`} data-testid={`consult-status-${c.id}`}>{st.label}</span>
+        <span className="flex flex-wrap items-center gap-2">
+          {c.leadArchived && <span className="rounded-full border border-[var(--c-border)] px-2 py-0.5 text-[11px] font-semibold text-[var(--c-ink-muted)]" data-testid={`consult-archived-${c.id}`}>Archived</span>}
+          {isOutcome(c.leadStatus) && <span className="rounded-full bg-[var(--c-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--c-ink)]" data-testid={`consult-outcome-${c.id}`}>{outcomeLabel(c.leadStatus)}</span>}
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`} data-testid={`consult-status-${c.id}`}>{c.status === "confirmed" && c.past ? "Took place" : st.label}</span>
+        </span>
       </div>
       <p className="mt-1 text-xs text-[var(--c-ink-muted)]" data-testid={`consult-asked-${c.id}`}>Asked for: {c.requested.join("; ") || "no dates given"}</p>
       {c.status === "proposed" && <p className="mt-1 text-sm" data-testid={`consult-offered-${c.id}`}>Offered <span className="font-semibold">{c.whenText}</span> · {c.location} · emailed to {c.sentToName} on {day(c.proposedAt)}.</p>}
       {c.status === "confirmed" && <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 text-sm" data-testid={`consult-confirmed-${c.id}`}><CalendarCheck size={14} className="text-emerald-700" /> <span className="font-semibold">{c.whenText}</span> · {c.location} · confirmed {day(c.confirmedAt)} · reminders: day before {c.reminderDay ? "sent" : "pending"}, four hours before {c.reminderHours ? "sent" : "pending"}</p>}
       {c.status === "requested" && c.declineNote && <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`consult-declined-${c.id}`}>The last time offered didn&apos;t work: {c.declineNote}</p>}
+      {needsOutcome && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`consult-ask-${c.id}`}>This meeting has come and gone. Record how it turned out below; the lead is archived on its own once it has an outcome.</p>}
+      <p className="mt-2"><LeadOutcome leadId={c.intakeId} status={c.leadStatus} archived={c.leadArchived} where={`consult-${c.id}`} prompt={needsOutcome} /></p>
       {c.status !== "cancelled" && (
         <p className="mt-2 flex flex-wrap gap-3 text-xs">
           <button type="button" onClick={() => setOpen(!open)} className="text-[var(--c-accent)] hover:underline" data-testid={`consult-toggle-${c.id}`}>{open ? "Hide" : c.status === "requested" ? "Offer a time" : "Offer a different time"}</button>
@@ -78,9 +88,11 @@ function Row({ c, contacts, locations, partnerName, partnerSlug, focus }: { c: C
 /** On the partner's tab: in-person consultation requests, and the step that offers a real date and time. */
 export function PartnerConsults({ rows, contacts, locations, partnerName, partnerSlug, focusId }: { rows: ConsultRow[]; contacts: Contact[]; locations: LocationGroup[]; partnerName: string; partnerSlug: string; focusId: number | null }) {
   const [showAll, setShowAll] = useState(false);
-  const live = rows.filter((r) => r.status !== "cancelled");
+  // Off the list by default: cancelled requests, and requests whose lead has been archived (unless the meeting is still ahead).
+  const tucked = (r: ConsultRow) => r.status === "cancelled" || (r.leadArchived && !r.upcoming);
+  const live = rows.filter((r) => !tucked(r) || r.id === focusId);
   const shown = showAll ? rows : live;
-  const waiting = rows.filter((r) => r.status === "requested").length;
+  const waiting = live.filter((r) => r.status === "requested").length;
   return (
     <div id="consults" className="mb-6 scroll-mt-6 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]" data-testid="partner-consults">
       <div className="flex flex-wrap items-start justify-between gap-2 p-5 pb-3">
@@ -88,10 +100,10 @@ export function PartnerConsults({ rows, contacts, locations, partnerName, partne
           <p className="inline-flex items-center gap-2 text-sm font-semibold"><CalendarClock size={15} /> In-person consultation requests{waiting > 0 && <span className="rounded-full bg-[var(--c-accent)] px-1.5 text-[11px] font-semibold text-white">{waiting} need a time</span>}</p>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[var(--c-ink-muted)]">People who asked on the form to meet in person, with the dates that work for them. Offer one date and time; it is emailed to their contact at {partnerName} with a Confirm button. When it is confirmed everyone is emailed, and reminders go out the day before and four hours before.</p>
         </div>
-        {rows.length > live.length && <label className="flex items-center gap-2 text-xs text-[var(--c-ink-muted)]"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show cancelled</label>}
+        {rows.length > live.length && <label className="flex items-center gap-2 text-xs text-[var(--c-ink-muted)]"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} data-testid="consults-show-archived" /> Show archived and cancelled ({rows.length - live.length})</label>}
       </div>
       {shown.length === 0
-        ? <p className="mx-5 mb-5 rounded-md border border-dashed border-[var(--c-border)] px-4 py-3 text-xs text-[var(--c-ink-muted)]" data-testid="consults-empty">No requests yet. They appear here when someone answers &ldquo;Yes&rdquo; to meeting in person on the form.</p>
+        ? <p className="mx-5 mb-5 rounded-md border border-dashed border-[var(--c-border)] px-4 py-3 text-xs text-[var(--c-ink-muted)]" data-testid="consults-empty">{rows.length === 0 ? <>No requests yet. They appear here when someone answers &ldquo;Yes&rdquo; to meeting in person on the form.</> : "Nothing open. The rest are archived or cancelled."}</p>
         : <ul className="divide-y divide-[var(--c-border)] border-t border-[var(--c-border)]">{shown.map((c) => <Row key={c.id} c={c} contacts={contacts} locations={locations} partnerName={partnerName} partnerSlug={partnerSlug} focus={focusId === c.id} />)}</ul>}
     </div>
   );
