@@ -373,6 +373,7 @@ export async function POST(req: Request) {
         <a href="${adminBase}/admin/intake?partner=${partner.slug}${consultId != null ? `&consult=${consultId}` : ""}#consults" style="display:inline-block;padding:10px 18px;background:#7a1f2b;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none">Check the calendar and offer a time &rarr;</a>
       </div>` : ""}
       ${openLeadButton}
+      ${partner && id != null ? `<p style="margin:-8px 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px"><a href="${adminBase}/admin/intake/contract/${id}" style="color:#7a1f2b;font-weight:bold">Prepare the engagement letter &rarr;</a> <span style="color:#777">(already filled in from this form; finish the blanks, then download Word or PDF)</span></p>` : ""}
       <p style="margin:0;color:#777;font-size:13px">Prepared by the office of T. Maxwell Smith, PLLC.</p>
     </div>`;
 

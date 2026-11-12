@@ -26,6 +26,8 @@ import { getPartnerContacts } from "@/lib/intake/partner-contacts";
 import { PartnerProfile } from "@/components/admin/PartnerProfile";
 import { getPartnerProfile } from "@/lib/intake/partner-profile";
 import { PartnerConsults } from "@/components/admin/PartnerConsults";
+import { PartnerLetters } from "@/components/admin/PartnerLetters";
+import { contractProgress } from "@/lib/intake/contracts";
 import { consultLocations, fmtRequested, listConsults, partnerLocations } from "@/lib/intake/consults";
 
 export const dynamic = "force-dynamic";
@@ -179,6 +181,9 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   const activeTab = activePartner ? partnerTabs.find((t) => t.slug === activePartner.slug) ?? null : null;
   // The partner office's own intake staff: copied on that partner's lead emails.
   const partnerProfile = activePartner ? await getPartnerProfile(activePartner) : null;
+  // Engagement letters for this partner's leads: which are started, and how many blanks are left.
+  const letterLeads = activePartner ? shownRows.filter((r) => !r.archived).slice(0, 60) : [];
+  const letterProgress = activePartner ? await contractProgress(letterLeads.map((r) => r.id)).catch(() => new Map<number, { blanks: number; updatedAt: string }>()) : new Map<number, { blanks: number; updatedAt: string }>();
   // In-person consultation requests that came in through this partner's form.
   const consults = activePartner ? await listConsults(activePartner.slug).catch(() => []) : [];
   const FIRM_NAME_FOR_LOCATIONS = (await getBlocks("global"))["global.firmName"] || "T. Maxwell Smith, PLLC";
@@ -209,6 +214,7 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
                 sentToName: c.sentToName, whenText: c.whenText, startDate: central(c.startAt, { year: "numeric", month: "2-digit", day: "2-digit" }), startTime: central(c.startAt, { hour: "2-digit", minute: "2-digit", hour12: false }, "en-GB"),
                 durationMin: c.durationMin, location: c.location, note: c.note, proposedAt: c.proposedAt, confirmedAt: c.confirmedAt, declineNote: c.declineNote, reminderDay: !!c.reminderDayAt, reminderHours: !!c.reminderHoursAt,
               }))} />
+            <PartnerLetters partnerName={activeTab.name} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null }))} />
             {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />
             <IntakeTable key={activeTab.slug} rows={shownRows} attorneys={attorneys} referralAttorneys={referralRows} initialLeadId={initialLeadId} letters={lettersByIntake} defaultRates={defaultRates} />

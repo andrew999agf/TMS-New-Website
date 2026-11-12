@@ -105,7 +105,7 @@ async function launchBrowser() {
 
 type SectionInfo = {
   pgW: number; pgH: number; // twips
-  marL: number; marR: number;
+  marL: number; marR: number; marT: number; marB: number;
   headerDist: number; footerDist: number;
   titlePg: boolean;
   refs: Partial<Record<"headerFirst" | "headerDefault" | "footerFirst" | "footerDefault", string>>; // part path in zip
@@ -132,6 +132,7 @@ async function analyzeSection(zip: JSZipNS): Promise<SectionInfo> {
   return {
     pgW: TW(attr("pgSz", "w"), 12240), pgH: TW(attr("pgSz", "h"), 15840),
     marL: TW(attr("pgMar", "left"), 1440), marR: TW(attr("pgMar", "right"), 1440),
+    marT: TW(attr("pgMar", "top"), 1440), marB: TW(attr("pgMar", "bottom"), 1440),
     headerDist: TW(attr("pgMar", "header"), 720), footerDist: TW(attr("pgMar", "footer"), 720),
     titlePg: /<w:titlePg(?:\s|\/)/.test(sect),
     refs,
@@ -173,7 +174,21 @@ async function buildPartDocx(zip: JSZipNS, partPath: string, pageNo?: number, pa
   return Buffer.from(await out.generateAsync({ type: "uint8array" }));
 }
 
-export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } = {}): Promise<Buffer> {
+/** Extra handling a particular letter can switch on. With none set, the
+ *  conversion is exactly what it has always been. */
+export type DocxToPdfOptions = {
+  footerInitials?: string;
+  /** Lay out Word tab stops (a footer with a right-aligned page number). */
+  tabStops?: boolean;
+  /** Center a letterhead table that is wider than the text margins (Word's negative table indent). */
+  wideLetterheadTables?: boolean;
+  /** Use the section's own top and bottom margins instead of one inch. */
+  sectionMargins?: boolean;
+  /** More CSS for the page, e.g. @font-face rules for fonts the document embeds. */
+  extraCss?: string;
+};
+
+export async function docxToPdf(docx: Buffer, opts: DocxToPdfOptions = {}): Promise<Buffer> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(docx);
   const sec = await analyzeSection(zip);
@@ -195,6 +210,8 @@ export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } 
       #part section.docx { background: #fff !important; box-shadow: none !important; margin: 0 !important; min-height: 0 !important; height: auto !important; padding-top: 0 !important; padding-bottom: 0 !important; }
       /* Letterhead tables (the offices footer) center on the page, as drafted. */
       #part section.docx table { margin-left: auto !important; margin-right: auto !important; }
+      ${opts.wideLetterheadTables ? "#part section.docx table { margin-left: 50% !important; margin-right: 0 !important; transform: translateX(-50%); } #part section.docx table p { margin-inline: 0 !important; }" : ""}
+      ${opts.extraCss ?? ""}
       @media print { #part { display: none !important; } }
     </style><style id="pg"></style></head>
 <body><div id="out"></div><div id="part"></div>
@@ -204,7 +221,7 @@ export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } 
     await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
 
     const render = async (b64: string, target: "out" | "part") => {
-      await page.evaluate(async (data: string, id: string) => {
+      await page.evaluate(async (data: string, id: string, tabStops: boolean) => {
         const bin = atob(data);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -213,13 +230,30 @@ export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } 
         // @ts-expect-error docx-preview attaches itself as window.docx
         await window.docx.renderAsync(bytes.buffer, el, undefined, {
           inWrapper: true,
+          experimental: tabStops && id === "part",
           ignoreLastRenderedPageBreak: false,
           renderHeaders: false,
           renderFooters: false,
           renderFootnotes: true,
         });
         await (document as Document & { fonts: FontFaceSet }).fonts.ready;
-      }, b64, target);
+        // A header/footer line like "Engagement Letter <tab> Page 2": Word's
+        // right-aligned tab stop at the margin pushes what follows the tab to
+        // the right edge. Each tab is widened by exactly the room left over.
+        if (tabStops && id === "part") {
+          for (const tab of Array.from(el.querySelectorAll<HTMLElement>(".docx-tab-stop"))) {
+            const para = tab.closest("p");
+            if (!para) continue;
+            tab.style.display = "inline-block";
+            tab.style.width = "0px";
+            const after = document.createRange();
+            after.setStartAfter(tab);
+            after.setEnd(para, para.childNodes.length);
+            const used = tab.getBoundingClientRect().left - para.getBoundingClientRect().left + after.getBoundingClientRect().width;
+            tab.style.width = `${Math.max(0, para.getBoundingClientRect().width - used - 0.5)}px`;
+          }
+        }
+      }, b64, target, !!opts.tabStops);
     };
 
     type Shot = { png: Buffer; cssW: number; cssH: number; initialsAt?: { x: number; y: number; h: number } };
@@ -280,8 +314,8 @@ export async function docxToPdf(docx: Buffer, opts: { footerInitials?: string } 
     const hDefProbe = sec.refs.headerDefault ? await shoot(sec.refs.headerDefault, 2) : null;
     const fDefProbe = sec.refs.footerDefault ? await shoot(sec.refs.footerDefault, 2) : null;
 
-    const marTop = 1440 / 20; // Word top/bottom margins (the template uses 1")
-    const marBot = 1440 / 20;
+    const marTop = (opts.sectionMargins ? sec.marT : 1440) / 20; // Word top/bottom margins (the original template uses 1")
+    const marBot = (opts.sectionMargins ? sec.marB : 1440) / 20;
     const band = (dist: number, shotH: number | undefined, base: number) =>
       Math.max(base, shotH ? dist / 20 + shotH * 0.75 + 4 : 0);
     const topFirst = band(sec.headerDist, h1Shot?.cssH, marTop);

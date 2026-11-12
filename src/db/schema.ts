@@ -2551,3 +2551,13 @@ export const intakeConsults = pgTable("intake_consults", {
   reminderHoursAt: timestamp("reminder_hours_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ tokenUq: uniqueIndex("intake_consults_token_uq").on(t.token), intakeIdx: index("intake_consults_intake_idx").on(t.intakeId) }));
+
+/** The fill-in data for a partner-office engagement letter, one per lead. */
+export const intakeContracts = pgTable("intake_contracts", {
+  id: serial("id").primaryKey(),
+  intakeId: integer("intake_id").notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  updatedBy: varchar("updated_by", { length: 255 }).notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ intakeUq: uniqueIndex("intake_contracts_intake_uq").on(t.intakeId) }));
