@@ -213,7 +213,7 @@ export function IntakeTable({ rows, attorneys, referralAttorneys, initialLeadId 
                   )}
                 </td>
                 <td className="px-4 py-3 text-[var(--c-ink-muted)]">
-                  {new Date(r.createdAt).toLocaleDateString()}
+                  {new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" })}
                 </td>
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <select

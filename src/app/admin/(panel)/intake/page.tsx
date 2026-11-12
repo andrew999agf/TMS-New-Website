@@ -194,6 +194,9 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   // In-person consultation requests that came in through this partner's form.
   const consults = activePartner ? await listConsults(activePartner.slug).catch(() => []) : [];
   const FIRM_NAME_FOR_LOCATIONS = (await getBlocks("global"))["global.firmName"] || "T. Maxwell Smith, PLLC";
+  // Who a referred-out lead went to, for the outcome box on both lists.
+  const leadById = new Map(shownRows.map((r) => [r.id, r]));
+  const referralOf = (id: number) => { const r = leadById.get(id); return r && r.status === "referred-out" ? { to: r.referredTo ?? "", fee: r.feeExpected, amount: r.feeAmount ?? "" } : undefined; };
   const focusConsult = typeof sp.consult === "string" ? Number(sp.consult) || null : null;
   const central = (iso: string | null, opt: Intl.DateTimeFormatOptions, locale = "en-CA") => (iso ? new Intl.DateTimeFormat(locale, { timeZone: "America/Chicago", ...opt }).format(new Date(iso)) : "");
   const partnerContacts = activePartner ? (await getPartnerContacts(activePartner.slug)).map((c) => ({ id: c.id, name: c.name, email: c.email, linkSentAt: c.linkSentAt })) : [];
@@ -215,15 +218,15 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
         {activeTab ? (
           <>
             <PartnerLinkCard partner={activeTab} />
-            <PartnerConsults partnerName={activeTab.name} partnerSlug={activeTab.slug} focusId={focusConsult} locations={[{ label: activeTab.name, options: partnerLocations(activeTab.name, partnerProfile?.contact ?? "") }, { label: FIRM_NAME_FOR_LOCATIONS, options: consultLocations() }]} contacts={partnerContacts.map((c) => ({ id: c.id, name: c.name }))}
+            <PartnerConsults attorneys={attorneys} partnerName={activeTab.name} partnerSlug={activeTab.slug} focusId={focusConsult} locations={[{ label: activeTab.name, options: partnerLocations(activeTab.name, partnerProfile?.contact ?? "") }, { label: FIRM_NAME_FOR_LOCATIONS, options: consultLocations() }]} contacts={partnerContacts.map((c) => ({ id: c.id, name: c.name }))}
               rows={consults.map((c) => ({
                 id: c.id, intakeId: c.intakeId, status: c.status, requested: c.requested.map(fmtRequested), contactId: c.contactId, clientName: c.clientName, clientPhone: c.clientPhone, hasEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.clientEmail), matter: c.matter,
                 sentToName: c.sentToName, whenText: c.whenText, startDate: central(c.startAt, { year: "numeric", month: "2-digit", day: "2-digit" }), startTime: central(c.startAt, { hour: "2-digit", minute: "2-digit", hour12: false }, "en-GB"),
                 durationMin: c.durationMin, location: c.location, note: c.note, proposedAt: c.proposedAt, confirmedAt: c.confirmedAt, declineNote: c.declineNote, reminderDay: !!c.reminderDayAt, reminderHours: !!c.reminderHoursAt,
-                leadStatus: c.leadStatus, leadArchived: c.leadArchived,
+                leadStatus: c.leadStatus, leadArchived: c.leadArchived, referral: referralOf(c.intakeId),
                 upcoming: c.upcoming, past: c.past,
               }))} />
-            <PartnerLetters partnerName={activeTab.name} moreActive={Math.max(0, openLeads.length - 100)} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null, status: r.status, archived: r.archived }))} />
+            <PartnerLetters attorneys={attorneys} partnerName={activeTab.name} moreActive={Math.max(0, openLeads.length - 100)} rows={letterLeads.map((r) => ({ leadId: r.id, name: r.name ?? "", matter: String(r.answers.practiceArea ?? ""), received: new Date(r.createdAt).toLocaleDateString("en-US", { timeZone: "America/Chicago" }), blanks: letterProgress.get(r.id)?.blanks ?? null, status: r.status, archived: r.archived, referral: referralOf(r.id) }))} />
             {archiveRules && <AutoArchiveRules afterOutcomeDays={archiveRules.afterOutcomeDays} idleDays={archiveRules.idleDays} />}
             {partnerProfile && <PartnerProfile partner={{ slug: activeTab.slug, name: activeTab.name }} logoUrl={partnerProfile.logoUrl} logoIsOriginal={partnerProfile.logoIsOriginal} hasOriginalLogo={partnerProfile.hasOriginalLogo} contact={partnerProfile.contact} />}
             <PartnerContacts partner={{ slug: activeTab.slug, name: activeTab.name }} contacts={partnerContacts} emailReady={emailConfigured} />

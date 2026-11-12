@@ -140,6 +140,33 @@ export async function setIntakeReferral(
   return { ok: true };
 }
 
+/**
+ * Archive a lead and, in the same step, record how it turned out, so a lead is
+ * not filed away with its outcome unknown. `outcome` null archives it as it is.
+ * One update, one log line and one notice (not two).
+ */
+export async function archiveIntakeWithOutcome(
+  id: number,
+  outcome: "converted" | "declined" | "client-declined" | "referred-out" | null,
+  referral?: { referredTo: string; feeExpected: boolean; feeAmount?: string },
+) {
+  const session = await requireAdmin();
+  if (!db) return { ok: false, error: "Database not configured." };
+  if (outcome !== null && !["converted", "declined", "client-declined", "referred-out"].includes(outcome)) return { ok: false, error: "Choose an outcome." };
+  const referredTo = (referral?.referredTo ?? "").trim();
+  if (outcome === "referred-out" && !referredTo) return { ok: false, error: "Enter the attorney's name." };
+  const set =
+    outcome === null ? { archived: true }
+    : outcome === "referred-out" ? { archived: true, status: outcome, referredTo, feeExpected: !!referral?.feeExpected, feeAmount: referral?.feeExpected ? (referral.feeAmount || "").trim() || null : null }
+    : { archived: true, status: outcome, referredTo: null, feeExpected: false, feeAmount: null };
+  await db.update(intakeSubmissions).set(set).where(eq(intakeSubmissions.id, id));
+  const what = outcome === null ? "Archived" : outcome === "referred-out" ? `Referred out → ${referredTo} · Archived` : `${STATUS_LABEL[outcome] ?? outcome} · Archived`;
+  await audit(session.email, "update", "intake", String(id), outcome === null ? "Archived (no outcome recorded)" : what);
+  await notifyIntakeChange(id, what, session.email);
+  revalidatePath("/admin/intake");
+  return { ok: true };
+}
+
 export async function setIntakeArchived(id: number, archived: boolean) {
   const session = await requireAdmin();
   if (!db) return { ok: false };
