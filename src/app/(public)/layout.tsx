@@ -3,7 +3,7 @@ import { Footer } from "@/components/site/Footer";
 import { JsonLd } from "@/components/site/JsonLd";
 import { PageViewTracker, GA4 } from "@/components/site/Analytics";
 import { getBlocks, getSetting, getPracticeAreas, getTeam } from "@/lib/content";
-import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
+import { groupPracticeAreas, fivePracticeAreas } from "@/lib/content/defaults/practice-areas";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
 import { SITE_URL } from "@/lib/seo";
 
@@ -33,7 +33,7 @@ export default async function PublicLayout({
   // member added in the admin shows up in the nav without a code change. The
   // practice list keeps the same priority order as the home page and the
   // practice-areas index — one definition, three surfaces.
-  const practiceChildren: NavChild[] = groupPracticeAreas(practices).flatMap((g) =>
+  const practiceChildren: NavChild[] = groupPracticeAreas(practices, { fiveOnly: true }).flatMap((g) =>
     g.areas.map((p) => ({
       label: p.title,
       href: `/practice-areas/${p.slug}`,
@@ -91,14 +91,14 @@ export default async function PublicLayout({
         telephone: principal.phone,
         faxNumber: FIRM.fax,
         email: FIRM.email,
-        description: "A Texas trial firm. Personal injury, wrongful death, civil and commercial litigation, appeals, probate and estate administration, and consumer debt defense — prepared for trial from day one.",
+        description: "A Texas trial firm. Personal injury and wrongful death, civil and commercial litigation, probate and estate planning, business transactions, and the defense of credit card and debt-buyer lawsuits — prepared for trial from day one.",
         address: { "@type": "PostalAddress", streetAddress: principal.street, addressLocality: principal.city, addressRegion: "TX", postalCode: principal.zip, addressCountry: "US" },
         location: OFFICES.map(place),
         areaServed: LITIGATION_COUNTIES.map((c) => ({ "@type": "AdministrativeArea", name: `${c} County, Texas` })),
         founder: { "@id": `${baseUrl}/#attorney` },
         employee: [{ "@id": `${baseUrl}/#attorney` }],
-        knowsAbout: practices.map((p) => p.title),
-        hasOfferCatalog: { "@type": "OfferCatalog", name: "Practice areas", itemListElement: practices.map((p) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: p.title, url: `${baseUrl}/practice-areas/${p.slug}` } })) },
+        knowsAbout: fivePracticeAreas(practices).map((p) => p.title),
+        hasOfferCatalog: { "@type": "OfferCatalog", name: "Practice areas", itemListElement: fivePracticeAreas(practices).map((p) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: p.title, url: `${baseUrl}/practice-areas/${p.slug}` } })) },
         ...(social.length ? { sameAs: social } : {}),
         priceRange: "$$",
       },

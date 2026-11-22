@@ -88,12 +88,6 @@ export const POST_CORRECTIONS: PostCorrection[] = [
     basis: "A directive does not appoint anyone; the medical power of attorney does (Health & Safety Code §§ 166.031, 166.152; Estates Code § 751.0021).",
   },
   {
-    slug: "the-texas-foreclosure-timeline", field: "body",
-    find: "Most Texas foreclosures are non-judicial: notice of default, notice of sale, then a sale on the first Tuesday of the month. It can happen in a matter of weeks.",
-    replace: "Most Texas foreclosures are non-judicial. For a home, the servicer must send a notice of default giving at least 20 days to cure, then a notice of sale at least 21 days before the sale, and the sale is held at the courthouse on the first Tuesday of the month (Property Code § 51.002). From the first notice to the auction can be as little as about six weeks.",
-    basis: "Property Code § 51.002(a), (b), (d): 20 days to cure on a residence, 21 days' notice of sale, first Tuesday.",
-  },
-  {
     slug: "how-a-criminal-case-proceeds", field: "body",
     find: "The State carries the burden at every step.",
     replace: "At trial the State carries the burden of proving every element beyond a reasonable doubt (Penal Code § 2.01).",
@@ -108,8 +102,15 @@ export const POST_CORRECTIONS: PostCorrection[] = [
   {
     slug: "interlocutory-appeals-in-texas", field: "body",
     find: "but Texas allows interlocutory appeals of specific rulings — temporary injunctions, certain dismissals, and more.",
-    replace: "but a statute lists specific rulings that can be appealed right away — among them orders granting or refusing a temporary injunction, appointing a receiver, ruling on a special appearance, or denying a motion to dismiss under the Texas Citizens Participation Act (Civil Practice and Remedies Code § 51.014).",
-    basis: "CPRC § 51.014(a)(1), (4), (7), (12). 'Certain dismissals' was wrong: a dismissal is usually final, and the statute reaches denials of motions to dismiss.",
+    replace: "but a statute lists specific rulings that can be appealed right away — among them orders granting or refusing a temporary injunction, ruling on a special appearance, or denying a motion to dismiss under the Texas Citizens Participation Act (Civil Practice and Remedies Code § 51.014).",
+    basis: "CPRC § 51.014(a)(4), (7), (12). 'Certain dismissals' was wrong: a dismissal is usually final, and the statute reaches denials of motions to dismiss.",
+  },
+  {
+    // The same sentence as first corrected: one example dropped from a list that was never the whole statute.
+    slug: "interlocutory-appeals-in-texas", field: "body",
+    find: "a temporary injunction, appointing a receiver, ruling on a special appearance,",
+    replace: "a temporary injunction, ruling on a special appearance,",
+    basis: "The list opens with 'among them', so it stays accurate with one example fewer (CPRC § 51.014(a)).",
   },
   {
     slug: "comparative-fault-in-texas", field: "excerpt",
@@ -142,12 +143,6 @@ export const POST_CORRECTIONS: PostCorrection[] = [
     basis: "Estates Code §§ 401.002–.003: independent administration by agreement of all distributees, with or without a will.",
   },
   {
-    slug: "the-fair-debt-collection-practices-act", field: "body",
-    find: "Violations can entitle you to statutory damages and fees.",
-    replace: "Violations can entitle you to statutory damages and fees. The federal act generally covers third-party collectors and debt buyers, not the original creditor collecting its own account; the Texas Debt Collection Act (Finance Code chapter 392) reaches creditors too.",
-    basis: "Without this a reader sued by the original card issuer would assume the federal act applies. Finance Code § 392.001(6) defines 'debt collector' to include anyone who engages in debt collection.",
-  },
-  {
     slug: "statute-of-limitations-on-texas-debt", field: "body",
     find: "Most Texas debt claims must be brought within four years of default.",
     replace: "Most Texas debt claims must be brought within four years after the claim accrues, usually the default (Civil Practice and Remedies Code § 16.004).",
@@ -171,12 +166,6 @@ export const GLOSSARY_CORRECTIONS: GlossaryCorrection[] = [
     find: "The high standard of proof required to convict in a criminal case — enough certainty that a reasonable person would not hesitate to rely on it in their most important affairs.",
     replace: "The standard of proof required to convict in a criminal case, and the highest in the law: every element of the offense must be proved beyond a reasonable doubt (Penal Code § 2.01). Texas does not give jurors a definition of the phrase; each juror decides what it means.",
     basis: "The 'would not hesitate in their most important affairs' wording is a jury definition Texas courts stopped giving decades ago. Penal Code § 2.01 and Code of Criminal Procedure art. 38.03 state the standard without defining it.",
-  },
-  {
-    slug: "turnover-order",
-    find: "A post-judgment order requiring a debtor to turn over non-exempt property that cannot be reached by ordinary means, sometimes through a receiver.",
-    replace: "A post-judgment order requiring a debtor to turn over non-exempt property to satisfy the judgment, sometimes through a court-appointed receiver (Civil Practice and Remedies Code § 31.002).",
-    basis: "The 'cannot be reached by ordinary means' requirement is no longer in CPRC § 31.002(a); the current text asks only that the property not be exempt.",
   },
   {
     slug: "punitive-damages",

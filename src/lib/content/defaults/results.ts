@@ -86,21 +86,6 @@ export const CASE_RESULTS: CaseResultSeed[] = [
   },
   {
     category: "appellate",
-    title: "Return of Garnished Funds",
-    stat: "Funds returned",
-    statLabel: "Garnishment dissolved",
-    year: "2024",
-    summary:
-      "Represented the judgment-debtor side in garnishment litigation. The writ of garnishment was dissolved, a bill of review was granted vacating the underlying 2006 judgment, and the court ordered the garnished funds released to our client. The creditor's appeal was dismissed as moot.",
-    detail:
-      "Second Court of Appeals, Fort Worth, No. 02-23-00138-CV (Dec. 19, 2024). Writ dissolved; bill of review granted vacating the 2006 judgment; garnished funds released to our client; creditor's appeal dismissed as moot.",
-    cite: "Second Court of Appeals, Fort Worth, No. 02-23-00138-CV",
-    practiceSlug: "garnishments",
-    featuredHome: true,
-    sort: 4,
-  },
-  {
-    category: "appellate",
     title: "Appeal prosecuted to resolution against a national bank",
     year: "2025",
     summary:

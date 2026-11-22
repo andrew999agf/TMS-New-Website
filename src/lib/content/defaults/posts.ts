@@ -79,21 +79,6 @@ const firmNews: BlogPostSeed[] = [
     ]),
   },
   {
-    slug: "garnishment-dissolved-bill-of-review",
-    title: "Garnishment Dissolved, Old Judgment Vacated, Funds Returned",
-    excerpt:
-      "We got a writ of garnishment dissolved, the underlying 2006 judgment vacated by bill of review, and the garnished funds released to our client. The creditor's appeal was dismissed as moot.",
-    isFirmNews: true,
-    status: "hidden",
-    category: "garnishments",
-    relatedPractices: ["garnishments"],
-    body: html([
-      ["p", "Our client's funds were frozen on a writ of garnishment built on a judgment from 2006. We attacked it from every direction."],
-      ["p", `The writ was dissolved. A ${paLink("garnishments", "bill of review")} was granted, vacating the underlying judgment. The court ordered the garnished funds released to our client. When the creditor appealed, the appeal was dismissed as moot.`],
-      ["p", "Second Court of Appeals, Fort Worth, No. 02-23-00138-CV (Dec. 19, 2024)."],
-    ]),
-  },
-  {
     slug: "oral-argument-seventh-court-of-appeals",
     title: "Oral Argument Before the Seventh Court of Appeals",
     excerpt:
@@ -267,7 +252,7 @@ const eduRaw: EduInput[] = [
     excerpt:
       "A contract problem becomes a lawsuit, which becomes a judgment, which becomes a collection fight, which becomes an appeal. A lawyer needs the whole map.",
     category: "civil-commercial-litigation",
-    related: ["civil-commercial-litigation", "appellate-law", "commercial-debt-collection-defense"],
+    related: ["civil-commercial-litigation", "appellate-law"],
     body: [
       ["p", "Legal problems do not respect practice-area boundaries. The law is a seamless web, and a matter that starts in one corner of it often ends in another."],
       ["p", "A lawyer without the full baseline misses things — the collection consequence of a judgment, the appellate issue buried in a trial ruling. We practice across the web because the matters do too."],
@@ -450,7 +435,7 @@ const eduRaw: EduInput[] = [
     excerpt:
       "A debtor who hides assets has not made them disappear. Texas law lets a creditor undo the transfer.",
     category: "civil-commercial-litigation",
-    related: ["civil-commercial-litigation", "commercial-debt-collection-defense"],
+    related: ["civil-commercial-litigation"],
     body: [
       ["p", "When someone facing a judgment moves property to an insider for little or nothing, that can be a fraudulent transfer — and courts can unwind it."],
       ["p", "Collecting a judgment sometimes means litigating the transfer that was designed to defeat it. We pursue both."],
@@ -591,7 +576,7 @@ const eduRaw: EduInput[] = [
       ["p", "When that happens, you want a lawyer who tries cases. A contested estate is litigation, and we prepare it for trial like any other."],
     ],
   },
-  // ---- Debt defense & creditor (4) ----
+  // ---- Credit card and debt-buyer lawsuit defense ----
   {
     slug: "what-to-do-when-youre-served",
     title: "What to Do When You're Served With a Lawsuit",
@@ -614,30 +599,6 @@ const eduRaw: EduInput[] = [
     body: [
       ["p", "Companies that buy old debt for pennies sue in bulk, betting most people will not answer. A default judgment is their easiest money."],
       ["p", "Often they cannot produce the documents the law requires, or the debt is time-barred, or it is not even yours. Answer, demand proof, and be ready to try it."],
-    ],
-  },
-  {
-    slug: "your-rights-when-an-account-is-garnished",
-    title: "Your Rights When an Account Is Garnished",
-    excerpt:
-      "A frozen account is not the end of the story. Texas law gives you ways to fight back.",
-    category: "garnishments",
-    related: ["garnishments", "consumer-debt-defense"],
-    body: [
-      ["p", "A writ of garnishment can freeze your bank account based on a judgment you may not have known about. But certain funds are exempt, and improper writs can be dissolved."],
-      ["p", "Speed matters. The sooner you act, the better your odds of getting the money back. We have done exactly that."],
-    ],
-  },
-  {
-    slug: "the-texas-foreclosure-timeline",
-    title: "The Texas Foreclosure Timeline",
-    excerpt:
-      "Texas foreclosures move fast and largely outside the courtroom. Knowing the steps tells you how much time you have.",
-    category: "foreclosures",
-    related: ["foreclosures"],
-    body: [
-      ["p", "Most Texas foreclosures are non-judicial. For a home, the servicer must send a notice of default giving at least 20 days to cure, then a notice of sale at least 21 days before the sale, and the sale is held at the courthouse on the first Tuesday of the month (Property Code § 51.002). From the first notice to the auction can be as little as about six weeks."],
-      ["p", "By the time many people call a lawyer, the sale is close. The earlier you act, the more options remain — including litigation that can reach an appeal."],
     ],
   },
   // ---- Criminal defense (2) ----
@@ -786,7 +747,7 @@ const eduRaw2027: EduInput[] = [
     category: "appellate-law",
     related: ["appellate-law"],
     body: [
-      ["p", "Most orders are not appealable until final judgment, but a statute lists specific rulings that can be appealed right away — among them orders granting or refusing a temporary injunction, appointing a receiver, ruling on a special appearance, or denying a motion to dismiss under the Texas Citizens Participation Act (Civil Practice and Remedies Code § 51.014)."],
+      ["p", "Most orders are not appealable until final judgment, but a statute lists specific rulings that can be appealed right away — among them orders granting or refusing a temporary injunction, ruling on a special appearance, or denying a motion to dismiss under the Texas Citizens Participation Act (Civil Practice and Remedies Code § 51.014)."],
       ["p", "Recognizing an appealable order, and the tight deadline that comes with it, can be decisive. We watch for them throughout a case."],
     ],
   },
@@ -902,20 +863,7 @@ const eduRaw2027: EduInput[] = [
       ["p", "It is one of the most efficient probate procedures available. We use it whenever the estate qualifies."],
     ],
   },
-  // Debt / creditor
-  {
-    slug: "the-fair-debt-collection-practices-act",
-    title: "The FDCPA: Limits on Debt Collectors",
-    excerpt:
-      "Federal law restricts how collectors can treat you — and gives you a claim when they cross the line.",
-    category: "consumer-debt-defense",
-    related: ["consumer-debt-defense"],
-    relatedPosts: ["sued-by-a-debt-buyer"],
-    body: [
-      ["p", "The Fair Debt Collection Practices Act bars harassment, false statements, and unfair practices by debt collectors. Violations can entitle you to statutory damages and fees. The federal act generally covers third-party collectors and debt buyers, not the original creditor collecting its own account; the Texas Debt Collection Act (Finance Code chapter 392) reaches creditors too."],
-      ["p", "A collector who breaks the rules hands you leverage. We use FDCPA violations both as a shield and, where appropriate, a sword."],
-    ],
-  },
+  // Credit card and debt-buyer lawsuit defense
   {
     slug: "statute-of-limitations-on-texas-debt",
     title: "How Long Can They Sue You on a Debt?",
@@ -926,18 +874,6 @@ const eduRaw2027: EduInput[] = [
     body: [
       ["p", "Most Texas debt claims must be brought within four years after the claim accrues, usually the default (Civil Practice and Remedies Code § 16.004). Suit filed after that is time-barred — a complete defense if raised."],
       ["p", "Be careful what you sign. A written, signed acknowledgment of an old debt can take away the limitations defense (Civil Practice and Remedies Code § 16.065). A debt buyer, though, may not sue on a time-barred consumer debt at all, and a payment or new promise does not revive it (Finance Code § 392.307). Before you pay or sign anything on an old debt, know where the deadline stands."],
-    ],
-  },
-  {
-    slug: "post-judgment-collection-tools",
-    title: "After the Judgment: How Creditors Collect",
-    excerpt:
-      "Winning a judgment is step one. Turning it into money takes a different set of tools.",
-    category: "commercial-debt-collection-defense",
-    related: ["commercial-debt-collection-defense", "garnishments"],
-    body: [
-      ["p", "A judgment unlocks abstracts of judgment, writs of garnishment, turnover orders, and more. Each reaches different assets in different ways."],
-      ["p", "Whether collecting or defending, we know the post-judgment toolkit and how to deploy — or blunt — it."],
     ],
   },
   {

@@ -175,8 +175,8 @@ export type Branch = {
   blurb: string;
   practiceSlug: string;
   /** Other practice-area slugs this branch also covers. One branch often
-   *  serves several pages — the injury branch handles a death in the family,
-   *  the creditor branch handles a foreclosure — and this is what lets the
+   *  serves several pages — the injury branch handles a death in the family
+   *  — and this is what lets the
    *  "Request a Consultation" button on those pages open the right questions
    *  instead of dropping the visitor back on the picker. */
   alsoPractices?: string[];
@@ -189,6 +189,9 @@ export type Branch = {
   /** Per-branch replacements for shared COMMON_STEPS, keyed by step id
    *  (e.g. reword the "conflict" or "urgency" step for this matter type). */
   commonOverrides?: Record<string, Step>;
+  /** No longer offered on the public form. The definition stays so leads
+   *  already filed under it keep their label and their questions in the admin. */
+  retired?: boolean;
 };
 
 /** Reused help text guiding a prospect to identify the exact court. */
@@ -650,8 +653,7 @@ export const BRANCHES: Branch[] = [
       "sued", "being sued", "lawsuit", "law suit", "summons", "citation", "served", "served papers",
       "court papers", "legal papers", "petition", "complaint", "answer deadline", "default judgment",
       "judgment against me", "taken to court", "they are suing me", "someone is suing me",
-      "debt", "debt collector", "collection", "collections", "credit card", "credit card debt",
-      "collection lawsuit", "owe money", "creditor",
+      "credit card", "credit card debt", "credit card lawsuit", "debt buyer", "sued on a debt",
     ],
     steps: [
       {
@@ -674,10 +676,10 @@ export const BRANCHES: Branch[] = [
         fields: [
           {
             name: "creditor",
-            label: "If it's a debt or collection case, which creditor?",
+            label: "If it's a credit card or debt-buyer lawsuit, who is suing you?",
             type: "select",
             options: [
-              "Not a debt case",
+              "Not a credit card or debt-buyer lawsuit",
               "Discover",
               "Capital One",
               "Bank of America",
@@ -698,7 +700,7 @@ export const BRANCHES: Branch[] = [
   },
   {
     id: "sue",
-    label: "I need to sue someone / I'm owed money",
+    label: "I need to bring a lawsuit / business or property dispute",
     blurb: "I need to bring a claim",
     practiceSlug: "plaintiffs-litigation",
     summaryNoun: "a civil claim or dispute",
@@ -1344,7 +1346,10 @@ export const BRANCHES: Branch[] = [
     ],
   },
   {
+    // Withdrawn from the public form (Nov. 2026): the firm no longer offers
+    // these matters. Kept, marked retired, for the leads already on file.
     id: "creditor",
+    retired: true,
     label: "Foreclosure / garnishment / receivership",
     blurb: "My property or accounts are at risk",
     practiceSlug: "garnishments",
@@ -1499,7 +1504,6 @@ const EXTRA_PHRASES: Record<string, string[]> = {
   ],
   criminal: ["criminal charge", "under investigation", "charged with", "warrant for my arrest"],
   injured: ["car accident", "car wreck", "slip and fall", "hit by a car", "loved one died"],
-  creditor: ["about to lose my house", "foreclosure sale", "wages garnished", "froze my account"],
   appeal: ["lost my case", "lost at trial", "appeal a judgment", "notice of appeal"],
   sued: ["being sued", "served with papers", "notice to vacate", "default judgment"],
 };
@@ -1530,7 +1534,7 @@ function within1Edit(a: string, b: string): boolean {
 
 type BranchLex = { branch: Branch; phrases: string[]; words: Set<string>; labelWords: Set<string> };
 
-const BRANCH_LEX: BranchLex[] = BRANCHES.map((b) => {
+const BRANCH_LEX: BranchLex[] = BRANCHES.filter((b) => !b.retired).map((b) => {
   const phrases: string[] = [];
   const words = new Set<string>();
   for (const raw of b.keywords ?? []) {
@@ -1677,6 +1681,9 @@ export function formatAnswerValue(v: unknown): string {
   return String(v).trim();
 }
 
+/** The branches a visitor can choose on the consultation form. */
+export const PUBLIC_BRANCHES: Branch[] = BRANCHES.filter((b) => !b.retired);
+
 export function getBranch(id: string): Branch | undefined {
   return BRANCHES.find((b) => b.id === id);
 }
@@ -1716,7 +1723,7 @@ export function turnbackAreaForBranch(branchId: string): string {
 
 export function branchForPractice(slug: string): Branch | undefined {
   return (
-    BRANCHES.find((b) => b.practiceSlug === slug) ??
-    BRANCHES.find((b) => b.alsoPractices?.includes(slug))
+    PUBLIC_BRANCHES.find((b) => b.practiceSlug === slug) ??
+    PUBLIC_BRANCHES.find((b) => b.alsoPractices?.includes(slug))
   );
 }

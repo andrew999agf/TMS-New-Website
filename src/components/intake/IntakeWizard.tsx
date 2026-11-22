@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Check, Search, Info, Plus, X, UploadCloud, FileT
 import { upload } from "@vercel/blob/client";
 import { Turnstile } from "./Turnstile";
 import {
-  BRANCHES,
+  PUBLIC_BRANCHES,
   rankBranches,
   branchForPractice,
   COMMON_STEPS,
@@ -143,7 +143,7 @@ export function IntakeWizard({
       const rec = JSON.parse(raw) as ResumeRecord;
       const fresh = Date.now() - new Date(rec.savedAt).getTime() < 14 * 86_400_000;
       const eligible = rec?.token && rec.branchId === "estate" && rec.answers?.estateDepth === ESTATE_DEPTH.FULL;
-      if (fresh && eligible && BRANCHES.some((b) => b.id === rec.branchId)) setResumeOffer(rec);
+      if (fresh && eligible && PUBLIC_BRANCHES.some((b) => b.id === rec.branchId)) setResumeOffer(rec);
       else localStorage.removeItem(RESUME_KEY);
     } catch {
       /* corrupt record — ignore */
@@ -152,7 +152,7 @@ export function IntakeWizard({
 
   function resumeSaved() {
     if (!resumeOffer) return;
-    const b = BRANCHES.find((x) => x.id === resumeOffer.branchId);
+    const b = PUBLIC_BRANCHES.find((x) => x.id === resumeOffer.branchId);
     if (!b) return;
     resumeTokenRef.current = resumeOffer.token;
     setBranch(b);
@@ -247,7 +247,7 @@ export function IntakeWizard({
   }, [stepIndex, branch]);
 
   const filteredBranches = useMemo(() => {
-    if (!query.trim()) return BRANCHES;
+    if (!query.trim()) return PUBLIC_BRANCHES;
     return rankBranches(query);
   }, [query]);
   const queryWordCount = query.trim() ? query.trim().split(/\s+/).length : 0;
@@ -435,7 +435,7 @@ export function IntakeWizard({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Describe it in a word — sued, wreck, will, foreclosure…"
+            placeholder="Describe it in a word — sued, wreck, will, probate…"
             className="w-full border border-[var(--c-border)] bg-[var(--c-surface)] py-4 pl-12 pr-4 text-base focus:border-[var(--c-accent)] outline-none"
             aria-label="Describe your matter"
             autoFocus
@@ -469,7 +469,7 @@ export function IntakeWizard({
           ) : (
             <p className="mt-6 text-[var(--c-ink-muted)]">
               Still nothing matched. Try a different word, or{" "}
-              <button onClick={() => setBranch(BRANCHES.find((b) => b.id === "other")!)} className="text-[var(--c-accent)] underline">
+              <button onClick={() => setBranch(PUBLIC_BRANCHES.find((b) => b.id === "other")!)} className="text-[var(--c-accent)] underline">
                 start a general consultation
               </button>
               .

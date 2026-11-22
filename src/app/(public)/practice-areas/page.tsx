@@ -8,7 +8,7 @@ import { groupPracticeAreas } from "@/lib/content/defaults/practice-areas";
 export const metadata: Metadata = {
   title: "Practice Areas — Injury, Litigation & Appeals",
   description:
-    "What we take to trial: personal injury, wrongful death, civil and commercial litigation, appeals, probate and estate matters, and consumer debt defense.",
+    "Five areas of practice: personal injury and wrongful death, civil and commercial litigation, probate and estate planning, business transactions, and the defense of credit card lawsuits.",
 };
 
 export const dynamic = "force-dynamic";
@@ -20,8 +20,8 @@ export default async function PracticeAreasPage() {
     <>
       <PageHero
         eyebrow="Practice Areas"
-        title="A trial firm with a general practice."
-        lead="The law is a seamless web. We practice across it — and prepare every matter for trial from day one."
+        title="A trial firm with a focused practice."
+        lead="Five areas of practice, and every matter in them prepared for trial from day one."
         bgImage={page["practiceareas.hero.image"] || undefined}
         focal={page["practiceareas.hero.image.focal"]}
       />

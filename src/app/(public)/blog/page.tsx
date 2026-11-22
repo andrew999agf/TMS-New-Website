@@ -32,7 +32,7 @@ export default async function BlogPage() {
       <PageHero
         eyebrow="Insights"
         title="What we know, in plain English."
-        lead="No invented cases. Just how this actually works — litigation, appeals, injury, debt, business, and estates."
+        lead="No invented cases. Just how this actually works — litigation, appeals, injury, business, estates, and credit card lawsuit defense."
         bgImage={page["blog.hero.image"] || undefined}
         focal={page["blog.hero.image.focal"]}
       />

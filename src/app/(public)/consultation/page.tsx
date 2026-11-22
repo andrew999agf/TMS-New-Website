@@ -7,7 +7,7 @@ import { estateDocsToAnswers } from "@/lib/intake/config";
 export const metadata: Metadata = {
   title: "Request a Consultation",
   description:
-    "Tell us about your matter and we'll be in touch. Personal injury, civil litigation, appeals, probate, and debt defense across Texas.",
+    "Tell us about your matter and we'll be in touch. Personal injury, civil and commercial litigation, probate and estate planning, business transactions, and credit card lawsuit defense across Texas.",
 };
 
 export default async function ConsultationPage({

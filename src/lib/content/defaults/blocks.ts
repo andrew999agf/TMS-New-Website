@@ -40,7 +40,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Home: Hero ----
   { key: "home.hero.eyebrow", page: "home", section: "hero", label: "Hero eyebrow (this is the page's H1 for search — say what the firm is and where)", type: "text", value: "Texas Trial Lawyers — Fort Worth, Weatherford & Bosque County" },
   { key: "home.hero.headline", page: "home", section: "hero", label: "Hero headline", type: "text", value: "Preparing for trial from day one." },
-  { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "Generally trained for your specific legal matter. The law is a seamless web — one matter bleeds into the next. A trial firm with a general practice, ready for whatever your case touches." },
+  { key: "home.hero.support", page: "home", section: "hero", label: "Hero support line", type: "text", value: "Generally trained for your specific legal matter. A Texas trial firm for serious injury and wrongful death, civil and commercial litigation, probate and estate planning, business transactions, and the defense of credit card lawsuits." },
   { key: "home.hero.ctaLabel", page: "home", section: "hero", label: "Hero button label", type: "text", value: "Request a Consultation" },
   { key: "home.hero.ctaHref", page: "home", section: "hero", label: "Hero button link", type: "url", value: "/consultation" },
   { key: "home.hero.cta2Label", page: "home", section: "hero", label: "Hero secondary label", type: "text", value: "See the Record" },
@@ -48,8 +48,8 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
 
   // ---- Home: Firm strip ----
   { key: "home.firm.eyebrow", page: "home", section: "firmStrip", label: "Eyebrow", type: "text", value: "The Firm" },
-  { key: "home.firm.heading", page: "home", section: "firmStrip", label: "Heading", type: "text", value: "A trial firm with a general practice." },
-  { key: "home.firm.body", page: "home", section: "firmStrip", label: "Body", type: "richtext", value: "<p>Nobody ever wants to need a lawyer. When you do, you want one who gets you the answers you need — not one who passes the buck.</p><p>The law is a seamless web: a business matter can turn on family, probate, criminal, or tort law without warning, and an issue in one area often calls for counsel in another. We practice across the whole of Texas law so your representation is comprehensive — and we bring a born Texan's mindset of no retreat, no surrender to every matter.</p>" },
+  { key: "home.firm.heading", page: "home", section: "firmStrip", label: "Heading", type: "text", value: "A trial firm with a focused practice." },
+  { key: "home.firm.body", page: "home", section: "firmStrip", label: "Body", type: "richtext", value: "<p>Nobody ever wants to need a lawyer. When you do, you want one who gets you the answers you need — not one who passes the buck.</p><p>We concentrate on five kinds of work: serious injury and wrongful death claims, civil and commercial litigation, probate and estate planning, business transactions, and the defense of credit card and debt-buyer lawsuits. Every matter is prepared as if it will be tried — and we bring a born Texan's mindset of no retreat, no surrender to each one.</p>" },
 
   // ---- Home: Results band ----
   { key: "home.results.eyebrow", page: "home", section: "resultsBand", label: "Eyebrow", type: "text", value: "The Record" },
@@ -59,7 +59,7 @@ export const CONTENT_BLOCKS: BlockSeed[] = [
   // ---- Home: Practice areas band ----
   { key: "home.practice.eyebrow", page: "home", section: "practiceBand", label: "Eyebrow", type: "text", value: "Practice Areas" },
   { key: "home.practice.heading", page: "home", section: "practiceBand", label: "Heading", type: "text", value: "What we handle." },
-  { key: "home.practice.body", page: "home", section: "practiceBand", label: "Body", type: "text", value: "A full range of practice areas, one discipline: prepare it for trial." },
+  { key: "home.practice.body", page: "home", section: "practiceBand", label: "Body", type: "text", value: "Five areas of practice, one discipline: prepare it for trial." },
 
   // ---- Home: Counties band ----
   { key: "home.counties.eyebrow", page: "home", section: "countiesBand", label: "Eyebrow", type: "text", value: "Reach" },

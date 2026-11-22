@@ -8,18 +8,26 @@
  * ORDER MATTERS. The public site renders groups in the order declared in
  * PRACTICE_GROUPS and areas within a group by `sort`, so this file alone sets
  * the priority a visitor sees on the home page, the practice-areas index, and
- * the header menu. The order is deliberate: injury and death work first,
- * general civil litigation next, counsel work after that, and the debt and
- * creditor pages last. Every area stays fully reachable — nothing is hidden,
- * they are simply not what a first-time visitor lands on first.
+ * the header menu.
+ *
+ * THE FIVE SECTIONS (Nov. 2026). The firm presents five kinds of work and no
+ * others: personal injury and wrongful death; civil and commercial
+ * litigation; probate and estate planning; business transactional work; and
+ * the defense of credit card and debt-buyer lawsuits. Garnishments,
+ * receiverships, foreclosures and commercial debt collection were withdrawn
+ * from the site (see ../retired.ts) because they drew post-judgment and
+ * small-dollar callers. A page outside the five sections (criminal defense)
+ * stays reachable from the full practice-areas index but is not in the header
+ * menu, the home page, or the summaries written for search engines and AI.
  */
 
 export type PracticeGroup =
   | "injury"
   | "litigation"
-  | "counsel"
-  | "appeals"
-  | "defense";
+  | "probate"
+  | "business"
+  | "creditcard"
+  | "other";
 
 export type PracticeAreaSeed = {
   slug: string;
@@ -37,30 +45,73 @@ export type PracticeAreaSeed = {
 export const PRACTICE_GROUPS: { id: PracticeGroup; label: string; blurb: string }[] = [
   {
     id: "injury",
-    label: "Injury & Wrongful Death",
+    label: "Personal Injury & Wrongful Death",
     blurb: "When someone is badly hurt or killed, and an insurer is keeping score.",
   },
   {
     id: "litigation",
     label: "Civil & Commercial Litigation",
-    blurb: "The spine of the practice. Every other area is built on it.",
+    blurb: "Business, partnership, land and appellate fights with real money at stake.",
   },
   {
-    id: "counsel",
-    label: "Probate, Estates & Business",
+    id: "probate",
+    label: "Probate & Estate Planning",
     blurb: "Built by a trial firm, so the plan holds up when it is tested.",
   },
   {
-    id: "appeals",
-    label: "Appeals & Criminal Defense",
-    blurb: "The record going in, and the record coming out.",
+    id: "business",
+    label: "Business & Transactional",
+    blurb: "Entities, agreements and deals, structured by a firm that has seen them litigated.",
   },
   {
-    id: "defense",
-    label: "Debt, Collections & Creditor Matters",
-    blurb: "When the papers land on your desk, the clock is already running.",
+    id: "creditcard",
+    label: "Credit Card Defense",
+    blurb: "For people sued by a credit card company or a debt buyer.",
   },
 ];
+
+/**
+ * The section each page belongs to, by slug. Decided here rather than read
+ * from the database row, so the five sections are right the moment this
+ * deploys — a row provisioned under the older grouping ("counsel", "appeals",
+ * "defense") is filed correctly without anyone running a content refresh.
+ */
+export const PRACTICE_GROUP_OF: Record<string, PracticeGroup> = {
+  "personal-injury": "injury",
+  "wrongful-death": "injury",
+  "civil-commercial-litigation": "litigation",
+  "plaintiffs-litigation": "litigation",
+  "data-center-easements": "litigation",
+  "appellate-law": "litigation",
+  "probate": "probate",
+  "estate-succession-planning": "probate",
+  "business-formations-transactions": "business",
+  "business-related-matters": "business",
+  "attorney-succession-planning": "business",
+  "consumer-debt-defense": "creditcard",
+  "criminal-defense": "other",
+};
+/** The order of pages inside the sections, by slug (same reason as above). */
+export const PRACTICE_SORT_OF: Record<string, number> = {
+  "personal-injury": 1,
+  "wrongful-death": 2,
+  "civil-commercial-litigation": 3,
+  "plaintiffs-litigation": 4,
+  "data-center-easements": 5,
+  "appellate-law": 6,
+  "probate": 7,
+  "estate-succession-planning": 8,
+  "business-formations-transactions": 9,
+  "business-related-matters": 10,
+  "attorney-succession-planning": 11,
+  "consumer-debt-defense": 12,
+  "criminal-defense": 13,
+};
+const FIVE = new Set<string>(["injury", "litigation", "probate", "business", "creditcard"]);
+/** Section for a page: the slug's own section; else the row's, when it is one of the five; else the trailing catch-all. */
+export function practiceGroupFor(slug: string, rowGroup: string | null | undefined): PracticeGroup {
+  return PRACTICE_GROUP_OF[slug] ?? (rowGroup && FIVE.has(rowGroup) ? (rowGroup as PracticeGroup) : "other");
+}
 
 export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
@@ -145,16 +196,15 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     approach:
       "We prepare every matter as if it is going to trial, because that is how you win whether you ever pick a jury or not. A defendant who knows you will try the case pays more to settle it. A defendant who thinks you will fold pays nothing.",
     keywords: [
-      "sued",
-      "lawsuit",
+      "commercial litigation",
+      "business litigation",
       "breach of contract",
       "business dispute",
-      "partner dispute",
+      "business divorce",
       "partnership dispute",
-      "owed money",
+      "fiduciary dispute",
       "fraud",
       "non-compete",
-      "litigation",
       "private nuisance",
       "nuisance lawsuit",
       "compressor station",
@@ -167,10 +217,10 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   },
   {
     slug: "plaintiffs-litigation",
-    title: "Plaintiff's Litigation",
+    title: "Business & Plaintiff's Litigation",
     group: "litigation",
     sort: 4,
-    tagline: "If you want what you are owed, you have to be willing to sue.",
+    tagline: "High-stakes claims, prepared so the other side has to take the number seriously.",
     body: [
       "Being right is not the same as being paid. The law gives you a claim; collecting on it takes pressure, and pressure comes from a credible threat of trial.",
       "We bring claims for people and businesses who were wronged and want a result, not a lecture. We tell you early what your case is worth, what it will take, and where the weak points are — yours and theirs.",
@@ -180,19 +230,16 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     approach:
       "A plaintiff is only as strong as their willingness to put the case in front of a jury. We prepare to do exactly that, every time, so the other side has to take the number seriously.",
     keywords: [
-      "sue someone",
-      "owed money",
-      "plaintiff",
-      "wronged",
-      "claim",
-      "damages",
-      "recover",
       "bank fraud",
       "sue a bank",
+      "fraud claim against a financial institution",
       "partnership dispute",
-      "business partner",
+      "family partnership dispute",
+      "business partner dispute",
+      "business tort",
+      "high-stakes business claim",
     ],
-    seoTitle: "Plaintiff's Litigation Attorney | T. Maxwell Smith, PLLC",
+    seoTitle: "Business & Plaintiff's Litigation Attorney | Texas",
     seoDescription:
       "Texas plaintiff's litigation attorney. Bank fraud, partnership disputes, and high-stakes business claims prepared for trial so the other side has to take your number seriously.",
   },
@@ -200,7 +247,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     slug: "data-center-easements",
     title: "Data Center & Utility Easements",
     group: "litigation",
-    sort: 6,
+    sort: 5,
     tagline: "They need your land. That is leverage — if you use it before you sign.",
     body: [
       "Data centers are being built across Texas, and every one of them needs more than a building site. They need water, power, gas, and fiber — and those lines have to cross somebody's land. If a data center developer, a water supplier, or a pipeline or transmission company has contacted you about a waterline easement or any other utility easement, understand what is actually happening: they have a route problem, and your property is the solution. That is a negotiation, not a formality.",
@@ -231,8 +278,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "probate",
     title: "Probate & Estate Administration",
-    group: "counsel",
-    sort: 6,
+    group: "probate",
+    sort: 7,
     tagline: "Settle the estate. Or fight for your share of it.",
     body: [
       "Probate is the court process of settling what someone left behind. Done right it is orderly. Done wrong, or contested, it becomes litigation among the people who are grieving.",
@@ -263,8 +310,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "estate-succession-planning",
     title: "Estate & Succession Planning",
-    group: "counsel",
-    sort: 7,
+    group: "probate",
+    sort: 8,
     tagline: "Plan the land, the business, and the family — once, correctly.",
     body: [
       "A good estate plan keeps your family out of the courtroom. We have seen what happens when there is no plan, or a bad one, and we plan to avoid it.",
@@ -292,8 +339,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "attorney-succession-planning",
     title: "Attorney Succession Planning",
-    group: "counsel",
-    sort: 8,
+    group: "business",
+    sort: 11,
     tagline: "Succession plan consulting for solo and small-firm attorneys.",
     body: [
       "Very few firms do this work. We do — because we have done it the hard way.",
@@ -322,7 +369,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "business-formations-transactions",
     title: "Business Formations & Transactions",
-    group: "counsel",
+    group: "business",
     sort: 9,
     tagline: "Set it up right so it holds up later.",
     body: [
@@ -348,8 +395,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   },
   {
     slug: "business-related-matters",
-    title: "Business-Related Matters",
-    group: "counsel",
+    title: "Business Counsel for Owners",
+    group: "business",
     sort: 10,
     tagline: "Counsel from a lawyer who knows where it ends up.",
     body: [
@@ -360,13 +407,11 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     approach:
       "We give counsel with the courtroom in mind. The agreement we draft is the agreement we would want to defend, and the position we advise is one we are prepared to back at trial.",
     keywords: [
-      "business",
-      "company",
-      "contract",
-      "vendor",
-      "employee",
-      "advice",
-      "counsel",
+      "business attorney",
+      "counsel for business owners",
+      "outside general counsel",
+      "business contracts",
+      "company owner",
     ],
     seoTitle: "Business Attorney | Texas Counsel for Owners",
     seoDescription:
@@ -375,8 +420,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "appellate-law",
     title: "Appellate Law",
-    group: "appeals",
-    sort: 11,
+    group: "litigation",
+    sort: 6,
     tagline: "If you sue and lose, you have to be able to appeal.",
     body: [
       "An appeal is not a second trial. It is a different craft — built on the record, the standard of review, and error that was preserved while the trial was still happening.",
@@ -402,8 +447,8 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "criminal-defense",
     title: "Criminal Defense",
-    group: "appeals",
-    sort: 12,
+    group: "other",
+    sort: 13,
     tagline: "A charge is an accusation. Make the State prove it.",
     body: [
       "The State has the burden. Our job is to hold them to it — to make every assumption earn its place and every piece of evidence survive scrutiny.",
@@ -431,10 +476,10 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   },
   {
     slug: "consumer-debt-defense",
-    title: "Consumer Debt Defense",
-    group: "defense",
-    sort: 13,
-    tagline: "A lawsuit is not a judgment. We hold every collector to its proof.",
+    title: "Credit Card & Debt-Buyer Lawsuit Defense",
+    group: "creditcard",
+    sort: 12,
+    tagline: "A lawsuit is not a judgment. We make the card company or the debt buyer prove it.",
     body: [
       "Debt buyers file lawsuits in volume and count on people not answering. A default judgment is the easiest money they make. Showing up changes the math.",
       "We have defended clients against the biggest names — Discover, Capital One, Bank of America, Chase, Barclays, LVNV, Midland — and we know what they can actually prove and what they are bluffing.",
@@ -443,130 +488,23 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
     approach:
       "We answer, we demand proof, and we are prepared to try it. Debt buyers price their cases on how much resistance they expect. We make ourselves expensive to sue.",
     keywords: [
-      "being sued",
-      "debt",
-      "credit card",
-      "collection",
-      "debt buyer",
-      "discover",
-      "capital one",
-      "lvnv",
-      "midland",
-      "served papers",
+      "sued by a credit card company",
+      "credit card lawsuit",
+      "debt buyer lawsuit",
+      "consumer debt attorney",
+      "served with a credit card lawsuit",
       "default judgment",
+      "Discover",
+      "Capital One",
+      "Bank of America",
+      "Chase",
+      "Barclays",
+      "LVNV Funding",
+      "Midland Credit Management",
     ],
-    seoTitle: "Consumer Debt Defense Attorney | Sued by a Debt Buyer in Texas",
+    seoTitle: "Credit Card Lawsuit Defense | Texas Consumer Debt Attorney",
     seoDescription:
-      "Texas consumer debt defense attorney. Sued by Discover, Capital One, LVNV, or Midland? Make them prove it. We defend and try these cases.",
-  },
-  {
-    slug: "commercial-debt-collection-defense",
-    title: "Commercial Debt Collection & Defense",
-    group: "defense",
-    sort: 14,
-    tagline: "Collect what you are owed. Defend what you do not.",
-    body: [
-      "Business debt runs both directions. We pursue collection for companies owed money on contracts, invoices, and guaranties — and we defend businesses against collection claims that are inflated, disputed, or simply wrong.",
-      "Collection is litigation. The leverage is the judgment and what you can do with it: garnishment, turnover, abstracts. We pursue all of it.",
-      "On defense, we look for the counterclaim. Often the company chasing your account broke the deal first.",
-    ],
-    approach:
-      "Whether collecting or defending, we build the file for trial. A creditor who will actually try the case collects more; a debtor who will actually try it pays less.",
-    keywords: [
-      "business debt",
-      "collection",
-      "invoice",
-      "guaranty",
-      "owed money",
-      "commercial",
-      "judgment",
-    ],
-    seoTitle: "Commercial Debt Collection & Defense Attorney | Texas",
-    seoDescription:
-      "Texas commercial debt attorney. Collection for businesses owed money and defense against overreaching collection claims.",
-  },
-  {
-    slug: "garnishments",
-    title: "Garnishments",
-    group: "defense",
-    sort: 15,
-    tagline: "A frozen account is not the end of the story.",
-    body: [
-      "A writ of garnishment can freeze your bank account on the strength of a judgment you may not even have known about. Texas law also gives you ways to fight back.",
-      "We move to dissolve improper writs, claim exemptions, and attack the underlying judgment when it was wrongly obtained. We have had a writ dissolved, the underlying judgment vacated by bill of review, and the garnished funds released to our client.",
-      "Speed matters. The sooner we act, the better the odds of getting your money back.",
-    ],
-    approach:
-      "We attack a garnishment on every front at once — the writ, the exemptions, and the judgment behind it — and we are ready to litigate each to conclusion.",
-    keywords: [
-      "garnishment",
-      "garnished",
-      "frozen account",
-      "bank account",
-      "writ",
-      "judgment",
-      "levy",
-    ],
-    seoTitle: "Garnishment Attorney | Frozen Bank Account in Texas",
-    seoDescription:
-      "Texas garnishment attorney. Dissolve improper writs, claim exemptions, and recover garnished funds.",
-  },
-  {
-    slug: "receivership-matters",
-    title: "Receivership Matters",
-    group: "defense",
-    sort: 16,
-    tagline: "When a court puts assets under a receiver, every move counts.",
-    body: [
-      "Receiverships arise in collection, partnership breakups, and disputes where a court decides someone neutral must control the property. The stakes are high and the rules are unforgiving.",
-      "We represent creditors seeking the appointment of a receiver and parties whose assets are threatened by one. Both require precision and speed.",
-      "These are litigation matters at their core, and we handle them as such — with the record, the hearings, and the appeal in view.",
-    ],
-    approach:
-      "We approach receivership work as high-stakes litigation, prepared to make and meet the proof a court needs before it takes the extraordinary step of appointing a receiver.",
-    keywords: [
-      "receiver",
-      "receivership",
-      "assets frozen",
-      "turnover",
-      "court-appointed",
-    ],
-    seoTitle: "Receivership Attorney | Texas Asset & Turnover Disputes",
-    seoDescription:
-      "Texas receivership attorney. Representing creditors seeking receivers and parties whose assets are at risk.",
-  },
-  {
-    slug: "foreclosures",
-    title: "Foreclosures",
-    group: "defense",
-    sort: 17,
-    tagline: "A posted sale date is a deadline, not a verdict.",
-    body: [
-      "Most Texas foreclosures never see a courtroom. A deed of trust gives the lender a power of sale, and the statute lets them use it on a schedule measured in weeks: on a home, written notice of default with at least twenty days to cure, then notice of the sale at least twenty-one days before it happens, then a sale on the first Tuesday of the month at the county courthouse. The speed is the point. It is also the weakness — each of those steps has requirements, and lenders and servicers do not always meet them.",
-      "Some foreclosures cannot proceed that way at all. A Texas home equity loan, a reverse mortgage, a transferred property tax lien, and a homeowners association assessment lien all require a court order before a sale, obtained through an expedited proceeding under Rule 736. That proceeding has its own answer deadline, and letting it pass uncontested hands the lienholder the order.",
-      "The sale is not always the end of the exposure either. A lender who sells the property for less than the balance can sue for the deficiency, and Texas gives a two-year window to do it — along with a right to have the property's fair market value determined and offset against the claim, which is often worth far more than the number in the demand letter. After a sale, possession is decided separately, in a forcible detainer suit that turns on the deed of trust rather than on who owns the property.",
-      "We represent homeowners and property owners facing a sale, borrowers defending a deficiency, and lienholders who need a foreclosure done correctly the first time. Where the sale was wrongful — no real default, defective notice, a sale conducted outside the statute — that is a claim, and it is litigated like one.",
-      "Call before the sale date if you possibly can. Options narrow sharply once the property is sold, and the calendar in these matters is unforgiving.",
-    ],
-    approach:
-      "We work a foreclosure on two tracks at once: the calendar, because every date in the statute is a deadline that can be used or lost, and the paper, because a power of sale is only as good as the notices and the assignments behind it. Both tracks are built to be provable in court, not just argued to a servicer.",
-    keywords: [
-      "foreclosure",
-      "foreclose",
-      "sale date",
-      "notice of default",
-      "notice of sale",
-      "save my house",
-      "deed of trust",
-      "deficiency",
-      "home equity",
-      "hoa foreclosure",
-      "wrongful foreclosure",
-      "eviction after foreclosure",
-    ],
-    seoTitle: "Foreclosure Attorney | Texas Notice, Sale & Deficiency Defense",
-    seoDescription:
-      "Texas foreclosure attorney. Notice and sale requirements, Rule 736 home equity and HOA foreclosures, deficiency defense, and wrongful foreclosure claims.",
+      "Texas consumer debt attorney for people sued by a credit card company or a debt buyer — Discover, Capital One, LVNV, Midland. Make them prove it. We defend and try these cases.",
   },
 ];
 
@@ -587,6 +525,7 @@ export function getPracticeAreaSeed(slug: string) {
  */
 export function groupPracticeAreas<T extends { group: string; sort: number }>(
   areas: T[],
+  opts: { fiveOnly?: boolean } = {},
 ): { id: string; label: string; blurb: string; areas: T[] }[] {
   const bySort = (a: T, b: T) => a.sort - b.sort;
   const known = new Set<string>(PRACTICE_GROUPS.map((g) => g.id));
@@ -598,6 +537,8 @@ export function groupPracticeAreas<T extends { group: string; sort: number }>(
     areas: areas.filter((a) => a.group === g.id).sort(bySort),
   })).filter((g) => g.areas.length > 0);
 
+  // The header menu, the home page and the summaries for search engines show the five sections and nothing else.
+  if (opts.fiveOnly) return groups;
   const orphans = areas.filter((a) => !known.has(a.group)).sort(bySort);
   if (orphans.length) {
     groups.push({
@@ -617,6 +558,11 @@ export function groupPracticeAreas<T extends { group: string; sort: number }>(
  * wrongful-death page was split into two; its URL points at personal injury,
  * which is where its case results now live.
  */
+/** The pages inside the five sections, in menu order: what the firm presents as its practice. */
+export function fivePracticeAreas<T extends { group: string; sort: number }>(areas: T[]): T[] {
+  return groupPracticeAreas(areas, { fiveOnly: true }).flatMap((g) => g.areas);
+}
+
 export const PRACTICE_AREA_REDIRECTS: Record<string, string> = {
   "personal-injury-wrongful-death": "personal-injury",
   // Withdrawn subject (see src/lib/content/retired.ts); its traffic goes to civil litigation.

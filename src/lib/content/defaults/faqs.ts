@@ -8,7 +8,7 @@ export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
   {
     q: "What types of matters does the firm handle?",
-    a: "T. Maxwell Smith, PLLC is a Texas trial firm. Our core work is personal injury and wrongful death, probate and inheritance disputes, defense of credit card and debt-buyer lawsuits, business and partnership litigation, and high-value real estate litigation. We also handle appeals, estate planning, business formation, criminal defense, and commercial debt matters including foreclosures, garnishments, and receiverships.",
+    a: "T. Maxwell Smith, PLLC is a Texas trial firm with five areas of practice: personal injury and wrongful death; civil and commercial litigation, including business, partnership and landowner disputes and the appeals that follow them; probate and estate planning; business formations and transactions; and the defense of credit card and debt-buyer lawsuits.",
   },
   {
     q: "Do you help landowners with data center and utility easements?",

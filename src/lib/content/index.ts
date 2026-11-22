@@ -17,11 +17,12 @@ import {
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { BLOCK_DEFAULTS } from "./defaults/blocks";
-import { PRACTICE_AREAS, type PracticeAreaSeed } from "./defaults/practice-areas";
+import { PRACTICE_AREAS, PRACTICE_SORT_OF, practiceGroupFor, type PracticeAreaSeed } from "./defaults/practice-areas";
 import { CASE_RESULTS, type CaseResultSeed } from "./defaults/results";
 import { GLOSSARY_TERMS, type GlossaryTermSeed } from "./defaults/glossary";
 import { BLOG_POSTS, type BlogPostSeed } from "./defaults/posts";
-import { isRetiredPractice, isRetiredPost, isRetiredTerm, liveRelated } from "./retired";
+import { isRetiredPractice, isRetiredPost, isRetiredTerm, isRetiredResult, liveRelated } from "./retired";
+import { ensurePracticeFocus } from "./focus";
 import { POST_CORRECTIONS, GLOSSARY_CORRECTIONS, encodedVariants } from "./corrections";
 import {
   DEFAULT_COLOR_PALETTE_ID,
@@ -105,6 +106,7 @@ export async function getSetting<T = unknown>(key: string, fallback: T): Promise
 export type PracticeAreaView = PracticeAreaSeed & { heroImage?: string | null; heroFocal?: string | null };
 
 export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
+  await ensurePracticeFocus();
   const rows = await safe(
     () =>
       db!
@@ -116,11 +118,13 @@ export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
   );
   const live = rows.filter((r) => !isRetiredPractice(r.slug));
   if (live.length) {
+    // The section and the order come from the code's own map (by slug), so the five sections hold even for a row
+    // still carrying an older grouping.
     return live.map((r) => ({
       slug: r.slug,
       title: r.title,
-      group: r.group as PracticeAreaSeed["group"],
-      sort: r.sort,
+      group: practiceGroupFor(r.slug, r.group),
+      sort: PRACTICE_SORT_OF[r.slug] ?? r.sort,
       tagline: r.tagline ?? "",
       body: (r.body as string[]) ?? [],
       approach: r.approach ?? "",
@@ -129,7 +133,7 @@ export async function getPracticeAreas(): Promise<PracticeAreaView[]> {
       seoDescription: r.seoDescription ?? "",
       heroImage: r.heroImage,
       heroFocal: r.heroFocal ?? "center",
-    }));
+    })).sort((a, b) => a.sort - b.sort);
   }
   return PRACTICE_AREAS.filter((p) => !isRetiredPractice(p.slug));
 }
@@ -176,8 +180,8 @@ export async function getResults(): Promise<CaseResultSeed[]> {
         .orderBy(asc(crTable.sort)),
     [],
   );
-  if (rows.length) return rows.map(normalizeResult);
-  return CASE_RESULTS;
+  if (rows.length) return rows.map(normalizeResult).filter((r) => !isRetiredResult(r));
+  return CASE_RESULTS.filter((r) => !isRetiredResult(r));
 }
 
 export async function getFeaturedResults(limit = 6): Promise<CaseResultSeed[]> {
@@ -225,7 +229,7 @@ function postFromRow(r: typeof blogPosts.$inferSelect): PostView {
  * a settings marker records the list version — and never blocks a page if it
  * fails.
  */
-const CORRECTIONS_MARKER = `blog-corrections:${POST_CORRECTIONS.length}+${GLOSSARY_CORRECTIONS.length}:2026-11`;
+const CORRECTIONS_MARKER = `blog-corrections:${POST_CORRECTIONS.length}+${GLOSSARY_CORRECTIONS.length}:2026-11b`;
 let correctionsRun: Promise<void> | null = null;
 export function ensureBlogCorrections(): Promise<void> {
   if (!db) return Promise.resolve();

@@ -39,18 +39,8 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Security a losing party posts to suspend enforcement of a money judgment while it appeals, protecting the winner if the judgment is affirmed. If the appeal fails, the bond can satisfy the judgment; if it succeeds, the bond is released.",
     hypothetical:
       "A business loses a $200,000 judgment and appeals. To stop the winner from seizing its accounts during the appeal, it posts a supersedeas bond. When the appeal is later won, the court releases the bond back to the business.",
-    relatedPractices: ["appellate-law", "foreclosures"],
+    relatedPractices: ["appellate-law"],
     aliases: ["supersedeas", "appeal bond"],
-  },
-  {
-    slug: "writ-of-garnishment",
-    term: "Writ of Garnishment",
-    definition:
-      "A court order directing a third party holding the debtor's property — usually a bank — to freeze and turn over funds to satisfy a judgment. It reaches assets the creditor cannot grab directly.",
-    hypothetical:
-      "After winning a judgment, a creditor serves the debtor's bank with a writ of garnishment. The bank freezes the account and, unless the debtor successfully objects, pays the balance toward the judgment.",
-    relatedPractices: ["garnishments", "commercial-debt-collection-defense"],
-    aliases: ["garnishment"],
   },
   {
     slug: "bill-of-review",
@@ -59,7 +49,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "An equitable lawsuit to set aside a final judgment that can no longer be challenged by ordinary appeal, available when a party was prevented from defending through no fault of its own. It is a narrow, last-resort remedy.",
     hypothetical:
       "A man learns years later that a default judgment was taken against him at an address where he never lived, so he never got notice. He files a bill of review and, proving he was never served, gets the old judgment vacated.",
-    relatedPractices: ["garnishments", "civil-commercial-litigation"],
+    relatedPractices: ["civil-commercial-litigation"],
   },
   {
     slug: "voir-dire",
@@ -72,25 +62,6 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     aliases: ["jury selection"],
   },
   {
-    slug: "forcible-detainer",
-    term: "Forcible Detainer",
-    definition:
-      "The Texas eviction action used to recover possession of property from someone who refuses to leave, often after a foreclosure sale. It decides possession only, not who owns the property.",
-    hypothetical:
-      "After a home is sold at foreclosure, the former owner stays put. The buyer files a forcible detainer suit in justice court to obtain possession, even though any dispute over title must be fought in a separate case.",
-    relatedPractices: ["foreclosures"],
-    aliases: ["eviction"],
-  },
-  {
-    slug: "tenant-at-sufferance",
-    term: "Tenant at Sufferance",
-    definition:
-      "Someone who remains in possession of property after their legal right to be there has ended — for example, a former owner who stays after a foreclosure. They can be removed through eviction.",
-    hypothetical:
-      "A deed of trust says that after foreclosure the prior owner becomes a tenant at sufferance. When she refuses to leave, the new owner can evict her on that basis without a separate lease.",
-    relatedPractices: ["foreclosures"],
-  },
-  {
     slug: "um-uim",
     term: "UM/UIM Coverage",
     definition:
@@ -99,15 +70,6 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "A driver is badly hurt by someone carrying only the state-minimum policy, which does not cover her hospital bills. She turns to her own UM/UIM coverage to make up the difference.",
     relatedPractices: ["personal-injury"],
     aliases: ["uninsured motorist", "underinsured motorist"],
-  },
-  {
-    slug: "receivership",
-    term: "Receivership",
-    definition:
-      "A court's appointment of a neutral person — a receiver — to take control of property or a business to preserve it during a dispute or to satisfy a judgment. The receiver answers to the court.",
-    hypothetical:
-      "Two partners deadlock and the company's cash is disappearing. A court appoints a receiver to run the business and protect its assets until the lawsuit between the partners is resolved.",
-    relatedPractices: ["receivership-matters"],
   },
   {
     slug: "probate",
@@ -180,7 +142,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "A judgment entered against a party who fails to answer or appear after being properly served. It can hand the other side a win without any fight on the merits.",
     hypothetical:
       "A debt buyer sues and the defendant ignores the citation. After the deadline passes with no answer, the court grants a default judgment for the full amount claimed.",
-    relatedPractices: ["consumer-debt-defense", "commercial-debt-collection-defense"],
+    relatedPractices: ["consumer-debt-defense"],
   },
   {
     slug: "statute-of-limitations",
@@ -281,7 +243,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "Moving assets to put them out of a creditor's reach, often by 'selling' them to an insider for little or nothing. Courts can undo such transfers.",
     hypothetical:
       "Facing a judgment, a man deeds his ranch to his brother for ten dollars. A court can find the deal a fraudulent transfer and make the land available to satisfy the creditor.",
-    relatedPractices: ["civil-commercial-litigation", "commercial-debt-collection-defense"],
+    relatedPractices: ["civil-commercial-litigation"],
   },
   {
     slug: "conversion",
@@ -291,52 +253,6 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
     hypothetical:
       "A storage company sells a customer's equipment without authority and keeps the money. Taking and disposing of property that was not theirs is conversion.",
     relatedPractices: ["civil-commercial-litigation"],
-  },
-  {
-    slug: "abstract-of-judgment",
-    term: "Abstract of Judgment",
-    definition:
-      "A recorded summary of a money judgment that creates a lien on the debtor's real property in the county where it is filed, clouding title until the judgment is paid.",
-    hypothetical:
-      "A creditor records an abstract of judgment in the county where the debtor owns land. When the debtor later tries to sell, the lien must be paid before clear title can pass.",
-    relatedPractices: ["commercial-debt-collection-defense"],
-  },
-  {
-    slug: "turnover-order",
-    term: "Turnover Order",
-    definition:
-      "A post-judgment order requiring a debtor to turn over non-exempt property to satisfy the judgment, sometimes through a court-appointed receiver (Civil Practice and Remedies Code § 31.002).",
-    hypothetical:
-      "A judgment debtor hides income in hard-to-reach business interests. The creditor obtains a turnover order forcing those assets to be delivered toward the debt.",
-    relatedPractices: ["commercial-debt-collection-defense", "receivership-matters"],
-  },
-  {
-    slug: "deed-of-trust",
-    term: "Deed of Trust",
-    definition:
-      "The instrument that secures a Texas home loan, giving a trustee the power to sell the property at foreclosure if the borrower defaults.",
-    hypothetical:
-      "A homeowner stops paying the mortgage. The deed of trust she signed at closing gives the lender's trustee the authority to post and conduct a foreclosure sale.",
-    relatedPractices: ["foreclosures"],
-  },
-  {
-    slug: "wrongful-foreclosure",
-    term: "Wrongful Foreclosure",
-    definition:
-      "A claim that a foreclosure sale was conducted improperly — for example, without proper notice or an actual default — causing the owner to lose the property or its value.",
-    hypothetical:
-      "A bank forecloses while the owner is current on a court-approved payment plan. Because there was no real default, the owner may have a wrongful-foreclosure claim.",
-    relatedPractices: ["foreclosures"],
-  },
-  {
-    slug: "exempt-property",
-    term: "Exempt Property",
-    definition:
-      "Property the law shields from creditors, such as a Texas homestead, certain wages, and specified personal property. Exempt assets generally cannot be seized to pay a judgment.",
-    hypothetical:
-      "A creditor tries to grab a debtor's home to satisfy a judgment, but the Texas homestead exemption protects it. The creditor cannot force its sale for that debt.",
-    relatedPractices: ["garnishments", "consumer-debt-defense"],
-    aliases: ["exemption", "homestead exemption"],
   },
   {
     slug: "service-of-process",
@@ -364,7 +280,7 @@ export const GLOSSARY_TERMS: GlossaryTermSeed[] = [
       "A claim a defendant asserts back against the plaintiff in the same lawsuit. It can turn a defense into an offense.",
     hypothetical:
       "A contractor sues a homeowner for the balance due, but the work was defective. The homeowner files a counterclaim for the cost to fix it, seeking her own recovery in the same case.",
-    relatedPractices: ["civil-commercial-litigation", "commercial-debt-collection-defense"],
+    relatedPractices: ["civil-commercial-litigation"],
   },
   {
     slug: "power-of-attorney",

@@ -38,7 +38,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: { absolute: "Texas Trial Lawyers | Fort Worth & Bosque County | T. Maxwell Smith, PLLC" },
-  description: "Texas trial firm in Fort Worth, Weatherford and Meridian. Jury trials, bench trials and appeals — injury, civil litigation, probate, debt defense.",
+  description: "Texas trial firm in Fort Worth, Weatherford and Meridian. Serious injury and wrongful death, civil and commercial litigation, probate, business transactions, credit card lawsuit defense.",
 };
 
 export default async function HomePage() {
@@ -209,7 +209,7 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-14 space-y-14">
-          {groupPracticeAreas(practices).map((group) => {
+          {groupPracticeAreas(practices, { fiveOnly: true }).map((group) => {
             const inGroup = group.areas;
             return (
               <div key={group.id}>

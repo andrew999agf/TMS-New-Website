@@ -141,7 +141,7 @@ export const TEAM: TeamMemberSeed[] = [
       "Frankie Moreno is a Legal Assistant at T. Maxwell Smith, PLLC, supporting the firm's litigation and transactional work across Texas and based out of Tarrant County. Frankie keeps cases moving — from intake and discovery through hearing preparation — and is the steady operational hand behind the firm's daily docket. Fluent in Spanish.",
     services: [
       "Case intake, file opening, and conflicts checks",
-      "Drafting and e-filing pleadings and discovery in Texas debt-defense and small-claims matters",
+      "Drafting and e-filing pleadings and discovery in Texas credit card and debt-buyer lawsuit defense matters",
       "Calendaring deadlines, hearings, and depositions",
       "Coordinating with clients, courts, opposing counsel, and process servers",
       "Trial-binder preparation and exhibit organization",

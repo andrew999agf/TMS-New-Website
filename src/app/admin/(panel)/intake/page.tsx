@@ -17,7 +17,7 @@ import { desc, asc } from "drizzle-orm";
 import { getIntakeRecipients, getBlocks } from "@/lib/content";
 import { EngagementDefaults } from "@/components/admin/EngagementDefaults";
 import { emailConfigured } from "@/lib/email";
-import { BRANCHES } from "@/lib/intake/config";
+import { PUBLIC_BRANCHES } from "@/lib/intake/config";
 import { INTAKE_PARTNERS, getIntakePartner, partnerOfAnswers, partnerPath } from "@/lib/intake/partners";
 import { PartnerIntakeTabs, PartnerLinkCard, type PartnerTab } from "@/components/admin/PartnerIntakeTabs";
 import { SITE_URL } from "@/lib/seo";
@@ -47,7 +47,8 @@ export default async function IntakeAdminPage({ searchParams }: { searchParams: 
   if (activePartner) await autoArchivePartnerLeads().catch(() => null);
   const archiveRules = activePartner ? await getAutoArchiveRules() : null;
   const recipients = await getIntakeRecipients(false);
-  const branches = BRANCHES.map((b) => ({ id: b.id, label: b.label }));
+  // New leads and notification rules use the branches the public form offers; a withdrawn branch stays only on the leads already filed under it.
+  const branches = PUBLIC_BRANCHES.map((b) => ({ id: b.id, label: b.label }));
   const senderFrom = process.env.SMTP_FROM || process.env.SMTP_USER || "office@texaslawsmith.com";
   // The firm's standard hourly rates: shown beside the engagement dialog's
   // rate fields; typing below one strikes it through in the letter.

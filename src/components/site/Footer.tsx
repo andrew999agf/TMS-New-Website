@@ -22,9 +22,10 @@ const NAV_COLUMNS: { title: string; links: { label: string; href: string }[] }[]
       { label: "Personal Injury", href: "/practice-areas/personal-injury" },
       { label: "Wrongful Death", href: "/practice-areas/wrongful-death" },
       { label: "Civil & Commercial Litigation", href: "/practice-areas/civil-commercial-litigation" },
-      { label: "Probate & Estate Administration", href: "/practice-areas/probate" },
       { label: "Appellate Law", href: "/practice-areas/appellate-law" },
-      { label: "Consumer Debt Defense", href: "/practice-areas/consumer-debt-defense" },
+      { label: "Probate & Estate Administration", href: "/practice-areas/probate" },
+      { label: "Business Formations & Transactions", href: "/practice-areas/business-formations-transactions" },
+      { label: "Credit Card Lawsuit Defense", href: "/practice-areas/consumer-debt-defense" },
     ],
   },
   {

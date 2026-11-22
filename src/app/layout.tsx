@@ -16,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   // icon (the same graphic the PWA manifest uses). Always emit ONE concrete icon
   // so the public site and the admin portal show the identical favicon.
   const favicon = blocks["global.favicon"] || "/icon-512.png";
-  const description = "Texas trial attorneys in Fort Worth, Weatherford, and Meridian. Personal injury, civil litigation, appeals, probate, and debt defense — prepared for trial.";
+  const description = "Texas trial attorneys in Fort Worth, Weatherford, and Meridian. Personal injury and wrongful death, civil and commercial litigation, probate and estate planning, business transactions, and credit card lawsuit defense — prepared for trial.";
   // Android / WhatsApp / most non-Apple previewers are stricter than iMessage:
   // they want a declared image type and dimensions, an absolute URL, and og
   // title + description present. Declare the MIME type from the file extension.
