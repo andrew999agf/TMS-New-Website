@@ -164,6 +164,15 @@
   }
 
   /* Display headings */
+  /* Line spacing travels with the class, not the tag: the home hero's big line
+     is a <p> (the page's <h1> is the small line above it, for search), and
+     without this it took the body's 1.65 line height and split far apart.
+     Typeface and weight are deliberately left as the element has them. */
+  .display-1, .display-2, .display-3 {
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
   .display-1 { font-size: var(--step-6); }
   .display-2 { font-size: var(--step-5); }
   .display-3 { font-size: var(--step-4); }
