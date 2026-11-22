@@ -55,13 +55,29 @@ export const FIRM_BODY_CHANGE = {
 export const TEAM_SERVICE_CHANGE = { from: "Drafting and e-filing pleadings and discovery in Texas debt-defense and small-claims matters", to: "Drafting and e-filing pleadings and discovery in Texas credit card and debt-buyer lawsuit defense matters" };
 
 const MARKER = "practice-focus:2026-11:v1";
+/** The sections have their own marker: when the menu's columns change, only this part runs again. */
+const SECTIONS_MARKER = "practice-sections:2026-11:v2";
+const step = async (label: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (err) { console.error(`[content] practice focus (${label}):`, (err as Error).message); } };
+
+/** The menu section and order stored on each row, so the admin shows what the site shows. (The site itself reads them from the code's own map.) */
+async function ensureSections(): Promise<void> {
+  const done = await db!.select({ key: settings.key }).from(settings).where(eq(settings.key, SECTIONS_MARKER)).limit(1);
+  if (done.length) return;
+  // The column began life as a three-value enum; widen it first.
+  await step("widen group", () => db!.execute(sql`ALTER TABLE practice_areas ALTER COLUMN "group" TYPE varchar(32) USING "group"::text`));
+  for (const [slug, group] of Object.entries(PRACTICE_GROUP_OF)) {
+    await step(`section ${slug}`, () => db!.execute(sql`UPDATE practice_areas SET "group" = ${group}, sort = ${PRACTICE_SORT_OF[slug] ?? 99} WHERE slug = ${slug}`));
+  }
+  await db!.insert(settings).values({ key: SECTIONS_MARKER, value: { at: new Date().toISOString() } }).onConflictDoNothing();
+}
+
 let run: Promise<void> | null = null;
 export function ensurePracticeFocus(): Promise<void> {
   if (!db) return Promise.resolve();
   run ??= (async () => {
+    await ensureSections();
     const done = await db!.select({ key: settings.key }).from(settings).where(eq(settings.key, MARKER)).limit(1);
     if (done.length) return;
-    const step = async (label: string, fn: () => Promise<unknown>) => { try { await fn(); } catch (err) { console.error(`[content] practice focus (${label}):`, (err as Error).message); } };
 
     // Withdrawn subjects: switched off, not deleted.
     const practices = [...RETIRED_PRACTICE_SLUGS], posts = [...RETIRED_POST_SLUGS], results = [...RETIRED_RESULT_TITLES];
@@ -69,12 +85,6 @@ export function ensurePracticeFocus(): Promise<void> {
     await step("pages off", () => db!.execute(sql`UPDATE practice_areas SET visible = false, updated_at = now() WHERE slug IN (${list(practices)}) AND visible = true`));
     await step("posts off", () => db!.execute(sql`UPDATE blog_posts SET status = 'hidden', updated_at = now() WHERE (slug IN (${list(posts)}) OR category IN (${list(practices)})) AND status::text IN ('published', 'scheduled')`));
     await step("results off", () => db!.execute(sql`UPDATE case_results SET visible = false WHERE (title IN (${list(results)}) OR practice_slug IN (${list(practices)})) AND visible = true`));
-
-    // The five sections and the order inside them. The column began life as a three-value enum; widen it first.
-    await step("widen group", () => db!.execute(sql`ALTER TABLE practice_areas ALTER COLUMN "group" TYPE varchar(32) USING "group"::text`));
-    for (const [slug, group] of Object.entries(PRACTICE_GROUP_OF)) {
-      await step(`section ${slug}`, () => db!.execute(sql`UPDATE practice_areas SET "group" = ${group}, sort = ${PRACTICE_SORT_OF[slug] ?? 99} WHERE slug = ${slug}`));
-    }
 
     // Wording on the pages that stay, only where the old wording is still there.
     for (const c of PRACTICE_COPY_CHANGES) {

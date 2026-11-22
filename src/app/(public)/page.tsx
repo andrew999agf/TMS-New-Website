@@ -209,7 +209,7 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-14 space-y-14">
-          {groupPracticeAreas(practices, { fiveOnly: true }).map((group) => {
+          {groupPracticeAreas(practices).map((group) => {
             const inGroup = group.areas;
             return (
               <div key={group.id}>

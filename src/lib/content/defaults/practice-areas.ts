@@ -10,15 +10,15 @@
  * the priority a visitor sees on the home page, the practice-areas index, and
  * the header menu.
  *
- * THE FIVE SECTIONS (Nov. 2026). The firm presents five kinds of work and no
- * others: personal injury and wrongful death; civil and commercial
- * litigation; probate and estate planning; business transactional work; and
- * the defense of credit card and debt-buyer lawsuits. Garnishments,
- * receiverships, foreclosures and commercial debt collection were withdrawn
- * from the site (see ../retired.ts) because they drew post-judgment and
- * small-dollar callers. A page outside the five sections (criminal defense)
- * stays reachable from the full practice-areas index but is not in the header
- * menu, the home page, or the summaries written for search engines and AI.
+ * THE FIVE SECTIONS (Nov. 2026). The menu has five columns: personal injury
+ * and wrongful death; civil and commercial litigation; probate and estate
+ * planning; business transactional work; and "Other Practice Areas", which
+ * holds the defense of credit card and debt-buyer lawsuits and criminal
+ * defense. Garnishments, receiverships, foreclosures and commercial debt
+ * collection were withdrawn from the site (see ../retired.ts) because they
+ * drew post-judgment and small-dollar callers. Criminal defense is on the
+ * site for visitors but is left out of the summaries written for AI
+ * assistants (/llms.txt and the organisation's structured data).
  */
 
 export type PracticeGroup =
@@ -26,7 +26,6 @@ export type PracticeGroup =
   | "litigation"
   | "probate"
   | "business"
-  | "creditcard"
   | "other";
 
 export type PracticeAreaSeed = {
@@ -64,9 +63,9 @@ export const PRACTICE_GROUPS: { id: PracticeGroup; label: string; blurb: string 
     blurb: "Entities, agreements and deals, structured by a firm that has seen them litigated.",
   },
   {
-    id: "creditcard",
-    label: "Credit Card Defense",
-    blurb: "For people sued by a credit card company or a debt buyer.",
+    id: "other",
+    label: "Other Practice Areas",
+    blurb: "Credit card lawsuit defense, and criminal defense.",
   },
 ];
 
@@ -88,7 +87,7 @@ export const PRACTICE_GROUP_OF: Record<string, PracticeGroup> = {
   "business-formations-transactions": "business",
   "business-related-matters": "business",
   "attorney-succession-planning": "business",
-  "consumer-debt-defense": "creditcard",
+  "consumer-debt-defense": "other",
   "criminal-defense": "other",
 };
 /** The order of pages inside the sections, by slug (same reason as above). */
@@ -107,8 +106,8 @@ export const PRACTICE_SORT_OF: Record<string, number> = {
   "consumer-debt-defense": 12,
   "criminal-defense": 13,
 };
-const FIVE = new Set<string>(["injury", "litigation", "probate", "business", "creditcard"]);
-/** Section for a page: the slug's own section; else the row's, when it is one of the five; else the trailing catch-all. */
+const FIVE = new Set<string>(["injury", "litigation", "probate", "business", "other"]);
+/** Section for a page: the slug's own section; else the row's, when it is one of the five; else "Other Practice Areas". */
 export function practiceGroupFor(slug: string, rowGroup: string | null | undefined): PracticeGroup {
   return PRACTICE_GROUP_OF[slug] ?? (rowGroup && FIVE.has(rowGroup) ? (rowGroup as PracticeGroup) : "other");
 }
@@ -477,7 +476,7 @@ export const PRACTICE_AREAS: PracticeAreaSeed[] = [
   {
     slug: "consumer-debt-defense",
     title: "Credit Card & Debt-Buyer Lawsuit Defense",
-    group: "creditcard",
+    group: "other",
     sort: 12,
     tagline: "A lawsuit is not a judgment. We make the card company or the debt buyer prove it.",
     body: [
@@ -525,30 +524,24 @@ export function getPracticeAreaSeed(slug: string) {
  */
 export function groupPracticeAreas<T extends { group: string; sort: number }>(
   areas: T[],
-  opts: { fiveOnly?: boolean } = {},
 ): { id: string; label: string; blurb: string; areas: T[] }[] {
   const bySort = (a: T, b: T) => a.sort - b.sort;
   const known = new Set<string>(PRACTICE_GROUPS.map((g) => g.id));
-
-  const groups = PRACTICE_GROUPS.map((g) => ({
+  // A group id this file does not know (a row from an older grouping) is filed under "Other Practice Areas".
+  const sectionOf = (a: T) => (known.has(a.group) ? a.group : "other");
+  return PRACTICE_GROUPS.map((g) => ({
     id: g.id as string,
     label: g.label,
     blurb: g.blurb,
-    areas: areas.filter((a) => a.group === g.id).sort(bySort),
+    areas: areas.filter((a) => sectionOf(a) === g.id).sort(bySort),
   })).filter((g) => g.areas.length > 0);
+}
 
-  // The header menu, the home page and the summaries for search engines show the five sections and nothing else.
-  if (opts.fiveOnly) return groups;
-  const orphans = areas.filter((a) => !known.has(a.group)).sort(bySort);
-  if (orphans.length) {
-    groups.push({
-      id: "other",
-      label: "Additional Practice Areas",
-      blurb: "",
-      areas: orphans,
-    });
-  }
-  return groups;
+/** Pages left out of what is written for AI assistants and of the organisation's structured data. They stay on the site for visitors. */
+export const NOT_IN_MACHINE_SUMMARY = new Set<string>(["criminal-defense"]);
+/** The practice pages named in the organisation's structured data, in menu order. */
+export function summaryPracticeAreas<T extends { slug: string; group: string; sort: number }>(areas: T[]): T[] {
+  return groupPracticeAreas(areas).flatMap((g) => g.areas).filter((a) => !NOT_IN_MACHINE_SUMMARY.has(a.slug));
 }
 
 /**
@@ -558,11 +551,6 @@ export function groupPracticeAreas<T extends { group: string; sort: number }>(
  * wrongful-death page was split into two; its URL points at personal injury,
  * which is where its case results now live.
  */
-/** The pages inside the five sections, in menu order: what the firm presents as its practice. */
-export function fivePracticeAreas<T extends { group: string; sort: number }>(areas: T[]): T[] {
-  return groupPracticeAreas(areas, { fiveOnly: true }).flatMap((g) => g.areas);
-}
-
 export const PRACTICE_AREA_REDIRECTS: Record<string, string> = {
   "personal-injury-wrongful-death": "personal-injury",
   // Withdrawn subject (see src/lib/content/retired.ts); its traffic goes to civil litigation.

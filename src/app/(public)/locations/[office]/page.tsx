@@ -114,7 +114,7 @@ export default async function OfficePage({ params }: { params: Promise<{ office:
             <section>
               <h2 className="h3">What this office handles</h2>
               <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2 text-sm">
-                {groupPracticeAreas(practices, { fiveOnly: true }).flatMap((g) => g.areas).map((p) => (
+                {groupPracticeAreas(practices).flatMap((g) => g.areas).map((p) => (
                   <Link key={p.slug} href={`/practice-areas/${p.slug}`} className="py-1 hover:text-[var(--c-accent)]">{p.title}</Link>
                 ))}
               </div>

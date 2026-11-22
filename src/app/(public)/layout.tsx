@@ -3,7 +3,7 @@ import { Footer } from "@/components/site/Footer";
 import { JsonLd } from "@/components/site/JsonLd";
 import { PageViewTracker, GA4 } from "@/components/site/Analytics";
 import { getBlocks, getSetting, getPracticeAreas, getTeam } from "@/lib/content";
-import { groupPracticeAreas, fivePracticeAreas } from "@/lib/content/defaults/practice-areas";
+import { groupPracticeAreas, summaryPracticeAreas } from "@/lib/content/defaults/practice-areas";
 import { FIRM, OFFICES, LITIGATION_COUNTIES } from "@/lib/firm";
 import { SITE_URL } from "@/lib/seo";
 
@@ -33,7 +33,7 @@ export default async function PublicLayout({
   // member added in the admin shows up in the nav without a code change. The
   // practice list keeps the same priority order as the home page and the
   // practice-areas index — one definition, three surfaces.
-  const practiceChildren: NavChild[] = groupPracticeAreas(practices, { fiveOnly: true }).flatMap((g) =>
+  const practiceChildren: NavChild[] = groupPracticeAreas(practices).flatMap((g) =>
     g.areas.map((p) => ({
       label: p.title,
       href: `/practice-areas/${p.slug}`,
@@ -97,8 +97,8 @@ export default async function PublicLayout({
         areaServed: LITIGATION_COUNTIES.map((c) => ({ "@type": "AdministrativeArea", name: `${c} County, Texas` })),
         founder: { "@id": `${baseUrl}/#attorney` },
         employee: [{ "@id": `${baseUrl}/#attorney` }],
-        knowsAbout: fivePracticeAreas(practices).map((p) => p.title),
-        hasOfferCatalog: { "@type": "OfferCatalog", name: "Practice areas", itemListElement: fivePracticeAreas(practices).map((p) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: p.title, url: `${baseUrl}/practice-areas/${p.slug}` } })) },
+        knowsAbout: summaryPracticeAreas(practices).map((p) => p.title),
+        hasOfferCatalog: { "@type": "OfferCatalog", name: "Practice areas", itemListElement: summaryPracticeAreas(practices).map((p) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: p.title, url: `${baseUrl}/practice-areas/${p.slug}` } })) },
         ...(social.length ? { sameAs: social } : {}),
         priceRange: "$$",
       },
